@@ -70,7 +70,7 @@ Ltac puri_simpli_zify_hyp fail_if_too_trivial h t :=
                 | @None ?tz => clear hp; fail_if_too_trivial tz
                 | @Some ?tz ?hz => clear hp hz; fail_if_too_trivial tz
                 end);
-             apply_range_bounding_lemma_in_eqs
+             apply_range_bounding_lemma_in_eqs wok
       end).
 
 (* possible arguments for fail_if_too_trivial above: *)

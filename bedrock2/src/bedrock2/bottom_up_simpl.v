@@ -8,6 +8,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.foreach_hyp.
+Require Import bedrock2.WordPushDownLemmas.
 Require bedrock2.WordNotations.
 Require Import bedrock2.cancel_div.
 
@@ -823,86 +824,6 @@ Ltac2 local_nonring_nonground_Z_simpl e :=
       res_rewrite '(cancel_div_done $d $x _
                             ltac2:(bottom_up_simpl_sidecond_hook ()) $x_eq_prod_pf)
   end.
-
-Module word.
-  Section WithWord.
-    Context [width] [word : word.word width] [word_ok : word.ok word].
-
-    (* Pushing down word.unsigned: *)
-
-    Lemma unsigned_of_Z_modwrap: forall (z: Z),
-        word.unsigned (word.of_Z (word := word) z) = z mod 2 ^ width.
-    Proof. apply word.unsigned_of_Z. Qed.
-
-    Lemma unsigned_opp_eq_nowrap: forall [a: word] [ua: Z],
-        word.unsigned a = ua ->
-        ua <> 0 ->
-        word.unsigned (word.opp a) = 2 ^ width - ua.
-    Proof. intros. subst. apply word.unsigned_opp_nowrap. assumption. Qed.
-    (* and lemma word.unsigned_opp_0 can be used as-is *)
-
-    Lemma unsigned_add_eq_nowrap: forall [a b: word] [ua ub: Z],
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
-        ua + ub < 2 ^ width ->
-        word.unsigned (word.add a b) = ua + ub.
-    Proof. intros. subst. apply word.unsigned_add_nowrap. assumption. Qed.
-
-    Lemma unsigned_sub_eq_nowrap: forall [a b: word] [ua ub: Z],
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
-        0 <= ua - ub ->
-        word.unsigned (word.sub a b) = ua - ub.
-    Proof. intros. subst. apply word.unsigned_sub_nowrap. assumption. Qed.
-
-    Lemma unsigned_mul_eq_nowrap: forall [a b: word] [ua ub: Z],
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
-        ua * ub < 2 ^ width ->
-        word.unsigned (word.mul a b) = ua * ub.
-    Proof. intros. subst. apply word.unsigned_mul_nowrap. assumption. Qed.
-
-    (* Pushing down word.of_Z: *)
-
-    (* lemma word.of_Z_unsigned can be used as-is *)
-
-    Lemma of_Z_mod: forall (z: Z),
-        word.of_Z (word := word) (z mod 2 ^ width) = word.of_Z (word := word) z.
-    Proof.
-      intros. change (z mod 2 ^ width) with (word.wrap z).
-      rewrite <- word.unsigned_of_Z. apply word.of_Z_unsigned.
-    Qed.
-
-    Lemma of_Z_mod_eq: forall [z: Z] [w: word],
-        word.of_Z z = w ->
-        word.of_Z (z mod 2 ^ width) = w.
-    Proof. intros. subst. apply of_Z_mod. Qed.
-
-    Lemma of_Z_opp_eq: forall [z: Z] [w: word],
-        word.of_Z z = w ->
-        word.of_Z (- z) = word.opp w.
-    Proof. intros. subst. apply word.ring_morph_opp. Qed.
-
-    Lemma of_Z_add_eq: forall [z1 z2: Z] [w1 w2: word],
-        word.of_Z z1 = w1 ->
-        word.of_Z z2 = w2 ->
-        word.of_Z (z1 + z2) = word.add w1 w2.
-    Proof. intros. subst. apply word.ring_morph_add. Qed.
-
-    Lemma of_Z_sub_eq: forall [z1 z2: Z] [w1 w2: word],
-        word.of_Z z1 = w1 ->
-        word.of_Z z2 = w2 ->
-        word.of_Z (z1 - z2) = word.sub w1 w2.
-    Proof. intros. subst. apply word.ring_morph_sub. Qed.
-
-    Lemma of_Z_mul_eq: forall [z1 z2: Z] [w1 w2: word],
-        word.of_Z z1 = w1 ->
-        word.of_Z z2 = w2 ->
-        word.of_Z (z1 * z2) = word.mul w1 w2.
-    Proof. intros. subst. apply word.ring_morph_mul. Qed.
-
-  End WithWord.
-End word.
 
 (* Note: we use '(...) most of the time, but when we rely on typeclass search,
    (eg to find a word.ok), we have to use constr:(...), because '(...) does not
