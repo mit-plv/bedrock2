@@ -136,6 +136,53 @@ Section WithArguments.
 
 
 
+
+  Lemma agree_on_getmany :
+    forall rets (x st1 : locals),
+      map.agree_on (of_list rets) x st1 ->
+      map.getmany_of_list x rets =  map.getmany_of_list st1 rets.
+  Proof.
+    intros.
+    induction rets.
+    - unfold map.getmany_of_list. simpl. reflexivity.
+    - unfold map.getmany_of_list.
+      simpl.
+      simpl in H. assert (map.agree_on (of_list rets) x st1).
+      { eapply agree_on_subset.
+        + eapply H.
+        + unfold subset.
+          intros. eapply of_list_cons.
+          unfold add.
+          eapply in_union_r.
+          eassumption.
+      }
+      assert (map.agree_on (singleton_set a) x st1).
+      { eapply agree_on_subset.
+        + eapply H.
+        + unfold subset.
+          intros. eapply of_list_cons.
+          unfold add.
+          eapply in_union_l.
+          eassumption.
+      }
+      assert (map.get x a = map.get st1 a).
+      { unfold map.agree_on in H1.
+        eapply H1.
+        unfold singleton_set.
+        reflexivity.
+      }
+      rewrite H2.
+      destruct (map.get st1 a).
+      2: reflexivity.
+      replace (List.option_all (map (map.get x) rets)) with (map.getmany_of_list x rets) by (unfold map.getmany_of_list; reflexivity).
+      replace (List.option_all (map (map.get st1) rets)) with (map.getmany_of_list st1 rets) by (unfold map.getmany_of_list; reflexivity).
+      eapply IHrets in H0.
+      rewrite H0.
+      reflexivity.
+  Qed.
+
+
+
   Lemma deadassignment_correct_aux:
     forall eH eL,
        deadassignment_functions eH = Success eL ->
@@ -150,20 +197,6 @@ Section WithArguments.
                      /\ postH t' m' lH' mcH' ).
   Proof.
     induction 2.
-    9: { simpl; eauto.
-         intros. destr (existsb (eqb x) (used_after)).
-         all: simpl.
-         - eapply @exec.set; eauto.
-           eexists. eexists.
-           split.
-           2: eassumption. apply agree_on_refl.
-         - eapply @exec.skip; eauto.
-           eexists. eexists.
-           split.
-           2: eassumption.
-           eapply agree_on_not_in.
-           assumption.
-    }
     { simpl.
       intros.
       eapply @exec.interact; eauto.
@@ -178,9 +211,7 @@ Section WithArguments.
         apply agree_on_refl.
     }
     { simpl. intros.
-      all: admit.
-      (*
-      eapply @exec.call; eauto.
+      eapply @exec.call.
       * unfold deadassignment_functions in H.
         unfold deadassignment_function in H.
         simpl in H.
@@ -191,8 +222,36 @@ Section WithArguments.
         inversion H.
         rewrite <- H8 in H6.
         apply H6.
-      * admit.
-      * admit. *)
+      * eassumption.
+      * eassumption.
+      * eapply IHexec.
+        (* for each index in len(argvs)
+           l[args[i]] = argvs[i];
+           for each index in len(argvs)
+           st0[params[i]] = argvs[i]
+           (assuming distinct which we might also need to prove?)
+
+           idea: show that live fbody rets = args or params and
+           then construct the appropriate lH?
+           ??
+         *)
+        admit.
+      * intros. destruct H6. destruct H6.
+        destruct H6. eapply H4 in H7.
+        destruct H7. destruct H7.
+        destruct H7. destruct H8.
+        eexists. eexists.
+        split.
+        -- eapply agree_on_getmany in H6.
+           rewrite <- H6.
+           eassumption.
+        -- split.
+           ++ eapply H8.
+           ++ eexists. eexists.
+              split.
+              2: eapply H9.
+              eapply agree_on_refl.
+
     }
     { simpl. intros.
       eapply @exec.load; eauto.
@@ -262,6 +321,20 @@ Section WithArguments.
          eapply agree_on_not_in.
          assumption.
     }
+    { simpl; eauto.
+         intros. destr (existsb (eqb x) (used_after)).
+         all: simpl.
+         - eapply @exec.set; eauto.
+           eexists. eexists.
+           split.
+           2: eassumption. apply agree_on_refl.
+         - eapply @exec.skip; eauto.
+           eexists. eexists.
+           split.
+           2: eassumption.
+           eapply agree_on_not_in.
+           assumption.
+    }
     { simpl. intros.
       eapply @exec.if_true; eauto.
       eapply IHexec.
@@ -294,8 +367,26 @@ Section WithArguments.
     }
     { simpl.
       intros.
-      all: admit.
-      (* exec.seq *)
+      eapply @exec.seq; eauto.
+      - eapply IHexec.
+        eapply agree_on_subset.
+        + eapply H3.
+        + (* show that
+             of_list (live (deadAss used_after s2) used_after)
+             is subset of (live s2 used_after), and that
+             forall s1 u u',
+             subset u u' ->
+             subset (of_list (live s1 u)) (of_list live s1 u') *)
+          admit.
+      - simpl. intros.
+        eapply H2.
+        (* context has that there exists some lH' and mcH',
+           but goal has that a specific lH and mcH that satisfy mid
+        eexists. eexists.
+        all: eauto.
+      all: ad   mit.
+       exec.seq *)
+        all: admit.
     }
     { simpl.
       intros.
@@ -305,6 +396,5 @@ Section WithArguments.
       2: eassumption.
       apply agree_on_refl.
     }
-    all: admit.
-    Admitted.
+  Admitted.
 End WithArguments.
