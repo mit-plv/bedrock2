@@ -881,6 +881,18 @@ Ltac2 local_word_simpl(e: constr): res :=
       res_rewrite constr:(@word.of_Z_mod $width $word _ $z)
   | @word.of_Z ?width ?word (word.unsigned ?w) =>
       res_rewrite constr:(@word.of_Z_unsigned $width $word _ $w)
+  | word.ltu ?a ?b =>
+      let ra := push_down_unsigned a in
+      let rb := push_down_unsigned b in
+      let pf_a := eq_proof ra in
+      let pf_b := eq_proof rb in
+      res_rewrite constr:(word.unsigned_ltu_eq $a $b _ _ $pf_a $pf_b)
+  | word.eqb ?a ?b =>
+      let ra := push_down_unsigned a in
+      let rb := push_down_unsigned b in
+      let pf_a := eq_proof ra in
+      let pf_b := eq_proof rb in
+      res_rewrite constr:(word.unsigned_eqb_eq $a $b _ _ $pf_a $pf_b)
   end.
 
 (* Nodes like eg (List.length (cons a (cons b (app (cons c xs) ys)))) can
@@ -1289,6 +1301,34 @@ Section Tests.
   Goal forall (n b: Z) (bs: list Z),
       Q (List.repeatz b (n - n) ++ bs[2/4:] ++
            List.repeatz b (word.unsigned (word.of_Z 0))) = Q bs.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  Goal forall (in0 in1 in2: Z),
+      (negb (word.ltu /[in0] /[in2]) && negb (word.ltu /[in1] /[in2]))%bool =
+        (negb (in0 mod 2 ^ 32 <? in2 mod 2 ^ 32) &&
+         negb (in1 mod 2 ^ 32 <? in2 mod 2 ^ 32))%bool.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  Goal forall (in0 in1 in2: Z),
+      0 <= in0 < 2 ^ 32 ->
+      0 <= in1 < 2 ^ 32 ->
+      0 <= in2 < 2 ^ 32 ->
+      (negb (word.ltu /[in0] /[in2]) && negb (word.ltu /[in1] /[in2]))%bool =
+      (negb (Z.ltb in0 in2) && negb (Z.ltb in1 in2))%bool.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  Goal forall (in0 in1 in2: Z),
+      0 <= in0 < 2 ^ 32 ->
+      0 <= in1 < 2 ^ 32 ->
+      0 <= in2 < 2 ^ 32 ->
+      (negb (word.eqb /[in0] /[in2]) && negb (word.eqb /[in1] /[in2]))%bool =
+      (negb (in0 =? in2) && negb (in1 =? in2))%bool.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  Goal forall (in0 in1 in2: Z),
+      (negb (word.eqb /[in0] /[in2]) && negb (word.eqb /[in1] /[in2]))%bool =
+        (negb (in0 mod 2 ^ 32 =? in2 mod 2 ^ 32) &&
+         negb (in1 mod 2 ^ 32 =? in2 mod 2 ^ 32))%bool.
   Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall (byte_of_Z: Z -> Byte.byte) (b: word) (bs: list Byte.byte),

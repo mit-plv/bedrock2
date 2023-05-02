@@ -47,16 +47,15 @@ As sort3_separate_args_ok.                                                    .*
 }                                                                        /*?.
 step. step. step. step. step. step. step. step. step. step. step. step.
 step.
+step.
+2: step.
 (* TODO automate *)
-subst_all_let_bound_vars.
 Import coqutil.Tactics.ident_ops.
 repeat match goal with
        | H: ?x = _ |- _ => ident_starts_with Def H; subst x
        end.
 destruct_ifs.
 all: bottom_up_simpl_in_goal.
-all: bottom_up_simpl_in_hyps.
-all: split; [ | lia].
 all: eauto with prove_post.
 Qed.
 
