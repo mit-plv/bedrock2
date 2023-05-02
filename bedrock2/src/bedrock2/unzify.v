@@ -608,123 +608,164 @@ Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 Section Tests.
   Local Set Ltac Backtrace.
 
+  Ltac rzify_lia := zify_hyps; zify_goal; xlia zchecker.
+
   Goal forall (a b: nat), Z.of_nat (a + b) = Z.of_nat (a + 0) + Z.of_nat (0 + b).
-  Proof.
-    intros.
-
-    zify_hyps.
-
-    zify_goal.
-    xlia zchecker.
-  Abort.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Context {word: word.word 32} {word_ok: word.ok word}.
   Local Hint Mode Word.Interface.word - : typeclass_instances.
 
-  Ltac rzify_lia := zify_hyps; zify_goal; xlia zchecker.
-
   Goal forall (a b: word) (z: Z), \[a ^+ b] < z -> let c := b ^+ a in \[c] < z.
-  Proof. intros. try rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: nat) (z: Z),
       Z.of_nat (Nat.add a b) < z ->
       let c := Nat.add b a in
       Z.of_nat c < z.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: word) (z: Z), \[a ^+ b] < z -> let c := \[b ^+ a] in c < z.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b r: word),
       \[r] = Z.min \[b] \[a] ->
       \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: word),
       a <> b ->
       \[a ^- b] <> 0.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b c: word),
       b <> a /\ c <> b /\ c <> a ->
       a ^- b <> word.of_Z 0 /\ b ^- c <> word.of_Z 0.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b x y: word),
       (if word.ltu a b then word.ltu x y = true else word.ltu x y = false) ->
       \[a] < \[b] ->
       \[x] < \[y].
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: Z),
       let r := if Z.ltb a b then a else b in
       a < b /\ r = a \/ b <= a /\ r = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: Z),
       let c := Z.ltb a b in
       let r := if c then a else b in
       a < b /\ r = a \/ b <= a /\ r = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: Z),
       let c := Z.ltb a b in
       let r := if c then a else word.unsigned (word.of_Z b) in
       a < b /\ r = a \/ b <= a /\ r + 2 ^ 32 * (b / 2 ^ 32) = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: word),
       let c := Z.ltb \[b ^+ a ^- b] \[b] in
       let r := if c then a else b in
       \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: word),
       let r := if word.ltu (b ^+ a ^- b) b then a else b in
       \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: word),
       let c := word.ltu a b in
       let r := if c then a else b in
       \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   (* same tests as above but with = instead of := *)
 
   Goal forall (a b r: Z),
       r = (if Z.ltb a b then a else b) ->
       a < b /\ r = a \/ b <= a /\ r = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b r: Z) c,
       c = Z.ltb a b ->
       r = (if c then a else b) ->
       a < b /\ r = a \/ b <= a /\ r = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b r: Z) c,
       c = Z.ltb a b ->
       r = (if c then a else word.unsigned (word.of_Z b)) ->
       a < b /\ r = a \/ b <= a /\ r + 2 ^ 32 * (b / 2 ^ 32) = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b r: word) c,
       c = Z.ltb \[b ^+ a ^- b] \[b] ->
       r = (if c then a else b) ->
       \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b r: word),
       r = (if word.ltu (b ^+ a ^- b) b then a else b) ->
       \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b r: word) c,
       c = word.ltu a b ->
       r = (if c then a else b) ->
       \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
+
+  Goal forall (w: word) (in1 in2: Z),
+      0 <= in1 < 10 ->
+      0 <= in2 < 20 ->
+      \[w] = \[if Z.ltb in1 in2 then /[in1] else /[in2]] ->
+      \[w] < 20.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
+
+  Goal forall (w: word) (in1 in2 in3 in4: Z),
+      0 <= in1 < 10 ->
+      0 <= in2 < 20 ->
+      0 <= in3 < 30 ->
+      0 <= in4 < 40 ->
+      \[w] = \[if Z.ltb in1 in2
+               then if Z.ltb in3 in4 then /[in1] else /[in2]
+               else if Z.ltb in1 in3 then /[in3] else /[in4]] ->
+      \[w] < 40.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
+
+  (* If we use equalities on bool for opaque conditions, lia doesn't recognize that
+     the values of a and b are correlated through c: *)
+  Goal forall (a b: Z) (c: bool),
+      c = true /\ a = 1 \/ c = false /\ a = 2 ->
+      c = true /\ b = 2 \/ c = false /\ b = 4 ->
+      2 * a = b.
+  Proof. intros. Fail lia. destruct c; lia. Succeed Qed. Abort.
+
+  (* On the other hand, if we turn the equalities on bool into equalities on Z,
+     lia does recognize the correlation.
+     But if we implement this transformation, lia would do case distinctions even
+     for things it doesn't understand, and maybe that's too many case distinctions. *)
+  Goal forall (a b: Z) (c: bool),
+      Z.b2z c = 1 /\ a = 1 \/ Z.b2z c = 0 /\ a = 2 ->
+      Z.b2z c = 1 /\ b = 2 \/ Z.b2z c = 0 /\ b = 4 ->
+      2 * a = b.
+  Proof. intros. lia. Succeed Qed. Abort.
+
+  (* No lia content in condition c, but the goal to be proven holds
+     no matter whether c is true or false. Currently, we don't
+     add a definition for the value of the if: *)
+  Goal forall (c: bool) (w: word) (in1 in2: Z),
+      0 <= in1 < 10 ->
+      0 <= in2 < 20 ->
+      \[w] = \[if c then /[in1] else /[in2]] ->
+      \[w] < 20.
+  Proof.
+    intros. zify_hyps. zify_goal. Fail xlia zchecker.
+  Abort.
 
   Goal forall (left0 right : word) (xs : list word),
     word.unsigned (word.sub right left0) = 8 * Z.of_nat (Datatypes.length xs + 0) ->
@@ -750,6 +791,6 @@ Section Tests.
     forget (\[x1 ^+ (x2 ^- x1) ^>> /[4] ^<< /[3] ^- x1] / \[/[8]]) as X1.
     Z.to_euclidean_division_equations.
     lia.
-  Qed.
+  Succeed Qed. Abort.
 
 End Tests.
