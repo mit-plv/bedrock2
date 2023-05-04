@@ -140,8 +140,6 @@ Ltac zify_term wok e :=
           (* TODO: also pose Euclidean division equations for div and mod *)
           | Z.div     => zify_app2 wok e f2 a1 a0
           | Z.modulo  => zify_app2 wok e f2 a1 a0
-          | Z.ltb     => zify_app2 wok e f2 a1 a0
-          | Z.leb     => zify_app2 wok e f2 a1 a0
           | Z.min     => let pa0 := zify_term wok a0 in
                          let pa1 := zify_term wok a1 in
                          let n := fresh "__Zspecmin_0" in
@@ -152,8 +150,6 @@ Ltac zify_term wok e :=
                          let n := fresh "__Zspecmax_0" in
                          let __ := unique_pose_proof_name n (Z_max_spec_eq pa1 pa0) in
                          zify_nop e
-          | @word.ltu _ _ => zify_u_u_bool wok e (@word.unsigned_ltu_eq _ _ wok) a1 a0
-          | @word.eqb _ _ => zify_u_u_bool wok e (@word.unsigned_eqb_eq _ _ wok) a1 a0
           | _ => zify_nop e
           end
       | _ => zify_nop e
@@ -178,11 +174,47 @@ Ltac zify_term wok e :=
 with zify_lia_bool wok c0 :=
   let c := rdelta_var c0 in
   match goal with
-  | |- _ => let pc := zify_term wok c in
+  | |- _ => let pc := zify_bool wok c in
             let __ := lazymatch type of pc with | _ = ?rhs => is_lia_bool rhs end in pc
   | h: c = ?rhs |- _ =>
       let __ := match constr:(Set) with _ => is_lia_bool rhs end in h
   | _ => constr:(tt)
+  end
+with zify_bool wok b :=
+  lazymatch b with
+  | ?f1 ?a0 =>
+      lazymatch f1 with
+      | negb => zify_bool_app1 wok b f1 a0
+      | ?f2 ?a1 =>
+          lazymatch f2 with
+          | andb => zify_bool_app2 wok b f2 a1 a0
+          | orb => zify_bool_app2 wok b f2 a1 a0
+          | Z.ltb     => zify_app2 wok b f2 a1 a0
+          | Z.leb     => zify_app2 wok b f2 a1 a0
+          | @word.ltu _ _ => zify_u_u_bool wok b (@word.unsigned_ltu_eq _ _ wok) a1 a0
+          | @word.eqb _ _ => zify_u_u_bool wok b (@word.unsigned_eqb_eq _ _ wok) a1 a0
+          | _ => zify_nop b
+          end
+      | _ => zify_nop b
+      end
+  | _ => zify_nop b
+  end
+with zify_bool_app1 wok e f x :=
+  let px := zify_bool wok x in
+  lazymatch px with
+  | eq_refl => zify_nop e
+  | _ => constr:(f_equal f px)
+  end
+with zify_bool_app2 wok e f x y :=
+  let px := zify_bool wok x in
+  let py := zify_bool wok y in
+  lazymatch px with
+  | eq_refl =>
+      lazymatch py with
+      | eq_refl => zify_nop e
+      | _ => constr:(f_equal2 f px py)
+      end
+  | _ => constr:(f_equal2 f px py)
   end
 with zify_u_u_bool wok e lem x y :=
   let px := zify_unsigned wok x in
@@ -419,6 +451,12 @@ Lemma of_nat_eq_cong: forall (a b: nat) (az bz: Z),
     (a = b) <-> (az = bz).
 Proof. intros. subst. split; intros; subst; auto using Nat2Z.inj. Qed.
 
+Lemma bool_eq_cong: forall (a b a' b': bool),
+    a = a' ->
+    b = b' ->
+    (a = b) <-> (a' = b').
+Proof. intros. subst. reflexivity. Qed.
+
 (* Z.of_nat and word.unsigned are embeddings (injections), so their cong lemmas are iffs,
    but len is an abstraction, so its cong lemma only holds in one direction.
    For simplicity, we don't use it right now, but here it is for completeness: *)
@@ -443,6 +481,10 @@ Ltac zify_prop wok e :=
           let px := zify_of_nat wok x in
           let py := zify_of_nat wok y in
           constr:(of_nat_eq_cong _ _ _ _ px py)
+      | bool =>
+          let px := zify_bool wok x in
+          let py := zify_bool wok y in
+          constr:(bool_eq_cong _ _ _ _ px py)
       | _ => zify_prop_app2_terms wok e (@eq tp) x y
       end
   | ?p /\ ?q => zify_prop_app2_props wok e and_cong p q
@@ -458,7 +500,7 @@ Ltac zify_prop wok e :=
     | true => ?a
     | false => ?b
     end =>
-      let pc := zify_term wok c in
+      let pc := zify_bool wok c in
       let pa := zify_prop wok a in
       let pb := zify_prop wok b in
       constr:(zify_Prop_if _ _ _ _ _ _ pc pa pb)
@@ -735,6 +777,17 @@ Section Tests.
                then if Z.ltb in3 in4 then /[in1] else /[in2]
                else if Z.ltb in1 in3 then /[in3] else /[in4]] ->
       \[w] < 40.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
+
+  Goal forall (in0 in1: Z),
+      /[in0] <> /[in1] ->
+      (negb (word.eqb /[in0] /[in1]))%bool = true.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
+
+  Goal forall (in0 in1 in2: Z),
+      /[in0] <> /[in2] ->
+      /[in1] <> /[in2] ->
+      (negb (word.eqb /[in0] /[in2]) && negb (word.eqb /[in1] /[in2]))%bool = true.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   (* If we use equalities on bool for opaque conditions, lia doesn't recognize that
