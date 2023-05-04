@@ -1170,7 +1170,9 @@ Proof. intros. subst. assumption. Qed.
 
 Definition forbidden(P: Prop) := P.
 
-Ltac2 fail_if_no_progress () := fail "nothing to simplify".
+Ltac2 Type exn ::= [ Nothing_to_simplify ].
+
+Ltac2 fail_if_no_progress () := Control.zero Nothing_to_simplify.
 Ltac2 silent_if_no_progress () := ().
 Ltac2 bottom_up_simpl_in_hyp_of_type(no_progress: unit -> unit)(h: ident)(t: constr): unit :=
   lazy_match! Constr.type t with
@@ -1220,7 +1222,7 @@ Ltac2 bottom_up_simpl_in_letbound_var(x: ident)(b: constr)(_t: constr): unit :=
 (* foreach_hyp/var already focus, and bottom_up_simpl_in_hyp only makes sense
    when already focused, but if we do `all: bottom_up_simpl_in_goal ()`, we
    have to focus explicitly. *)
-Ltac2 bottom_up_simpl_in_goal () := Control.enter (fun _ =>
+Ltac2 bottom_up_simpl_in_goal0(no_progress: unit -> unit) := Control.enter (fun _ =>
   let t := Control.goal () in
   lazy_match! Constr.type t with
   | Prop =>
@@ -1229,9 +1231,12 @@ Ltac2 bottom_up_simpl_in_goal () := Control.enter (fun _ =>
         let pf := eq_proof r in
         let t' := new_term r in
         eapply (rew_Prop_goal $t $t' $pf)
-      else fail "nothing to simplify"
+      else no_progress ()
   | _ => fail "not a Prop"
   end).
+
+Ltac2 bottom_up_simpl_in_goal () := bottom_up_simpl_in_goal0 fail_if_no_progress.
+Ltac2 bottom_up_simpl_in_goal_nop_ok () := bottom_up_simpl_in_goal0 silent_if_no_progress.
 
 Ltac2 bottom_up_simpl_in_hyps () :=
   foreach_hyp (bottom_up_simpl_in_hyp_of_type silent_if_no_progress).
@@ -1244,7 +1249,7 @@ Ltac2 bottom_up_simpl_in_hyps_and_vars () :=
 
 Ltac2 bottom_up_simpl_in_all () :=
   bottom_up_simpl_in_hyps (); bottom_up_simpl_in_vars ();
-  try bottom_up_simpl_in_goal ().
+  bottom_up_simpl_in_goal_nop_ok ().
 
 Ltac _bottom_up_simpl_in_hyp :=
   ltac2:(h1 |- bottom_up_simpl_in_hyp (Option.get (Ltac1.to_ident h1))).
@@ -1258,6 +1263,7 @@ Tactic Notation "bottom_up_simpl_in_hyp_of_type" ident(h) constr(t) :=
   _bottom_up_simpl_in_hyp_of_type h t.
 
 Ltac bottom_up_simpl_in_goal := ltac2:(bottom_up_simpl_in_goal ()).
+Ltac bottom_up_simpl_in_goal_nop_ok := ltac2:(bottom_up_simpl_in_goal_nop_ok ()).
 
 Ltac bottom_up_simpl_in_hyps := ltac2:(bottom_up_simpl_in_hyps ()).
 

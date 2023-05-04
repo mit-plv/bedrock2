@@ -219,7 +219,7 @@ Ltac2 default_simpl_in_hyps () :=
 Ltac default_simpl_in_hyps := ltac2:(default_simpl_in_hyps ()).
 
 Ltac default_simpl_in_all :=
-  default_simpl_in_hyps; try bottom_up_simpl_in_goal; try record.simp_goal.
+  default_simpl_in_hyps; bottom_up_simpl_in_goal_nop_ok; try record.simp_goal.
 
 Ltac after_command_simpl_hook := default_simpl_in_hyps.
 
