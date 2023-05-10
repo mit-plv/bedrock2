@@ -520,6 +520,12 @@ Ltac canceling_step_in_hyp C :=
       clear H m
   end.
 
+Ltac cancel_in_hyp H :=
+  start_canceling_in_hyp H;
+  repeat canceling_step_in_hyp H;
+  eapply canceling_done_in_hyp in H;
+  destruct H as (?m & ?D & ?H).
+
 Ltac merge_step_in_hyp H :=
   lazymatch type of H with
   (* Special case for records: Need to solve sideconditions SC1 and SC2 (using eq_refl).
@@ -536,10 +542,7 @@ Ltac merge_step_in_hyp H :=
       end
   | _ => idtac
   end;
-  start_canceling_in_hyp H;
-  repeat canceling_step_in_hyp H;
-  eapply canceling_done_in_hyp in H;
-  destruct H as (?m & ?D & ?H).
+  cancel_in_hyp H.
 
 Lemma f_equal_fun[A B: Type]: forall (f g: A -> B) (x: A), f = g -> f x = g x.
 Proof. intros. subst. reflexivity. Qed.
