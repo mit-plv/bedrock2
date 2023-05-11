@@ -21,9 +21,9 @@ Ltac exact_basename_string_of_ref_constr :=
 Declare Custom Entry bound_name_or_literal.
 Notation "x" :=
   (match x with
-   | _ => ltac:(lazymatch isZcst x with
-                | true => exact x
-                | false => exact_basename_string_of_ref_constr x
+   | _ => ltac:(lazymatch type of x with
+                | Z => exact x
+                | _ => exact_basename_string_of_ref_constr x
                 end)
    end)
   (in custom bound_name_or_literal at level 0, x constr at level 0, only parsing).
