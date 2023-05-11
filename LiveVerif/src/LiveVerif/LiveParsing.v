@@ -104,6 +104,11 @@ Notation "a >= b" := (expr.not (expr.op bopname.ltu a b))
    no associativity, only parsing).
 Infix "==" := (expr.op bopname.eq)
   (in custom live_expr at level 7, no associativity, only parsing).
+Notation "a != b" := (expr.not (expr.op bopname.eq a b))
+  (in custom live_expr at level 7, no associativity, only parsing).
+Remark unfolding_not_eq: forall a b: unit,
+  live_expr:(a != b) = live_expr:((a == b) == 0).
+Proof. intros _ _. unfold expr.not. reflexivity. Succeed Qed. Abort.
 Infix "&" := (expr.op bopname.and)
   (in custom live_expr at level 8, left associativity, only parsing).
 Infix "^" := (expr.op bopname.xor)

@@ -151,8 +151,8 @@ Derive sll_reverse SuchThat (fun_correct! sll_reverse) As sll_reverse_ok.       
   move p after acc.
   delete #(acc = ??).
 
-  (* TODO != operator *)                                                        .**/
-  while (!(p == 0)) /* decreases (len lTodo) */ {                          /**.
+                                                                                .**/
+  while (p != 0) /* decreases (len lTodo) */ {                             /**.
 
     match goal with
     | H: _ |= sll lTodo p |- _ => rename H into HT
