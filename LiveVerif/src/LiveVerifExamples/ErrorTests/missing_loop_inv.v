@@ -1,8 +1,6 @@
 (* -*- eval: (load-file "../../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
 
-Ltac pose_err e ::= pose_err_silent e.
-
 Load LiveVerif.
 
 #[export] Instance spec_of_test_missing_loop_inv: fnspec := .**/

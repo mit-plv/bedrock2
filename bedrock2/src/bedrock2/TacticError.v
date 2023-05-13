@@ -29,19 +29,14 @@ Notation "'Error:(' msg )" := (mk_tactic_error msg%string)
   (at level 0, msg custom ne_space_sep_dlist at level 0, format "'Error:(' msg )")
   : tactic_error_scope.
 
-Ltac pose_err_silent e := let n := fresh "Error" in pose proof e as n.
-
-Ltac pose_err e :=
-  let n := fresh "Error" in
-  pose proof e as n;
-  let T := type of n in
-  idtac "Error:" T.
+Ltac pose_err e := let n := fresh "Error" in pose proof e as n.
+Ltac pose_and_idtac_err e := pose_err e; let t := type of e in idtac "Error:" t.
 
 Goal False.
-  pose_err_silent Error:("Here's a very long error message that will take more than one line to display and I wonder how it will be rendered").
-  pose_err_silent Error:("Here's a very long" (cons "really long" (cons "error message that" (cons "will take mooooooooooooooooooore than one line" nil))) "to display and I wonder how it will be rendered").
-  pose_err_silent Error:(4 "is not a" bool).
-  pose_err_silent Error:("just one string").
+  pose_err Error:("Here's a very long error message that will take more than one line to display and I wonder how it will be rendered").
+  pose_err Error:("Here's a very long" (cons "really long" (cons "error message that" (cons "will take mooooooooooooooooooore than one line" nil))) "to display and I wonder how it will be rendered").
+  pose_err Error:(4 "is not a" bool).
+  pose_err Error:("just one string").
 Abort.
 
 Ltac assert_no_error :=
