@@ -777,7 +777,7 @@ Ltac steps :=
   | _: tactic_error _ |- _ => idtac
   | |- _ => tryif step_is_done then idtac
             else tryif step_silent then steps
-            else idtac
+            else pose_err Error:("The 'step' tactic should not fail here")
   end.
 
 (* If really needed, this hook can be overridden with idtac for debugging,

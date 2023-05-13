@@ -7,6 +7,7 @@ Require Import coqutil.Tactics.syntactic_unify.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.DisjointUnion.
 Require Import bedrock2.TacticError.
+Require Import bedrock2.SuppressibleWarnings.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.Map.SeparationLogic. Local Open Scope sep_scope.
 
@@ -386,25 +387,66 @@ Ltac clear_if_dup_or_trivial H :=
          end
   end.
 
-Ltac heapletwise_hyp_pre_clear_default H :=
-  let tHOrig := type of H in
-  unfold with_mem in H;
-  lazymatch type of H with
-  | ?P ?m =>
-      tryif is_var P then idtac (* It's a frame, nothing to purify *)
-      else (
-        let g := open_constr:(purify P _) in
-        let pf := match constr:(Set) with
-                  | _ => constr:(ltac:(eauto with purify) : g)
-                  | _ => constr:(tt)
-                 end in
-        lazymatch pf with
-        | tt => pose_err Error:(g "can't be solved by" "eauto with purify");
-                change tHOrig in H
-        | _ => let HP := fresh "old_" H "_pure" in pose proof (pf _ H) as HP;
-               clear_if_dup_or_trivial HP
-        end
-      )
+Ltac is_var_b x :=
+  match constr:(Set) with
+  | _ => let __ := match constr:(Set) with
+                   | _ => is_var x
+                   end in
+         constr:(true)
+  | _ => constr:(false)
+  end.
+
+Inductive cannot_be_solved_by_eauto_with_purify(purifyGoal: Prop): Set :=
+  mk_cannot_be_solved_by_eauto_with_purify.
+
+Notation "g 'cannot' 'be' 'solved' 'by' 'eauto' 'with' 'purify'" :=
+  (cannot_be_solved_by_eauto_with_purify g)
+  (at level 1, g at level 0, only printing)
+  : message_scope.
+
+Inductive nothing_to_purify: Prop := mk_nothing_to_purify.
+
+(* Returns a proof of the purified (h: pred m) or mk_nothing_to_purify.
+   As a side effect, it might pose a warning, so it should not be called inside a try. *)
+Ltac purified_hyp_of_pred h pred m :=
+  lazymatch is_var_b pred with
+  | true => constr:(mk_nothing_to_purify) (* it's probably a frame *)
+  | false =>
+      let g := open_constr:(purify pred _) in
+      let pf := match constr:(Set) with
+                | _ => constr:(ltac:(eauto with purify) : g)
+                | _ => let __ :=
+                         match constr:(Set) with
+                         | _ => pose_warning (mk_cannot_be_solved_by_eauto_with_purify g)
+                         end in
+                       constr:(mk_nothing_to_purify)
+                end in
+      lazymatch type of pf with
+      | nothing_to_purify => pf
+      | purify pred True => constr:(mk_nothing_to_purify)
+      | purify pred ?p => constr:(pf m h)
+      end
+  end.
+
+(* Returns a proof of the purified (h: t) or mk_nothing_to_purify.
+   As a side effect, it might pose a warning, so it should not be called inside a try. *)
+Ltac purified_hyp h t :=
+  lazymatch t with
+  | with_mem ?m ?pred => purified_hyp_of_pred h pred m
+  | ?pred ?m =>
+      lazymatch type of m with
+      | @map.rep (@Interface.word.rep _ _) Byte.byte _ => purified_hyp_of_pred h pred m
+      | _ => constr:(mk_nothing_to_purify)
+      end
+  | _ => constr:(mk_nothing_to_purify)
+  end.
+
+Ltac heapletwise_hyp_pre_clear_default h :=
+  let t := type of h in
+  lazymatch purified_hyp h t with
+  | mk_nothing_to_purify => idtac
+  | ?pf => let hp := fresh "old_" h "_pure" in pose proof pf as hp;
+           clear_if_dup_or_trivial hp
   end.
 
 Ltac heapletwise_hyp_pre_clear_hook H := heapletwise_hyp_pre_clear_default H.

@@ -2,43 +2,57 @@
 Require Import LiveVerif.LiveVerifLib.
 
 Class malloc_constants := {
-  malloc_base: Z;
+  malloc_state_ptr: Z;
   malloc_block_size: Z;
 }.
 
-Section TODO_move.
-  Context {width} {BW: Bitwidth width}
-    {word: word width}{word_ok: word.ok word}
-    {mem: map.map word Byte.byte}{mem_ok: map.ok mem}.
-
-  Definition anybytes(sz: Z)(p: word): mem -> Prop :=
-    ex1 (fun bs => array (uint 8) sz bs p).
-
-End TODO_move.
-
 Load LiveVerif.
+
+Record malloc_state := {
+  free_list: word;
+}.
+
+Definition malloc_state_t(s: malloc_state): word -> mem -> Prop := .**/
+
+typedef struct __attribute__ ((__packed__)) {
+  uintptr_t free_list;
+} malloc_state_t;
+
+/**.
 
 Context {consts: malloc_constants}.
 
-Definition fixed_size_free_list(sz: Z): nat -> word -> mem -> Prop :=
-  fix rec n p :=
-    match n with
-    | O => emp (p = /[0])
-    | S n' => ex1 (fun q => <{ * uintptr q p
-                               * anybytes sz (p ^+ /[4])
-                               * rec n' q }>)
-    end.
+(* The Inductive conveniently provides the fuel needed for the recursion *)
+Inductive fixed_size_free_list(block_size: Z): word -> mem -> Prop :=
+| fixed_size_free_list_nil p m:
+  p = /[0] ->
+  emp True m ->
+  fixed_size_free_list block_size p m
+| fixed_size_free_list_cons p q m:
+  p <> /[0] ->
+  <{ * uintptr q p
+     * anybytes block_size (p ^+ /[4])
+     * fixed_size_free_list block_size q }> m ->
+  fixed_size_free_list block_size p m.
 
-Definition allocator: mem -> Prop. Admitted.
-Definition freeable(sz: Z)(a: word): mem -> Prop. Admitted.
+Definition allocator: mem -> Prop :=
+  ex1 (fun addr => <{
+    * malloc_state_t {| free_list := addr |} /[malloc_state_ptr]
+    * fixed_size_free_list malloc_block_size addr
+  }>).
 
-Lemma purify_allocator: purify allocator True.
-Proof. unfold purify. intros. constructor. Qed.
-Hint Resolve purify_allocator : purify.
+Definition allocator_cannot_allocate(n: word): mem -> Prop :=
+  ex1 (fun addr => <{
+    * malloc_state_t {| free_list := addr |} /[malloc_state_ptr]
+    * fixed_size_free_list malloc_block_size addr
+    * emp (addr = /[0] \/ (* empty free list *)
+           malloc_block_size < \[n]) (* trying to allocate more than supported *)
+  }>).
 
-Lemma purify_freeable: forall sz a, purify (freeable sz a) True.
-Proof. unfold purify. intros. constructor. Qed.
-Hint Resolve purify_freeable : purify.
+Definition freeable(sz: Z)(a: word): mem -> Prop :=
+  anybytes (malloc_block_size - sz) (a ^+ /[sz]).
+
+Local Hint Unfold allocator : live_always_unfold.
 
 #[export] Instance spec_of_malloc: fnspec :=                                    .**/
 
@@ -47,23 +61,20 @@ uintptr_t malloc (uintptr_t n) /**#
   requires t m := <{ * allocator
                      * R }> m;
   ensures t' m' p := t' = t /\
-     (p = /[0] /\
-      <{ * allocator
-         * R }> m') \/
-     (p <> /[0] /\
-      <{ * allocator
-         * anybytes \[n] p
-         * freeable \[n] p
-         * R }> m') #**/                                                   /**.
+     (if \[p] =? 0 then
+        <{ * allocator_cannot_allocate n
+           * R }> m'
+      else
+        <{ * allocator
+           * anybytes \[n] p
+           * freeable \[n] p
+           * R }> m') #**/                                                   /**.
 Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      .**/
-{                                                                          /**. .**/
-  uintptr_t x = malloc_base + n;                                           /**. .**/
-  x = 0;                                                                   /**. .**/
-  return x;                                                                /**. .**/
-}                                                                          /*?.
-eexists. step. step. step. step. step. step. step. step. left.
-steps.
-Qed.
+{                                                                          /**.
+(* TODO ex1 should be destructed before trying to purify it *)
+.**/
+  uintptr_t l = load(malloc_state_ptr);                                    /**.
+Abort.
 
 #[export] Instance spec_of_free: fnspec :=                                      .**/
 

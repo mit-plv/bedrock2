@@ -9,57 +9,15 @@ Require Import coqutil.Tactics.ident_ops.
 Require Import bedrock2.bottom_up_simpl.
 Require Import bedrock2.unzify.
 
-Ltac is_var_b x :=
-  match constr:(Set) with
-  | _ => let __ := match constr:(Set) with
-                   | _ => is_var x
-                   end in
-         constr:(true)
-  | _ => constr:(false)
-  end.
-
-(* TODO replace by simple tactic failure? *)
-Inductive nothing_to_purify: Prop := .
-
-(* returns the name of the new purified hyp or nothing_to_purify *)
-Ltac purified_hyp_name_of_pred h pred m :=
-  lazymatch is_var_b pred with
-  | true => constr:(nothing_to_purify)
-  | false =>
-      let g := open_constr:(purify pred _) in
-      let pf := match constr:(Set) with
-                | _ => constr:(ltac:(eauto with purify) : g)
-                | _ => fail 1000 g "cannot be solved by eauto with purify"
-                end in
-      lazymatch type of pf with
-      | purify pred True => constr:(nothing_to_purify)
-      | purify pred ?p =>
-          let hp := fresh "__pure_" h in
-          let __ := match constr:(Set) with
-                    | _ => pose proof (pf m h) as hp
-                    end in
-          hp
-      end
-  end.
-
-(* returns the name of the new purified hyp or nothing_to_purify *)
-Ltac purified_hyp_name h t :=
-  lazymatch t with
-  | with_mem ?m ?pred => purified_hyp_name_of_pred h pred m
-  | ?pred ?m => lazymatch type of m with
-                | @map.rep (@word.rep _ _) Byte.byte _ => purified_hyp_name_of_pred h pred m
-                | _ => constr:(nothing_to_purify)
-                end
-  | _ => constr:(nothing_to_purify)
-  end.
-
 Ltac puri_simpli_zify_hyp fail_if_too_trivial h t :=
+  let pure := purified_hyp h t in
   try ((* try block starts here because everthing starting from here needs
           to be reverted if the resulting hyp is too trivial *)
-      let hp := purified_hyp_name h t in
-      lazymatch hp with
-      | nothing_to_purify => idtac
-      | _ => let tp := type of hp in
+      lazymatch pure with
+      | mk_nothing_to_purify => idtac
+      | _ => let hp := fresh "__pure_" h in
+             pose proof pure as hp;
+             let tp := type of hp in
              bottom_up_simpl_in_hyp_of_type hp tp;
              let tp := type of hp in
              let wok := get_word_ok_or_dummy in

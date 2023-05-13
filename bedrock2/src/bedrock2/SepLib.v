@@ -115,3 +115,20 @@ Lemma purify_uintptr{width}{BW: Bitwidth width}{word: word width}
   purify (uintptr v a) True.
 Proof. unfold purify. intros. constructor. Qed.
 #[export] Hint Resolve purify_uintptr : purify.
+
+
+Definition anybytes{width}{BW: Bitwidth width}{word: word width}{mem: map.map word Byte.byte}
+  (sz: Z)(a: word): mem -> Prop := Memory.anybytes a sz.
+
+#[export] Hint Extern 1 (PredicateSize (anybytes ?sz _)) => exact sz
+: typeclass_instances.
+
+Lemma purify_anybytes{width}{BW: Bitwidth width}{word: word width}
+  {mem: map.map word Byte.byte} sz a:
+  purify (anybytes sz a) True.
+  (* Note:
+     - (0 <= sz) is not enforced right now by Memory.anybytes
+     - (sz <= 2^width) would hold (because of max memory size)
+     - (sz < 2^width) would be more useful but is not provable currently *)
+Proof. unfold purify. intros. constructor. Qed.
+#[export] Hint Resolve purify_anybytes : purify.

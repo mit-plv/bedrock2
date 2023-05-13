@@ -44,7 +44,7 @@ Inductive scope_kind :=
 | FunctionParams | FunctionBody
 | IfCondition | ThenBranch | ElseBranch
 | LoopBody | LoopInvariant.
-Inductive scope_marker: scope_kind -> Set := mk_scope_marker sk : scope_marker sk.
+Inductive scope_marker(sk: scope_kind): Set := mk_scope_marker.
 
 Notation "'____' sk '____'" := (scope_marker sk) (only printing) : live_scope.
 
