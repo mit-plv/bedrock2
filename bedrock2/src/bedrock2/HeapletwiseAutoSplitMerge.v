@@ -15,6 +15,7 @@ Require Import bedrock2.PurifySep.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.sepapp.
 Require Import bedrock2.ZnWords.
+Require Import bedrock2.SuppressibleWarnings.
 Require Import bedrock2.TacticError.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.bottom_up_simpl.
@@ -575,26 +576,24 @@ Ltac is_subrange start size start' size' :=
   assert_succeeds (idtac; assert (subrange start size start' size') by
                      (unfold subrange; ZnWords)).
 
-Inductive PredicateSizeNotFound := .
+Inductive PredicateSize_not_found{PredTp: Type}(pred: PredTp): Set :=
+  mk_PredicateSize_not_found.
 
-Ltac get_predicate_size_or_pose_err P :=
-  let t := constr:(PredicateSize P) in
-  match constr:(Set) with
-  | _ => lazymatch constr:(_: t) with ?s => s end
-  | _ => let __ := match constr:(Set) with
-                   | _ => pose_err Error:("typeclasses eauto" "should find" t)
-                   end in constr:(PredicateSizeNotFound)
-  end.
+Notation "'(PredicateSize'  pred ')'  'cannot'  'be'  'solved'  'by'  'typeclasses' 'eauto'" :=
+  (PredicateSize_not_found pred)
+  (at level 1, pred at level 9, only printing)
+: message_scope.
 
 Ltac gather_is_subrange_claims_into_error start size :=
   fold_hyps_upwards_cont
     (fun res h tp =>
        lazymatch tp with
        | with_mem ?m (?P' ?start') =>
-          lazymatch get_predicate_size_or_pose_err P' with
-          | PredicateSizeNotFound => fail "can't find PredicateSize for" P'
-          | ?size' =>
-              constr:(cons (subrange start size start' size') res)
+          match constr:(Set) with
+          | _ => lazymatch constr:(_: PredicateSize P') with
+                 | ?size' => constr:(cons (subrange start size start' size') res)
+                 end
+          | _ => res
           end
        | _ => res
        end)
@@ -611,8 +610,17 @@ Ltac split_step :=
   | |- find_superrange_hyp ?start ?size ?g =>
       match goal with
       | H: with_mem ?mH (?P' ?start') |- _ =>
-          lazymatch get_predicate_size_or_pose_err P' with
-          | PredicateSizeNotFound => idtac
+          let maybesize' := match constr:(Set) with
+                            | _ => lazymatch constr:(_: PredicateSize P') with ?s => s end
+                            | _ => constr:(tt)
+                            end in
+          lazymatch maybesize' with
+          | tt =>
+              lazymatch goal with
+              | _: message_scope_marker (PredicateSize_not_found P') |- _ =>
+                  fail (* already warned, ie nothing to do, so this step does not apply *)
+              | |- _ => pose_warning (mk_PredicateSize_not_found P')
+              end
           | ?size' =>
               is_subrange start size start' size';
               tryif assert_succeeds (idtac;

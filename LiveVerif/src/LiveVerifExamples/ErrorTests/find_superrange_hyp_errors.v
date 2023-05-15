@@ -36,8 +36,11 @@ Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          
   clear Error.
   forget bar as bar'.
 
-  step.
-  test_error Error:("typeclasses eauto" "should find" (PredicateSize (bar' n b))).
+  steps.
+  lazymatch goal with
+  | _: message_scope_marker (PredicateSize_not_found (bar' n b)) |- _ => idtac
+  end.
+  test_error Error:("Exactly one of the following subrange claims should hold:" nil).
 Abort.
 
 End LiveVerif. Comments .**/ //.

@@ -45,8 +45,10 @@ Ltac assert_no_error :=
   | |- _ => idtac
   end.
 
-Ltac test_error e :=
+Ltac _test_error e :=
   let expected := type of e in
   lazymatch goal with
   | H: tactic_error ?l |- _ => unify (tactic_error l) expected
   end.
+
+Tactic Notation "test_error" open_constr(e) := _test_error e.
