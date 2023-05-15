@@ -120,7 +120,7 @@ Proof. unfold purify. intros. constructor. Qed.
 Definition anybytes{width}{BW: Bitwidth width}{word: word width}{mem: map.map word Byte.byte}
   (sz: Z)(a: word): mem -> Prop := Memory.anybytes a sz.
 
-#[export] Hint Extern 1 (PredicateSize (anybytes ?sz _)) => exact sz
+#[export] Hint Extern 1 (PredicateSize (anybytes ?sz)) => exact sz
 : typeclass_instances.
 
 Lemma purify_anybytes{width}{BW: Bitwidth width}{word: word width}

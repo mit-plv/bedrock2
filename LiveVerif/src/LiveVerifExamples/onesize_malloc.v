@@ -82,7 +82,26 @@ uintptr_t malloc (uintptr_t n) /**#
            * R }> m') #**/                                                   /**.
 Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      .**/
 {                                                                          /**. .**/
-  uintptr_t l = load(malloc_state_ptr);                                    /**.
+  uintptr_t l = load(malloc_state_ptr);                                    /**. .**/
+  uintptr_t p = 0;                                                         /**. .**/
+  if (l == 0 || malloc_block_size < n) {                                   /**. .**/
+  } else {                                                                 /**.
+
+    let H := constr:(#(fixed_size_free_list ?? ??)) in inversion H; clear H.
+    (* TODO better inversion tactic for such use cases *)
+    1: congruence.
+    repeat let lastHypType := lazymatch goal with _: ?t |- _ => t end in
+           lazymatch lastHypType with
+           | ?lhs = _ => subst lhs
+           end.
+    repeat heapletwise_step.
+                                                                                .**/
+    store(malloc_state_ptr, load(l));                                      /**. .**/
+    p = l;                                                                 /**. .**/
+  } /**. end if. .**/
+  return p;                                                                /**. .**/
+}                                                                          /**.
+(* TODO support separate postcond proving in tail if-then-else *)
 Abort.
 
 #[export] Instance spec_of_free: fnspec :=                                      .**/
