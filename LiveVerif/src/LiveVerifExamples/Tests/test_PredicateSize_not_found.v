@@ -36,6 +36,28 @@ Derive test SuchThat (fun_correct! test) As test_ok.                            
   end.
 
   test_error Error:("Exactly one of the following subrange claims should hold:" nil).
+
+  clear Error.
+  unexplain.
+  repeat match goal with
+         | W: PredicateSize_not_found _ |- _ => clear W
+         end.
+
+  Local Hint Extern 1 (PredicateSize_not_found my_pred1)
+      => constructor : suppressed_warnings.
+
+  (* Test: should not loop infinitely: *)
+  steps.
+
+  lazymatch goal with
+  | _: message_scope_marker (PredicateSize_not_found my_pred2) |- _ => idtac
+  end.
+  lazymatch goal with
+  | _: message_scope_marker (PredicateSize_not_found my_pred1) |- _ =>
+      fail "should have been suppressed"
+  | |- _ => idtac
+  end.
+
 Abort.
 
 End LiveVerif.

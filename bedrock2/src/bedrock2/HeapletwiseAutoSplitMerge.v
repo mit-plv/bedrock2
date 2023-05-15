@@ -623,11 +623,9 @@ Ltac split_step :=
                             end in
           lazymatch maybesize' with
           | tt =>
-              lazymatch goal with
-              | _: message_scope_marker (PredicateSize_not_found P') |- _ =>
-                  fail (* already warned, ie nothing to do, so this step does not apply *)
-              | |- _ => pose_warning (mk_PredicateSize_not_found P')
-              end
+              (* progress could fail because warning was already posed or because
+                 warning is suppressed *)
+              progress pose_warning (mk_PredicateSize_not_found P')
           | ?size' =>
               is_subrange start size start' size';
               tryif assert_succeeds (idtac; assert (size = size') by ZnWords);
