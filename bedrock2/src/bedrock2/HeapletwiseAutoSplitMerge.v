@@ -601,6 +601,13 @@ Ltac gather_is_subrange_claims_into_error start size :=
     (fun r => pose_err
                 Error:("Exactly one of the following subrange claims should hold:" r)).
 
+Ltac is_singleton_record_predicate p :=
+  let h := head p in
+  lazymatch eval unfold h in p with
+  | sepapps (cons _ nil) => idtac
+  | _ => fail "not a singleton record predicate"
+  end.
+
 Ltac split_step :=
   lazymatch goal with
   | |- canceling (cons (?P ?start) _) ?m _ =>
@@ -623,8 +630,11 @@ Ltac split_step :=
               end
           | ?size' =>
               is_subrange start size start' size';
-              tryif assert_succeeds (idtac;
-                assert (size = size') by ZnWords)
+              tryif assert_succeeds (idtac; assert (size = size') by ZnWords);
+                    (* TODO: below check should be more general and see if one of the
+                       records is a sub-record of the other, potentially unfolding
+                       several singleton-field records *)
+                    assert_fails (idtac; is_singleton_record_predicate P')
               then (
                 change g;
                 let P := lazymatch goal with | |- canceling (cons ?P _) _ _ => P end in
