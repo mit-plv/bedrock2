@@ -686,8 +686,6 @@ Ltac final_program_logic_step logger :=
            cleanup_step) in hyps so that (retvs = [| ... |]) gets exposed *)
         put_into_current_locals;
         logger ltac:(fun _ => idtac "put_into_current_locals")
-      | progress autounfold with live_always_unfold in *;
-        logger ltac:(fun _ => idtac "progress autounfold with live_always_unfold in *")
       | lazymatch goal with
         | |- exists _, _ => eexists
         | |- elet _ _ => refine (mk_elet _ _ _ eq_refl _)
@@ -713,7 +711,12 @@ Ltac final_program_logic_step logger :=
                              idtac "after_command_simpl_hook; unpurify; unzify and ready")
         end ].
 
-Ltac new_heapletwise_hyp_hook ::= puri_simpli_zify_hyp accept_unless_follows_by_xlia.
+(* For hints registered with `Hint Unfold`, used by autounfold *)
+Create HintDb live_always_unfold.
+
+Ltac new_heapletwise_hyp_hook h t ::=
+  autounfold with live_always_unfold in h;
+  puri_simpli_zify_hyp accept_unless_follows_by_xlia h t.
 
 Ltac heapletwise_hyp_pre_clear_hook H ::=
   let T := type of H in puri_simpli_zify_hyp accept_unless_follows_by_xlia H T.

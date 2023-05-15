@@ -52,6 +52,15 @@ Definition allocator_cannot_allocate(n: word): mem -> Prop :=
 Definition freeable(sz: Z)(a: word): mem -> Prop :=
   anybytes (malloc_block_size - sz) (a ^+ /[sz]).
 
+Local Hint Extern 1 (cannot_purify (fixed_size_free_list _ _))
+      => constructor : suppressed_warnings.
+Local Hint Extern 1 (cannot_purify allocator)
+      => constructor : suppressed_warnings.
+Local Hint Extern 1 (cannot_purify (allocator_cannot_allocate _))
+      => constructor : suppressed_warnings.
+Local Hint Extern 1 (cannot_purify (freeable _ _))
+      => constructor : suppressed_warnings.
+
 Local Hint Unfold allocator : live_always_unfold.
 
 #[export] Instance spec_of_malloc: fnspec :=                                    .**/
@@ -70,9 +79,7 @@ uintptr_t malloc (uintptr_t n) /**#
            * freeable \[n] p
            * R }> m') #**/                                                   /**.
 Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      .**/
-{                                                                          /**.
-(* TODO ex1 should be destructed before trying to purify it *)
-.**/
+{                                                                          /**. .**/
   uintptr_t l = load(malloc_state_ptr);                                    /**.
 Abort.
 

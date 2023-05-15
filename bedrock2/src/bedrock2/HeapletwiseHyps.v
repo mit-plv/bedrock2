@@ -396,12 +396,12 @@ Ltac is_var_b x :=
   | _ => constr:(false)
   end.
 
-Inductive cannot_be_solved_by_eauto_with_purify(purifyGoal: Prop): Set :=
-  mk_cannot_be_solved_by_eauto_with_purify.
+Inductive cannot_purify{mem: Type}(pred: mem -> Prop): Set :=
+  mk_cannot_purify.
 
-Notation "g 'cannot' 'be' 'solved' 'by' 'eauto' 'with' 'purify'" :=
-  (cannot_be_solved_by_eauto_with_purify g)
-  (at level 1, g at level 0, only printing)
+Notation "'(purify'  pred  '_)'  'cannot'  'be'  'solved'  'by'  'eauto' 'with' 'purify'" :=
+  (cannot_purify pred)
+  (at level 1, pred at level 9, only printing)
   : message_scope.
 
 Inductive nothing_to_purify: Prop := mk_nothing_to_purify.
@@ -412,12 +412,11 @@ Ltac purified_hyp_of_pred h pred m :=
   lazymatch is_var_b pred with
   | true => constr:(mk_nothing_to_purify) (* it's probably a frame *)
   | false =>
-      let g := open_constr:(purify pred _) in
       let pf := match constr:(Set) with
-                | _ => constr:(ltac:(eauto with purify) : g)
+                | _ => constr:(ltac:(eauto with purify) : purify pred _)
                 | _ => let __ :=
                          match constr:(Set) with
-                         | _ => pose_warning (mk_cannot_be_solved_by_eauto_with_purify g)
+                         | _ => pose_warning (mk_cannot_purify pred)
                          end in
                        constr:(mk_nothing_to_purify)
                 end in
