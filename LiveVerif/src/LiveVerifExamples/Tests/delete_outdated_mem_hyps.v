@@ -75,7 +75,7 @@ Derive test_if SuchThat (fun_correct! test_if) As test_if_ok.                   
   assert_count is_mem_split_eq 0%nat.
   assert_count is_mem 0%nat.
 
-  end if.
+  merge.
 
   assert_count is_mem_hyp 3%nat.
   assert_count is_mem_split_eq 1%nat.

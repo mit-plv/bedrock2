@@ -24,7 +24,7 @@ Derive test_local_from_branches SuchThat
   } else {                                                                 /**. .**/
     uintptr_t r = load32(py);                                              /**. .**/
     g = r - 1;                                                             /**. .**/
-  } /**. end if.
+  } /**. merge.
 
   lazymatch goal with
   | |- @ready (wp_cmd ?fs ?c ?t ?m (map.of_list [|("g", g); ("px", px); ("py", py)|]) ?post)

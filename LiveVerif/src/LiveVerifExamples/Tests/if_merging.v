@@ -21,7 +21,7 @@ Derive test_if SuchThat (fun_correct! test_if) As test_if_ok.                   
     r = load32(px);                                                        /**. .**/
   } else {                                                                 /**. .**/
     r = load32(py);                                                        /**. .**/
-  } /**. end if.                                                                .**/
+  } /**.                                                                        .**/
   return r;                                                                /**. .**/
 }                                                                          /**.
 Qed.

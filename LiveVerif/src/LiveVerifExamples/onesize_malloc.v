@@ -98,7 +98,7 @@ Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      
                                                                                 .**/
     store(malloc_state_ptr, load(l));                                      /**. .**/
     p = l;                                                                 /**. .**/
-  } /**. end if. .**/
+  }                                                                        /**. .**/
   return p;                                                                /**. .**/
 }                                                                          /**.
 (* TODO support separate postcond proving in tail if-then-else *)

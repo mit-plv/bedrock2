@@ -35,15 +35,15 @@ As sort3_separate_args_ok.                                                    .*
       store32(a0, w2);                                                   /**. .**/
       w2 = w0;                                                           /**. .**/
     } else {                                                             /**. .**/
-    } /**. end if.                                                            .**/
-  } /**. end if.                                                              .**/
+    }                                                                    /**. .**/
+  }                                                                      /**. .**/
   if (w2 < w1) {                                                         /**. .**/
     store32(a1, w2);                                                     /**. .**/
     store32(a2, w1);                                                     /**. .**/
   } else {                                                               /**. .**/
     store32(a1, w1);                                                     /**. .**/
     store32(a2, w2);                                                     /**. .**/
-  } /**. end if.                                                              .**/
+  }                                                                      /**. .**/
 }                                                                        /*?.
 step. step. step. step. step. step. step. step. step. step. step. step.
 step.

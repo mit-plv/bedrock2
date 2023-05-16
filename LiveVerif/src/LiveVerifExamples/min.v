@@ -18,7 +18,7 @@ Derive u_min SuchThat (fun_correct! u_min) As u_min_ok.                         
     r = a;                                                                 /**. .**/
   } else {                                                                 /**. .**/
     r = b;                                                                 /**. .**/
-  } /**. end if.                                                                .**/
+  } /**.                                                                        .**/
   return r;                                                                /**. .**/
 }                                                                          /**.
 Qed.

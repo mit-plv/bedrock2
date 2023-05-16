@@ -809,9 +809,8 @@ Tactic Notation ".*" constr(s) "*" := next_snippet s; run_steps_internal_hook.
 (* Debug mode (doesn't run verification steps):   .**/ snippet /*?.   *)
 Tactic Notation ".*" constr(s) "?" := next_snippet s.
 
-(* optional "end if." comment after closing brace, triggers unpacking of merged
-   then/else postcondition *)
-Tactic Notation "end" "if" := after_if_cleanup; run_steps_internal_hook.
+(* optional comment after closing brace, triggers merging of then/else postcondition *)
+Ltac merge := after_if_cleanup; run_steps_internal_hook.
 
 (* for situations where we want to avoid repeating the function name *)
 Notation fnspec := (ProgramLogic.spec_of _) (only parsing).
