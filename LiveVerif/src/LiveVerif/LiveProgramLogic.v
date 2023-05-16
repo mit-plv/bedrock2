@@ -589,6 +589,16 @@ Ltac eval_dexpr1_step e :=
 Lemma eq_if_same{A: Type}(c: bool)(lhs rhs: A)(H: lhs = if c then rhs else rhs): lhs = rhs.
 Proof. intros. destruct c; exact H. Qed.
 
+Ltac clear_mem_split_eqs :=
+  repeat match goal with
+    | H: _ = DisjointUnion.mmap.Def _ |- _ => clear H
+    end.
+
+Ltac clear_heaplets :=
+  repeat match goal with
+    | m: @map.rep (@word.rep _ _) Coq.Init.Byte.byte _ |- _ => clear m
+    end.
+
 Ltac conclusion_shape_based_step logger :=
   lazymatch goal with
   | |- dexpr_bool3 _ _ ?e _ _ _ _ =>
@@ -637,7 +647,9 @@ Ltac conclusion_shape_based_step logger :=
       lazymatch goal with
       | H: scope_marker IfCondition |- pop_scope_marker ?g => clear H; change g
       end;
-      clear_heapletwise_hyps
+      clear_heapletwise_hyps;
+      clear_mem_split_eqs;
+      clear_heaplets
   | |- True =>
       logger ltac:(fun _ => idtac "constructor");
       constructor
