@@ -172,7 +172,6 @@ Derive sll_reverse SuchThat (fun_correct! sll_reverse) As sll_reverse_ok.       
 1,2: clear Error.
 instantiate (1 := l').
 all: steps.
-end while.
                                                                                 .**/
   return acc;                                                              /**.
 

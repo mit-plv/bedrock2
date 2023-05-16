@@ -117,7 +117,7 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
 
   (* at this point we can now close the loop *)
   (* because the lengths of left side and right side have been established *)
-  .**/ } /**. end while.
+  .**/ } /**.
 
 (* at the end of the loop now. arrR should be empty. *)
   assert (len arrR = 0) by ZnWords.

@@ -61,7 +61,7 @@ Derive test_local_from_loop_body SuchThat
     i = i + 1;                                                             /**. .**/
     uintptr_t t = i * i;                                                   /**. .**/
     g = t;                                                                 /**. .**/
-  } /**. end while.
+  } /**.
   (* TODO: turn lower+upper bound into equality whenever possible *)
 
   lazymatch goal with

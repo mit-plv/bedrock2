@@ -39,5 +39,4 @@ Section LiveVerif.
   Local Set Ltac2 Backtrace.
 
   Local Arguments after_if {width BW word mem locals ext_spec fs b Q1 Q2 rest post}.
-  Local Arguments after_loop {width BW word mem locals ext_spec fs c t m l post}.
   Local Arguments expect_final_closing_brace {_}.

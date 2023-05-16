@@ -509,12 +509,6 @@ Ltac after_if_cleanup :=
   | _ => fail "expected after_if goal"
   end.
 
-Ltac after_loop_cleanup :=
-  lazymatch goal with
-  | |- after_loop ?fs ?rest ?t ?m ?l ?post => unfold after_loop
-  | _ => fail "expected after_loop goal"
-  end.
-
 Lemma BoolSpec_expr_branches{Bt Bf: Prop}{b: bool}{H: BoolSpec Bt Bf b}(Pt Pf Pa: Prop):
   (Bt -> Pt) ->
   (Bf -> Pf) ->
@@ -632,10 +626,11 @@ Ltac conclusion_shape_based_step logger :=
          nothing to do here at the moment *)
       change G
   | |- pop_scope_marker (after_loop ?fs ?rest ?t ?m ?l ?post) =>
-      logger ltac:(fun _ => idtac "Removing loop body marker after loop");
+      logger ltac:(fun _ => idtac "after_loop cleanup");
       lazymatch goal with
       | H: scope_marker LoopBody |- pop_scope_marker ?g => clear H; change g
-      end
+      end;
+      unfold after_loop
   | |- pop_scope_marker (after_if _ _ _ _ _ _) =>
       logger ltac:(fun _ => idtac "Removing IfCondition marker after if");
       lazymatch goal with
@@ -772,7 +767,6 @@ Ltac step_is_done :=
   | |- @expect_final_closing_brace _ => idtac
   | |- don't_know_how_to_prove_equal _ _ => idtac
   | |- after_if _ _ _ _ _ _ => idtac
-  | |- after_loop _ _ _ _ _ _ => idtac
   end.
 
 Ltac steps :=
@@ -791,7 +785,6 @@ Ltac next_snippet s :=
   assert_no_error;
   lazymatch goal with
   | |- after_if _ _ ?Q1 ?Q2 _ _ => after_if_cleanup; run_steps_internal_hook
-  | |- after_loop ?fs ?rest ?t ?m ?l ?post => after_loop_cleanup; run_steps_internal_hook
   | |- _ => idtac
   end;
   add_snippet s.
@@ -805,9 +798,6 @@ Tactic Notation ".*" constr(s) "?" := next_snippet s.
 (* optional "end if." comment after closing brace, triggers unpacking of merged
    then/else postcondition *)
 Tactic Notation "end" "if" := after_if_cleanup; run_steps_internal_hook.
-
-(* optional "end while." comment after closing brace, triggers some cleanup *)
-Tactic Notation "end" "while" := after_loop_cleanup; run_steps_internal_hook.
 
 (* for situations where we want to avoid repeating the function name *)
 Notation fnspec := (ProgramLogic.spec_of _) (only parsing).
