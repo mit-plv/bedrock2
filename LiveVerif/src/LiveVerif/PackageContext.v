@@ -18,7 +18,6 @@ Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.TacticError. Local Open Scope Z_scope.
 Require Import LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
-Require Import bedrock2.HeapletwiseHyps.
 Require Import LiveVerif.LiveRules.
 
 Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
@@ -717,7 +716,6 @@ Ltac normalize_locals_post :=
   end.
 
 Ltac after_if :=
-  clear_heapletwise_hyps;
   intros ? ? ? [?c ?Def0 ?];
   repeat pull_elet_dlet_and_exists_step;
   repeat merge_and_pair constr_eqb merge_ands_at_indices_same_prop;

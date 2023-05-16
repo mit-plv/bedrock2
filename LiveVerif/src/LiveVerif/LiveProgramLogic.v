@@ -632,10 +632,12 @@ Ltac conclusion_shape_based_step logger :=
       end;
       unfold after_loop
   | |- pop_scope_marker (after_if _ _ _ _ _ _) =>
-      logger ltac:(fun _ => idtac "Removing IfCondition marker after if");
+      logger ltac:(fun _ => idtac
+         "Removing IfCondition marker after if and clearing outdated memory");
       lazymatch goal with
       | H: scope_marker IfCondition |- pop_scope_marker ?g => clear H; change g
-      end
+      end;
+      clear_heapletwise_hyps
   | |- True =>
       logger ltac:(fun _ => idtac "constructor");
       constructor
