@@ -1,0 +1,289 @@
+Require Import compiler.util.Common.
+Require Import compiler.FlatImp.
+Require Import Coq.Lists.List. Import ListNotations.
+Require Import bedrock2.Syntax.
+Require Import coqutil.Tactics.fwd.
+Require Import String.
+Require Import compiler.DeadAssignmentDef.
+Require Import bedrock2.MetricLogging.
+Require Import coqutil.Datatypes.PropSet.
+
+Local Notation var := String.string (only parsing).
+
+Section WithArguments.
+  Context {width : Z}.
+  Context {BW :  Bitwidth.Bitwidth width }.
+  Context {word :  word width } {word_ok : word.ok word}.
+  Context {locals :  map.map string word } {locals_ok: map.ok locals}.
+
+  Lemma agree_on_refl :
+    forall keySet (m : locals),
+      map.agree_on keySet m m.
+  Proof.
+    intros.
+    unfold map.agree_on.
+    intros.
+    reflexivity.
+  Qed.
+
+
+  Lemma sameset_in:
+    forall (s1 s2: set string),
+      sameset s1 s2 ->
+      forall k, k \in s1 <-> k \in s2.
+  Proof.
+    intros.
+    unfold iff.
+    propositional idtac.
+    - unfold sameset in H.
+      destruct H.
+      unfold subset in H.
+      eauto.
+    - unfold sameset in H.
+      destruct H.
+      unfold subset in H0.
+      eauto.
+  Qed.
+
+  Lemma union_iff:
+    forall {E: Type} (s1 s2: set E) (x : E),
+      union s1 s2 x <-> s1 x \/ s2 x.
+  Proof.
+    intros.
+    unfold iff.
+    propositional idtac.
+  Qed.
+
+
+  Lemma existsb_of_list :
+    forall k keySet,
+      existsb (eqb k) keySet = true <-> k \in of_list keySet.
+  Proof.
+    intros.
+    simpl.
+    unfold iff.
+    propositional idtac.
+    - induction keySet.
+      + simpl in Hyp. discriminate.
+      + eapply sameset_in.
+        * eapply of_list_cons.
+        * unfold add. eapply union_iff.
+          simpl in Hyp.
+          apply Bool.orb_prop in Hyp.
+          destruct Hyp.
+          -- left. unfold singleton_set.  eapply eqb_eq. rewrite eqb_sym. assumption.
+          -- right. eapply IHkeySet. eassumption.
+    - induction keySet.
+      +  unfold of_list in Hyp. simpl in Hyp.
+         auto.
+      + simpl. assert (sameset (of_list (a :: keySet)) (add (of_list keySet) a) ) by apply of_list_cons.
+        assert (k \in (add (of_list keySet) a)).
+        { eapply sameset_in; eauto. }
+        unfold add in H0.
+        eapply union_iff in H0. destruct H0.
+        * unfold singleton_set in H0. rewrite H0.
+          rewrite eqb_refl.
+          rewrite Bool.orb_true_l.
+          reflexivity.
+        * assert (existsb (eqb k) keySet = true).
+          -- eapply IHkeySet. eapply H0.
+          -- rewrite H1. rewrite Bool.orb_true_r. reflexivity.
+  Qed.
+
+
+
+  Lemma agree_on_not_in:
+    forall keySet (m: locals) x,
+      existsb (String.eqb x) keySet = false ->
+      forall y,
+        map.agree_on (PropSet.of_list keySet) (map.put m x y) m.
+  Proof.
+    intros.
+    unfold map.agree_on.
+    intros.
+    rewrite map.get_put_dec.
+    destr (x =? k)%string.
+    - apply existsb_of_list in H0.
+      rewrite H in H0. discriminate.
+    - reflexivity.
+  Qed.
+
+
+  Lemma agree_on_subset:
+    forall s1 s2 (m1 m2: locals),
+      map.agree_on s2 m1 m2 ->
+      subset s1 s2 ->
+      map.agree_on s1 m1 m2.
+  Proof.
+    intros.
+    unfold map.agree_on in *.
+    intros.
+    unfold subset in *.
+    eauto.
+  Qed.
+
+  Lemma sameset_implies_subset:
+    forall (s1 s2: set string),
+      sameset s1 s2 ->
+      subset s1 s2.
+  Proof.
+    unfold sameset, subset.
+    intros. destr H; auto.
+  Qed.
+
+  Lemma agree_on_sameset:
+    forall s1 s2 (m1 m2: locals),
+      map.agree_on s2 m1 m2 ->
+      sameset s1 s2 ->
+      map.agree_on s1 m1 m2.
+  Proof.
+    intros.
+    eauto using agree_on_subset, sameset_implies_subset.
+  Qed.
+
+  Lemma agree_on_cons:
+    forall (h: string) t (m1 m2: locals),
+      map.agree_on (of_list (h :: t)) m1 m2
+      -> map.get m1 h = map.get m2 h /\
+         map.agree_on (of_list t) m1 m2.
+  Proof.
+    intros.
+    eapply agree_on_sameset in H.
+    2: { eapply sameset_sym. eapply of_list_cons. }
+    unfold add in H.
+    split.
+    - assert (map.agree_on (singleton_set h) m1 m2).
+      {
+        eapply agree_on_subset.
+        - eapply H.
+        - eapply subset_union_rl.
+          eapply sameset_implies_subset.
+          eapply sameset_ref.
+      }
+      unfold map.agree_on in H0.
+      eapply H0.
+      unfold singleton_set.
+      eapply eq_refl.
+    - eapply agree_on_subset.
+      + eapply H.
+      + eapply subset_union_rr.
+        eapply sameset_implies_subset.
+        eapply sameset_ref.
+  Qed.
+
+  Lemma agree_on_getmany :
+    forall rets (x st1 : locals),
+      map.agree_on (of_list rets) x st1 ->
+      map.getmany_of_list x rets =  map.getmany_of_list st1 rets.
+  Proof.
+    intros.
+    unfold map.getmany_of_list.
+    induction rets; simpl; [ reflexivity | ].
+    eapply agree_on_cons in H.
+    destr H.
+    rewrite H.
+    destr (map.get st1 a); [ | reflexivity ].
+    eapply IHrets in H0.
+    rewrite H0.
+    reflexivity.
+  Qed.
+
+
+  Lemma subset_diff :
+    forall  (s1 s2 s3: set string),
+      subset s1 s2 ->
+      subset (diff s1 s3) (diff s2 s3).
+  Proof.
+    intros.
+    unfold subset, diff.
+    intros.
+    assert (x \in s1 /\ ~ (x \in s3)).
+    { assert ((fun x : string => x \in s1 /\ ~ x \in s3) x) by exact H0.
+      simpl in H1.
+      assumption.
+    }
+    assert ((x \in s2) /\ (~x \in s3) ->  x \in (fun x0 : string => x0 \in s2 /\ ~ x0 \in s3)).
+    { auto. }
+    eapply H2.
+    destr H1. split; eauto.
+  Qed.
+
+   Lemma sameset_diff :
+    forall  (s1 s2 s3: set string),
+      sameset s1 s2 ->
+      sameset (diff s1 s3) (diff s2 s3).
+  Proof.
+    intros.
+    unfold sameset in *.
+    destr H.
+    split; eauto using subset_diff.
+  Qed.
+
+  Lemma sameset_diff_not_in:
+    forall (s: list string) x,
+      existsb (eqb x) s = false ->
+      sameset (diff (of_list s) (singleton_set x))
+        (of_list s).
+  Proof.
+    intros.
+    unfold sameset; split.
+    * unfold subset; simpl.
+      intros.
+      unfold diff in H.
+      assert (x0 \in of_list s /\ ~ x0 \in singleton_set x) by auto.
+      destr H0; assumption.
+    * unfold subset; simpl.
+      intros.
+      unfold diff.
+      cut (x0 \in of_list s /\ ~ x0 \in singleton_set x); [ auto | ].
+      split; [ assumption | ].
+      eapply existsb_of_list in H0.
+      assert (x = x0 -> False).
+      { intros; subst. rewrite H0 in H. discriminate. }
+      auto.
+  Qed.
+
+
+  Lemma diff_subset:
+    forall s1 s2: set string,
+      subset (diff s1 s2) s1.
+  Proof.
+    intros.
+    unfold subset.
+    intros.
+    unfold diff in H.
+    assert (s1 x /\ ~ (s2 x)) by auto.
+    cut (s1 x).
+    { auto. }
+    destr H0; auto.
+  Qed.
+
+  Lemma existsb_removeb_None:
+    forall (s: string) l,
+      existsb (eqb s) l = false ->
+      List.removeb eqb s l = l.
+  Proof.
+    intros. induction l.
+    - simpl; reflexivity.
+    - simpl in H.
+      apply Bool.orb_false_elim in H.
+      destr H.
+      eapply IHl in H0.
+      simpl.
+      rewrite H.  simpl.
+      rewrite H0.
+      reflexivity.
+  Qed.
+  Lemma in_singleton :
+    forall (x: string) (s: list string),
+      In x s ->
+      subset (singleton_set x) (of_list s).
+  Proof.
+    intros.
+    unfold subset, singleton_set.
+    intros.
+    assert (eq x x0) by auto.
+    subst.
+    propositional idtac.
+  Qed.
+End WithArguments.

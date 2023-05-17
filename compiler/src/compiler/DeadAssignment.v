@@ -5,6 +5,7 @@ Require Import bedrock2.Syntax.
 Require Import coqutil.Tactics.fwd.
 Require Import String.
 Require Import compiler.DeadAssignmentDef.
+Require Import compiler.DeadAssignmentHelper.
 Require Import bedrock2.MetricLogging.
 Require Import coqutil.Datatypes.PropSet.
 
@@ -20,168 +21,382 @@ Section WithArguments.
   Context {ext_spec : Semantics.ExtSpec} {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
 
   Local Hint Constructors exec: core.
-(* claim that
-- after-optimization program assigns less than before-optimization (in locals)
-- but return values always the same? as fxn of inputs? *)
-  (* after-optimization contain all before-optimization variables that were live *)
 
-  (* old lemma breaks if post checks dead variables *)
-  (* Hint Resolve : map_hints. Copy style from FlatToRiscvFunctions *)
-  Lemma agree_on_refl :
-    forall keySet (m : locals),
-      map.agree_on keySet m m.
+  Lemma live_monotone :
+    forall s used_after used_after',
+      subset (of_list used_after) (of_list used_after') ->
+      subset (of_list (live s used_after)) (of_list (live s used_after')).
   Proof.
-    intros.
-    unfold map.agree_on.
-    intros.
-    reflexivity.
-  Qed.
+    induction s; intros.
 
-  Lemma sameset_in:
-    forall (s1 s2: set string),
-      sameset s1 s2 ->
-      forall k, k \in s1 <-> k \in s2.
-  Proof.
-    intros.
-    unfold iff.
-    propositional idtac.
-    - unfold sameset in H.
-      destruct H.
-      unfold subset in H.
-      eauto.
-    - unfold sameset in H.
-      destruct H.
-      unfold subset in H0.
-      eauto.
-  Qed.
-
-  Lemma union_iff:
-    forall {E: Type} (s1 s2: set E) (x : E),
-      union s1 s2 x <-> s1 x \/ s2 x.
-  Proof.
-    intros.
-    unfold iff.
-    propositional idtac.
-  Qed.
-
-
-  Lemma existsb_of_list :
-    forall k keySet,
-      existsb (eqb k) keySet = true <-> k \in of_list keySet.
-  Proof.
-    intros.
-    simpl.
-    unfold iff.
-    propositional idtac.
-    - induction keySet.
-      + simpl in Hyp. discriminate.
-      + eapply sameset_in.
-        * eapply of_list_cons.
-        * unfold add. eapply union_iff.
-          simpl in Hyp.
-          apply Bool.orb_prop in Hyp.
-          destruct Hyp.
-          -- left. unfold singleton_set.  eapply eqb_eq. rewrite eqb_sym. assumption.
-          -- right. eapply IHkeySet. eassumption.
-    - induction keySet.
-      +  unfold of_list in Hyp. simpl in Hyp.
-         auto.
-      + simpl. assert (sameset (of_list (a :: keySet)) (add (of_list keySet) a) ) by apply of_list_cons.
-        assert (k \in (add (of_list keySet) a)).
-        { eapply sameset_in; eauto. }
-        unfold add in H0.
-        eapply union_iff in H0. destruct H0.
-        * unfold singleton_set in H0. rewrite H0.
-          rewrite eqb_refl.
-          rewrite Bool.orb_true_l.
-          reflexivity.
-        * assert (existsb (eqb k) keySet = true).
-          -- eapply IHkeySet. eapply H0.
-          -- rewrite H1. rewrite Bool.orb_true_r. reflexivity.
-  Qed.
-
-
-
-  Lemma agree_on_not_in:
-    forall keySet (m: locals) x,
-      existsb (String.eqb x) keySet = false ->
-      forall y,
-        map.agree_on (PropSet.of_list keySet) (map.put m x y) m.
-  Proof.
-    intros.
-    unfold map.agree_on.
-    intros.
-    rewrite map.get_put_dec.
-    destr (x =? k)%string.
-    - apply existsb_of_list in H0.
-      rewrite H in H0. discriminate.
-    - reflexivity.
-  Qed.
-
-
-  Lemma agree_on_subset:
-    forall s1 s2 (m1 m2: locals),
-      map.agree_on s2 m1 m2 ->
-      subset s1 s2 ->
-      map.agree_on s1 m1 m2.
-  Proof.
-    intros.
-    unfold map.agree_on in *.
-    intros.
-    unfold subset in *.
-    apply H0 in H1.
-    eapply H.
-    eassumption.
-  Qed.
-
-
-
-
-  Lemma agree_on_getmany :
-    forall rets (x st1 : locals),
-      map.agree_on (of_list rets) x st1 ->
-      map.getmany_of_list x rets =  map.getmany_of_list st1 rets.
-  Proof.
-    intros.
-    induction rets.
-    - unfold map.getmany_of_list. simpl. reflexivity.
-    - unfold map.getmany_of_list.
+    - (* SLoad *)
       simpl.
-      simpl in H. assert (map.agree_on (of_list rets) x st1).
-      { eapply agree_on_subset.
-        + eapply H.
-        + unfold subset.
-          intros. eapply of_list_cons.
-          unfold add.
-          eapply in_union_r.
-          eassumption.
-      }
-      assert (map.agree_on (singleton_set a) x st1).
-      { eapply agree_on_subset.
-        + eapply H.
-        + unfold subset.
-          intros. eapply of_list_cons.
-          unfold add.
-          eapply in_union_l.
-          eassumption.
-      }
-      assert (map.get x a = map.get st1 a).
-      { unfold map.agree_on in H1.
-        eapply H1.
-        unfold singleton_set.
-        reflexivity.
-      }
-      rewrite H2.
-      destruct (map.get st1 a).
-      2: reflexivity.
-      replace (List.option_all (map (map.get x) rets)) with (map.getmany_of_list x rets) by (unfold map.getmany_of_list; reflexivity).
-      replace (List.option_all (map (map.get st1) rets)) with (map.getmany_of_list st1 rets) by (unfold map.getmany_of_list; reflexivity).
-      eapply IHrets in H0.
-      rewrite H0.
-      reflexivity.
-  Qed.
+      destr (find (eqb a) (List.removeb eqb x used_after)).
+      + eapply find_some in E.
+        destr E.
+        eapply eqb_eq in H1.
+        subst.
+        eapply in_of_list in H0.
+        repeat rewrite ListSet.of_list_removeb in *.
+
+        assert (subset (diff (of_list used_after) (singleton_set x)) (diff (of_list used_after') (singleton_set x))) by (eauto using subset_diff).
+
+        assert (s \in diff (of_list used_after') (singleton_set x)) by eauto.
+        rewrite <- ListSet.of_list_removeb in H2.
+
+        destr (find (eqb s) (List.removeb eqb x used_after')).
+        * rewrite ListSet.of_list_removeb. auto.
+        * eapply find_none in E.
+          2: eapply H2.
+          rewrite eqb_refl in E. discriminate.
+      + simpl.
+        rewrite of_list_cons.
+        unfold add.
+        eapply subset_union_l.
+        * destr (find (eqb a) (List.removeb eqb x used_after')).
+          -- eapply find_some in E0.
+             destr E0.
+             eapply eqb_eq in H1.
+             subst.
+             eauto using in_singleton.
+          -- rewrite of_list_cons.
+             unfold add. eapply subset_union_rl.
+             eapply subset_ref.
+        * destr (find (eqb a) (List.removeb eqb x used_after')).
+          -- do 2 (rewrite ListSet.of_list_removeb).
+             eauto using subset_diff.
+          -- rewrite of_list_cons.
+             unfold add.
+             eapply subset_union_rr.
+             do 2 (rewrite ListSet.of_list_removeb).
+             eauto using subset_diff.
+    - (* SStore *)
+      simpl.
+      destr (find (eqb v) used_after).
+      + eapply find_some in E.
+        destr E.
+        eapply eqb_eq in H1.
+        subst.
+        assert (of_list used_after s) by (propositional idtac).
+        assert (of_list used_after' s).
+        { eapply H. auto. }
+        destr (find (eqb s) used_after').
+        * destr (find (eqb a) used_after).
+          -- eapply find_some in E0. destr E0.
+             eapply eqb_eq in H4.
+             symmetry in H4.
+             subst.
+             assert (of_list used_after' a).
+             { eapply H. auto. }
+             destr (find (eqb a) used_after').
+             ++ auto.
+             ++ eapply find_none in E0.
+                2: { eapply H4. }
+                rewrite eqb_refl in E0. discriminate.
+          -- destr (find (eqb a) used_after').
+             ++ rewrite of_list_cons.
+                unfold add.
+                eapply find_some in E1.
+                destr E1.
+                eapply eqb_eq in H4.
+                subst.
+                apply subset_union_l.
+                ** eauto using in_singleton.
+                ** eauto.
+             ++ repeat rewrite of_list_cons.
+                unfold add.
+                apply subset_union_l.
+                ** apply subset_union_rl.
+                   eapply subset_ref.
+                ** apply subset_union_rr.
+                   auto.
+        * destr (find (eqb a) used_after).
+          -- eapply find_some in E0. destr E0.
+             eapply eqb_eq in H4.
+             symmetry in H4.
+             subst.
+             assert (of_list used_after' a).
+             { eapply H. auto. }
+             destr (find (eqb a) (s :: used_after')).
+             ++ rewrite of_list_cons.
+                unfold add.
+                eauto using subset_union_rr.
+             ++ rewrite of_list_cons.
+                unfold add.
+                eauto using subset_union_rr.
+          -- rewrite of_list_cons.
+             unfold add.
+             apply subset_union_l.
+             ++ destr (find (eqb a) (s :: used_after')).
+                ** eapply find_some in E1.
+                   destr E1.
+                   eapply eqb_eq in H4.
+                   symmetry in H4.
+                   subst.
+                   eauto using in_singleton.
+                ** rewrite of_list_cons.
+                   unfold add.
+                   apply subset_union_rl.
+                   eauto using subset_refl.
+             ++ destr (find (eqb a) (s :: used_after')).
+                ** rewrite of_list_cons.
+                   unfold add.
+                   apply subset_union_rr.
+                   eauto.
+                ** rewrite of_list_cons.
+                   unfold add.
+                   apply subset_union_rr.
+                   rewrite of_list_cons.
+                   unfold add.
+                   apply subset_union_rr.
+                   eauto.
+      + destr (find (eqb a) (v :: used_after)).
+        * eapply find_some in E0.
+          destr E0.
+          eapply eqb_eq in H1.
+          symmetry in H1.
+          subst.
+          eapply in_inv in H0.
+          propositional idtac.
+          -- destr (find (eqb a) used_after').
+             ++ simpl. rewrite E0.
+                rewrite of_list_cons.
+                unfold add.
+                eapply subset_union_l.
+                ** eapply in_singleton.
+                   apply find_some in E0.
+                   destr E0.
+                   eapply eqb_eq in H1.
+                   subst.
+                   auto.
+                ** auto.
+             ++ rewrite of_list_cons.
+                unfold add.
+                apply subset_union_l.
+                ** destr (find (eqb a) (a :: used_after')).
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       apply subset_union_rl.
+                       apply subset_ref.
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       apply subset_union_rl.
+                       apply subset_ref.
+                ** destr (find (eqb a) (a :: used_after')).
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       apply subset_union_rr.
+                       assumption.
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       apply subset_union_rr.
+                       rewrite of_list_cons.
+                       unfold add.
+                       apply subset_union_rr.
+                       assumption.
+          -- destr (find (eqb v) used_after').
+             ++ rewrite of_list_cons.
+                unfold add.
+                apply subset_union_l.
+                ** apply find_some in E0.
+                   destr E0.
+                   apply eqb_eq in H2.
+                   symmetry in H2. subst.
+                   destr (find (eqb a) used_after').
+                   --- eapply find_some in E0.
+                       destr E0. eapply eqb_eq in H3.
+                       subst.
+                       auto using in_singleton.
+                   --- eapply subset_trans.
+                       2: { rewrite of_list_cons.
+                            unfold add.
+                            eapply subset_union_rr.
+                            eapply subset_ref. }
+                       eauto using in_singleton.
+                ** destr (find (eqb a) used_after').
+                   --- auto.
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rr.
+                       auto.
+             ++ rewrite of_list_cons.
+                unfold add.
+                apply subset_union_l.
+                ** destr (find (eqb a) (v :: used_after')).
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rl.
+                       eapply subset_ref.
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rr.
+                       rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rl.
+                       apply subset_ref.
+                ** destr (find (eqb a) (v :: used_after')).
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rr.
+                       assumption.
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rr.
+                       rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rr.
+                       assumption.
+        * simpl in E0.
+          destr (a =? v)%string; [ discriminate | ].
+          destr (find (eqb v) used_after').
+          -- apply find_some in E2.
+             destr E2.
+             apply eqb_eq in H1.
+             symmetry in H1.
+             subst.
+             destr (find (eqb a) used_after').
+             ++ apply find_some in E2.
+                destr E2.
+                apply eqb_eq in H2.
+                symmetry in H2.
+                subst.
+                rewrite of_list_cons.
+                unfold add.
+                apply subset_union_l; [ eauto using in_singleton | ].
+                rewrite of_list_cons.
+                unfold add.
+                apply subset_union_l; [ eauto using in_singleton | eauto ].
+             ++ rewrite of_list_cons.
+                unfold add.
+                apply subset_union_l.
+                ** rewrite of_list_cons.
+                   unfold add.
+                   apply subset_union_rl.
+                   apply subset_ref.
+                ** rewrite of_list_cons.
+                   unfold add.
+                   apply subset_union_l.
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       apply subset_union_rr.
+                       eauto using in_singleton.
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       apply subset_union_rr.
+                       eauto.
+          -- rewrite of_list_cons.
+             unfold add.
+             apply subset_union_l.
+             ++ destr (find (eqb a) (v :: used_after')).
+                ** simpl in E3.
+                   destr ((a =? v)%string).
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rl.
+                       eapply subset_ref.
+                   --- apply find_some in E3.
+                       destr E3.
+                       apply eqb_eq in H1.
+                       symmetry in H1.
+                       subst.
+                       rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rr.
+                       eauto using in_singleton.
+                ** rewrite of_list_cons.
+                   unfold add.
+                   eapply subset_union_rl.
+                   eapply subset_ref.
+             ++ destr (find (eqb a) (v :: used_after')).
+                ** simpl in E3.
+                   destr ((a =? v)%string).
+
+                   ---
+                     (* context here has something like
+                      v <> v in premises, which should
+                      make this trivial, but unsure how *)
+                     rewrite of_list_cons.
+                     unfold add.
+                     rewrite of_list_cons.
+                     unfold add.
+                     eapply subset_union_l.
+                     +++ eapply subset_union_rl.
+                         eapply subset_ref.
+                     +++ eauto using subset_union_rr.
+                   --- rewrite of_list_cons.
+                     unfold add.
+                     rewrite of_list_cons.
+                     unfold add.
+                     eapply subset_union_l.
+                     +++ eapply subset_union_rl.
+                         eapply subset_ref.
+                     +++ eauto using subset_union_rr.
+                ** rewrite of_list_cons.
+                   unfold add.
+                   rewrite of_list_cons.
+                   unfold add.
+                   eapply subset_union_l.
+                   --- eapply subset_union_rr.
+                       rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rl.
+                       eapply subset_ref.
+                   --- eapply subset_union_rr.
+                       rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rr.
+                       auto.
+    - simpl.
+      destr (find (eqb i) (List.removeb eqb x used_after)).
+      + apply find_some in E.
+        destr E.
+        apply eqb_eq in H1.
+        symmetry in H1.
+        subst.
+        all: admit.
+  Admitted.
 
 
+  Lemma deadAssignment_subset :
+    forall s1 s2 used_after,
+      subset (of_list (live s1 used_after)) (of_list (live s2 used_after)) ->
+      subset (of_list (live (deadAssignment used_after s1) used_after)) (of_list (live (deadAssignment used_after s2) used_after)).
+  Proof.
+  Abort.
+
+  Lemma deadAssignment_subset' :
+    forall s u u',
+      subset (of_list u') (of_list u) ->
+      subset
+        (of_list (live (deadAssignment u s) u'))
+        (of_list (live s u)).
+  Proof.
+    induction s.
+  Abort.
+
+  Lemma deadassignment_live:
+    forall sH used_after,
+      subset
+        (of_list (live (deadAssignment used_after sH) used_after))
+        (of_list (live sH used_after)).
+  Proof.
+    induction sH.
+    all: intros; try solve [simpl; eapply subset_refl].
+    - (* SStackalloc *)
+      simpl. repeat (rewrite ListSet.of_list_removeb). eauto using subset_diff.
+    - (* SLit *)
+      simpl. destr (existsb (eqb x) used_after); simpl.
+      + eapply subset_ref.
+      + rewrite ListSet.of_list_removeb.
+        eapply sameset_sym.
+        eapply sameset_sym.
+        eauto using sameset_diff_not_in.
+    - (* SOp *)
+      simpl. destr (existsb (eqb x) used_after); simpl; [ eapply subset_ref | ].
+      destr z; simpl.
+      + destr (find (eqb v) (List.removeb eqb x used_after)).
+        all: admit.
+  Admitted.
 
   Lemma deadassignment_correct_aux:
     forall eH eL,
@@ -189,7 +404,7 @@ Section WithArguments.
        forall sH t m mcH lH postH,
          exec eH sH t m lH mcH postH ->
          forall used_after lL,
-           map.agree_on (of_list (live sH used_after)) lH lL
+           map.agree_on (of_list (live (deadAssignment used_after sH) used_after)) lH lL
            -> exec eL (deadAssignment used_after sH) t m lH mcH
                 (fun t' m' lL' mcL' =>
                    exists lH' mcH',
@@ -203,12 +418,7 @@ Section WithArguments.
       intros. apply H3 in H5.
       destruct H5. destruct H5.
       eexists. split.
-      * eassumption.
-      * intros. eapply H6 in H7.
-        eexists. eexists.
-        split.
-        2: { eapply H7. }
-        apply agree_on_refl.
+      all: eauto using agree_on_refl.
     }
     { simpl. intros.
       eapply @exec.call.
@@ -224,18 +434,7 @@ Section WithArguments.
         apply H6.
       * eassumption.
       * eassumption.
-      * eapply IHexec.
-        (* for each index in len(argvs)
-           l[args[i]] = argvs[i];
-           for each index in len(argvs)
-           st0[params[i]] = argvs[i]
-           (assuming distinct which we might also need to prove?)
-
-           idea: show that live fbody rets = args or params and
-           then construct the appropriate lH?
-           ??
-         *)
-        admit.
+      * eapply IHexec. apply agree_on_refl.
       * intros. destruct H6. destruct H6.
         destruct H6. eapply H4 in H7.
         destruct H7. destruct H7.
@@ -256,89 +455,40 @@ Section WithArguments.
     { simpl. intros.
       eapply @exec.load; eauto.
       destr (find (eqb a) (List.removeb eqb x used_after)).
-      * eexists. eexists.
-        split.
-        2: { eassumption. }
-        apply agree_on_refl.
-      * eexists. eexists. split.
-        2: { eassumption. }
-        apply agree_on_refl.
+      all: eauto using agree_on_refl.
     }
     { simpl. intros.
-      destr (find (eqb v) (used_after)).
-      - destr (find (eqb a) (used_after)).
-        * eapply @exec.store; eauto.
-          eexists. eexists. split. 2: eassumption.
-          apply agree_on_refl.
-        * eapply @exec.store; eauto.
-          eexists. eexists. split. 2: eassumption.
-          apply agree_on_refl.
-      - destr (find (eqb a) (v :: used_after)).
-        * eapply @exec.store; eauto.
-          eexists. eexists. split. 2: eassumption.
-          apply agree_on_refl.
-        * eapply @exec.store; eauto.
-          eexists. eexists. split. 2: eassumption.
-          apply agree_on_refl.
+      destr (find (eqb v) used_after).
+      - destr (find (eqb a) used_after); eauto using agree_on_refl.
+      - destr (find (eqb a) (v :: used_after)); eauto using agree_on_refl.
     }
     { simpl. intros.
-      eapply @exec.inlinetable; eauto.
-      eexists. eexists. split. 2: eassumption.
-      apply agree_on_refl.
+      eauto using agree_on_refl.
     }
     { simpl. intros.
+      all: eauto using agree_on_refl.
       apply @exec.stackalloc; auto.
       simpl. intros.
       eapply @exec.weaken.
-      -- eapply H2.
-         ++ eassumption.
-         ++ eassumption.
-         ++ eapply agree_on_refl.
+      -- eauto using agree_on_refl.
       -- simpl. intros.
          propositional idtac.
     }
     { simpl. intros.
       destr (existsb (eqb x) used_after).
-      -- eapply @exec.lit; eauto.
-         eexists. eexists. split.
-         2: eassumption.
-         apply agree_on_refl.
-      -- eapply @exec.skip; eauto.
-         eexists. eexists. split.
-         2: eassumption.
-         eapply agree_on_not_in.
-         assumption.
+      all: eauto 6 using agree_on_refl, agree_on_not_in.
     }
     { simpl. intros.
       destr (existsb (eqb x) used_after).
-      -- eapply @exec.op; eauto.
-         eexists. eexists. split.
-         2: eassumption.
-         apply agree_on_refl.
-      -- eapply @exec.skip; eauto.
-         eexists. eexists. split.
-         2: eassumption.
-         eapply agree_on_not_in.
-         assumption.
+      all: eauto 6 using agree_on_refl, agree_on_not_in.
     }
     { simpl; eauto.
-         intros. destr (existsb (eqb x) (used_after)).
-         all: simpl.
-         - eapply @exec.set; eauto.
-           eexists. eexists.
-           split.
-           2: eassumption. apply agree_on_refl.
-         - eapply @exec.skip; eauto.
-           eexists. eexists.
-           split.
-           2: eassumption.
-           eapply agree_on_not_in.
-           assumption.
+      intros. destr (existsb (eqb x) used_after).
+      all: eauto 6 using agree_on_refl, agree_on_not_in.
     }
     { simpl. intros.
       eapply @exec.if_true; eauto.
       eapply IHexec.
-      all: eauto.
       eapply agree_on_subset.
       -- eapply H2.
       -- unfold subset. intros.
@@ -362,22 +512,33 @@ Section WithArguments.
          assumption.
     }
     { simpl. intros.
+      eapply @exec.loop; eauto.
       (* exec.loop *)
       all: admit.
     }
     { simpl.
       intros.
-      eapply @exec.seq; eauto.
-      - eapply IHexec.
+      eapply @exec.seq.
+      - (* specialize (IHexec (live s2 used_after)).
+        specialize IHexec with (1 := H3).
+        apply IHexec in H3.
+        eapply IHexec. *)
+
+        eapply IHexec.
         eapply agree_on_subset.
         + eapply H3.
-        + (* show that
+        + admit. (* eapply live_monotone. *)
+          (* replace (live sH used_after) with (live sH used_after')
+             where subset used_after used_after'
+           *)
+
+          (* show that
              of_list (live (deadAss used_after s2) used_after)
              is subset of (live s2 used_after), and that
              forall s1 u u',
              subset u u' ->
              subset (of_list (live s1 u)) (of_list live s1 u') *)
-          admit.
+
       - simpl. intros.
         eapply H2.
         (* context has that there exists some lH' and mcH',
