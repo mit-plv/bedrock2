@@ -76,38 +76,19 @@ Definition compile_binop {t1 t2 t3 : type} (o : binop t1 t2 t3) :
       error:("unimplemented")
   end.
 
-Fixpoint compile_expr {t : type} (e : expr t) : result Syntax.expr :=
-  match e with
-  | EAtom a => compile_atom a
-  | EUnop o e1 =>
-      f <- compile_unop o;;
-      e1' <- compile_expr e1;;
-      Success (f e1')
-  | EBinop o e1 e2 =>
-      f <- compile_binop o;;
-      e1' <- compile_expr e1;;
-      e2' <- compile_expr e2;;
-      Success (f e1' e2')
-  | _ => error:("unimplemented")
-  end.
-
-Definition compile_expr' {t : type} (e : expr t) : result (Syntax.cmd * Syntax.expr) :=
-  e' <- compile_expr e;;
-  Success (Syntax.cmd.skip, e').
-
-Fixpoint compile_expr'' {t : type} (e : expr t) : result (Syntax.cmd * Syntax.expr) :=
+Fixpoint compile_expr {t : type} (e : expr t) : result (Syntax.cmd * Syntax.expr) :=
   match e with
   | EAtom a =>
       e' <- compile_atom a;;
       Success (Syntax.cmd.skip, e')
   | EUnop o e1 =>
       f <- compile_unop o;;
-      '(c1, e1') <- compile_expr'' e1;;
+      '(c1, e1') <- compile_expr e1;;
       Success (c1, f e1')
   | EBinop o e1 e2 =>
       f <- compile_binop o;;
-      '(c1, e1') <- compile_expr'' e1;;
-      '(c2, e2') <- compile_expr'' e2;;
+      '(c1, e1') <- compile_expr e1;;
+      '(c2, e2') <- compile_expr e2;;
       Success (Syntax.cmd.seq c1 c2, f e1' e2')
   | _ => error:("unimplemented")
   end.
@@ -153,140 +134,6 @@ Section WithMap.
     * exact type_eq_dec.
   Qed.
 
-  Lemma compile_correct : forall {t} (e : expr t) (e' : Syntax.expr),
-    wf map.empty e ->
-    compile_expr e = Success e' -> exists w,
-    eval_expr_old map.empty map.empty e' = Some w /\
-    value_relation (interp_expr map.empty e) w.
-  Proof.
-    intros t. induction e; intros e' He He'; try easy.
-    - (* EAtom a *)
-      destruct a; try easy.
-      + (* AInt n *)
-        injection He' as [= <-].
-        simpl.
-        exists (word.of_Z (word.wrap n)).
-        split; rewrite <- word.unsigned_of_Z, word.of_Z_unsigned; try easy.
-        apply RWord.
-      + (* ABool b *)
-        injection He' as [= <-].
-        simpl.
-        exists (word.of_Z (Z.b2z b)).
-        split; try easy.
-        apply RBool.
-    - (* EUnop o e *)
-      destruct o; try easy.
-      all:
-        simpl in He';
-        simpl;
-        fwd;
-        inversion He;
-        apply Eqdep_dec.inj_pair2_eq_dec in H4 as [= ->]; try exact type_eq_dec;
-        specialize IHe with (1 := H2) (2 := eq_refl);
-        fwd;
-        eexists.
-      + (* OWNeg *)
-        split.
-        * simpl. fwd.
-          now rewrite Properties.word.sub_0_l.
-        * inversion IHep1. rewrite H6 in H5.
-          rewrite (interp_type_eq _ _ H5).
-          apply RWord.
-      + (* ONot *)
-        split.
-        * simpl. now fwd.
-        * inversion IHep1.
-          rewrite (interp_type_eq _ _ H5).
-          rewrite <- Properties.word.ring_morph_sub.
-          destruct b; apply RBool.
-    - (* EBinop o e1 e2 *)
-      destruct o; try easy.
-      all:
-        simpl in He';
-        simpl;
-        fwd;
-        inversion He;
-        apply Eqdep_dec.inj_pair2_eq_dec in H5 as [= ->]; try exact type_eq_dec;
-        injection H6 as [= ->];
-        apply Eqdep_dec.inj_pair2_eq_dec in H5 as [= ->]; try exact type_eq_dec;
-        specialize IHe1 with (1 := H3) (2 := eq_refl);
-        specialize IHe2 with (1 := H7) (2 := eq_refl);
-        fwd;
-        eexists.
-      1, 2, 3, 4, 5:
-        (* OWPlus, OWMinus, OWTimes, OWDivU, OWModU *)
-        split;
-        [ simpl; now fwd
-        | inversion IHe1p1; inversion IHe2p1;
-          rewrite H6 in H5; rewrite H9 in H8;
-          rewrite (interp_type_eq _ _ H5);
-          rewrite (interp_type_eq _ _ H8);
-          apply RWord ].
-      1, 2:
-        (* OAnd, OOr *)
-        split;
-        [ simpl; now fwd
-        | inversion IHe1p1; inversion IHe2p1;
-          rewrite (interp_type_eq _ _ H5);
-          rewrite (interp_type_eq _ _ H8);
-          destruct b, b0;
-            simpl;
-            apply RBool';
-            apply word.unsigned_inj;
-            simpl Z.b2z;
-            try rewrite word.unsigned_and_nowrap;
-            try rewrite word.unsigned_or_nowrap;
-            now try rewrite word.unsigned_of_Z_0;
-            try rewrite word.unsigned_of_Z_1 ].
-      1, 2:
-        (* OWLessU, OWLessS *)
-        split;
-        [ simpl; now fwd
-        | inversion IHe1p1; inversion IHe2p1;
-          rewrite (interp_type_eq _ _ H5);
-          rewrite (interp_type_eq _ _ H8); 
-          rewrite H6, H9;
-          (destruct (word.ltu w0 w); apply RBool)
-          || (destruct (word.lts w0 w); apply RBool) ].
-      (* OEq *)
-      + split.
-        * simpl; now fwd.
-        * destruct t; try easy; unfold eqb_values.
-          -- (* TWord *)
-             inversion IHe1p1. inversion IHe2p1.
-             rewrite (interp_type_eq _ _ H5).
-             rewrite (interp_type_eq _ _ H8).
-             rewrite H6, H9.
-             destruct (word.eqb w0 w); apply RBool.
-          -- (* TBool *)
-             inversion IHe1p1. inversion IHe2p1.
-             rewrite (interp_type_eq _ _ H5).
-             rewrite (interp_type_eq _ _ H8).
-             rewrite H6, H9.
-             destruct b, b0.
-             all:
-               destruct (word.eqb w0 w) eqn:Heq; try now apply RBool'.
-             1, 4: rewrite <- H6, <- H9 in Heq; now apply word.eqb_false in Heq.
-             all:
-               rewrite <- H6, <- H9 in Heq; apply word.eqb_true in Heq;
-               simpl in Heq; (rewrite Heq || rewrite <- Heq); apply RBool.
-  Qed.
-
-  Lemma compile'_correct : forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr),
-    wf map.empty e ->
-    compile_expr' e = Success (c, e') -> forall tr mc,
-    exec (map.empty) c tr map.empty map.empty mc (fun tr' m' l' mc' => exists (w : word),
-      eval_expr_old m' l' e' = Some w /\
-      value_relation (interp_expr map.empty e) w
-    ).
-  Proof.
-    intros t e c e' He He' tr mc.
-    unfold compile_expr' in He'.
-    fwd.
-    apply exec.skip.
-    now apply compile_correct.
-  Qed.
-
   Lemma eval_map_extends_locals : forall e (m : mem) (l l' : locals') w,
     map.extends l' l ->
     eval_expr_old m l e = Some w ->
@@ -294,9 +141,9 @@ Section WithMap.
   Proof.
   Admitted.
 
-  Lemma compile''_correct : forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr),
+  Lemma compile_correct : forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr),
     wf map.empty e ->
-    compile_expr'' e = Success (c, e') -> forall tr m l mc,
+    compile_expr e = Success (c, e') -> forall tr m l mc,
     exec map.empty c tr m l mc (fun tr' m' l' mc' => exists (w : word),
       eval_expr_old m' l' e' = Some w /\
       value_relation (interp_expr map.empty e) w /\
@@ -306,7 +153,7 @@ Section WithMap.
   Proof.
     intros t. induction e; intros c e' He He' tr m l mc; try easy.
     - (* EAtom a *)
-      unfold compile_expr'' in He'.
+      unfold compile_expr in He'.
       fwd.
       apply exec.skip.
       destruct a; try easy.
