@@ -32,9 +32,14 @@ Derive test_local_from_branches SuchThat
                 added in both branches *)
   end.
 
-  assert_fails (idtac; .**/ return r; /** ).
-  .**/ return g; /**.
-  .**/ } /**.
+  assert_succeeds (
+    idtac;
+    .**/ uintptr_t test = r; /** ;
+    test_error Error:("The 'step' tactic should not fail here")).
+
+  .**/ uintptr_t test = g; /**.
+  .**/ return test; /**.
+.**/ } /**.
 Qed.
 
 #[export] Instance spec_of_test_local_from_loop_body: fnspec := .**/

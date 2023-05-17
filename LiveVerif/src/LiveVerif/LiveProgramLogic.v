@@ -256,8 +256,6 @@ Ltac destruct_ors :=
 
 Create HintDb prove_post.
 
-Definition expect_final_closing_brace(P: Prop) := P.
-
 Ltac ret retnames :=
   lazymatch goal with
   | B: scope_marker ?sk |- _ =>
@@ -269,15 +267,11 @@ Ltac ret retnames :=
       end
   | |- _ => fail "block structure lost (could not find a scope_marker)"
   end;
-  eapply wp_skip;
   lazymatch goal with
-  | |- exists _, map.getmany_of_list _ ?eretnames = Some _ /\ _ =>
-    unify eretnames retnames;
-    eexists; split;
-    [ reflexivity
-    | lazymatch goal with
-      | |- ?G => change (expect_final_closing_brace G)
-      end ]
+  | |- wp_cmd ?fs ?c ?t ?m ?l (fun t' m' l' =>
+         exists retvals, map.getmany_of_list l' ?eretnames = Some retvals /\ _) =>
+      unify eretnames retnames;
+      unify c cmd.skip
   end.
 
 Ltac strip_conss l :=
@@ -314,12 +308,11 @@ Ltac close_block :=
               let e := strip_conss l in
               unify e (@nil T)
           end;
+          eapply wp_skip;
           lazymatch goal with
-          | |- wp_cmd _ _ _ _ _ _ => ret (@nil String.string)
-          | |- expect_final_closing_brace ?g => idtac (* ret was already called *)
-          end;
-          lazymatch goal with
-          | |- @expect_final_closing_brace ?g => change g
+          | |- exists _, map.getmany_of_list _ ?retnames = Some _ /\ _ =>
+              (tryif is_evar retnames then unify retnames (@nil string) else idtac);
+              eexists; split; [ reflexivity | ]
           end
       | _ => fail "Can't end a block here"
       end
@@ -487,11 +480,6 @@ Ltac add_snippet s :=
       lazymatch s with
       | SStart => start
       | _ => fail "expected {, but got" s
-      end
-  | |- expect_final_closing_brace _ =>
-      lazymatch s with
-      | SEnd => close_block
-      | _ => fail "expected }, but got" s
       end
   | |- _ => fail "can't add snippet in non-ready goal"
   end.
@@ -778,7 +766,6 @@ Ltac step_silent := step0 ignore_logger_thunk.
 Ltac step_is_done :=
   lazymatch goal with
   | |- @ready _ => idtac
-  | |- @expect_final_closing_brace _ => idtac
   | |- don't_know_how_to_prove_equal _ _ => idtac
   | |- after_if _ _ _ _ _ _ => idtac
   end.
