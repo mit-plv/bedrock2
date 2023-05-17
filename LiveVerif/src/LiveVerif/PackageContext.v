@@ -65,6 +65,12 @@ Lemma ands_nil: ands nil. Proof. cbn. auto. Qed.
 Lemma ands_cons: forall [P: Prop] [Ps: list Prop], P -> ands Ps -> ands (P :: Ps).
 Proof. cbn. auto. Qed.
 
+Ltac destruct_ands H :=
+  lazymatch type of H with
+  | ands nil => clear H
+  | ands (cons _ _) => destruct H as [? H]; destruct_ands H
+  end.
+
 Ltac has_unique_eq_def x :=
   match goal with
   | H1: x = _, H2: x = _ |- _ => fail 1 x "has two definitions:" H1 "and" H2
@@ -745,7 +751,7 @@ Ltac after_if :=
       subst l
   end.
 
-Ltac destruct_loop_invariant_step :=
+Ltac unpackage_context_step :=
   lazymatch goal with
   | H: elet _ (fun x => _) |- _ => make_fresh x; destruct H as [x ?Def0 H]
   | H: exists x,  _ |- _ => make_fresh x; destruct H as [x H]
@@ -757,13 +763,12 @@ Ltac destruct_loop_invariant_step :=
           let t := beta1 body x in
           change t in H
       end
-  | H: _ /\ True |- _ => apply proj1 in H
-  | H: _ /\ _ |- _ =>
-      let t := type of H in is_destructible_and t; destruct H as [? H]
+  | H: ands _ |- _ => destruct_ands H
   end.
 
-Ltac destruct_loop_invariant :=
-  repeat destruct_loop_invariant_step;
+Ltac unpackage_context :=
+  cbn [seps] in *;
+  repeat unpackage_context_step;
   lazymatch goal with
   | H: ?l = @map.of_list String.string (@word.rep _ _) _ _ |- _ => subst l
   end.

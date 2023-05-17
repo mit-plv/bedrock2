@@ -667,6 +667,19 @@ Section WithParams.
     all: assumption.
   Qed.
 
+  Lemma after_if_skip {Bt Bf b} {_: BoolSpec Bt Bf b} fs
+    (PThen PElse Post: trace -> mem -> locals -> Prop):
+    (Bt -> forall t m l, PThen t m l -> Post t m l) ->
+    (Bf -> forall t m l, PElse t m l -> Post t m l) ->
+    after_if fs b PThen PElse cmd.skip Post.
+  Proof.
+    intros.
+    unfold after_if.
+    intros ? ? ? [? ? ?]. subst x.
+    eapply wp_skip.
+    destruct H; eauto.
+  Qed.
+
   Definition loop_body_marker(P: Prop) := P.
 
   Lemma wp_while {measure : Type} (v0 : measure) (e: expr) (c: cmd) t (m: mem) l fs rest

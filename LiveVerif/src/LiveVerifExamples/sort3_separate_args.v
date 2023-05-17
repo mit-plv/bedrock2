@@ -35,8 +35,8 @@ As sort3_separate_args_ok.                                                    .*
       store32(a0, w2);                                                   /**. .**/
       w2 = w0;                                                           /**. .**/
     } else {                                                             /**. .**/
-    }                                                                    /**. .**/
-  }                                                                      /**. .**/
+    } /**. merge.                                                             .**/
+  } /**. merge.                                                               .**/
   if (w2 < w1) {                                                         /**. .**/
     store32(a1, w2);                                                     /**. .**/
     store32(a2, w1);                                                     /**. .**/
@@ -44,17 +44,14 @@ As sort3_separate_args_ok.                                                    .*
     store32(a1, w1);                                                     /**. .**/
     store32(a2, w2);                                                     /**. .**/
   }                                                                      /**. .**/
-}                                                                        /*?.
-step. step. step. step. step. step. step. step. step. step. step. step.
-step.
-step.
-2: step.
+}                                                                        /**.
+all: clear Error.
 (* TODO automate *)
 Import coqutil.Tactics.ident_ops.
-repeat match goal with
+all: repeat match goal with
        | H: ?x = _ |- _ => ident_starts_with Def H; subst x
        end.
-destruct_ifs.
+all: destruct_ifs.
 all: bottom_up_simpl_in_goal.
 all: eauto with prove_post.
 Qed.

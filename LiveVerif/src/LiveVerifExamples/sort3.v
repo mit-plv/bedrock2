@@ -28,8 +28,8 @@ Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .*
       store32(a, w2);                                                    /**. .**/
       w2 = w0;                                                           /**. .**/
     } else {                                                             /**. .**/
-    }                                                                    /**. .**/
-  }                                                                      /**. .**/
+    } /**. merge.                                                             .**/
+  } /**. merge.                                                               .**/
   if (w2 < w1) {                                                         /**. .**/
     store32(a+4, w2);                                                    /**. .**/
     store32(a+8, w1);                                                    /**. .**/
@@ -38,6 +38,15 @@ Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .*
     store32(a+8, w2);                                                    /**. .**/
   }                                                                      /**. .**/
 }                                                                        /**.
-Abort.
+all: clear Error.
+(* TODO automate *)
+Import coqutil.Tactics.ident_ops.
+all: repeat match goal with
+       | H: ?x = _ |- _ => ident_starts_with Def H; subst x
+       end.
+all: destruct_ifs.
+all: bottom_up_simpl_in_goal.
+all: eauto with prove_post.
+Qed.
 
 End LiveVerif. Comments .**/ //.

@@ -256,7 +256,7 @@ Ltac destruct_ors :=
 
 Create HintDb prove_post.
 
-Ltac ret retnames :=
+Ltac ret_generic c post retnames :=
   lazymatch goal with
   | B: scope_marker ?sk |- _ =>
       lazymatch sk with
@@ -267,11 +267,10 @@ Ltac ret retnames :=
       end
   | |- _ => fail "block structure lost (could not find a scope_marker)"
   end;
-  lazymatch goal with
-  | |- wp_cmd ?fs ?c ?t ?m ?l (fun t' m' l' =>
-         exists retvals, map.getmany_of_list l' ?eretnames = Some retvals /\ _) =>
-      unify eretnames retnames;
-      unify c cmd.skip
+  unify c cmd.skip;
+  lazymatch post with
+  | (fun t' m' l' => exists rets, map.getmany_of_list l' ?eretnames = Some rets /\ _) =>
+      unify eretnames retnames
   end.
 
 Ltac strip_conss l :=
@@ -292,28 +291,26 @@ Ltac unset_loop_body_vars :=
       normalize_locals_wp
   end.
 
+Ltac close_function :=
+  lazymatch goal with
+  | H: functions_correct ?fs ?l |- _ =>
+      let T := lazymatch type of l with list ?T => T end in
+      let e := strip_conss l in
+      unify e (@nil T)
+  end;
+  lazymatch goal with
+  | |- exists _, map.getmany_of_list _ ?retnames = Some _ /\ _ =>
+      (tryif is_evar retnames then unify retnames (@nil string) else idtac);
+      eexists; split; [ reflexivity | ]
+  end.
+
 Ltac close_block :=
   lazymatch goal with
   | B: scope_marker ?sk |- _ =>
       lazymatch sk with
-      | ElseBranch =>
-          eapply wp_skip (* leaves a branch_post marker to be taken care of by step *)
-      | LoopBody =>
-          unset_loop_body_vars;
-          eapply wp_skip
-      | FunctionBody =>
-          lazymatch goal with
-          | H: functions_correct ?fs ?l |- _ =>
-              let T := lazymatch type of l with list ?T => T end in
-              let e := strip_conss l in
-              unify e (@nil T)
-          end;
-          eapply wp_skip;
-          lazymatch goal with
-          | |- exists _, map.getmany_of_list _ ?retnames = Some _ /\ _ =>
-              (tryif is_evar retnames then unify retnames (@nil string) else idtac);
-              eexists; split; [ reflexivity | ]
-          end
+      | ElseBranch => eapply wp_skip
+      | LoopBody => unset_loop_body_vars; eapply wp_skip
+      | FunctionBody => eapply wp_skip; close_function
       | _ => fail "Can't end a block here"
       end
   | _ => fail "no scope marker found"
@@ -415,14 +412,13 @@ Ltac while cond measure0 :=
       | H: sep _ _ ?M |- _ => clear M H
       end;
     clear_until_LoopInvariant_marker;
-    cbv beta iota delta [ands];
-    cbn [seps] in *;
     (* Note: will also appear after loop, where we'll have to clear it,
        but we have to pose it here because the foralls are shared between
        loop body and after the loop *)
     (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
+    cbv beta;
     intros;
-    destruct_loop_invariant;
+    unpackage_context;
     lazymatch goal with
     | |- exists b, dexpr_bool3 _ _ _ b _ _ _ => eexists
     | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
@@ -469,19 +465,11 @@ Ltac add_regular_snippet s :=
   | SWhile ?cond ?measure0 => while cond measure0
   | SStart => fail "SStart can only be used to start a function"
   | SEnd => close_block
-  | SRet ?retnames => ret retnames
-  | SEmpty => idtac
-  end.
-
-Ltac add_snippet s :=
-  lazymatch goal with
-  | |- @ready _ => unfold ready; add_regular_snippet s
-  | |- program_logic_goal_for _ _ =>
-      lazymatch s with
-      | SStart => start
-      | _ => fail "expected {, but got" s
+  | SRet ?retnames =>
+      lazymatch goal with
+      | |- wp_cmd ?fs ?c ?t ?m ?l ?post => ret_generic c post retnames
       end
-  | |- _ => fail "can't add snippet in non-ready goal"
+  | SEmpty => idtac
   end.
 
 Ltac after_if_cleanup :=
@@ -669,6 +657,9 @@ Ltac conclusion_shape_based_step logger :=
          to map.of_list sorted by key, and all values in the key-value tuples
          are variables or evars *)
       repeat f_equal
+  | |- ands _ =>
+      logger ltac:(fun _ => idtac "cbn [ands]");
+      cbn [ands]
   end.
 
 Ltac final_program_logic_step logger :=
@@ -782,12 +773,29 @@ Ltac steps :=
    but the preferred way is to use /*?. instead of /**. *)
 Ltac run_steps_internal_hook := steps.
 
+Ltac add_snippet s :=
+  lazymatch goal with
+  | |- @ready _ => unfold ready; add_regular_snippet s
+  | |- program_logic_goal_for _ _ =>
+      lazymatch s with
+      | SStart => start
+      | _ => fail "expected {, but got" s
+      end
+  | |- after_if ?fs ?b ?PThen ?PElse ?c ?Post =>
+      lazymatch s with
+      | SEnd =>
+          eapply after_if_skip;
+          intros;
+          unpackage_context;
+          close_function (* TODO what if we're not in the outermost block? *)
+      | SRet ?retnames => ret_generic c Post retnames
+      | _ => after_if_cleanup; run_steps_internal_hook
+      end
+  | |- _ => fail "can't add snippet in non-ready goal"
+  end.
+
 Ltac next_snippet s :=
   assert_no_error;
-  lazymatch goal with
-  | |- after_if _ _ ?Q1 ?Q2 _ _ => after_if_cleanup; run_steps_internal_hook
-  | |- _ => idtac
-  end;
   add_snippet s.
 
 (* Standard usage:   .**/ snippet /**.    *)
