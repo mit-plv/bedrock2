@@ -5,9 +5,10 @@ Require bedrock2.Syntax.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Datatypes.Result.
 Import ResultMonadNotations.
-Require Import coqutil.Map.Interface coqutil.Map.SortedListString.
+Require Import coqutil.Map.Interface coqutil.Map.SortedListString coqutil.Map.MapEauto.
 Require Import coqutil.Byte coqutil.Word.Interface coqutil.Word.Bitwidth coqutil.Word.Properties.
 
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.fwd.
 
 Definition compile_atom {t : type} (a : atom t) : result Syntax.expr :=
@@ -116,7 +117,7 @@ Section WithMap.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Context {tenv : map.map string (type * bool)} {tenv_ok : map.ok tenv}.
   Context {locals: map.map string {t & interp_type (word := word) t}} {locals_ok: map.ok locals}.
-  Context {locals': map.map string word} {locals'_ok: map.ok locals}.
+  Context {locals': map.map string word} {locals'_ok: map.ok locals'}.
   Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
   Context {ext_spec: ExtSpec}.
 
@@ -243,7 +244,7 @@ Section WithMap.
         [ simpl; now fwd
         | inversion IHe1p1; inversion IHe2p1;
           rewrite (interp_type_eq _ _ H5);
-          rewrite (interp_type_eq _ _ H8);
+          rewrite (interp_type_eq _ _ H8); 
           rewrite H6, H9;
           (destruct (word.ltu w0 w); apply RBool)
           || (destruct (word.lts w0 w); apply RBool) ].
@@ -286,15 +287,24 @@ Section WithMap.
     now apply compile_correct.
   Qed.
 
+  Lemma eval_map_extends_locals : forall e (m : mem) (l l' : locals') w,
+    map.extends l' l ->
+    eval_expr_old m l e = Some w ->
+    eval_expr_old m l' e = Some w.
+  Proof.
+  Admitted.
+
   Lemma compile''_correct : forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr),
     wf map.empty e ->
-    compile_expr'' e = Success (c, e') -> forall tr mc,
-    exec (map.empty) c tr map.empty map.empty mc (fun tr' m' l' mc' => exists (w : word),
+    compile_expr'' e = Success (c, e') -> forall tr m l mc,
+    exec map.empty c tr m l mc (fun tr' m' l' mc' => exists (w : word),
       eval_expr_old m' l' e' = Some w /\
-      value_relation (interp_expr map.empty e) w
+      value_relation (interp_expr map.empty e) w /\
+      m' = m /\
+      map.extends l' l
     ).
   Proof.
-    intros t. induction e; intros c e' He He' tr mc; try easy.
+    intros t. induction e; intros c e' He He' tr m l mc; try easy.
     - (* EAtom a *)
       unfold compile_expr'' in He'.
       fwd.
@@ -304,49 +314,48 @@ Section WithMap.
         injection E as [= <-].
         simpl.
         exists (word.of_Z (word.wrap n)).
-        split; rewrite <- word.unsigned_of_Z, word.of_Z_unsigned; try easy.
+        ssplit; try easy;
+        rewrite <- word.unsigned_of_Z, word.of_Z_unsigned; try easy.
         apply RWord.
       + (* ABool b *)
         injection E as [= <-].
         simpl.
         exists (word.of_Z (Z.b2z b)).
-        split; try easy.
+        ssplit; try easy.
         apply RBool.
     - (* EUnop o e *)
-      unfold compile_expr'' in He'.
-      fwd.
       destruct o; try easy.
       all:
-        simpl in E;
+        simpl in He';
         simpl;
         fwd;
         inversion He;
         apply Eqdep_dec.inj_pair2_eq_dec in H4 as [= ->]; try exact type_eq_dec;
-        specialize IHe with (1 := H2) (2 := E0) (tr := tr) (mc := mc);
-        apply exec.weaken with (post1 := fun tr' m' l' mc' => exists w,
-          eval_expr_old m' l' e0 = Some w /\
-          value_relation (interp_expr map.empty e) w
-        ); try easy;
+        specialize IHe with (2 := eq_refl);
+        eapply exec.weaken; [ now apply IHe |];
+        cbv beta;
         intros tr' m' l' mc' Hw;
         fwd;
-        eexists.
+        eexists;
+        ssplit;
+        [ simpl; now fwd
+        |
+        | reflexivity
+        | assumption ];
+        inversion Hwp1;
+        subst;
+        repeat lazymatch goal with
+        | h: existT _ _ _ = existT _ _ _ |- _ =>
+            apply interp_type_eq in h
+        end;
+        subst.
       + (* OWNeg *)
-        split.
-        * simpl.
-          fwd.
-          now rewrite Properties.word.sub_0_l.
-        * inversion Hwp1. rewrite H6 in H5.
-          rewrite (interp_type_eq _ _ H5).
-          apply RWord.
+        rewrite Properties.word.sub_0_l.
+        apply RWord.
       + (* ONot *)
-        split.
-        * simpl. now fwd.
-        * inversion Hwp1.
-          rewrite (interp_type_eq _ _ H5).
-          rewrite <- Properties.word.ring_morph_sub.
-          destruct b; apply RBool.
+        rewrite <- Properties.word.ring_morph_sub.
+        destruct (interp_expr map.empty e); apply RBool.
     - (* EBinop o e1 e2 *)
-      unfold compile_expr'' in He'.
       destruct o; try easy.
       all:
         simpl in He';
@@ -356,26 +365,83 @@ Section WithMap.
         apply Eqdep_dec.inj_pair2_eq_dec in H5 as [= ->]; try exact type_eq_dec;
         injection H6 as [= ->];
         apply Eqdep_dec.inj_pair2_eq_dec in H5 as [= ->]; try exact type_eq_dec;
-        specialize IHe1 with (1 := H3) (2 := E);
-        specialize IHe2 with (1 := H7) (2 := E0).
-      all: admit.
-
-      (* + apply exec.seq with (mid := fun tr' m' l' mc' => exists w, *)
-      (*     eval_expr_old m' l' e = Some w /\ *)
-      (*     value_relation (interp_expr map.empty e1) w *)
-      (*   ); try easy. *)
-      (*   intros tr' m' l' mc' Hw. *)
-      (*   assert (m' = map.empty). { admit. } *)
-      (*   assert (l' = map.empty). { admit. } *)
-      (*   rewrite H5, H6. *)
-      (*   apply exec.weaken with (post1 := fun tr'' m'' l'' mc'' => exists w', *)
-      (*     eval_expr_old m'' l'' e0 = Some w' /\ *)
-      (*     value_relation (interp_expr map.empty e2) w' *)
-      (*   ); try easy. *)
-      (*   intros tr'' m'' l'' mc'' Hw'. *)
-      (*   eexists. *)
-      (*   admit. *)
-  Admitted.
+        specialize IHe1 with (2 := eq_refl);
+        specialize IHe2 with (2 := eq_refl);
+        eapply exec.seq; [ now apply IHe1 |];
+        cbv beta;
+        intros tr' m' l' mc' Hw;
+        fwd;
+        eapply exec.weaken; [ now apply IHe2 |];
+        cbv beta;
+        intros tr'' m'' l'' mc'' Hw';
+        fwd;
+        eexists;
+        ssplit;
+        [ simpl; fwd;
+          apply eval_map_extends_locals with (l' := l'') in Hwp0;
+          [| assumption];
+          now rewrite Hwp0
+        | 
+        | reflexivity
+        | now apply extends_trans with l' ].
+      1-9:
+        inversion Hwp1; inversion Hw'p1;
+        subst;
+        repeat lazymatch goal with
+        | h: existT _ _ _ = existT _ _ _ |- _ =>
+            apply interp_type_eq in h
+        end;
+        subst;
+        set (v1 := interp_expr _ e1);
+        set (v2 := interp_expr _ e2).
+      1-5:
+        (* OWPlus, OWMinus, OWTimes, OWDivU, OWModU *)
+        apply RWord.
+      1-2:
+        (* OAnd, OOr *)
+        destruct v1, v2;
+          simpl;
+          apply RBool';
+          apply word.unsigned_inj;
+          simpl Z.b2z;
+          try rewrite word.unsigned_and_nowrap;
+          try rewrite word.unsigned_or_nowrap;
+          now try rewrite word.unsigned_of_Z_0;
+          try rewrite word.unsigned_of_Z_1.
+      + (* OWLessU *)
+        destruct (word.ltu v1 v2);
+        apply RBool.
+      + (* OWLessS *)
+        destruct (word.lts v1 v2);
+        apply RBool.
+      + (* OEq *)
+        destruct t; try easy; unfold eqb_values.
+        * (* TWord *)
+          inversion Hwp1; inversion Hw'p1.
+          repeat lazymatch goal with
+          | h: existT _ _ _ = existT _ _ _ |- _ =>
+              apply interp_type_eq in h
+          end.
+          subst.
+          destruct (word.eqb _ _);
+          apply RBool.
+        * (* TBool *)
+          inversion Hwp1; inversion Hw'p1.
+          repeat lazymatch goal with
+          | h: existT _ _ _ = existT _ _ _ |- _ =>
+              apply interp_type_eq in h
+          end;
+          subst.
+          set (b1 := interp_expr _ e1).
+          set (b2 := interp_expr _ e2).
+          destruct b1, b2.
+          all:
+            apply RBool';
+            simpl;
+            rewrite word.unsigned_eqb;
+            try rewrite word.unsigned_of_Z_0;
+            now try rewrite word.unsigned_of_Z_1.
+  Qed.
 
 End WithMap.
 
