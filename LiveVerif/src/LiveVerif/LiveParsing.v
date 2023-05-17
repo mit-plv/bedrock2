@@ -156,10 +156,33 @@ Goal forall (word: Type) (x: word),
   expr.op bopname.eq (expr.op bopname.ltu (expr.literal 3) (expr.var "x")) (expr.literal 0).
 Proof. intros. reflexivity. Abort.
 
+Declare Custom Entry comment.
+Notation "'comment:(' x ')'" := x (x custom comment at level 2, only parsing).
+Notation "x" := tt (in custom comment at level 0, x ident, only parsing).
+Notation "," := tt (in custom comment at level 0, only parsing).
+Notation "!" := tt (in custom comment at level 0, only parsing).
+Notation "?" := tt (in custom comment at level 0, only parsing).
+Notation "-" := tt (in custom comment at level 0, only parsing).
+Notation "+" := tt (in custom comment at level 0, only parsing).
+Notation "#" := tt (in custom comment at level 0, only parsing).
+Notation "$" := tt (in custom comment at level 0, only parsing).
+Notation ":" := tt (in custom comment at level 0, only parsing).
+Notation "a b" := tt
+  (in custom comment at level 2,
+   b custom comment at level 1,
+   only parsing).
+
+Goal True.
+  pose comment:(an attempt to write a comment).
+  pose comment:(let's include a comma, which should work!).
+Abort.
+
 Declare Custom Entry snippet.
 
 Notation "*/ s /*" := s (s custom snippet at level 100).
-Notation "*/ /*" := SEmpty.
+
+Notation "/* c */" := SEmpty
+  (in custom snippet at level 0, c custom comment at level 2, only parsing).
 
 Ltac coerce_expr_to_assignment_rhs e :=
   lazymatch type of e with
@@ -211,7 +234,12 @@ Notation "'while' ( e ) /* 'decreases' m */ {" :=
   (SWhile e m) (in custom snippet at level 0, e custom live_expr, m constr at level 0).
 
 Goal True.
-  pose */ /* as s.
+  pose */ /* hello, world! */ /* as s.
+  pose */ /* The way we implement C comments is a bit limited:
+             - We can't use full stops
+             - Only a few special characters are supported, eg ?, $, #
+             - We can't use parentheses
+             - We can't use Coq keywords */ /*.
   pose */ S(); /*.
   pose */ S( ); /*.
   pose */ S ( ); /*.

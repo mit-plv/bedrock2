@@ -84,8 +84,7 @@ Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      
 {                                                                          /**. .**/
   uintptr_t l = load(malloc_state_ptr);                                    /**. .**/
   uintptr_t p = 0;                                                         /**. .**/
-  if (l == 0 || malloc_block_size < n) {                                   /**. .**/
-  } else {                                                                 /**.
+  if (l != 0 && n <= malloc_block_size) {                                  /**.
 
     let H := constr:(#(fixed_size_free_list ?? ??)) in inversion H; clear H.
     (* TODO better inversion tactic for such use cases *)
@@ -98,10 +97,11 @@ Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      
                                                                                 .**/
     store(malloc_state_ptr, load(l));                                      /**. .**/
     p = l;                                                                 /**. .**/
+  } else {                                                                 /**. .**/
+    /* empty */                                                            /**. .**/
   }                                                                        /**. .**/
   return p;                                                                /**. .**/
 }                                                                          /**.
-(* TODO support separate postcond proving in tail if-then-else *)
 Abort.
 
 #[export] Instance spec_of_free: fnspec :=                                      .**/
