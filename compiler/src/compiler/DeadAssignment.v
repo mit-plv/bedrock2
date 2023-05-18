@@ -353,6 +353,383 @@ Section WithArguments.
         apply eqb_eq in H1.
         symmetry in H1.
         subst.
+        destr (find (eqb i) (List.removeb eqb x used_after')).
+        * repeat rewrite ListSet.of_list_removeb.
+          eauto using subset_diff.
+        * rewrite of_list_cons.
+          unfold add.
+          repeat rewrite ListSet.of_list_removeb.
+          eauto using subset_diff, subset_union_rr.
+      + rewrite of_list_cons.
+        unfold add.
+        apply subset_union_l.
+        * destr (find (eqb i) (List.removeb eqb x used_after')).
+          -- apply find_some in E0.
+             destr E0.
+             eapply eqb_eq in H1.
+             symmetry in H1.
+             subst.
+             eauto using in_singleton.
+          -- rewrite of_list_cons.
+             unfold add.
+             eapply subset_union_rl.
+             eapply subset_ref.
+        * destr (find (eqb i) (List.removeb eqb x used_after')).
+          -- repeat rewrite ListSet.of_list_removeb.
+             eauto using subset_diff.
+          -- rewrite of_list_cons.
+             unfold add.
+             eapply subset_union_rr.
+             repeat rewrite ListSet.of_list_removeb.
+             eauto using subset_diff.
+    - (* SStackalloc *)
+      simpl.
+      repeat rewrite ListSet.of_list_removeb.
+      eauto using subset_diff.
+    - (* SLit *)
+      simpl.
+      repeat rewrite ListSet.of_list_removeb.
+      eauto using subset_diff.
+    - (* SOp *)
+      simpl. destr z.
+      + simpl.
+        destr (find (eqb v) (List.removeb eqb x used_after)).
+        * simpl.
+          apply find_some in E.
+          destr E.
+          apply eqb_eq in H1.
+          symmetry in H1.
+          subst.
+          destr (find (eqb y) (List.removeb eqb x used_after)).
+          -- simpl.
+             apply find_some in E.
+             destr E.
+             apply eqb_eq in H2.
+             symmetry in H2.
+             subst.
+             destr (find (eqb v) (List.removeb eqb x used_after')).
+             ++ apply find_some in E.
+                destr E.
+                eapply eqb_eq in H3.
+                symmetry in H3.
+                subst.
+                destr (find (eqb y) (List.removeb eqb x used_after')).
+                ** apply find_some in E.
+                   destr E.
+                   eapply eqb_eq in H4.
+                   symmetry in H4.
+                   subst.
+                   repeat rewrite ListSet.of_list_removeb.
+                   eauto using subset_diff.
+                ** rewrite of_list_cons.
+                   unfold add.
+                   eapply subset_union_rr.
+                   repeat rewrite ListSet.of_list_removeb.
+                   eauto using subset_diff.
+             ++  destr (find (eqb y) (v :: List.removeb eqb x used_after')).
+                 ** rewrite of_list_cons.
+                    unfold add.
+                    eapply subset_union_rr.
+                    repeat rewrite ListSet.of_list_removeb.
+                    eauto using subset_diff.
+                 ** rewrite of_list_cons.
+                    unfold add.
+                    eapply subset_union_rr.
+                    rewrite of_list_cons.
+                    unfold add.
+                    eapply subset_union_rr.
+                    repeat rewrite ListSet.of_list_removeb.
+                    auto using subset_diff.
+          -- rewrite of_list_cons.
+             unfold add.
+             eapply subset_union_l.
+             ++ destr (find (eqb v) (List.removeb eqb x used_after')).
+                ** destr (find (eqb y) (List.removeb eqb x used_after')).
+                   --- apply find_some in E1.
+                       destr E1.
+                       apply eqb_eq in H2.
+                       symmetry in H2.
+                       subst.
+                       auto using in_singleton.
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rl.
+                       eapply subset_ref.
+                ** destr (find (eqb y) (v :: List.removeb eqb x used_after')).
+                   --- apply find_some in E1.
+                       destr E1.
+                       apply eqb_eq in H2.
+                       symmetry in H2.
+                       subst.
+                       eauto using in_singleton.
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rl.
+                       eapply subset_ref.
+             ++ destr (find (eqb v) (List.removeb eqb x used_after')).
+                ** destr (find (eqb y) (List.removeb eqb x used_after')).
+                   --- repeat rewrite ListSet.of_list_removeb.
+                       eauto using subset_diff.
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rr.
+                       repeat rewrite ListSet.of_list_removeb.
+                       eauto using subset_diff.
+                ** destr (find (eqb y) (v :: List.removeb eqb x used_after')).
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rr.
+                       repeat rewrite ListSet.of_list_removeb.
+                       eauto using subset_diff.
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rr.
+                       rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_rr.
+                       repeat rewrite ListSet.of_list_removeb.
+                       auto using subset_diff.
+        * destr (find (eqb y) (v :: List.removeb eqb x used_after)).
+             ++ rewrite of_list_cons.
+                unfold add.
+                eapply subset_union_l.
+                ** destr (find (eqb v) (List.removeb eqb x used_after')).
+                   --- eapply find_some in E1.
+                       destr E1.
+                       apply eqb_eq in H1.
+                       symmetry in H1.
+                       subst.
+                       destr (find (eqb y) (List.removeb eqb x used_after')).
+                       +++ eauto using in_singleton.
+                       +++ rewrite of_list_cons.
+                           unfold add.
+                           eapply subset_union_rr.
+                           eauto using in_singleton.
+                   --- destr (find (eqb y) (v :: List.removeb eqb x used_after')).
+                       +++ rewrite of_list_cons.
+                           unfold add.
+                           eapply subset_union_rl.
+                           eapply subset_ref.
+                       +++ rewrite of_list_cons.
+                           unfold add.
+                           eapply subset_union_rr.
+                           rewrite of_list_cons.
+                           unfold add.
+                           eapply subset_union_rl.
+                           eapply subset_ref.
+                ** destr (find (eqb v) (List.removeb eqb x used_after')).
+                   --- eapply find_some in E1.
+                       destr E1.
+                       apply eqb_eq in H1.
+                       symmetry in H1.
+                       subst.
+                       destr (find (eqb y) (List.removeb eqb x used_after')).
+                       +++ repeat rewrite ListSet.of_list_removeb.
+                           eauto using subset_diff.
+                       +++ rewrite of_list_cons.
+                           unfold add.
+                           eapply subset_union_rr.
+                           repeat rewrite ListSet.of_list_removeb.
+                           eauto using subset_diff.
+                   --- destr (find (eqb y) (v :: List.removeb eqb x used_after')).
+                       +++ rewrite of_list_cons.
+                           unfold add.
+                           eapply subset_union_rr.
+                           repeat rewrite ListSet.of_list_removeb.
+                           eauto using subset_diff.
+                       +++ rewrite of_list_cons.
+                           unfold add.
+                           eapply subset_union_rr.
+                           rewrite of_list_cons.
+                           unfold add.
+                           eapply subset_union_rr.
+                           repeat rewrite ListSet.of_list_removeb.
+                           eauto using subset_diff.
+             ++ rewrite of_list_cons.
+                unfold add.
+                eapply subset_union_l.
+                ** destr (find (eqb v) (List.removeb eqb x used_after')).
+                   --- destr (find (eqb y) (List.removeb eqb x used_after')).
+                       +++ apply find_some in E2.
+                           destr E2.
+                           apply eqb_eq in H1.
+                           symmetry in H1.
+                           subst.
+                           eauto using in_singleton.
+                       +++ rewrite of_list_cons.
+                           unfold add.
+                           eapply subset_union_rl.
+                           eapply subset_ref.
+                   --- destr (find (eqb y) (v :: List.removeb eqb x used_after')).
+                       +++ apply find_some in E2.
+                           destr E2.
+                           apply eqb_eq in H1.
+                           symmetry in H1.
+                           subst.
+                           eauto using in_singleton.
+                       +++ rewrite of_list_cons.
+                           unfold add.
+                           eapply subset_union_rl.
+                           eapply subset_ref.
+                ** destr (find (eqb v) (List.removeb eqb x used_after')).
+                   --- apply find_some in E1.
+                       destr E1.
+                       apply eqb_eq in H1.
+                       symmetry in H1.
+                       subst.
+                       rewrite of_list_cons.
+                       unfold add.
+                       eapply subset_union_l.
+                       +++ destr (find (eqb y) (List.removeb eqb x used_after')).
+                           *** eauto using in_singleton.
+                           *** rewrite of_list_cons.
+                               unfold add.
+                               eapply subset_union_rr.
+                               eauto using in_singleton.
+                       +++ destr (find (eqb y) (List.removeb eqb x used_after')).
+                           *** repeat rewrite ListSet.of_list_removeb.
+                               eauto using subset_diff.
+                           *** rewrite of_list_cons.
+                               unfold add.
+                               eapply subset_union_rr.
+                               repeat rewrite ListSet.of_list_removeb.
+                               eauto using subset_diff.
+                   --- rewrite of_list_cons.
+                       unfold add.
+                       apply subset_union_l.
+                       +++ destr (find (eqb y) (v :: List.removeb eqb x used_after')).
+                           *** rewrite of_list_cons.
+                               unfold add.
+                               eapply subset_union_rl.
+                               apply subset_ref.
+                           *** rewrite of_list_cons.
+                               unfold add.
+                               eapply subset_union_rr.
+                               rewrite of_list_cons.
+                               unfold add.
+                               eapply subset_union_rl.
+                               apply subset_ref.
+                       +++ destr (find (eqb y) (v :: List.removeb eqb x used_after')).
+                           *** rewrite of_list_cons.
+                               unfold add.
+                               eapply subset_union_rr.
+                               repeat rewrite ListSet.of_list_removeb.
+                               eauto using subset_diff.
+                           *** rewrite of_list_cons.
+                               unfold add.
+                               eapply subset_union_rr.
+                               rewrite of_list_cons.
+                               unfold add.
+                               eapply subset_union_rr.
+                               repeat rewrite ListSet.of_list_removeb.
+                               eauto using subset_diff.
+      + simpl.
+        destr (find (eqb y) (List.removeb eqb x used_after)).
+        * apply find_some in E.
+          destr E.
+          apply eqb_eq in H1.
+          symmetry in H1.
+          subst.
+          destr (find (eqb y) (List.removeb eqb x used_after')).
+          -- repeat rewrite ListSet.of_list_removeb.
+             eauto using subset_diff.
+          -- rewrite of_list_cons.
+             unfold add.
+             apply subset_union_rr.
+             repeat rewrite ListSet.of_list_removeb.
+             eauto using subset_diff.
+        * rewrite of_list_cons.
+          unfold add.
+          apply subset_union_l.
+          -- destr (find (eqb y) (List.removeb eqb x used_after')).
+             ++ apply find_some in E0.
+                destr E0.
+                apply eqb_eq in H1.
+                symmetry in H1.
+                subst.
+                eauto using in_singleton.
+             ++ rewrite of_list_cons.
+                unfold add.
+                apply subset_union_rl.
+                apply subset_ref.
+          -- destr (find (eqb y) (List.removeb eqb x used_after')).
+             ++ repeat rewrite ListSet.of_list_removeb.
+                eauto using subset_diff.
+             ++ rewrite of_list_cons.
+                unfold add.
+                apply subset_union_rr.
+                repeat rewrite ListSet.of_list_removeb.
+                eauto using subset_diff.
+    - (* SSet *)
+      simpl.
+      destr (find (eqb y) (List.removeb eqb x used_after)).
+      + destr (find (eqb y) (List.removeb eqb x used_after')).
+        * repeat rewrite ListSet.of_list_removeb.
+          eauto using subset_diff.
+        * rewrite of_list_cons.
+          unfold add.
+          apply subset_union_rr.
+          repeat rewrite ListSet.of_list_removeb.
+          eauto using subset_diff.
+      + rewrite of_list_cons.
+        unfold add.
+        apply subset_union_l.
+        * destr (find (eqb y) (List.removeb eqb x used_after')).
+          -- apply find_some in E0.
+             destr E0.
+             apply eqb_eq in H1.
+             symmetry in H1.
+             subst.
+             eauto using in_singleton.
+          -- rewrite of_list_cons.
+             unfold add.
+             apply subset_union_rl.
+             apply subset_ref.
+        * destr (find (eqb y) (List.removeb eqb x used_after')).
+          -- repeat rewrite ListSet.of_list_removeb.
+             eauto using subset_diff.
+          -- rewrite of_list_cons.
+             unfold add.
+             apply subset_union_rr.
+             repeat rewrite ListSet.of_list_removeb.
+             eauto using subset_diff.
+    - (* SIf *)
+      simpl.
+      repeat rewrite ListSet.of_list_list_union.
+      repeat apply subset_union_l.
+      + apply subset_union_rl.
+        apply subset_union_rl.
+        eauto.
+      + apply subset_union_rl.
+        apply subset_union_rr.
+        eauto.
+      + apply subset_union_rr.
+        eapply subset_ref.
+    - (* SLoop *)
+      simpl. eapply IHs1.
+      repeat rewrite ListSet.of_list_list_union.
+      repeat apply subset_union_l.
+      + apply subset_union_rl.
+        eapply subset_ref.
+      + apply subset_union_rr.
+        apply subset_union_rl.
+        eauto.
+      + apply subset_union_rr.
+        apply subset_union_rr.
+        apply subset_ref.
+    - (* SSeq *)
+      simpl.
+      eauto.
+    - (* SSkip *)
+      simpl.
+      auto.
+    - (* SCall *)
+      simpl.
+      repeat rewrite ListSet.of_list_list_union.
+      apply subset_union_l.
+      + apply subset_union_rl.
+        apply subset_ref.
+      + apply subset_union_rr.
         all: admit.
   Admitted.
 

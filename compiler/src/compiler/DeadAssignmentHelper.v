@@ -286,4 +286,15 @@ Section WithArguments.
     subst.
     propositional idtac.
   Qed.
+
+  Lemma of_list_list_diff:
+    forall l1 l2 : list string,
+      of_list (ListSet.list_diff eqb l1 l2) =
+        diff (of_list l1) (of_list l2).
+  Proof.
+    intros.
+    induction l2.
+    - simpl.
+  Admitted.
+
 End WithArguments.
