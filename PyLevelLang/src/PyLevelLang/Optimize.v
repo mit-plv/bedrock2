@@ -339,10 +339,11 @@ Section WithMap.
     | EAtom _ => false
     | EUnop _ e1 => is_name_used x e1
     | EBinop _ e1 e2 => is_name_used x e1 || is_name_used x e2
-    | EFlatmap e1 x' e2 => eqb x' x || is_name_used x e1 || is_name_used x e2
-    | EFold e1 e2 x' y' e3 => eqb x' x || eqb y' x || is_name_used x e1 || is_name_used x e2 || is_name_used x e3
+    | EFlatmap e1 x' e2 => is_name_used x e1 || (negb (eqb x' x) && is_name_used x e2)
+    | EFold e1 e2 x' y' e3 => is_name_used x e1 || is_name_used x e2 || 
+                                (negb (eqb x' x) && negb (eqb y' x) && is_name_used x e3)
     | EIf e1 e2 e3 => is_name_used x e1 || is_name_used x e2 || is_name_used x e3
-    | ELet x' e1 e2 => eqb x' x || is_name_used x e1 || is_name_used x e2
+    | ELet x' e1 e2 => is_name_used x e1 || (negb (eqb x' x) && is_name_used x e2)
     end.
 
   Lemma set_local_same {tx ty : type} (x : string) (vx : interp_type tx) (vy : interp_type ty) (l : locals)
@@ -370,7 +371,7 @@ Section WithMap.
   Qed.
 
   Lemma is_name_used_correct {t : type} {t' : type} (l : locals) (e : expr t) (x : string):
-    forall y : interp_type t', is_name_used x e = false -> interp_expr l e = interp_expr (set_local l x y) e.
+    forall y : interp_type t', is_name_used x e = false -> interp_expr (set_local l x y) e = interp_expr l e.
   Proof.
     generalize dependent l.
     induction e; intros; simpl in H; simpl.
@@ -385,46 +386,48 @@ Section WithMap.
 
     - reflexivity.
 
-    - rewrite <- IHe; easy.
+    - now rewrite IHe.
 
-    - rewrite <- IHe1, <- IHe2; destruct (is_name_used x e2); destruct (is_name_used x e1); try easy.
+    - rewrite IHe1, IHe2; destruct (is_name_used x e2); destruct (is_name_used x e1); try easy.
 
-    - destruct (is_name_used x e1); destruct (is_name_used x e2); destruct (eqb x0 x) eqn:Hx; simpl in H; try easy.
-      assert (Hf:(fun y0 : interp_type t1 => interp_expr (set_local l x0 y0) e2)
-              = (fun y0 : interp_type t1 => interp_expr (set_local (set_local l x y) x0 y0) e2)).
-              { apply functional_extensionality. intros. rewrite set_local_comm_diff.
-                + apply IHe2. reflexivity.
-                + apply eqb_neq, Hx.
-              }
-              rewrite Hf. rewrite <- IHe1; easy.
+    - destruct (is_name_used x e1) eqn:E; simpl in *; try discriminate.
+      destruct (String.eqb x0 x) eqn:Hx; simpl in *.
+      + rewrite eqb_eq in Hx. subst.
+        rewrite IHe1; eauto.
+        f_equal.
+        apply functional_extensionality. intros.
+        now rewrite set_local_same.
+      + rewrite eqb_neq in Hx.
+        rewrite IHe1; eauto.
+        f_equal.
+        apply functional_extensionality. intros.
+        rewrite set_local_comm_diff; eauto.
 
-    - destruct (eqb x0 x) eqn:H0x; 
-      destruct (eqb y x) eqn:Hyx;
-      destruct (is_name_used x e1) eqn:He1;
-      destruct (is_name_used x e2) eqn:He2;
-      destruct (is_name_used x e3) eqn:He3; 
-      try discriminate H.
-      f_equal; eauto.
-      do 2 (apply functional_extensionality; intros).
-      rewrite <- set_local_comm_diff with (x := x); cycle 1.
-      { apply eqb_neq. rewrite eqb_sym. assumption. }
-      rewrite <- set_local_comm_diff with (x := x); cycle 1.
-      { apply eqb_neq. rewrite eqb_sym. assumption. }
-      apply IHe3. reflexivity.
+    - destruct (is_name_used x e1) eqn:He1; simpl in *; try discriminate.
+      destruct (is_name_used x e2) eqn:He2; simpl in *; try discriminate.
+      destruct (eqb x0 x) eqn:H0x; simpl in *;
+      destruct (eqb y x) eqn:Hyx; simpl in *; 
+      rewrite IHe1, IHe2; eauto; f_equal; repeat (apply functional_extensionality; intros);
+      try rewrite eqb_eq in *; try rewrite eqb_neq in *; try subst.
+      + now rewrite !set_local_same.
+      + now rewrite !set_local_same.
+      + rewrite set_local_comm_diff; eauto.
+        rewrite !set_local_same.
+        now rewrite set_local_comm_diff.
+      + rewrite !set_local_comm_diff with (y := x); eauto.
 
-    - rewrite <- IHe1, <- IHe2, <- IHe3;
-      destruct (is_name_used x e1); 
+    - rewrite IHe1, IHe2, IHe3;
+      destruct (is_name_used x e1);
       destruct (is_name_used x e2);
       destruct (is_name_used x e3);
       easy.
 
-    - rewrite set_local_comm_diff;
-      destruct (is_name_used x e1); 
-      destruct (is_name_used x e2);
-      destruct (eqb x0 x) eqn:Hx;
-      try easy.
-      + rewrite <- IHe1, <- IHe2; easy.
-      + apply eqb_neq, Hx.
+    - destruct (is_name_used x e1); simpl in *; try discriminate.
+      destruct (eqb x0 x) eqn:Hx; simpl in *;
+      try rewrite eqb_eq in *; try rewrite eqb_neq in *; try subst;
+      rewrite IHe1; eauto.
+      + now rewrite set_local_same.
+      + rewrite set_local_comm_diff; eauto.
   Qed.
 
   Fixpoint unused_name_elim {t : type} (e : expr t) : expr t :=
@@ -463,7 +466,7 @@ Section WithMap.
 
     - destruct (is_name_used x e2) eqn:E.
       + simpl. rewrite IHe1, IHe2. reflexivity.
-      + rewrite <- is_name_used_correct; easy.
+      + rewrite is_name_used_correct; easy.
   Qed.
 
   Definition flatmap_flatmap_head {t : type} (e : expr t) : expr t :=
@@ -493,8 +496,8 @@ Section WithMap.
     destruct_one_match; auto; 
     simpl. rewrite flat_map_flat_map. f_equal. apply functional_extensionality.
     intros. f_equal. apply functional_extensionality.
-    intros. symmetry. rewrite set_local_comm_diff.
-    + apply is_name_used_correct. apply E.
+    intros. rewrite set_local_comm_diff.
+    + apply is_name_used_correct, E.
     + apply E.
   Qed.
 
@@ -572,12 +575,12 @@ Section WithMap.
       repeat rewrite set_local_comm_diff with (y := x); try apply E.
       rewrite set_local_comm_diff with (x := x0); try apply E.
       rewrite set_local_same.
-      symmetry. apply is_name_used_correct. apply E.
+      apply is_name_used_correct, E.
     - unfold get_local, set_local.
       rewrite map.get_put_same.
       unfold proj_expected. simpl.
       rewrite type_eq_dec_refl. reflexivity.
-    - symmetry. apply is_name_used_correct. apply E.
+    - apply is_name_used_correct, E.
   Qed.
 
   Definition invert_singleton {t : type} (e : expr (TList t)) : option (expr t) :=
@@ -658,12 +661,125 @@ Section WithMap.
     cbn [is_name_used] in E.
     rewrite! Bool.orb_false_r in E.
     repeat rewrite set_local_comm_diff with (y := x); try apply E.
-    rewrite <- is_name_used_correct; try apply E.
+    rewrite is_name_used_correct; try apply E.
     f_equal.
     rewrite set_local_comm_diff with (x := x0); try apply E.
     do 2 f_equal.
     rewrite set_local_comm_diff with (x := x).
-    - rewrite <- is_name_used_correct; try apply E. reflexivity.
+    - rewrite is_name_used_correct; try apply E. reflexivity.
     - apply not_eq_sym. apply E.
   Qed.
+
+  Definition flatmap_singleton_head {t} (e : expr t) : expr t :=
+    match e in expr t' return expr t' with
+    | EFlatmap l x f => match l with
+                        | EBinop (OCons _) e' (EAtom (ANil _)) => ELet x e' f
+                        | l'  => EFlatmap l' x f
+                        end
+    | e' => e'
+    end.
+
+  Lemma flatmap_singleton_head_correct {t} (l : locals) (e : expr t) :
+    interp_expr l (flatmap_singleton_head e) = interp_expr l e.
+  Proof.
+    destruct e; simpl; eauto.
+    dependent induction e1; eauto.
+    dependent induction o; eauto.
+    dependent induction e1_2; eauto.
+    dependent induction a; eauto.
+    simpl.
+    now rewrite <- app_nil_end.
+  Qed.
+
+  Definition flatmap_singleton {t : type} : expr t -> expr t := fold_expr (@flatmap_singleton_head).
+       
+  (* Everything below is WIP *)
+
+  Definition substitute_let {t} (e : expr t) : expr t.
+  (* This optimization should replace
+      let x = ex in e
+    with an expression with ex substituted for x in e:
+      substitute x ex e
+    An early attempt at implementing this is below, but has some bugs.
+   *)
+  Proof. Abort.
+
+  (* First attempt at implementing substitute. 
+     HAS A BUG - see comment for ELet *)
+  Fail Fixpoint substitute {t tx : type} (x : string) (ex : expr tx) (e : expr t): expr t
+    := match e in expr t' return expr t' with
+       | EVar t' x' => match type_eq_dec tx t', String.eqb x x' return expr t' with
+                       | left H, true => cast H _ ex
+                       | _, _ => EVar t' x'
+                       end
+       | ELoc t' x' => match type_eq_dec tx t', String.eqb x x' return expr t' with
+                       | left H, true => cast H _ ex
+                       | _, _ => ELoc t' x'
+                       end
+       | EAtom a => EAtom a
+       | EUnop o e' => EUnop o (substitute x ex e')
+       | EBinop o e1 e2 => EBinop o (substitute x ex e1) (substitute x ex e2)
+       | EFlatmap e1 x' e2 => if String.eqb x x' || is_name_used x' ex
+                                then EFlatmap e1 x' e2 
+                                else EFlatmap (substitute x ex e1) x' (substitute x ex e2)
+       | EFold e1 e2 x' y e3 => if String.eqb x x' || String.eqb x y || is_name_used x' ex || is_name_used y ex
+                                  then EFold e1 e2 x' y e3
+                                  else EFold (substitute x ex e1) (substitute x ex e2) x' y (substitute x ex e3)
+       | EIf e1 e2 e3 => EIf (substitute x ex e1) (substitute x ex e2) (substitute x ex e3)
+
+       (* We should rename `x'` to something that does not occur in `ex` *)
+       | ELet x' ex' e' => if String.eqb x x' || is_name_used x' ex
+                             then ELet x' ex' e'
+                             else ELet x' ex' (substitute x ex e')
+
+       | _ => _ (* Silly case to make this command fail *)
+       end.
+
+  (* Correct, but old and not-strong-enough version of substitute_correct.
+     PHOAS was suggested as a possible approach to prove the right version.
+     For the meantime, I've left the old version here... *)
+  Fail Lemma substitute_correct' {t tx : type} (l : locals) (x : string) (ex : expr tx) (e : expr t) :
+    get_local l x = interp_expr l ex -> interp_expr l (substitute x ex e) = interp_expr l e.
+  Fail Proof.
+  (*
+    generalize dependent l.
+    induction e; intros; simpl.
+    - repeat (destruct_one_match; eauto). now subst.
+    - repeat (destruct_one_match; eauto). now subst.
+    - eauto.
+    - now rewrite IHe. 
+    - now rewrite IHe1, IHe2.
+    - repeat (destruct_one_match; eauto).
+      simpl. rewrite IHe1; eauto.
+      f_equal. apply functional_extensionality. intros.
+      rewrite IHe2; eauto.
+      unfold get_local, set_local in *.
+      destruct E.
+      rewrite !map.get_put_diff; eauto.
+      rewrite H. 
+      epose proof is_name_used_correct as inuc.
+      unfold set_local in inuc.
+      now rewrite inuc.
+    - repeat (destruct_one_match; eauto).
+      repeat match goal with [H : _ /\ _ |- _] => destruct H end.
+      simpl. rewrite IHe1, IHe2; eauto.
+      f_equal. repeat (apply functional_extensionality; intros).
+      rewrite IHe3; eauto.
+      unfold get_local, set_local in *.
+      rewrite !map.get_put_diff; eauto.
+      rewrite H.
+      pose proof @is_name_used_correct tx.
+      unfold set_local in H4.
+      now rewrite !H4.
+    - now rewrite IHe1, IHe2, IHe3.
+    - destruct_one_match; eauto.
+      simpl. rewrite IHe2; eauto.
+      unfold get_local at 1, set_local at 1.
+      unfold get_local in H.
+      repeat match goal with [H : _ /\ _ |- _] => destruct H end.
+      rewrite map.get_put_diff; eauto.
+      rewrite H.
+      now rewrite is_name_used_correct.
+  *)
+   Fail Abort.
 End WithMap.
