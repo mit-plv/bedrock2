@@ -890,8 +890,19 @@ Section WithArguments.
     }
     { simpl. intros.
       eapply @exec.loop; eauto.
-      (* exec.loop *)
-      all: admit.
+      - eapply @exec.weaken.
+        + eapply IHexec.
+          admit.
+        + admit.
+      - intros. eapply H2 in H8.
+        2: eassumption.
+        repeat eexists.
+        eapply H8.
+      - intros. eapply H4 in H8.
+        2: eassumption.
+        + eapply H8.
+        + admit.
+      - admit.
     }
     { simpl.
       intros.
