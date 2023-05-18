@@ -309,8 +309,8 @@ Ltac close_block :=
   | B: scope_marker ?sk |- _ =>
       lazymatch sk with
       | ElseBranch => eapply wp_skip
-      | LoopBody => unset_loop_body_vars; eapply wp_skip
-      | FunctionBody => eapply wp_skip; close_function
+      | LoopBody => unset_loop_body_vars; eapply wp_skip; autounfold with live_always_unfold
+      | FunctionBody => eapply wp_skip; close_function; autounfold with live_always_unfold
       | _ => fail "Can't end a block here"
       end
   | _ => fail "no scope marker found"
@@ -662,6 +662,10 @@ Ltac conclusion_shape_based_step logger :=
       cbn [ands]
   end.
 
+Lemma prove_if {Bt Bf b} {_: BoolSpec Bt Bf b} (Pt Pf: Prop):
+  (Bt -> Pt) -> (Bf -> Pf) -> if b then Pt else Pf.
+Proof. intros. destruct H; auto. Qed.
+
 Ltac final_program_logic_step logger :=
   (* Note: Here, the logger has to be invoked *after* the tactic, because we only
      find out whether it's the right one by running it.
@@ -686,7 +690,12 @@ Ltac final_program_logic_step logger :=
         | |- ?P /\ ?Q =>
             split;
             logger ltac:(fun _ => idtac "split")
-        | |- _ = _ => eq_prover_step_hook; logger ltac:(fun _ => idtac "eq_prover_step_hook")
+        | |- _ = _ =>
+            eq_prover_step_hook;
+            logger ltac:(fun _ => idtac "eq_prover_step_hook")
+        | |- if _ then _ else _ =>
+            logger ltac:(fun _ => idtac "split if");
+            eapply prove_if; intros; after_command_simpl_hook
         | |- wp_cmd _ _ _ _ _ _ =>
               lazymatch goal with
               | |- ?G => change (@ready G)
@@ -695,8 +704,7 @@ Ltac final_program_logic_step logger :=
               unzify;
               unpurify;
               set_state displaying;
-              logger ltac:(fun _ =>
-                             idtac "after_command_simpl_hook; unpurify; unzify and ready")
+              logger ltac:(fun _ => idtac "after_command_simpl_hook; unzify; unpurify")
         end ].
 
 (* For hints registered with `Hint Unfold`, used by autounfold *)
@@ -784,6 +792,7 @@ Ltac add_snippet s :=
   | |- after_if ?fs ?b ?PThen ?PElse ?c ?Post =>
       lazymatch s with
       | SEnd =>
+          autounfold with live_always_unfold;
           eapply after_if_skip;
           intros;
           unpackage_context;
