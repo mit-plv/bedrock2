@@ -90,6 +90,8 @@ Section WithMap.
 
   Definition elaborate_atom (pa : patom) : result {t & expr t} :=
     match pa with
+    | PAWord z =>
+        Success (existT _ _ (EAtom (AWord z)))
     | PAInt z =>
         Success (existT _ _ (EAtom (AInt z)))
     | PABool b =>
@@ -116,8 +118,14 @@ Section WithMap.
     result {t & expr t} :=
     match po with
     | PONeg =>
-        e' <- enforce_type TInt e;;
-        Success (existT _ _ (EUnop ONeg e'))
+        match t as t' return expr t' -> _ with
+        | TWord => fun e =>
+            Success (existT _ _ (EUnop OWNeg e))
+        | TInt => fun e =>
+            Success (existT _ _ (EUnop ONeg e))
+        | _ => fun _ =>
+            error:(e "has type" t "but expected" TWord "or" TInt)
+        end e
     | PONot =>
         e' <- enforce_type TBool e;;
         Success (existT _ _ (EUnop ONot e'))
@@ -145,8 +153,9 @@ Section WithMap.
       inversion H;
       apply wf_EUnop; now apply enforce_type_wf with (G := G) in H'
     ).
-    - (* POLength *)
-      destruct t; try easy; inversion H; now apply wf_EUnop.
+    all: try (
+      destruct t; try easy; inversion H; now apply wf_EUnop
+    ).
   Qed.
 
   (* Helper function to enforce `can_eq` in type system *)
@@ -157,7 +166,7 @@ Section WithMap.
         match t as t'
         return expr t' -> expr t' -> if can_eq t' then expr TBool else unit
         with
-        | TInt | TBool | TString | TEmpty => fun e1 e2 =>
+        | TWord | TInt | TBool | TString | TEmpty => fun e1 e2 =>
             EBinop (OEq _ _) e1 e2
         | _ => fun _ _ =>
             tt
@@ -179,25 +188,68 @@ Section WithMap.
     result {t & expr t} :=
     match po with
     | POPlus =>
-        e1' <- enforce_type TInt e1;;
-        e2' <- enforce_type TInt e2;;
-        Success (existT _ _ (EBinop OPlus e1' e2'))
+        match t1 as t' return expr t' -> _ with
+        | TWord => fun e1 =>
+            e2' <- enforce_type TWord e2;;
+            Success (existT _ _ (EBinop OWPlus e1 e2'))
+        | TInt => fun e1 =>
+            e2' <- enforce_type TInt e2;;
+            Success (existT _ _ (EBinop OPlus e1 e2'))
+        | _ => fun _ =>
+            error:(e1 "has type" t1 "but expected" TWord "or" TInt)
+        end e1
     | POMinus =>
-        e1' <- enforce_type TInt e1;;
-        e2' <- enforce_type TInt e2;;
-        Success (existT _ _ (EBinop OMinus e1' e2'))
+        match t1 as t' return expr t' -> _ with
+        | TWord => fun e1 =>
+            e2' <- enforce_type TWord e2;;
+            Success (existT _ _ (EBinop OWMinus e1 e2'))
+        | TInt => fun e1 =>
+            e2' <- enforce_type TInt e2;;
+            Success (existT _ _ (EBinop OMinus e1 e2'))
+        | _ => fun _ =>
+            error:(e1 "has type" t1 "but expected" TWord "or" TInt)
+        end e1
     | POTimes =>
-        e1' <- enforce_type TInt e1;;
-        e2' <- enforce_type TInt e2;;
-        Success (existT _ _ (EBinop OTimes e1' e2'))
+        match t1 as t' return expr t' -> _ with
+        | TWord => fun e1 =>
+            e2' <- enforce_type TWord e2;;
+            Success (existT _ _ (EBinop OWTimes e1 e2'))
+        | TInt => fun e1 =>
+            e2' <- enforce_type TInt e2;;
+            Success (existT _ _ (EBinop OTimes e1 e2'))
+        | _ => fun _ =>
+            error:(e1 "has type" t1 "but expected" TWord "or" TInt)
+        end e1
+    | PODivU =>
+        e1' <- enforce_type TWord e1;;
+        e2' <- enforce_type TWord e2;;
+        Success (existT _ _ (EBinop OWDivU e1' e2'))
     | PODiv =>
-        e1' <- enforce_type TInt e1;;
-        e2' <- enforce_type TInt e2;;
-        Success (existT _ _ (EBinop ODiv e1' e2'))
+        match t1 as t' return expr t' -> _ with
+        | TWord => fun e1 =>
+            e2' <- enforce_type TWord e2;;
+            Success (existT _ _ (EBinop OWDivS e1 e2'))
+        | TInt => fun e1 =>
+            e2' <- enforce_type TInt e2;;
+            Success (existT _ _ (EBinop ODiv e1 e2'))
+        | _ => fun _ =>
+            error:(e1 "has type" t1 "but expected" TWord "or" TInt)
+        end e1
+    | POModU =>
+        e1' <- enforce_type TWord e1;;
+        e2' <- enforce_type TWord e2;;
+        Success (existT _ _ (EBinop OWModU e1' e2'))
     | POMod =>
-        e1' <- enforce_type TInt e1;;
-        e2' <- enforce_type TInt e2;;
-        Success (existT _ _ (EBinop OMod e1' e2'))
+        match t1 as t' return expr t' -> _ with
+        | TWord => fun e1 =>
+            e2' <- enforce_type TWord e2;;
+            Success (existT _ _ (EBinop OWModS e1 e2'))
+        | TInt => fun e1 =>
+            e2' <- enforce_type TInt e2;;
+            Success (existT _ _ (EBinop OMod e1 e2'))
+        | _ => fun _ =>
+            error:(e1 "has type" t1 "but expected" TWord "or" TInt)
+        end e1
     | POAnd =>
         e1' <- enforce_type TBool e1;;
         e2' <- enforce_type TBool e2;;
@@ -217,10 +269,21 @@ Section WithMap.
         | _ => fun _ =>
             error:(e1 "has type" t1 "but expected" TList "or" TString)
         end e1
+    | POLessU =>
+        e1' <- enforce_type TWord e1;;
+        e2' <- enforce_type TWord e2;;
+        Success (existT _ _ (EBinop OWLessU e1' e2'))
     | POLess =>
-        e1' <- enforce_type TInt e1;;
-        e2' <- enforce_type TInt e2;;
-        Success (existT _ _ (EBinop OLess e1' e2'))
+        match t1 as t' return expr t' -> _ with
+        | TWord => fun e1 =>
+            e2' <- enforce_type TWord e2;;
+            Success (existT _ _ (EBinop OWLessU e1 e2'))
+        | TInt => fun e1 =>
+            e2' <- enforce_type TInt e2;;
+            Success (existT _ _ (EBinop OLess e1 e2'))
+        | _ => fun _ =>
+            error:(e1 "has type" t1 "but expected" TWord "or" TInt)
+        end e1
     | POEq =>
         e2' <- enforce_type t1 e2;;
         construct_eq e1 e2'
@@ -240,9 +303,15 @@ Section WithMap.
         e2' <- enforce_type (TList t1) e2;;
         Success (existT _ _ (EBinop (OCons _) e1 e2'))
     | PORange =>
-        e1' <- enforce_type TInt e1;;
-        e2' <- enforce_type TInt e2;;
-        Success (existT _ _ (EBinop ORange e1' e2'))
+        e2' <- enforce_type t1 e2;;
+        match t1 as t' return expr t' -> expr t' -> _ with
+        | TWord => fun e1 e2' =>
+            Success (existT _ _ (EBinop OWRange e1 e2'))
+        | TInt => fun e1 e2' =>
+            Success (existT _ _ (EBinop ORange e1 e2'))
+        | _ => fun _ _ =>
+            error:(e1 "has type" t1 "but expected" TWord "or" TInt)
+        end e1 e2'
     end.
 
   Lemma elaborate_binop_wf (po : pbinop)
@@ -258,32 +327,15 @@ Section WithMap.
       inversion H;
       apply wf_EBinop; now apply enforce_type_wf with (G := G) in H1', H2'
     ).
-    - (* POConcat *)
+    all: try (
       destruct t1; try easy;
-      destruct t2; try easy.
-      + inversion H.
-        now apply wf_EBinop.
-      + destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
-        inversion H.
-        apply wf_EBinop; now apply enforce_type_wf with (G := G) in H2'.
-    - (* POEq *)
-      destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
-      destruct t1; try easy.
-      all:
-        inversion H;
-        apply wf_EBinop; now apply enforce_type_wf with (G := G) in H2'.
-    - (* PORepeat *)
-      destruct t1; try easy.
-      destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
-      inversion H.
-      apply wf_EBinop; now apply enforce_type_wf with (G := G) in H2'.
+      destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy;
+      inversion H;
+      apply wf_EBinop; now apply enforce_type_wf with (G := G) in H2'
+    ).
     - (* POPair *)
       inversion H.
       repeat apply wf_EBinop; now try apply wf_EAtom.
-    - (* POCons *)
-      destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
-      inversion H.
-      apply wf_EBinop; now apply enforce_type_wf with (G := G) in H2'.
   Qed.
 
   Fixpoint elaborate_proj {t : type} (e : expr t) (s : string) :
