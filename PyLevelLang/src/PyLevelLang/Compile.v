@@ -139,7 +139,44 @@ Section WithMap.
     eval_expr_old m l e = Some w ->
     eval_expr_old m l' e = Some w.
   Proof.
-  Admitted.
+    induction e; intros m l l' w H Hl.
+    - (* Syntax.expr.literal *)
+      exact Hl.
+    - (* Syntax.expr.var *)
+      simpl in Hl. simpl. unfold map.extends in H.
+      now apply H.
+    - (* Syntax.expr.inlinetable *)
+      simpl in Hl. simpl.
+      specialize IHe with (m := m) (1 := H).
+      destruct (eval_expr_old m l e); try easy.
+      specialize IHe with (w := r) (1 := eq_refl).
+      now rewrite IHe.
+    - (* Syntax.expr.load *)
+      simpl in Hl. simpl.
+      specialize IHe with (m := m) (1 := H).
+      destruct (eval_expr_old m l e); try easy.
+      specialize IHe with (w := r) (1 := eq_refl).
+      now rewrite IHe.
+    - (* Syntax.expr.op *)
+      simpl in Hl. simpl.
+      destruct (eval_expr_old m l e1) as [r1 |] eqn:H1; try easy.
+      destruct (eval_expr_old m l e2) as [r2 |] eqn:H2; try easy.
+      specialize IHe1 with (m := m) (w := r1) (1 := H) (2 := H1).
+      specialize IHe2 with (m := m) (w := r2) (1 := H) (2 := H2).
+      now rewrite IHe1, IHe2.
+    - (* Syntax.expr.ite *)
+      simpl in Hl. simpl.
+      destruct (eval_expr_old m l e1) as [r1 |] eqn:H1; try easy.
+      specialize IHe1 with (m := m) (w := r1) (1 := H) (2 := H1).
+      rewrite IHe1.
+      destruct word.eqb.
+      + destruct (eval_expr_old m l e3) as [r3 |] eqn:H3; try easy.
+        apply IHe3 with (l' := l') in H3; try assumption.
+        now rewrite H3.
+      + destruct (eval_expr_old m l e2) as [r2 |] eqn:H2; try easy.
+        apply IHe2 with (l' := l') in H2; try assumption.
+        now rewrite H2.
+  Qed.
 
   Lemma compile_correct : forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr),
     wf map.empty e ->
