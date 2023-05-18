@@ -706,7 +706,7 @@ Section WithMap.
 
   (* First attempt at implementing substitute. 
      HAS A BUG - see comment for ELet *)
-  Fail Fixpoint substitute {t tx : type} (x : string) (ex : expr tx) (e : expr t): expr t
+  Fixpoint substitute {t tx : type} (x : string) (ex : expr tx) (e : expr t): expr t
     := match e in expr t' return expr t' with
        | EVar t' x' => match type_eq_dec tx t', String.eqb x x' return expr t' with
                        | left H, true => cast H _ ex
@@ -728,20 +728,18 @@ Section WithMap.
        | EIf e1 e2 e3 => EIf (substitute x ex e1) (substitute x ex e2) (substitute x ex e3)
 
        (* We should rename `x'` to something that does not occur in `ex` *)
+       (* We should also substitute occurrences of `x` in `ex'` *)
        | ELet x' ex' e' => if String.eqb x x' || is_name_used x' ex
                              then ELet x' ex' e'
                              else ELet x' ex' (substitute x ex e')
-
-       | _ => _ (* Silly case to make this command fail *)
        end.
 
   (* Correct, but old and not-strong-enough version of substitute_correct.
      PHOAS was suggested as a possible approach to prove the right version.
      For the meantime, I've left the old version here... *)
-  Fail Lemma substitute_correct' {t tx : type} (l : locals) (x : string) (ex : expr tx) (e : expr t) :
+  Lemma substitute_correct' {t tx : type} (l : locals) (x : string) (ex : expr tx) (e : expr t) :
     get_local l x = interp_expr l ex -> interp_expr l (substitute x ex e) = interp_expr l e.
-  Fail Proof.
-  (*
+  Proof.
     generalize dependent l.
     induction e; intros; simpl.
     - repeat (destruct_one_match; eauto). now subst.
@@ -780,6 +778,6 @@ Section WithMap.
       rewrite map.get_put_diff; eauto.
       rewrite H.
       now rewrite is_name_used_correct.
-  *)
-   Fail Abort.
+  Abort.
+
 End WithMap.
