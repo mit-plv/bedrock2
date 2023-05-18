@@ -322,8 +322,26 @@ Section HeapletwiseHyps.
       canceling Ps om Rest ->
       canceling (emp P :: Ps) om Rest.
   Proof.
-    unfold canceling. intros. destruct H0 as [H2 HR]. split; [intros |exact HR].
+    unfold canceling. intros. destruct H0 as [H2 HR]. split; [intros | exact HR].
     eapply seps_cons. eapply sep_emp_l. eauto.
+  Qed.
+
+  Lemma cancel_ex1_head: forall {T: Type} {P: T -> mem -> Prop} {Ps om Rest} {x: T},
+      canceling (cons (P x) Ps) om Rest ->
+      canceling (cons (ex1 P) Ps) om Rest.
+  Proof.
+    unfold canceling. intros. destruct H as [H HR]. split; [intros | exact HR].
+    eapply seps_cons. eapply sep_ex1_l. unfold ex1. subst.
+    exists x. eapply seps_cons. eapply H. reflexivity.
+  Qed.
+
+  Lemma cancel_sep_head: forall {P Q: mem -> Prop} {Ps om Rest},
+      canceling (cons P (cons Q Ps)) om Rest ->
+      canceling (cons (sep P Q) Ps) om Rest.
+  Proof.
+    unfold canceling. intros. destruct H as [H HR]. split; [intros | exact HR].
+    simpl in *. subst om. destruct Ps as [ | R Rs]. 1: eauto.
+    eapply sep_assoc. eauto.
   Qed.
 
   Lemma canceling_last_step: forall hs path {P m} {Rest: Prop},
@@ -679,6 +697,8 @@ Ltac canceling_step :=
       else
         lazymatch R with
         | emp _ => eapply cancel_pure_head
+        | ex1 _ => eapply cancel_ex1_head
+        | sep _ _ => eapply cancel_sep_head
         | _ => let H :=
                  match goal with
                  | H: with_mem _ ?P' |- _ =>
@@ -831,6 +851,19 @@ Section HeapletwiseHypsTests.
     canceling_step.
     canceling_step.
     step.
+  Qed.
+
+  Goal forall m v1 v2 v3 v4 (Rest: mem -> Prop),
+      (sep (scalar v1 1) (sep (sep (scalar v2 2) (scalar v3 3)) (sep (scalar v4 4) Rest))) m ->
+      exists R a4, sep (ex1 (fun a3 => sep (scalar a4 4) (scalar a3 3))) R m.
+  Proof.
+    clear frobnicate frobnicate_ok wp_call update_locals wp call cmd_call.
+    step. step. step. step. step. step. step. step. step. step. step. step. step.
+    (* now we start canceling, but still with an ex1 inside the list: *)
+    step.
+    step. (* ex1 *)
+    step. (* sep *)
+    step. step. step. step.
   Qed.
 
   (* sample caller: *)
