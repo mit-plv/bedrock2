@@ -21,7 +21,11 @@ Section WithArguments.
   Context {ext_spec : Semantics.ExtSpec} {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
 
   Local Hint Constructors exec: core.
-
+  Create HintDb set_hints.
+  Hint Resolve
+    subset_diff
+    in_singleton
+    subset_union_rr : set_hints.
   Lemma live_monotone :
     forall s used_after used_after',
       subset (of_list used_after) (of_list used_after') ->
@@ -58,7 +62,8 @@ Section WithArguments.
              destr E0.
              eapply eqb_eq in H1.
              subst.
-             eauto using in_singleton.
+             eauto with set_hints.
+
           -- rewrite of_list_cons.
              unfold add. eapply subset_union_rl.
              eapply subset_ref.
@@ -72,6 +77,15 @@ Section WithArguments.
              eauto using subset_diff.
     - (* SStore *)
       simpl.
+      (* destruct_one_match *)
+      repeat match goal with
+      | |- context[if ?c then _ else _] =>
+          lazymatch c with
+          | context[if ?c' then _ else _] => fail
+          |  _ => destr c
+          end
+      end.
+      destruct_one_match.
       destr (find (eqb v) used_after).
       + eapply find_some in E.
         destr E.
@@ -775,23 +789,37 @@ Section WithArguments.
         all: admit.
   Admitted.
 
+  Definition compile_post used_after (postH : Semantics.trace -> mem  -> locals -> MetricLog  -> Prop) : (Semantics.trace -> mem  -> locals -> MetricLog  -> Prop) :=
+    (fun t' m' lL' mcL' =>
+       exists lH' mcH',
+         map.agree_on (PropSet.of_list used_after) lH' lL'
+         /\ postH t' m' lH' mcH' ).
   Lemma deadassignment_correct_aux:
     forall eH eL,
        deadassignment_functions eH = Success eL ->
        forall sH t m mcH lH postH,
          exec eH sH t m lH mcH postH ->
-         forall used_after lL,
+         forall used_after lL mcL,
            map.agree_on (of_list (live (deadAssignment used_after sH) used_after)) lH lL
-           -> exec eL (deadAssignment used_after sH) t m lH mcH
-                (fun t' m' lL' mcL' =>
-                   exists lH' mcH',
-                     map.agree_on (PropSet.of_list used_after) lH' lL'
-                     /\ postH t' m' lH' mcH' ).
+           -> exec eL (deadAssignment used_after sH) t m lL mcL (compile_post used_after postH).
   Proof.
     induction 2.
+    13: {
+      intros.
+      simpl.
+      eapply @exec.seq with (mid := compile_post (live (deadAssignment used_after s2) used_after) mid).
+      - eapply IHexec. simpl in H3. eapply H3.
+      - intros. unfold compile_post in H4. fwd.
+        eapply H2.
+        + eapply H4p1.
+        + eapply H4p0.
+    }
+  Proof.
+    induction 2; unfold compile_post in *; simpl.
     { simpl.
       intros.
       eapply @exec.interact; eauto.
+      eauto.
       intros. apply H3 in H5.
       destruct H5. destruct H5.
       eexists. split.
@@ -906,15 +934,17 @@ Section WithArguments.
     }
     { simpl.
       intros.
-      eapply @exec.seq.
+      eapply @exec.seq with (mid := compile_post (live (deadAssignment used_after s2) used_after) mid).
       - (* specialize (IHexec (live s2 used_after)).
         specialize IHexec with (1 := H3).
         apply IHexec in H3.
         eapply IHexec. *)
 
         eapply IHexec.
-        eapply agree_on_subset.
         + eapply H3.
+        (* eapply agree_on_subset.
+        + eapply H3. *)
+     (*
         + admit. (* eapply live_monotone. *)
           (* replace (live sH used_after) with (live sH used_after')
              where subset used_after used_after'
@@ -926,9 +956,12 @@ Section WithArguments.
              forall s1 u u',
              subset u u' ->
              subset (of_list (live s1 u)) (of_list live s1 u') *)
-
+*)
       - simpl. intros.
+        unfold compile_post in H4.
+        fwd.
         eapply H2.
+
         (* context has that there exists some lH' and mcH',
            but goal has that a specific lH and mcH that satisfy mid
         eexists. eexists.
