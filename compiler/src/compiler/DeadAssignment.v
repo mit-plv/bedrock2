@@ -26,7 +26,201 @@ Section WithArguments.
     subset_diff
     in_singleton
     subset_union_rr : set_hints.
-  Lemma live_monotone :
+ 
+  Definition compile_post used_after (postH : Semantics.trace -> mem  -> locals -> MetricLog  -> Prop) : (Semantics.trace -> mem  -> locals -> MetricLog  -> Prop) :=
+    (fun t' m' lL' mcL' =>
+       exists lH' mcH',
+         map.agree_on (PropSet.of_list used_after) lH' lL'
+         /\ postH t' m' lH' mcH' ).
+  Lemma deadassignment_correct_aux:
+    forall eH eL,
+       deadassignment_functions eH = Success eL ->
+       forall sH t m mcH lH postH,
+         exec eH sH t m lH mcH postH ->
+         forall used_after lL mcL,
+           map.agree_on (of_list (live (deadAssignment used_after sH) used_after)) lH lL
+           -> exec eL (deadAssignment used_after sH) t m lL mcL (compile_post used_after postH).
+  Proof.
+    induction 2.
+    13: {
+      intros.
+      simpl.
+      eapply @exec.seq with (mid := compile_post (live (deadAssignment used_after s2) used_after) mid).
+      - eapply IHexec. simpl in H3. eapply H3.
+      - intros. unfold compile_post in H4. fwd.
+        eapply H2.
+        + eapply H4p1.
+        + eapply H4p0.
+    }
+  Proof.
+    induction 2; unfold compile_post in *; simpl.
+    { simpl.
+      intros.
+      eapply @exec.interact; eauto.
+      eauto.
+      intros. apply H3 in H5.
+      destruct H5. destruct H5.
+      eexists. split.
+      all: eauto using agree_on_refl.
+    }
+    { simpl. intros.
+      eapply @exec.call.
+      * unfold deadassignment_functions in H.
+        unfold deadassignment_function in H.
+        simpl in H.
+        eapply map.try_map_values_fw in H.
+        2: { eapply H0. }
+        destruct H.
+        destruct H.
+        inversion H.
+        rewrite <- H8 in H6.
+        apply H6.
+      * eassumption.
+      * eassumption.
+      * eapply IHexec. apply agree_on_refl.
+      * intros. destruct H6. destruct H6.
+        destruct H6. eapply H4 in H7.
+        destruct H7. destruct H7.
+        destruct H7. destruct H8.
+        eexists. eexists.
+        split.
+        -- eapply agree_on_getmany in H6.
+           rewrite <- H6.
+           eassumption.
+        -- split.
+           ++ eapply H8.
+           ++ eexists. eexists.
+              split.
+              2: eapply H9.
+              eapply agree_on_refl.
+
+    }
+    { simpl. intros.
+      eapply @exec.load; eauto.
+      destr (find (eqb a) (List.removeb eqb x used_after)).
+      all: eauto using agree_on_refl.
+    }
+    { simpl. intros.
+      destr (find (eqb v) used_after).
+      - destr (find (eqb a) used_after); eauto using agree_on_refl.
+      - destr (find (eqb a) (v :: used_after)); eauto using agree_on_refl.
+    }
+    { simpl. intros.
+      eauto using agree_on_refl.
+    }
+    { simpl. intros.
+      all: eauto using agree_on_refl.
+      apply @exec.stackalloc; auto.
+      simpl. intros.
+      eapply @exec.weaken.
+      -- eauto using agree_on_refl.
+      -- simpl. intros.
+         propositional idtac.
+    }
+    { simpl. intros.
+      destr (existsb (eqb x) used_after).
+      all: eauto 6 using agree_on_refl, agree_on_not_in.
+    }
+    { simpl. intros.
+      destr (existsb (eqb x) used_after).
+      all: eauto 6 using agree_on_refl, agree_on_not_in.
+    }
+    { simpl; eauto.
+      intros. destr (existsb (eqb x) used_after).
+      all: eauto 6 using agree_on_refl, agree_on_not_in.
+    }
+    { simpl. intros.
+      eapply @exec.if_true; eauto.
+      eapply IHexec.
+      eapply agree_on_subset.
+      -- eapply H2.
+      -- unfold subset. intros.
+         rewrite ListSet.of_list_list_union.
+         apply in_union_l.
+         rewrite ListSet.of_list_list_union.
+         apply in_union_l.
+         assumption.
+    }
+    { simpl. intros.
+      eapply @exec.if_false; eauto.
+      eapply IHexec.
+      all: eauto.
+      eapply agree_on_subset.
+      -- eapply H2.
+      -- unfold subset. intros.
+         rewrite ListSet.of_list_list_union.
+         apply in_union_l.
+         rewrite ListSet.of_list_list_union.
+         apply in_union_r.
+         assumption.
+    }
+    { simpl. intros.
+      eapply @exec.loop; eauto.
+      - eapply @exec.weaken.
+        + eapply IHexec.
+          admit.
+        + admit.
+      - intros. eapply H2 in H8.
+        2: eassumption.
+        repeat eexists.
+        eapply H8.
+      - intros. eapply H4 in H8.
+        2: eassumption.
+        + eapply H8.
+        + admit.
+      - admit.
+    }
+    { simpl.
+      intros.
+      eapply @exec.seq with (mid := compile_post (live (deadAssignment used_after s2) used_after) mid).
+      - (* specialize (IHexec (live s2 used_after)).
+        specialize IHexec with (1 := H3).
+        apply IHexec in H3.
+        eapply IHexec. *)
+
+        eapply IHexec.
+        + eapply H3.
+        (* eapply agree_on_subset.
+        + eapply H3. *)
+     (*
+        + admit. (* eapply live_monotone. *)
+          (* replace (live sH used_after) with (live sH used_after')
+             where subset used_after used_after'
+           *)
+
+          (* show that
+             of_list (live (deadAss used_after s2) used_after)
+             is subset of (live s2 used_after), and that
+             forall s1 u u',
+             subset u u' ->
+             subset (of_list (live s1 u)) (of_list live s1 u') *)
+*)
+      - simpl. intros.
+        unfold compile_post in H4.
+        fwd.
+        eapply H2.
+
+        (* context has that there exists some lH' and mcH',
+           but goal has that a specific lH and mcH that satisfy mid
+        eexists. eexists.
+        all: eauto.
+      all: ad   mit.
+       exec.seq *)
+        all: admit.
+    }
+    { simpl.
+      intros.
+      eapply @exec.skip; eauto.
+      eexists. eexists.
+      split.
+      2: eassumption.
+      apply agree_on_refl.
+    }
+  Admitted.
+
+End WithArguments.
+(* 
+ Lemma live_monotone :
     forall s used_after used_after',
       subset (of_list used_after) (of_list used_after') ->
       subset (of_list (live s used_after)) (of_list (live s used_after')).
@@ -789,194 +983,6 @@ Section WithArguments.
         all: admit.
   Admitted.
 
-  Definition compile_post used_after (postH : Semantics.trace -> mem  -> locals -> MetricLog  -> Prop) : (Semantics.trace -> mem  -> locals -> MetricLog  -> Prop) :=
-    (fun t' m' lL' mcL' =>
-       exists lH' mcH',
-         map.agree_on (PropSet.of_list used_after) lH' lL'
-         /\ postH t' m' lH' mcH' ).
-  Lemma deadassignment_correct_aux:
-    forall eH eL,
-       deadassignment_functions eH = Success eL ->
-       forall sH t m mcH lH postH,
-         exec eH sH t m lH mcH postH ->
-         forall used_after lL mcL,
-           map.agree_on (of_list (live (deadAssignment used_after sH) used_after)) lH lL
-           -> exec eL (deadAssignment used_after sH) t m lL mcL (compile_post used_after postH).
-  Proof.
-    induction 2.
-    13: {
-      intros.
-      simpl.
-      eapply @exec.seq with (mid := compile_post (live (deadAssignment used_after s2) used_after) mid).
-      - eapply IHexec. simpl in H3. eapply H3.
-      - intros. unfold compile_post in H4. fwd.
-        eapply H2.
-        + eapply H4p1.
-        + eapply H4p0.
-    }
-  Proof.
-    induction 2; unfold compile_post in *; simpl.
-    { simpl.
-      intros.
-      eapply @exec.interact; eauto.
-      eauto.
-      intros. apply H3 in H5.
-      destruct H5. destruct H5.
-      eexists. split.
-      all: eauto using agree_on_refl.
-    }
-    { simpl. intros.
-      eapply @exec.call.
-      * unfold deadassignment_functions in H.
-        unfold deadassignment_function in H.
-        simpl in H.
-        eapply map.try_map_values_fw in H.
-        2: { eapply H0. }
-        destruct H.
-        destruct H.
-        inversion H.
-        rewrite <- H8 in H6.
-        apply H6.
-      * eassumption.
-      * eassumption.
-      * eapply IHexec. apply agree_on_refl.
-      * intros. destruct H6. destruct H6.
-        destruct H6. eapply H4 in H7.
-        destruct H7. destruct H7.
-        destruct H7. destruct H8.
-        eexists. eexists.
-        split.
-        -- eapply agree_on_getmany in H6.
-           rewrite <- H6.
-           eassumption.
-        -- split.
-           ++ eapply H8.
-           ++ eexists. eexists.
-              split.
-              2: eapply H9.
-              eapply agree_on_refl.
 
-    }
-    { simpl. intros.
-      eapply @exec.load; eauto.
-      destr (find (eqb a) (List.removeb eqb x used_after)).
-      all: eauto using agree_on_refl.
-    }
-    { simpl. intros.
-      destr (find (eqb v) used_after).
-      - destr (find (eqb a) used_after); eauto using agree_on_refl.
-      - destr (find (eqb a) (v :: used_after)); eauto using agree_on_refl.
-    }
-    { simpl. intros.
-      eauto using agree_on_refl.
-    }
-    { simpl. intros.
-      all: eauto using agree_on_refl.
-      apply @exec.stackalloc; auto.
-      simpl. intros.
-      eapply @exec.weaken.
-      -- eauto using agree_on_refl.
-      -- simpl. intros.
-         propositional idtac.
-    }
-    { simpl. intros.
-      destr (existsb (eqb x) used_after).
-      all: eauto 6 using agree_on_refl, agree_on_not_in.
-    }
-    { simpl. intros.
-      destr (existsb (eqb x) used_after).
-      all: eauto 6 using agree_on_refl, agree_on_not_in.
-    }
-    { simpl; eauto.
-      intros. destr (existsb (eqb x) used_after).
-      all: eauto 6 using agree_on_refl, agree_on_not_in.
-    }
-    { simpl. intros.
-      eapply @exec.if_true; eauto.
-      eapply IHexec.
-      eapply agree_on_subset.
-      -- eapply H2.
-      -- unfold subset. intros.
-         rewrite ListSet.of_list_list_union.
-         apply in_union_l.
-         rewrite ListSet.of_list_list_union.
-         apply in_union_l.
-         assumption.
-    }
-    { simpl. intros.
-      eapply @exec.if_false; eauto.
-      eapply IHexec.
-      all: eauto.
-      eapply agree_on_subset.
-      -- eapply H2.
-      -- unfold subset. intros.
-         rewrite ListSet.of_list_list_union.
-         apply in_union_l.
-         rewrite ListSet.of_list_list_union.
-         apply in_union_r.
-         assumption.
-    }
-    { simpl. intros.
-      eapply @exec.loop; eauto.
-      - eapply @exec.weaken.
-        + eapply IHexec.
-          admit.
-        + admit.
-      - intros. eapply H2 in H8.
-        2: eassumption.
-        repeat eexists.
-        eapply H8.
-      - intros. eapply H4 in H8.
-        2: eassumption.
-        + eapply H8.
-        + admit.
-      - admit.
-    }
-    { simpl.
-      intros.
-      eapply @exec.seq with (mid := compile_post (live (deadAssignment used_after s2) used_after) mid).
-      - (* specialize (IHexec (live s2 used_after)).
-        specialize IHexec with (1 := H3).
-        apply IHexec in H3.
-        eapply IHexec. *)
 
-        eapply IHexec.
-        + eapply H3.
-        (* eapply agree_on_subset.
-        + eapply H3. *)
-     (*
-        + admit. (* eapply live_monotone. *)
-          (* replace (live sH used_after) with (live sH used_after')
-             where subset used_after used_after'
-           *)
-
-          (* show that
-             of_list (live (deadAss used_after s2) used_after)
-             is subset of (live s2 used_after), and that
-             forall s1 u u',
-             subset u u' ->
-             subset (of_list (live s1 u)) (of_list live s1 u') *)
 *)
-      - simpl. intros.
-        unfold compile_post in H4.
-        fwd.
-        eapply H2.
-
-        (* context has that there exists some lH' and mcH',
-           but goal has that a specific lH and mcH that satisfy mid
-        eexists. eexists.
-        all: eauto.
-      all: ad   mit.
-       exec.seq *)
-        all: admit.
-    }
-    { simpl.
-      intros.
-      eapply @exec.skip; eauto.
-      eexists. eexists.
-      split.
-      2: eassumption.
-      apply agree_on_refl.
-    }
-  Admitted.
-End WithArguments.
