@@ -4,6 +4,7 @@ Require Import Coq.ZArith.ZArith Coq.micromega.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Datatypes.ZList.
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.foreach_hyp.
 Require Import coqutil.Tactics.ident_ops.
@@ -18,6 +19,64 @@ Ltac unique_pose_proof_name newname pf :=
   | |- _ => let __ := match constr:(Set) with
                       | _ => pose proof pf as newname
                       end in newname
+  end.
+
+Ltac is_nat_arith2 f :=
+  lazymatch f with
+  | Nat.add => constr:(true)
+  | Nat.sub => constr:(true)
+  | Nat.mul => constr:(true)
+  | Nat.pow => constr:(true)
+  | _ => constr:(false)
+  end.
+
+Ltac is_Z_arith2 f :=
+  lazymatch f with
+  | Z.add => constr:(true)
+  | Z.sub => constr:(true)
+  | Z.mul => constr:(true)
+  | Z.pow => constr:(true)
+  | _ => constr:(false)
+  end.
+
+Ltac is_const_nat_expr t :=
+  lazymatch t with
+  | O => constr:(true)
+  | S ?p => is_const_nat_expr p
+  | Z.to_nat ?x => is_const_Z_expr x
+  | ?f ?x ?y =>
+      lazymatch is_nat_arith2 f with
+      | true => lazymatch is_const_nat_expr x with
+                | true => is_const_nat_expr y
+                | false => constr:(false)
+                end
+      | false => constr:(false)
+      end
+  | _ => constr:(false)
+  end
+with is_const_positive_expr t :=
+  lazymatch t with
+  | xO ?p => is_const_positive_expr p
+  | xI ?p => is_const_positive_expr p
+  | xH => constr:(true)
+  | _ => constr:(false)
+  end
+with is_const_Z_expr t :=
+  lazymatch t with
+  | Z0 => constr:(true)
+  | Z.pos ?p => is_const_positive_expr p
+  | Z.neg ?p => is_const_positive_expr p
+  | Z.of_nat ?n => is_const_nat_expr n
+  | Z.opp ?x => is_const_Z_expr x
+  | ?f ?x ?y =>
+      lazymatch is_Z_arith2 f with
+      | true => lazymatch is_const_Z_expr x with
+                | true => is_const_Z_expr y
+                | false => constr:(false)
+                end
+      | false => constr:(false)
+      end
+  | _ => constr:(false)
   end.
 
 Section EmbedNatInZ.
@@ -94,6 +153,47 @@ Section ZOps.
       crhs = true /\ (if c then a else b) = a' \/
       crhs = false /\ (if c then a else b) = b'.
   Proof. intros. subst a' b' crhs. destruct c; intuition. Qed.
+
+  Lemma Z_div_mod_comp: forall a b,
+      match Z.compare b 0 with
+      | Eq => False
+      | _ => True
+      end ->
+      a mod b = a - b * (a / b).
+  Proof.
+    intros.
+    assert (b <> 0) as NE. {
+      intro C; subst. rewrite Z.compare_refl in H. exact H.
+    }
+    apply (Z.div_mod a) in NE.
+    lia.
+  Qed.
+
+  Lemma Z_mod_pos_bound_comp: forall a b,
+      match Z.compare 0 b with
+      | Lt => True
+      | _ => False
+      end ->
+      0 <= a mod b < b.
+  Proof.
+    intros. apply Z.mod_pos_bound.
+    destruct_one_match_hyp; try contradiction.
+    eapply (proj1 (Z.compare_lt_iff _ _)).
+    assumption.
+  Qed.
+
+  Lemma Z_mod_neg_bound_comp: forall a b,
+      match Z.compare b 0 with
+      | Lt => True
+      | _ => False
+      end ->
+      b < a mod b <= 0.
+  Proof.
+    intros. apply Z.mod_neg_bound.
+    destruct_one_match_hyp; try contradiction.
+    eapply (proj1 (Z.compare_lt_iff _ _)).
+    assumption.
+  Qed.
 End ZOps.
 
 (* Called when e has no simplification opportunities.
@@ -137,9 +237,8 @@ Ltac zify_term wok e :=
           | Z.add     => zify_app2 wok e f2 a1 a0
           | Z.sub     => zify_app2 wok e f2 a1 a0
           | Z.mul     => zify_app2 wok e f2 a1 a0
-          (* TODO: also pose Euclidean division equations for div and mod *)
-          | Z.div     => zify_app2 wok e f2 a1 a0
-          | Z.modulo  => zify_app2 wok e f2 a1 a0
+          | Z.div     => zify_div_mod_expr wok e f2 a1 a0
+          | Z.modulo  => zify_div_mod_expr wok e f2 a1 a0
           | Z.min     => let pa0 := zify_term wok a0 in
                          let pa1 := zify_term wok a1 in
                          let n := fresh "__Zspecmin_0" in
@@ -171,6 +270,33 @@ Ltac zify_term wok e :=
   (*
   in let __ := match constr:(Set) with _ => idtac "} =" res end in res
   *)
+with zify_div_mod_expr wok e f x m :=
+  let p := zify_app2 wok e f x m in
+  lazymatch type of p with
+  | _ = f ?x' ?m' =>
+      lazymatch is_const_Z_expr m' with
+      | true => (* only pose div/mod equations if the modulus is a constant, because
+                   otherwise it results in non-linear equations *)
+          let c := eval cbv in (Z.compare 0 m') in
+          lazymatch c with
+          | Eq => let n := fresh "__Zdivmod_0" in
+                  let lem := lazymatch f with
+                             | Z.modulo => Z.mod_0_r_ext
+                             | Z.div => Z.div_0_r_ext
+                             end in
+                  let __ := unique_pose_proof_name n (lem x' m' eq_refl) in p
+          | _ => let n1 := fresh "__Zdivmod_0" in
+                 let __ := unique_pose_proof_name n1 (Z_div_mod_comp x' m' I) in
+                 let n2 := fresh "__Zmodbound_0" in
+                 let lem := lazymatch c with
+                            | Lt => Z_mod_pos_bound_comp
+                            | Gt => Z_mod_neg_bound_comp
+                            end in
+                  let __ := unique_pose_proof_name n2 (lem x' m' I) in p
+          end
+      | false => p
+      end
+  end
 with zify_lia_bool wok c0 :=
   let c := rdelta_var c0 in
   match goal with
@@ -651,6 +777,18 @@ Section Tests.
   Local Set Ltac Backtrace.
 
   Ltac rzify_lia := zify_hyps; zify_goal; xlia zchecker.
+
+  Goal forall (x y: Z), 0 <= x < y -> y < 2 ^ 32 -> x mod 2 ^ 32 < y mod 2 ^ 32.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
+
+  Goal forall (x y: Z), y < x <= 0 -> - 2 ^ 32 < y -> y mod - 2 ^ 32 < x mod - 2 ^ 32.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
+
+  Goal forall (x y: Z), x + y / (5 - 7 + 2) = x.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
+
+  Goal forall (x y: Z), x + y mod (5 - 7 + 2) = y + x.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: nat), Z.of_nat (a + b) = Z.of_nat (a + 0) + Z.of_nat (0 + b).
   Proof. intros. rzify_lia. Succeed Qed. Abort.

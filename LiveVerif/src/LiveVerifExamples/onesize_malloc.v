@@ -46,7 +46,7 @@ Definition allocator_cannot_allocate(n: word): mem -> Prop :=
     * malloc_state_t {| free_list := addr |} /[malloc_state_ptr]
     * fixed_size_free_list malloc_block_size addr
     * emp (addr = /[0] \/ (* empty free list *)
-           malloc_block_size < \[n]) (* trying to allocate more than supported *)
+           malloc_block_size mod 2 ^ 32 < \[n]) (* trying to allocate more than supported *)
   }>).
 
 Definition freeable(sz: Z)(a: word): mem -> Prop :=
