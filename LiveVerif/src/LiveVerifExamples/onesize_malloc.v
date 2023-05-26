@@ -30,8 +30,8 @@ Inductive fixed_size_free_list(block_size: Z): word -> mem -> Prop :=
   fixed_size_free_list block_size p m
 | fixed_size_free_list_cons p q m:
   p <> /[0] ->
-  <{ * uintptr q p
-     * anybytes block_size (p ^+ /[4])
+  <{ * <{ + uintptr q
+          + anybytes (block_size - 4) }> p
      * fixed_size_free_list block_size q }> m ->
   fixed_size_free_list block_size p m.
 

@@ -82,10 +82,20 @@ Section Reassociate_sepapp.
   Definition sepapps(l: list sized_predicate): word -> mem -> Prop :=
     proj_predicate (List.fold_right sepapp_sized_predicates sized_emp l).
 
-  (* Could be made stronger, but probably better to purify before a record
-     has been unfolded into sepapps *)
-  Lemma purify_sepapps: forall l a, purify (sepapps l a) True.
+  Lemma purify_sepapps_nil: forall a, purify (sepapps nil a) True.
   Proof. unfold purify. intros. constructor. Qed.
+
+  Lemma purify_sepapps_cons: forall p P Q sz l a,
+      purify (p a) P ->
+      purify (sepapps l (word.add a (word.of_Z sz))) Q ->
+      purify (sepapps (cons (mk_sized_predicate p sz) l) a) (P /\ Q).
+  Proof.
+    unfold purify. intros. unfold sepapps in H1. simpl in H1.
+    destruct_one_match_hyp. simpl in H1. unfold sepapp, sep in H1.
+    fwd. split.
+    - eapply H. eassumption.
+    - eapply H0. unfold sepapps. rewrite E. simpl. eassumption.
+  Qed.
 
   Definition sepapps_size(l: list sized_predicate): Z :=
     List.fold_right Z.add 0 (List.map proj_size l).
@@ -186,7 +196,8 @@ Section Reassociate_sepapp.
 
 End Reassociate_sepapp.
 
-#[export] Hint Resolve purify_sepapps: purify.
+#[export] Hint Resolve purify_sepapps_nil: purify.
+#[export] Hint Resolve purify_sepapps_cons: purify.
 
 Ltac is_ground_Z x :=
   lazymatch x with
