@@ -365,11 +365,20 @@ Section Generate_Json_Equal_Section.
     | _ => False
     end.
 
+  Fixpoint type_size (t : type) : nat :=
+    match t with
+    | Pair s t1 t2 => 2 + (type_size t1 + type_size t2)
+    | List t => S (type_size t)
+    | _ => 0
+    end.
+
   Axiom TODO3 : (forall t, is_record_type t).
 
-  Theorem generate_json_full_eq (l : locals) (t : type) :
+  Theorem generate_json_full_eq (l : locals) (n : nat) (t : type) :
+    (type_size t < n)%nat ->
     (forall (t1 : type) (i2 : interp_type t) (i1 : interp_type t1) s (e : expr (Pair s t1 t)),
     is_record_type t ->
+    (S (type_size t1) < n)%nat ->
     interp_expr l e = (i1, i2) ->
     to_json_field_list (Pair s t1 t) (i1, i2) = interp_expr l (generate_json_field_list (Pair s t1 t) e))
     /\
@@ -377,83 +386,27 @@ Section Generate_Json_Equal_Section.
     interp_expr l e = v ->
     to_json t v = interp_expr l (generate_json t e)).
   Proof.
-    revert l. induction t; split.
-    - intros. simpl in H. tauto.
+    revert l t. induction n; try lia; destruct t; split; intros; cbn -[append] in *;
+      try tauto. 
+    - cbn. congruence.
     - intros. try (cbn; try rewrite H; reflexivity); cbn.
-    - intros. simpl in H. tauto.
-    - intros. try (cbn; try rewrite H; reflexivity); cbn.
-      * (* Bool *) destruct v; rewrite H; reflexivity.
-    - intros. simpl in H. tauto.
-    - intros. try (cbn; try rewrite H; reflexivity); cbn.
-    - try(intros; cbn; repeat rewrite string_app_assoc; repeat f_equal;
-      try rewrite string_app_nil; try (apply TODO2; cbn; rewrite H0; reflexivity)).
-      assert (forall c1 c2 s, String.String c1 (String.String c2 s) =
-            ((String.String c1 (String.String c2 "")) ++ s)%string).
-      { reflexivity. }
-
-      destruct i2.
-      rewrite <- H1. repeat f_equal.
-      cbn in IHt2.
-
-      repeat rewrite <- string_app_assoc.
-
-      apply IHt2.
-      * intros. cbn. apply H.
-      * cbn. rewrite H0. reflexivity.
-    - try (cbn; try rewrite H; reflexivity); cbn.
-    * (* Pair *)
-      intros. destruct v. f_equal.
-
-      destruct t2; cbn -[append]; repeat rewrite string_app_assoc;
-        try (
-          repeat f_equal;
-          apply IHt1;
-          cbn;
-          rewrite H;
-          reflexivity
-        ).
-      (* t2 = Pair *)
-      f_equal. f_equal. f_equal.
-
-      + apply IHt1. cbn. rewrite H. reflexivity.
-      + (* cbn -[append]. *)
-        destruct i0.
-        specialize (IHt1 l).
-        specialize (IHt2 l).
-        destruct IHt1 as [B to_json_eq].
-        destruct IHt2 as [A json_eq_generate_json].
-
-        assert (interp_expr l e = (i, (i0, i1)) ->
-                snd (interp_expr l e) = (i0, i1)).
-        { intros interp_eq. rewrite interp_eq. split; reflexivity. }
-
-        specialize (A _ (i0, i1) i s (e) (TODO3 _) H).
-        cbn [to_json_field_list generate_json_field_list] in A.
-        cbn [to_json_field_list_body generate_json_field_list_body] in A.
-        cbn [interp_expr interp_binop interp_atom] in A.
-
-        repeat rewrite string_app_assoc in A.
-
-        rewrite (to_json_eq i (EUnop (OFst s t1 _) e)) in A.
-        2: { cbn. rewrite H. reflexivity. }
-
-        specialize (json_eq_generate_json (i0, i1) (EUnop (OSnd s t1 (Pair s0 t2_1 t2_2)) e) (H0 H)).
-        cbn -[append] in json_eq_generate_json.
-        repeat rewrite string_app_assoc in json_eq_generate_json.
-        repeat apply str_app_eq_left in json_eq_generate_json.
-        repeat apply str_app_eq_right in json_eq_generate_json.
-        repeat f_equal.
-        repeat rewrite string_app_assoc.
-        apply json_eq_generate_json.
+      * (* Bool *) destruct v; rewrite H0; reflexivity.
+    - intros. cbn; try rewrite H0; reflexivity; cbn.
+    - cbn -[append]. destruct i2.
+      repeat rewrite string_app_assoc. repeat f_equal.
+      * apply IHn.
+        ** lia.
+        ** cbn. rewrite H2. reflexivity.
+      * repeat rewrite <- string_app_assoc.
+        apply IHn; try lia; auto.
+        cbn. rewrite H2. reflexivity.
+    - destruct v. repeat f_equal. apply IHn; try lia; auto.
+      apply TODO3.
     - intros. cbn. repeat rewrite string_app_assoc. repeat f_equal.
-      rewrite string_app_nil. apply TODO2. cbn. rewrite H0. reflexivity.
-    - reflexivity.
-    - intros. cbn. repeat rewrite string_app_assoc. repeat f_equal.
-      apply TODO2. cbn. rewrite H0. reflexivity.
-    - intros. cbn -[append].
-
-      repeat rewrite string_app_assoc. f_equal. f_equal.
-      rewrite H.
+      rewrite string_app_nil.
+      apply IHn; try lia. cbn. rewrite H2. reflexivity.
+    - repeat rewrite string_app_assoc. f_equal. f_equal.
+      rewrite H0.
 
       rewrite concat_fold_right.
       * rewrite fold_right_map. apply fold_right_ext.
@@ -461,9 +414,9 @@ Section Generate_Json_Equal_Section.
         rewrite map.get_put_same.
         cbn -[append].
         repeat rewrite string_app_assoc. f_equal.
-        specialize (IHt (map.put (map.put l "v" (existT interp_type t a)) "acc"
-                     (existT interp_type String b))).
-        destruct IHt as [field_list to_json_eq].
+        specialize (IHn (map.put (map.put l "v" (existT interp_type t a)) "acc"
+                     (existT interp_type String b)) t).
+        destruct IHn as [field_list to_json_eq]; try lia.
         rewrite (to_json_eq a (EVar t "v")).
         ** reflexivity.
         ** cbn. unfold get_local.
