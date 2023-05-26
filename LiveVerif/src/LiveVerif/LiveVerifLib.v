@@ -17,6 +17,7 @@ Require Export bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Export coqutil.Word.Bitwidth32.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Export bedrock2.SepBulletPoints.
+Require Export bedrock2.SepappBulletPoints.
 Require Export coqutil.Datatypes.ZList.
 Require Export bedrock2.WordNotations.
 Require Export bedrock2.find_hyp.

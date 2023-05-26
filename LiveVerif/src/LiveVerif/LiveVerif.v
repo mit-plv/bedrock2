@@ -10,6 +10,7 @@ Section LiveVerif.
   Import DoubleBraceUpdate.
   Local Open Scope zlist_scope.
   Local Open Scope sep_bullets_scope.
+  Local Open Scope sepapp_bullets_scope.
   Local Open Scope live_scope.
   Local Open Scope bool_scope.
 
