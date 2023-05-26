@@ -863,7 +863,7 @@ Section WithMap.
           reflexivity.
     Qed.
 
-
+    
    Theorem is_square_exists : forall (n : nat),
       (exists (x : nat), (x*x)%nat = n) ->
       interp_command map.empty (isSquare_elaborated (Z.of_nat n))
@@ -905,90 +905,6 @@ Section WithMap.
         rewrite map.remove_empty.
         reflexivity.
       - intros.
-
-        eapply fold_left_loop with
-          (Q := (fun (l : locals) => map.get l "ans" = None)).
-        {
-          erewrite fold_left_ext with
-            (P := (fun (l : locals) =>
-                  map.get l "n" = Some (existT interp_type TInt (Z.of_nat (S x * S x)))))
-            (Q := (fun (n : Z) => 0 <= n <= Z.of_nat x))
-            (g := fun (x1 : locals) (x2 : interp_type Int) =>
-                  map.put x1 "x" (existT interp_type Int x2)).
-
-          5:{
-            subst. rewrite map.get_put_same. reflexivity.
-          }
-          4:{
-            intros x0 y get_n y_eq; subst.
-            rewrite map.get_put_same.
-            rewrite map.get_put_diff by congruence.
-            rewrite get_n.
-            cbn.
-
-            assert (forall (y : Z) (x : nat), 0 <= y <= Z.of_nat x
-               -> y * y <= Z.of_nat (x * x)).
-            { intros. induction x1.
-              - simpl. lia.
-              - destruct (y0 =? Z.of_nat (S x1))%Z eqn:eqn1.
-                + rewrite Z.eqb_eq in eqn1. lia.
-                + rewrite Z.eqb_neq in eqn1. lia.
-            }
-            specialize (H y x y_eq).
-
-            assert ((y * y =? Z.pos (Pos.of_succ_nat (x + x * S x)))%Z = false).
-              { rewrite Z.eqb_neq. lia. }
-
-            rewrite H0. reflexivity.
-          }
-
-          1:{
-             apply fold_left_no_ans.
-             rewrite map.get_put_diff by congruence.
-             rewrite map.get_empty.
-             reflexivity.
-           }
-          3:{
-             intros.
-
-
-             induction x.
-             - apply Forall_cons; try easy.
-             - rewrite last_range.
-               apply List.Forall_snoc.
-               + rewrite Forall_forall.
-                 assert (x0 <= Z.of_nat (S x) -> x0 <= Z.of_nat x).
-
-                 rewrite Forall_forall in IHx.
-                 rewrite Forall_forall.
-                 intros.
-
-               Search (Forall _ (_ ++ _)).
-
-
-               apply Forall_cons; try easy.
-               cbn.
-               apply Forall_cons.
-
-
-               apply Forall_forall.
-                Search (Forall _ _). 
-                replace [0] with (0 :: []) by reflexivity.
-
-                intros.
-
-
-             Search (In _ _).
-
-
-in_eq: forall [A : Type] (a : A) (l : list A), In a (a :: l)
-
-
-               apply List.Forall_singleton.
-
-           }
-        }
-
         specialize (small_loop_false _ _ xSq) as IH.
         rewrite IH. clear IH.
 
@@ -1054,6 +970,3 @@ in_eq: forall [A : Type] (a : A) (l : list A), In a (a :: l)
            reflexivity.
    Qed.
 End WithMap.
-
-
-
