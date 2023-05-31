@@ -160,7 +160,14 @@ Section WithMap.
     map.get G x = Some (t, b) -> exists (v : interp_type t),
     map.get lo x = Some (existT _ t v).
   Proof.
-  Admitted.
+    intros Hlo x t b Htb.
+    unfold tenv_relation, map.forall_keys in Hlo.
+    specialize Hlo with (1 := Htb).
+    rewrite Htb in Hlo.
+    destruct map.get.
+    - destruct s. subst. now exists i.
+    - destruct Hlo.
+  Qed.
 
   Lemma locals_relation_get (lo : locals) (l : locals') :
     locals_relation lo l ->
@@ -168,21 +175,22 @@ Section WithMap.
     map.get lo x = Some s -> exists (w : word),
     map.get l x = Some w.
   Proof.
-  Admitted.
-
-  Lemma wf_EVar_invert (G : tenv) (t : type) (x : string) :
-    wf G (EVar t x) -> map.get G x = Some (t, false).
-  Proof.
-  Admitted.
-
-  Lemma wf_ELoc_invert (G : tenv) (t : type) (x : string) :
-    wf G (ELoc t x) -> map.get G x = Some (t, true).
-  Proof.
-  Admitted.
+    intros Hl x t s Hs.
+    unfold locals_relation, map.forall_keys in Hl.
+    specialize Hl with (1 := Hs).
+    rewrite Hs in Hl.
+    destruct map.get.
+    - now exists r.
+    - destruct s, Hl.
+  Qed.
 
   Lemma proj_expected_existT (t : type) (v : interp_type t) :
     v = proj_expected t (existT interp_type t v).
   Proof.
+    unfold proj_expected.
+    simpl.
+    case type_eq_dec eqn:E; [| easy].
+    unfold cast.
   Admitted.
 
   Lemma interp_type_eq : forall {t : type} (e : expr t) (w : interp_type t) (l : locals),
@@ -256,39 +264,23 @@ Section WithMap.
     ).
   Proof.
     intros t. induction e; intros c e' G lo Hlo He He' tr m l Hl; try easy.
-    - (* EVar x *)
-      unfold compile_expr in He'.
-      fwd.
-      simpl.
-      apply exec.skip.
-      apply wf_EVar_invert in He.
-      destruct (tenv_relation_get _ lo Hlo _ _ _ He) as [v Hv].
-      destruct (locals_relation_get _ l Hl  _ t _ Hv) as [w Hw].
-      exists w.
-      ssplit; try easy.
-      unfold get_local.
-      rewrite Hv.
-      unfold locals_relation in Hl.
-      unfold map.forall_keys in Hl.
-      specialize Hl with (1 := Hv).
-      rewrite Hv, Hw in Hl.
-      now rewrite <- proj_expected_existT.
-    - (* ELoc x *)
-      unfold compile_expr in He'.
-      fwd.
-      simpl.
-      apply exec.skip.
-      apply wf_ELoc_invert in He.
-      destruct (tenv_relation_get _ lo Hlo _ _ _ He) as [v Hv].
-      destruct (locals_relation_get _ l Hl  _ t _ Hv) as [w Hw].
-      exists w.
-      ssplit; try easy.
-      unfold get_local.
-      rewrite Hv.
-      unfold locals_relation in Hl.
-      unfold map.forall_keys in Hl.
-      specialize Hl with (1 := Hv).
-      rewrite Hv, Hw in Hl.
+    1-2:
+      (* EVar x, ELoc x *)
+      unfold compile_expr in He';
+      fwd;
+      simpl;
+      apply exec.skip;
+      inversion He;
+      rename H2 into Hx;
+      destruct (tenv_relation_get _ lo Hlo _ _ _ Hx) as [v Hv];
+      destruct (locals_relation_get _ l Hl  _ t _ Hv) as [w Hw];
+      exists w;
+      ssplit; try easy;
+      unfold get_local;
+      rewrite Hv;
+      unfold locals_relation, map.forall_keys in Hl;
+      specialize Hl with (1 := Hv);
+      rewrite Hv, Hw in Hl;
       now rewrite <- proj_expected_existT.
     - (* EAtom a *)
       unfold compile_expr in He'.
