@@ -102,6 +102,8 @@ Section WithMap.
   Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
   Context {ext_spec: ExtSpec}.
 
+  (* Relation between source language and target language values,
+   * denoting that two values are equivalent for a given type *)
   Inductive value_relation : forall {t : type}, interp_type t -> word -> Prop :=
     | RWord (w : word) : value_relation (t := TWord) w w
     | RBool (b : bool) : value_relation (t := TBool) b (word.of_Z (Z.b2z b)).
@@ -113,19 +115,38 @@ Section WithMap.
     apply RBool.
   Qed.
 
-  (* Prove lemmas for opposite directions *)
+  (* Relation between source language and target language locals maps,
+   * denoting that the source language locals are a "subset" of the target
+   * language locals *)
+  Definition locals_relation (lo : locals) (l : locals') : Prop :=
+    map.forall_keys (fun key =>
+    match map.get lo key with
+    | Some (existT _ _ val) => match map.get l key with
+                               | Some val' => value_relation val val'
+                               | None => False
+                               end
+    | None => True
+    end) lo.
 
-  (* Definition compile_value {t : type} (v : interp_type t) : result word := *)
-  (*   match t as t' return interp_type t' -> _ with *)
-  (*   | TInt => fun v => Success (word.of_Z v) *)
-  (*   | TBool => fun v => Success (word.of_Z (Z.b2z v)) *)
-  (*   | _ => fun _ => error:("unimplemented") *)
-  (*   end v. *)
+  Lemma locals_relation_extends (lo : locals) (l l' : locals') :
+    map.extends l' l -> locals_relation lo l -> locals_relation lo l'.
+  Proof.
+    intros Hex.
+    apply weaken_forall_keys.
+    intros key Hl.
+    destruct map.get as [s|]; try easy.
+    destruct s as [t val].
+    destruct (map.get l key) as [v|] eqn:E.
+    - apply (Properties.map.extends_get (m1 := l) (m2 := l')) in E;
+      [| assumption].
+      now rewrite E.
+    - destruct Hl.
+  Qed.
 
-  Lemma interp_type_eq : forall {t : type} (e : expr t) (w : interp_type t),
+  Lemma interp_type_eq : forall {t : type} (e : expr t) (w : interp_type t) (l : locals),
     (existT interp_type t w =
-    existT interp_type t (interp_expr (locals := locals) map.empty e)) ->
-    (interp_expr map.empty e) = w.
+    existT interp_type t (interp_expr l e)) ->
+    (interp_expr l e) = w.
   Proof.
     intros.
     inversion_sigma.
@@ -178,12 +199,14 @@ Section WithMap.
         now rewrite H2.
   Qed.
 
+  (* TODO allow arbitrary tenv *)
   Lemma compile_correct : forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr),
     wf map.empty e ->
     compile_expr e = Success (c, e') -> forall tr m l,
     exec map.empty c tr m l (fun tr' m' l' => exists (w : word),
       eval_expr m' l' e' = Some w /\
-      value_relation (interp_expr map.empty e) w /\
+      (forall (lo : locals), locals_relation lo l ->
+      value_relation (interp_expr lo e) w) /\
       m' = m /\
       map.extends l' l
     ).
@@ -200,12 +223,14 @@ Section WithMap.
         exists (word.of_Z (word.wrap n)).
         ssplit; try easy;
         rewrite <- word.unsigned_of_Z, word.of_Z_unsigned; try easy.
+        intros lo Hlo.
         apply RWord.
       + (* ABool b *)
         injection E as [= <-].
         simpl.
         exists (word.of_Z (Z.b2z b)).
         ssplit; try easy.
+        intros lo Hlo.
         apply RBool.
     - (* EUnop o e *)
       destruct o; try easy.
@@ -226,6 +251,8 @@ Section WithMap.
         |
         | reflexivity
         | assumption ];
+        intros lo Hlo;
+        specialize Hwp1 with (1 := Hlo);
         inversion Hwp1;
         subst;
         repeat lazymatch goal with
@@ -238,7 +265,7 @@ Section WithMap.
         apply RWord.
       + (* ONot *)
         rewrite <- Properties.word.ring_morph_sub.
-        destruct (interp_expr map.empty e); apply RBool.
+        destruct (interp_expr lo e); apply RBool.
     - (* EBinop o e1 e2 *)
       destruct o; try easy.
       all:
@@ -269,6 +296,11 @@ Section WithMap.
         | reflexivity
         | now apply extends_trans with l' ].
       1-9:
+        intros lo Hlo;
+        specialize Hwp1 with (1 := Hlo);
+        assert (Hlo' : locals_relation lo l');
+        [ now apply locals_relation_extends with (l := l) | ];
+        specialize Hw'p1 with (1 := Hlo');
         inversion Hwp1; inversion Hw'p1;
         subst;
         repeat lazymatch goal with
@@ -299,23 +331,29 @@ Section WithMap.
         destruct (word.lts v1 v2);
         apply RBool.
       + (* OEq *)
-        destruct t; try easy; unfold eqb_values.
+        destruct t;
+        intros lo Hlo;
+        specialize Hwp1 with (1 := Hlo);
+        assert (Hlo' : locals_relation lo l');
+        (now apply locals_relation_extends with (l := l)) ||
+        specialize Hw'p1 with (1 := Hlo');
+        try easy; unfold eqb_values.
         * (* TWord *)
           inversion Hwp1; inversion Hw'p1.
-          repeat lazymatch goal with
+          repeat (repeat lazymatch goal with
           | h: existT _ _ _ = existT _ _ _ |- _ =>
               apply interp_type_eq in h
-          end.
-          subst.
+          end;
+          subst).
           destruct (word.eqb _ _);
           apply RBool.
         * (* TBool *)
           inversion Hwp1; inversion Hw'p1.
-          repeat lazymatch goal with
+          repeat (repeat lazymatch goal with
           | h: existT _ _ _ = existT _ _ _ |- _ =>
               apply interp_type_eq in h
           end;
-          subst.
+          subst).
           set (b1 := interp_expr _ e1).
           set (b2 := interp_expr _ e2).
           destruct b1, b2.
