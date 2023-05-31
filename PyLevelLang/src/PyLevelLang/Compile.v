@@ -78,7 +78,7 @@ Definition compile_binop {t1 t2 t3 : type} (o : binop t1 t2 t3) :
 
 Fixpoint compile_expr {t : type} (e : expr t) : result (Syntax.cmd * Syntax.expr) :=
   match e with
-  | EVar _ x =>
+  | EVar _ x | ELoc _ x =>
       Success (Syntax.cmd.skip, Syntax.expr.var x)
   | EAtom a =>
       e' <- compile_atom a;;
@@ -153,7 +153,7 @@ Section WithMap.
                      | None => False
                      end
     | None => True
-    end) lo.
+    end) G.
 
   Lemma tenv_relation_get (G : tenv) (lo : locals) :
     tenv_relation G lo -> forall (x : string) (t : type) (b : bool),
@@ -172,6 +172,11 @@ Section WithMap.
 
   Lemma wf_EVar_invert (G : tenv) (t : type) (x : string) :
     wf G (EVar t x) -> map.get G x = Some (t, false).
+  Proof.
+  Admitted.
+
+  Lemma wf_ELoc_invert (G : tenv) (t : type) (x : string) :
+    wf G (ELoc t x) -> map.get G x = Some (t, true).
   Proof.
   Admitted.
 
@@ -257,6 +262,23 @@ Section WithMap.
       simpl.
       apply exec.skip.
       apply wf_EVar_invert in He.
+      destruct (tenv_relation_get _ lo Hlo _ _ _ He) as [v Hv].
+      destruct (locals_relation_get _ l Hl  _ t _ Hv) as [w Hw].
+      exists w.
+      ssplit; try easy.
+      unfold get_local.
+      rewrite Hv.
+      unfold locals_relation in Hl.
+      unfold map.forall_keys in Hl.
+      specialize Hl with (1 := Hv).
+      rewrite Hv, Hw in Hl.
+      now rewrite <- proj_expected_existT.
+    - (* ELoc x *)
+      unfold compile_expr in He'.
+      fwd.
+      simpl.
+      apply exec.skip.
+      apply wf_ELoc_invert in He.
       destruct (tenv_relation_get _ lo Hlo _ _ _ He) as [v Hv].
       destruct (locals_relation_get _ l Hl  _ t _ Hv) as [w Hw].
       exists w.
