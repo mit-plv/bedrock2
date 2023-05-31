@@ -84,7 +84,43 @@ Proof.
       1:split.
       2:split.
       { SeparationLogic.ecancel_assumption. }
-      { ZnWordsL. }
+      {
+
+        repeat match goal with
+               | x := _ |- _ => clear x || subst x
+               end.
+        repeat match goal with
+               | H: sep _ _ _ |- _ => clear H
+               | x := context[@sep] |- _ => subst x
+               end.
+        clear H2.
+
+(* leads to the following goal:
+
+  left'0, right, target : word
+  xs : list word
+  R : mem -> Prop
+  m : mem
+  H0 : \_ (right ^- left'0) = 8 * Z.of_nat (Datatypes.length xs)
+  v : nat
+  x : list word
+  x0 : mem -> Prop
+  m0 : mem
+  x1, x2, x3 : word
+  length_rep : \_ (x2 ^- x1) = 8 * Z.of_nat (Datatypes.length x)
+  H3 : Datatypes.length x = v
+  H4 : \_ (x2 ^- x1) <> 0
+  ============================
+  \_ (x2 ^- (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^+ /_ 8)) =
+  8 *
+  Z.of_nat
+    (Datatypes.length
+       (List.skipn
+          (S (Z.to_nat (\_ (x1 ^+ (x2 ^- x1) ^>> /_ 4 ^<< /_ 3 ^- x1) / \_ (/_ 8)))) x))
+
+*)
+
+        ZnWordsL. }
       { cleanup_for_ZModArith. reflexivity. }
       split; repeat straightline.
       2: SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
