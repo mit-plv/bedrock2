@@ -191,7 +191,9 @@ Section WithMap.
     simpl.
     case type_eq_dec eqn:E; [| easy].
     unfold cast.
-  Admitted.
+    rewrite (Eqdep_dec.UIP_dec type_eq_dec e eq_refl).
+    trivial.
+  Qed.
 
   Lemma interp_type_eq : forall {t : type} (e : expr t) (w : interp_type t) (l : locals),
     (existT interp_type t w =
