@@ -1,5 +1,6 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
+Require Import bedrock2.to_from_anybytes.
 
 Class malloc_constants := {
   malloc_state_ptr: Z;
@@ -96,7 +97,15 @@ Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      
     repeat heapletwise_step.
                                                                                 .**/
     store(malloc_state_ptr, load(l));                                      /**. .**/
-    p = l;                                                                 /**. .**/
+    p = l;                                                                 /**.
+
+    rename H5 into h.
+    unfold with_mem in h.
+    eapply cast_to_anybytes in h.
+    2: { eauto with contiguous. }
+    bottom_up_simpl_in_hyp h.
+    change (with_mem m0 (anybytes malloc_block_size l)) in h.
+                                                                                .**/
   } else {                                                                 /**. .**/
     /* empty */                                                            /**. .**/
   }                                                                        /**. .**/

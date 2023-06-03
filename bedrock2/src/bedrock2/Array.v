@@ -135,7 +135,7 @@ End Array.
 
 Require Import Ring.
 
-Section ElemImpl1.
+Section DifferentElemPredicates.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
   Context {value} {mem : map.map word value} {mem_ok : map.ok mem}.
 
@@ -171,7 +171,18 @@ Section ElemImpl1.
       rewrite Znat.Nat2Z.inj_add in H.
       Tactics.eqapply H; f_equal; ring.
   Qed.
-End ElemImpl1.
+
+  Lemma array_map{T U: Type}(elem: word -> T -> mem -> Prop)(f: U -> T) addr vs sz:
+      impl1 (array (fun a x => elem a (f x)) sz addr vs)
+            (array elem sz addr (List.map f vs)).
+  Proof.
+    unfold impl1. revert addr. induction vs; intros.
+    - simpl in *. assumption.
+    - simpl in *.
+      destruct H as (m1 & m2 & D & Hm1 & Hm2).
+      exists m1, m2. eauto.
+  Qed.
+End DifferentElemPredicates.
 
 Section ByteArray.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.

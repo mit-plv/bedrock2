@@ -46,12 +46,6 @@ Section Reassociate_sepapp.
 
   Import List.ListNotations. Local Open Scope list_scope.
 
-  Lemma sep_assoc_eq: forall (p q r: mem -> Prop),
-      sep (sep p q) r = sep p (sep q r).
-  Proof.
-    intros. eapply iff1ToEq. eapply sep_assoc.
-  Qed.
-
   Lemma sepapp_assoc(P1 P2 P3: word -> mem -> Prop)
     {sz1: PredicateSize P1}{sz2: PredicateSize P2}:
     sepapp (sepapp P1 P2) P3 = sepapp P1 (sepapp P2 P3).
