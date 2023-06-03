@@ -130,7 +130,48 @@ Section Array.
     eapply Znat.Z2Nat.inj_lt; try eapply Z.div_pos; try blia; [].
     eapply Z.div_lt_upper_bound; blia.
   Qed.
+
 End Array.
+
+Require Import Ring.
+
+Section ElemImpl1.
+  Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
+  Context {value} {mem : map.map word value} {mem_ok : map.ok mem}.
+
+  Add Ring wring : (word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (word.ring_morph (word := word)),
+       constants [word_cst]).
+
+  Lemma impl1_array : forall T (P Q: word->T->mem->Prop) p a l,
+      (forall a e, impl1 (P a e) (Q a e)) ->
+      impl1 (array P p a l) (array Q p a l).
+  Proof.
+    intros. revert dependent a; revert p.
+    induction l; cbn [array]; eauto; intros; [reflexivity|].
+    eapply Proper_sep_impl1; eauto.
+  Qed.
+
+  Lemma impl1_array_with_offset : forall T (P Q: word->T->mem->Prop) sz l a,
+      (forall i e, List.nth_error l i = Some e ->
+                   let a' := (word.add a (word.of_Z (Z.of_nat i * sz))) in
+                   impl1 (P a' e) (Q a' e)) ->
+      impl1 (array P (word.of_Z sz) a l) (array Q (word.of_Z sz) a l).
+  Proof.
+    induction l; cbn [array]; intros; [reflexivity|].
+    rename a0 into addr.
+    eapply Proper_sep_impl1.
+    - specialize (H O). cbn in H. specialize (H _ eq_refl). rewrite word.add_0_r in H.
+      exact H.
+    - eapply IHl. cbv zeta. intros.
+      specialize (H (S i)). cbn -[Z.of_nat] in H. specialize (H _ H0).
+      clear IHl.
+      change (S i) with (1 + i)%nat in H.
+      rewrite Znat.Nat2Z.inj_add in H.
+      Tactics.eqapply H; f_equal; ring.
+  Qed.
+End ElemImpl1.
 
 Section ByteArray.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.

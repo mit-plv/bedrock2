@@ -416,39 +416,12 @@ Section Riscv.
   Qed.
   Hint Resolve instr_IM_impl1_I : ecancel_impl.
 
-  (* TODO move *)
-  Lemma Proper_impl1_array : forall T (P Q: word->T->mem->Prop) p a l,
-      (forall a e, impl1 (P a e) (Q a e)) ->
-      impl1 (array P p a l) (array Q p a l).
-  Proof.
-    intros. revert dependent a; revert p.
-    induction l; cbn [array]; eauto; intros; [reflexivity|].
-    eapply Proper_sep_impl1; eauto.
-  Qed.
-
-  (* TODO move *)
-  Lemma Proper_impl1_array_with_offset : forall T (P Q: word->T->mem->Prop) sz l a,
-      (forall i e, List.nth_error l i = Some e ->
-                   let a' := (word.add a (word.of_Z (Z.of_nat i * sz))) in
-                   impl1 (P a' e) (Q a' e)) ->
-      impl1 (array P (word.of_Z sz) a l) (array Q (word.of_Z sz) a l).
-  Proof.
-    induction l; cbn [array]; intros; [reflexivity|].
-    rename a0 into addr.
-    eapply Proper_sep_impl1.
-    - specialize (H O). cbn in H. specialize (H _ eq_refl). rewrite word.add_0_r in H.
-      exact H.
-    - eapply IHl. cbv zeta. intros.
-      specialize (H (S i)). cbn -[Z.of_nat] in H. specialize (H _ H0).
-      eqapply H; f_equal; ZnWords.
-  Qed.
-
   Lemma idecode_array_implies_program: forall addr insts,
       word.unsigned addr mod 4 = 0 ->
       impl1 (addr :-> insts : array (instr idecode) (word.of_Z 4))
             (program RV32IM addr insts).
   Proof.
-    intros. eapply Proper_impl1_array_with_offset.
+    intros. eapply impl1_array_with_offset.
     intros.
     unfold instr, ptsto_instr, impl1, ex1.
     intros m Hm. fwd.
@@ -900,7 +873,7 @@ Section Riscv.
         eapply array_exmem in H11.
         eapply (Forall_and verify_mul_insts) in H11.
         epose proof (array_Forall _ _ _ _ _ _ _ H11 Hm).
-        eapply Proper_impl1_array; try eassumption.
+        eapply impl1_array; try eassumption.
 
         intros ? ? mx Hmx.
         eapply sep_emp_l in Hmx; case Hmx as [[? [? [? [? Hmx]]]] Hmy].
