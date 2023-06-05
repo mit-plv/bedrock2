@@ -1,5 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Init.Byte.
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Datatypes.ZList.
@@ -204,6 +205,48 @@ Section SepLog.
     }
   Qed.
 
+  Lemma split_anybytes_from_anybytes:
+    (* a = start of the entire array. a' = start of the part to split off. *)
+    forall a a' (nAll nReq: Z) i,
+      word.unsigned (word.sub a' a) = i ->
+      0 <= nReq /\ 0 <= i /\ i+nReq <= nAll ->
+      (forall m,
+        anybytes nAll a m ->
+        sep (anybytes i a)
+          (sep (anybytes nReq a')
+             (anybytes (nAll-i-nReq) (word.add a' (word.of_Z nReq)))) m) /\
+      (* Note: often, this second part will not be used, because the split-off
+         bytes get initialized to something, but if the callee just used it as
+         scratch space, this second part will be used *)
+      (forall m,
+        sep (anybytes i a)
+          (sep (anybytes nReq a')
+             (anybytes (nAll-i-nReq)
+              (word.add a' (word.of_Z nReq)))) m  ->
+        anybytes nAll a m).
+  Proof.
+    split; intros.
+    - eapply split_anybytes with (i := i) in H1. 2: lia.
+      repeat heapletwise_step.
+      eapply split_anybytes with (i := nReq) in H3. 2: lia.
+      repeat heapletwise_step.
+      subst i.
+      rewrite word.of_Z_unsigned in *.
+      rewrite word.add_sub_r_same_r in *.
+      repeat heapletwise_step.
+    - repeat heapletwise_step.
+      replace nAll with (i + (nAll - i)) by lia.
+      eapply merge_anybytes.
+      repeat heapletwise_step.
+      refine (conj _ I). intros. cbn.
+      replace (nAll - i) with (nReq + (nAll - i - nReq)) by lia.
+      eapply merge_anybytes.
+      subst i.
+      rewrite word.of_Z_unsigned in *.
+      rewrite word.add_sub_r_same_r in *.
+      repeat heapletwise_step.
+  Qed.
+
   (* does not depend on any library functions so that we can safely cbn it *)
   Fixpoint sepapps_offset(n: nat)(l: list sized_predicate): Z :=
     match n with
@@ -363,6 +406,7 @@ Ltac split_range_from_hyp_default :=
       lazymatch P with
       | sepapps _ _ => idtac
       | array _ _ _ _ => idtac
+      | anybytes _ _ => idtac
       | _ => let h := head P in unfold h in H;
              record.simp_hyp H;
              lazymatch P with
@@ -387,6 +431,16 @@ Ltac split_range_from_hyp_default :=
           [ (* index of first element *)
           | (* number of elements to split off *)
           | bottom_up_simpl_in_goal; reflexivity
+          | bottom_up_simpl_in_goal; reflexivity
+          | ZnWords
+          | change g;
+            eapply (proj1 pf) in H;
+            eapply proj2 in pf;
+            let t := type of pf in change (merge_step t) in pf ]
+      | with_mem _ (anybytes ?nAll ?start') =>
+          unshelve epose proof
+            (split_anybytes_from_anybytes start' start nAll size _ _ _) as pf;
+          [ (* offset of first element *)
           | bottom_up_simpl_in_goal; reflexivity
           | ZnWords
           | change g;
