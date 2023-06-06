@@ -88,7 +88,7 @@ Section WithMem64.
 End WithMem64.
 
 Create HintDb contiguous.
-Hint Resolve
+#[export] Hint Resolve
   sepapps_cons_contiguous
   sepapps_nil_contiguous
   uintptr32_contiguous

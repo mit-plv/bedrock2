@@ -23,6 +23,7 @@ Require Import bedrock2.find_hyp.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.HeapletwiseAutoSplitMerge.
+Require Import bedrock2.SepLib.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.PurifyHeapletwise.
 Require Import bedrock2.bottom_up_simpl.
@@ -712,7 +713,7 @@ Create HintDb live_always_unfold.
 
 Ltac new_heapletwise_hyp_hook h t ::=
   autounfold with live_always_unfold in h;
-  puri_simpli_zify_hyp accept_unless_follows_by_xlia h t.
+  let t := type of h in puri_simpli_zify_hyp accept_unless_follows_by_xlia h t.
 
 Ltac heapletwise_hyp_pre_clear_hook H ::=
   let T := type of H in puri_simpli_zify_hyp accept_unless_follows_by_xlia H T.

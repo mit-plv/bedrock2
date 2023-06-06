@@ -64,7 +64,7 @@ Local Hint Extern 1 (cannot_purify (freeable _ _))
 Local Hint Extern 1 (PredicateSize_not_found (fixed_size_free_list _))
       => constructor : suppressed_warnings.
 
-Local Hint Unfold allocator allocator_cannot_allocate : live_always_unfold.
+Local Hint Unfold allocator allocator_cannot_allocate freeable : live_always_unfold.
 
 #[export] Instance spec_of_malloc: fnspec :=                                    .**/
 

@@ -400,9 +400,17 @@ Ltac find_field_index_from_offset :=
         fail 1000 i_ev "is not an evar"
   end.
 
+Ltac turn_split_merge_lemma_into_merge_step H :=
+  tryif will_merge_back_later then
+    eapply proj2 in H;
+    let t := type of H in
+    change (merge_step t) in H
+  else clear H.
+
 Ltac split_range_from_hyp_default :=
   lazymatch goal with
   | |- split_range_from_hyp ?start ?size (with_mem ?m ?P) ?H ?g =>
+      change g;
       lazymatch P with
       | sepapps _ _ => idtac
       | array _ _ _ _ => idtac
@@ -410,7 +418,8 @@ Ltac split_range_from_hyp_default :=
       | _ => let h := head P in unfold h in H;
              record.simp_hyp H;
              lazymatch P with
-             | ?pred ?v ?addr => pose proof (mk_fold_step pred)
+             | ?pred ?v ?addr =>
+                 tryif will_merge_back_later then pose proof (mk_fold_step pred) else idtac
              end
       end;
       let pf := fresh in
@@ -421,10 +430,8 @@ Ltac split_range_from_hyp_default :=
           [ (* i *)
           | bottom_up_simpl_in_goal; reflexivity
           | ZnWords
-          | change g;
-            eapply (proj1 pf) in H;
-            eapply proj2 in pf;
-            let t := type of pf in change (merge_step t) in pf ]
+          | eapply (proj1 pf) in H;
+            turn_split_merge_lemma_into_merge_step pf ]
       | with_mem _ (@array _ _ _ _ _ ?elem ?elemSize ?n ?vs ?start') =>
           unshelve epose proof
             (split_off_subarray_from_array start' start elem n size _ _ _ _ _) as pf;
@@ -433,20 +440,16 @@ Ltac split_range_from_hyp_default :=
           | bottom_up_simpl_in_goal; reflexivity
           | bottom_up_simpl_in_goal; reflexivity
           | ZnWords
-          | change g;
-            eapply (proj1 pf) in H;
-            eapply proj2 in pf;
-            let t := type of pf in change (merge_step t) in pf ]
+          | eapply (proj1 pf) in H;
+            turn_split_merge_lemma_into_merge_step pf ]
       | with_mem _ (anybytes ?nAll ?start') =>
           unshelve epose proof
             (split_anybytes_from_anybytes start' start nAll size _ _ _) as pf;
           [ (* offset of first element *)
           | bottom_up_simpl_in_goal; reflexivity
           | ZnWords
-          | change g;
-            eapply (proj1 pf) in H;
-            eapply proj2 in pf;
-            let t := type of pf in change (merge_step t) in pf ]
+          | eapply (proj1 pf) in H;
+            turn_split_merge_lemma_into_merge_step pf ]
       | with_mem _ (sepapps _ ?start') =>
           unshelve epose proof
             (split_off_field_from_sepapps start' start size _ _ _) as pf;
@@ -454,13 +457,12 @@ Ltac split_range_from_hyp_default :=
           | (* n (index of field): determined later below *)
           | (* address difference equals offset *)
             bottom_up_simpl_in_goal; reflexivity
-          | change g;
-            eapply (proj1 pf) in H;
-            [ eapply proj2 in pf
+          | eapply (proj1 pf) in H;
+            [ idtac
             | find_field_index_from_offset
             | reflexivity ];
             cbn [sepapps_replace] in H;
-            let t := type of pf in change (merge_step t) in pf ]
+            turn_split_merge_lemma_into_merge_step pf ]
       end
   end.
 

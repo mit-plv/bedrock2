@@ -9,6 +9,7 @@ Require Import bedrock2.Map.DisjointUnion.
 Require Import bedrock2.TacticError.
 Require Import bedrock2.SuppressibleWarnings.
 Require Import bedrock2.PurifySep.
+Require Import bedrock2.is_emp.
 Require Import bedrock2.Map.SeparationLogic. Local Open Scope sep_scope.
 
 (* to mark hypotheses about heaplets *)
@@ -521,6 +522,13 @@ Ltac replace_with_new_mem_hyp H :=
 (* Called whenever a new heapletwise hyp is created whose type will get destructed further *)
 Ltac new_heapletwise_hyp_hook h t := idtac.
 
+Ltac will_merge_back_later :=
+  lazymatch goal with
+  | |- canceling ?Ps ?oms True => fail
+  | |- canceling ?Ps ?oms _ => idtac
+  | |- _ => fail
+  end.
+
 Ltac new_mem_hyp h :=
   let t := type of h in
   let p := lazymatch t with
@@ -531,7 +539,11 @@ Ltac new_mem_hyp h :=
   | sep _ _ => idtac
   | emp _ => idtac
   | ex1 _ => idtac
-  | _ => new_heapletwise_hyp_hook h t
+  | _ => (tryif will_merge_back_later
+          then idtac (* don't simplify empty arrays away because merge step happening later
+                        will need it even if empty *)
+          else (eapply (use_is_emp p) in h; [ | solve [ eauto with is_emp ] ]))
+         || new_heapletwise_hyp_hook h t
   end.
 
 Ltac split_sep_step :=
@@ -590,17 +602,26 @@ Ltac split_sep_step :=
 
 Ltac destruct_ex1_step :=
   lazymatch goal with
-  | H: with_mem ?m (ex1 (fun name => _)) |- _ =>
-      let x := fresh name in
-      destruct H as [x H]
+  | H: with_mem ?m (ex1 (fun name => _)) |- _ => let x := fresh name in destruct H as [x H]
+  | H: ex1 (fun name => _) ?m            |- _ => let x := fresh name in destruct H as [x H]
+  end.
+
+Ltac destruct_emp_step0 H m P :=
+  lazymatch goal with
+  | D: _ = mmap.Def _ |- _ =>
+      destruct H as [? H];
+      subst m;
+      rewrite ?mmap.du_empty_l, ?mmap.du_empty_r in D;
+      lazymatch P with
+      | True => clear H
+      | _ => idtac
+      end
   end.
 
 Ltac destruct_emp_step :=
   lazymatch goal with
-  | H: with_mem ?m (emp ?P), D: _ = mmap.Def _ |- _ =>
-      destruct H as [? H];
-      subst m;
-      rewrite ?mmap.du_empty_l, ?mmap.du_empty_r in D
+  | H: with_mem ?m (emp ?P) |- _ => destruct_emp_step0 H m P
+  | H: emp ?P ?m            |- _ => destruct_emp_step0 H m P
   end.
 
 (* usually already done by split_sep_step, but when introducing hyps from the
@@ -715,7 +736,8 @@ Ltac intro_step :=
       let m' := fresh "m0" in intro m'; move m' before m
   | HOld: _ = mmap.Def ?mOld |- _ = mmap.Def _ -> _ =>
       let tmp := fresh "tmp" in
-      intro tmp; move tmp before HOld; clear mOld HOld; rename tmp into HOld
+      intro tmp; move tmp before HOld; clear mOld HOld; rename tmp into HOld;
+      rewrite ?mmap.du_empty_l, ?mmap.du_empty_r in HOld
   | H: with_mem _ _ |- sep _ _ _ -> _ =>
       let H' := fresh "H0" in
       intro H'; move H' before H

@@ -5,6 +5,7 @@ Require Import coqutil.Map.Interface.
 Require Import coqutil.Datatypes.ZList. Import ZList.List.ZIndexNotations.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.PurifySep.
+Require Import bedrock2.is_emp.
 Require Import bedrock2.Array bedrock2.Scalars.
 
 (* PredTp equals `Z -> mem -> Prop` if the predicate takes any number of values
@@ -138,65 +139,89 @@ Section WithMem.
     intros. eapply iff1ToEq. eapply sep_assoc.
   Qed.
 
-  (* The opposite direction does not hold because (len (vs1 ++ vs2) = n1 + n2) does
-     not imply (len vs1 = n1 /\ len vs2 = n2), but we can quantify over a vs:=vs1++vs2
-     and use vs[:i] ++ vs[i:], resulting in the lemma split_array below *)
-  Lemma merge_array{T: Type}(elem: T -> word -> mem -> Prop){sz: PredicateSize elem}:
-    forall n1 n2 vs1 vs2 a m,
-      sep (array elem n1 vs1 a)
-          (array elem n2 vs2 (word.add a (word.of_Z (sz * n1)))) m ->
-      array elem (n1 + n2) (vs1 ++ vs2) a m.
-  Proof.
-    unfold array. intros.
-    pose proof (Array.array_append (fun (a0 : word) (v : T) => elem v a0)
-                  (word.of_Z sz) vs1 vs2 a) as A.
-    eapply iff1ToEq in A.
-    rewrite A. clear A.
-    rewrite sep_assoc_eq in H.
-    eapply sep_emp_l in H.
-    destruct H as [? H]. subst n1.
-    eapply sep_comm in H.
-    rewrite sep_assoc_eq in H.
-    eapply sep_emp_l in H.
-    destruct H as [? H]. subst n2.
-    eapply sep_emp_l. split.
-    1: rewrite List.app_length; lia.
-    rewrite word.ring_morph_mul.
-    rewrite word.of_Z_unsigned.
-    rewrite <- word.ring_morph_mul.
-    eapply sep_comm in H.
-    exact H.
-  Qed.
-
   Import ZList.List.ZIndexNotations.
   Local Open Scope zlist_scope.
 
-  Lemma split_array{T: Type}(elem: T -> word -> mem -> Prop){sz: PredicateSize elem}:
-    forall vs n i a m,
-      0 <= i <= len vs ->
-      array elem n vs a m ->
-      sep (array elem i vs[:i] a)
+  Section Array.
+    Context {T: Type} (elem: T -> word -> mem -> Prop) {sz: PredicateSize elem}.
+
+    (* The opposite direction does not hold because (len (vs1 ++ vs2) = n1 + n2) does
+     not imply (len vs1 = n1 /\ len vs2 = n2), but we can quantify over a vs:=vs1++vs2
+     and use vs[:i] ++ vs[i:], resulting in the lemma split_array below *)
+    Lemma merge_array: forall n1 n2 vs1 vs2 a m,
+        sep (array elem n1 vs1 a)
+          (array elem n2 vs2 (word.add a (word.of_Z (sz * n1)))) m ->
+        array elem (n1 + n2) (vs1 ++ vs2) a m.
+    Proof.
+      unfold array. intros.
+      pose proof (Array.array_append (fun (a0 : word) (v : T) => elem v a0)
+                    (word.of_Z sz) vs1 vs2 a) as A.
+      eapply iff1ToEq in A.
+      rewrite A. clear A.
+      rewrite sep_assoc_eq in H.
+      eapply sep_emp_l in H.
+      destruct H as [? H]. subst n1.
+      eapply sep_comm in H.
+      rewrite sep_assoc_eq in H.
+      eapply sep_emp_l in H.
+      destruct H as [? H]. subst n2.
+      eapply sep_emp_l. split.
+      1: rewrite List.app_length; lia.
+      rewrite word.ring_morph_mul.
+      rewrite word.of_Z_unsigned.
+      rewrite <- word.ring_morph_mul.
+      eapply sep_comm in H.
+      exact H.
+    Qed.
+
+    Lemma split_array: forall vs n i a m,
+        0 <= i <= len vs ->
+        array elem n vs a m ->
+        sep (array elem i vs[:i] a)
           (array elem (n-i) vs[i:] (word.add a (word.of_Z (sz * i)))) m.
+    Proof.
+      unfold array. intros.
+      eapply sep_emp_l in H0. destruct H0.
+      rewrite (List.split_at_index vs i) in H1 by assumption.
+      eapply Array.array_append in H1.
+      rewrite sep_assoc_eq.
+      eapply sep_emp_l.
+      split.
+      { apply List.len_upto. assumption. }
+      apply sep_comm.
+      rewrite sep_assoc_eq.
+      eapply sep_emp_l.
+      split.
+      { subst. apply List.len_from. assumption. }
+      rewrite word.ring_morph_mul in H1.
+      rewrite word.of_Z_unsigned in H1.
+      rewrite <- word.ring_morph_mul in H1.
+      rewrite List.len_upto in H1 by assumption.
+      apply sep_comm.
+      exact H1.
+    Qed.
+
+    Lemma array_nil_is_emp: forall n a, is_emp (array elem n nil a) (n = 0).
+    Proof.
+      unfold is_emp, impl1, array. intros. eapply sep_emp_l in H.
+      simpl in H. destruct H. unfold emp in *. destruct H0. auto.
+    Qed.
+
+    Lemma array_0_is_emp: forall n xs a, n = 0 -> is_emp (array elem n xs a) (xs = nil).
+    Proof.
+      intros. destruct xs.
+      - eapply weaken_is_emp. 2: eapply array_nil_is_emp. intros. reflexivity.
+      - unfold is_emp, array, impl1. intros. eapply sep_emp_l in H0. apply proj1 in H0.
+        subst n. discriminate.
+    Qed.
+  End Array.
+
+  Hint Resolve array_0_is_emp : is_emp.
+
+  Lemma anybytes_is_emp: forall n a, n = 0 -> is_emp (anybytes n a) True.
   Proof.
-    unfold array. intros.
-    eapply sep_emp_l in H0. destruct H0.
-    rewrite (List.split_at_index vs i) in H1 by assumption.
-    eapply Array.array_append in H1.
-    rewrite sep_assoc_eq.
-    eapply sep_emp_l.
-    split.
-    { apply List.len_upto. assumption. }
-    apply sep_comm.
-    rewrite sep_assoc_eq.
-    eapply sep_emp_l.
-    split.
-    { subst. apply List.len_from. assumption. }
-    rewrite word.ring_morph_mul in H1.
-    rewrite word.of_Z_unsigned in H1.
-    rewrite <- word.ring_morph_mul in H1.
-    rewrite List.len_upto in H1 by assumption.
-    apply sep_comm.
-    exact H1.
+    unfold anybytes. intros. eapply weaken_is_emp. 1: intros _; constructor.
+    typeclasses eauto with is_emp.
   Qed.
 
   Lemma merge_anybytes: forall n1 n2 addr m,
@@ -270,6 +295,12 @@ Section WithMem.
   Qed.
 End WithMem.
 
-#[export] Hint Extern 1 (PredicateSize (anybytes ?sz)) => exact sz
-: typeclass_instances.
+#[export] Hint Extern 1 (PredicateSize (anybytes ?sz)) => exact sz : typeclass_instances.
+
 #[export] Hint Resolve purify_anybytes : purify.
+
+#[export] Hint Resolve array_nil_is_emp : is_emp.
+#[export] Hint Extern 1 (is_emp (array ?elem ?n ?xs ?a) _) =>
+  eapply (array_0_is_emp elem n xs a ltac:(xlia zchecker)) : is_emp.
+#[export] Hint Extern 1 (is_emp (anybytes ?n ?a) _) =>
+  eapply (anybytes_is_emp n a ltac:(xlia zchecker)) : is_emp.
