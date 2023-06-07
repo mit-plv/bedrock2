@@ -39,7 +39,7 @@ Proof.
 Qed.
 Hint Resolve purify_ring_buffer : purify.
 
-Hint Unfold ring_buffer : live_always_unfold.
+Hint Unfold ring_buffer : heapletwise_always_unfold.
 
 #[export] Instance spec_of_ring_buf_enq: fnspec :=                              .**/
 

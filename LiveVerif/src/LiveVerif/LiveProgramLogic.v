@@ -309,9 +309,16 @@ Ltac close_block :=
   lazymatch goal with
   | B: scope_marker ?sk |- _ =>
       lazymatch sk with
-      | ElseBranch => eapply wp_skip
-      | LoopBody => unset_loop_body_vars; eapply wp_skip; autounfold with live_always_unfold
-      | FunctionBody => eapply wp_skip; close_function; autounfold with live_always_unfold
+      | ElseBranch =>
+          eapply wp_skip
+      | LoopBody =>
+          unset_loop_body_vars;
+          eapply wp_skip;
+          autounfold with heapletwise_always_unfold
+      | FunctionBody =>
+          eapply wp_skip;
+          close_function;
+          autounfold with heapletwise_always_unfold
       | _ => fail "Can't end a block here"
       end
   | _ => fail "no scope marker found"
@@ -708,12 +715,8 @@ Ltac final_program_logic_step logger :=
               logger ltac:(fun _ => idtac "after_command_simpl_hook; unzify; unpurify")
         end ].
 
-(* For hints registered with `Hint Unfold`, used by autounfold *)
-Create HintDb live_always_unfold.
-
 Ltac new_heapletwise_hyp_hook h t ::=
-  autounfold with live_always_unfold in h;
-  let t := type of h in puri_simpli_zify_hyp accept_unless_follows_by_xlia h t.
+  puri_simpli_zify_hyp accept_unless_follows_by_xlia h t.
 
 Ltac heapletwise_hyp_pre_clear_hook H ::=
   let T := type of H in puri_simpli_zify_hyp accept_unless_follows_by_xlia H T.
@@ -793,7 +796,7 @@ Ltac add_snippet s :=
   | |- after_if ?fs ?b ?PThen ?PElse ?c ?Post =>
       lazymatch s with
       | SEnd =>
-          autounfold with live_always_unfold;
+          autounfold with heapletwise_always_unfold;
           eapply after_if_skip;
           intros;
           unpackage_context;

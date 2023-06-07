@@ -529,7 +529,11 @@ Ltac will_merge_back_later :=
   | |- _ => fail
   end.
 
+(* For hints registered with `Hint Unfold`, used by autounfold *)
+Create HintDb heapletwise_always_unfold.
+
 Ltac new_mem_hyp h :=
+  autounfold with heapletwise_always_unfold in h;
   let t := type of h in
   let p := lazymatch t with
            | with_mem ?m ?p => p
