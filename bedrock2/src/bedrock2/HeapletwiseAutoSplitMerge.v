@@ -492,7 +492,7 @@ Section CancelingInHyp.
   Lemma canceling_step_in_hyp: forall (P: mem -> Prop) Ps Q mAll m path hs1 hs2,
       with_mem m P ->
       mem_tree_lookup hs1 path = Some m ->
-      mem_tree_remove hs1 path = Some (Some hs2) ->
+      mem_tree_remove hs1 path = Some hs2 ->
       canceling_in_hyp mAll (interp_mem_tree hs1) (cons P Ps) Q ->
       canceling_in_hyp mAll (interp_mem_tree hs2) Ps Q.
   Proof.

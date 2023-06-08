@@ -122,6 +122,7 @@ Section HeapletwiseHyps.
   Qed.
 
   Inductive mem_tree :=
+  | NEmpty
   | NLeaf(m: mem)
   | NDisjointUnion(t1 t2: mem_tree)
   | NEqualUnion(t1 t2: mem_tree).
@@ -135,6 +136,7 @@ Section HeapletwiseHyps.
 
   Fixpoint interp_mem_tree(t: mem_tree): mmap mem :=
     match t with
+    | NEmpty => mmap.Def map.empty
     | NLeaf m => mmap.Def m
     | NDisjointUnion t1 t2 => mmap.du (interp_mem_tree t1) (interp_mem_tree t2)
     | NEqualUnion t1 t2 => mmap.equal_union (interp_mem_tree t1) (interp_mem_tree t2)
@@ -142,6 +144,7 @@ Section HeapletwiseHyps.
 
   Fixpoint mem_tree_lookup(t: mem_tree)(path: list bool): option mem :=
     match t with
+    | NEmpty => None
     | NLeaf m =>
         match path with
         | nil => Some m
@@ -154,13 +157,13 @@ Section HeapletwiseHyps.
         end
     end.
 
-  (* outer option is for Success/Failure, inner option is for whether the result
-     is empty *)
-  Fixpoint mem_tree_remove(t: mem_tree)(path: list bool): option (option mem_tree) :=
+  (* option is for Success/Failure *)
+  Fixpoint mem_tree_remove(t: mem_tree)(path: list bool): option mem_tree :=
     match t with
+    | NEmpty => None
     | NLeaf m =>
         match path with
-        | nil => Some None
+        | nil => Some NEmpty
         | cons _ _ => None
         end
     | NDisjointUnion t1 t2 =>
@@ -169,14 +172,14 @@ Section HeapletwiseHyps.
         | cons b rest =>
             if b then
               match mem_tree_remove t2 rest with
-              | Some (Some t2') => Some (Some (NDisjointUnion t1 t2'))
-              | Some None => Some (Some t1)
+              | Some NEmpty => Some t1
+              | Some t2' => Some (NDisjointUnion t1 t2')
               | None => None
               end
             else
               match mem_tree_remove t1 rest with
-              | Some (Some t1') => Some (Some (NDisjointUnion t1' t2))
-              | Some None => Some (Some t2)
+              | Some NEmpty => Some t2
+              | Some t1' => Some (NDisjointUnion t1' t2)
               | None => None
               end
         end
@@ -261,42 +264,58 @@ Section HeapletwiseHyps.
 
   Lemma consume_mem_tree: forall {hs path m mFull},
       mem_tree_lookup hs path = Some m ->
-      mem_tree_remove hs path = Some None ->
+      mem_tree_remove hs path = Some NEmpty ->
       interp_mem_tree hs = mmap.Def mFull ->
       m = mFull.
   Proof.
     induction hs; simpl; intros; fwd.
+    - discriminate.
     - reflexivity.
-    - destruct b; fwd; destruct o; simpl in *; fwd; discriminate.
+    - destruct b; fwd; simpl in *.
+      + destruct_one_match_hyp.
+        * rewrite map.du_empty_l in *. simpl in *.
+          fwd. eapply IHhs2; try eassumption. reflexivity.
+        * discriminate.
+      + rewrite mmap.du_empty_r in H1. eapply IHhs1; try eassumption.
     - eapply invert_Some_eq_equal_union in H1. fwd.
       destruct b; fwd; eauto.
   Qed.
 
   Lemma split_mem_tree: forall {hs hs' path m mFull},
       mem_tree_lookup hs path = Some m ->
-      mem_tree_remove hs path = Some (Some hs') ->
+      mem_tree_remove hs path = Some hs' ->
       interp_mem_tree hs = mmap.Def mFull ->
       mmap.du (interp_mem_tree hs') (mmap.Def m) = mmap.Def mFull.
   Proof.
     induction hs; simpl; intros; fwd.
     - discriminate.
-    - unfold mmap.du in H1. fwd.
-      destruct b; fwd.
-      + destruct o; fwd; simpl.
-        * specialize IHhs2 with (1 := H) (2 := E1) (3 := eq_refl).
-          rewrite mmap.du_assoc. rewrite IHhs2.
-          rewrite E. exact H1.
-        * pose proof (consume_mem_tree H E1 E0). subst.
-          rewrite E. exact H1.
-      + destruct o; fwd; simpl.
-        * specialize IHhs1 with (1 := H) (2 := E1) (3 := eq_refl).
-          rewrite mmap.du_assoc.
-          rewrite (mmap.du_comm (interp_mem_tree hs2) m).
-          rewrite <- mmap.du_assoc.
-          rewrite IHhs1.
-          rewrite E0. exact H1.
-        * epose proof (consume_mem_tree H E1 E). subst.
-          rewrite E0. rewrite mmap.du_comm. exact H1.
+    - simpl. rewrite map.du_empty_l. reflexivity.
+    - pose proof H1 as A.
+      unfold mmap.du in A. fwd.
+      specialize IHhs1 with (3 := eq_refl).
+      specialize IHhs2 with (3 := eq_refl).
+      destruct b; fwd; destruct_one_match_hyp; fwd; simpl;
+      repeat match goal with
+      | IH: _, H: mem_tree_lookup _ _ = Some _ |- _ => specialize IH with (1 := H)
+      end;
+      repeat match goal with
+      | IH: _, H: mem_tree_remove _ _ = Some _ |- _ => specialize IH with (1 := H)
+      end;
+      simpl (interp_mem_tree _) in *;
+      rewrite ?mmap.du_empty_l in *;
+      fwd;
+      rewrite ?E, ?E0.
+      1: assumption.
+      1-3: try (rewrite <- IHhs2 in H1; rewrite mmap.du_assoc; assumption).
+      1: rewrite mmap.du_comm; assumption.
+      all: progress rewrite <- IHhs1 in *.
+      1: change (mmap.of_option (map.du m2 m1)) with (mmap.du m2 m1).
+      all: rewrite mmap.du_assoc.
+      all: lazymatch goal with
+           | |- mmap.du _ (mmap.du ?a ?b) = _ => rewrite (mmap.du_comm a b)
+           end.
+      all: rewrite <- mmap.du_assoc.
+      all: assumption.
     - eapply invert_Some_eq_equal_union in H1. fwd.
       destruct b; fwd; eauto.
   Qed.
@@ -304,7 +323,7 @@ Section HeapletwiseHyps.
   Lemma cancel_head: forall hs path {P: mem -> Prop} {Ps hs' m Rest},
       with_mem m P ->
       mem_tree_lookup hs path = Some m ->
-      mem_tree_remove hs path = Some (Some hs') ->
+      mem_tree_remove hs path = Some hs' ->
       canceling Ps (interp_mem_tree hs') Rest ->
       canceling (P :: Ps) (interp_mem_tree hs) Rest.
   Proof.
@@ -348,7 +367,7 @@ Section HeapletwiseHyps.
   Lemma canceling_last_step: forall hs path {P m} {Rest: Prop},
       with_mem m P ->
       mem_tree_lookup hs path = Some m ->
-      mem_tree_remove hs path = Some None ->
+      mem_tree_remove hs path = Some NEmpty ->
       Rest ->
       canceling [P] (interp_mem_tree hs) Rest.
   Proof.
@@ -395,51 +414,35 @@ Section HeapletwiseHyps.
     rewrite map.putmany_empty_l. assumption.
   Qed.
 
-  Lemma step_collecting_heaplets: forall mAll P Ps hs ohs' path m,
+  Lemma step_collecting_heaplets: forall mAll P Ps hs hs' path m,
       with_mem m P ->
       mem_tree_lookup hs path = Some m ->
-      mem_tree_remove hs path = Some ohs' ->
+      mem_tree_remove hs path = Some hs' ->
       collecting_heaplets mAll (interp_mem_tree hs) Ps ->
-      collecting_heaplets mAll (match ohs' with
-                                | Some hs' => interp_mem_tree hs'
-                                | None => mmap.Def map.empty
-                                end) (cons P Ps).
+      collecting_heaplets mAll (interp_mem_tree hs') (cons P Ps).
   Proof.
     unfold with_mem, collecting_heaplets.
     intros. destruct H2 as (mUsed & H2 & HmUsed).
     unfold mmap.du, mmap.of_option, map.du in H2. fwd. subst.
-    destruct ohs' as [hs'| ].
-    - pose proof (split_mem_tree H0 H1 E) as A.
-      unfold mmap.du, mmap.of_option, map.du in A. fwd. subst.
-      eapply map.disjointb_spec in E1.
-      eexists. split.
-      2: {
-        apply seps'_iff1_seps. simpl. unfold sep, map.split. do 2 eexists.
-        ssplit.
-        4: apply seps'_iff1_seps; eassumption.
-        3: eassumption.
-        1: reflexivity.
-        eapply map.disjoint_putmany_l. eassumption.
-      }
-      unfold mmap.du, mmap.of_option, map.du.
-      rewrite (proj2 (map.disjointb_spec _ _)).
-      { f_equal. eapply map.putmany_assoc. }
-      eapply map.disjoint_putmany_r. split.
-      + eapply map.disjointb_spec. eassumption.
-      + eapply map.disjoint_putmany_l. rewrite map.putmany_comm.
-        1: eassumption. apply map.disjoint_comm. eapply map.disjointb_spec. assumption.
-    - eapply consume_mem_tree in H1. 2,3: eassumption.
-      subst m0.
-      eexists. split.
-      2: {
-        apply seps'_iff1_seps. simpl. unfold sep, map.split. do 2 eexists.
-        ssplit.
-        4: apply seps'_iff1_seps; eassumption.
-        3: eassumption.
-        1: reflexivity.
-        eapply map.disjointb_spec. assumption.
-      }
-      apply mmap.du_empty_l.
+    pose proof (split_mem_tree H0 H1 E) as A.
+    unfold mmap.du, mmap.of_option, map.du in A. fwd. subst.
+    eapply map.disjointb_spec in E1.
+    eexists. split.
+    2: {
+      apply seps'_iff1_seps. simpl. unfold sep, map.split. do 2 eexists.
+      ssplit.
+      4: apply seps'_iff1_seps; eassumption.
+      3: eassumption.
+      1: reflexivity.
+      eapply map.disjoint_putmany_l. eassumption.
+    }
+    unfold mmap.du, mmap.of_option, map.du.
+    rewrite (proj2 (map.disjointb_spec _ _)).
+    { f_equal. eapply map.putmany_assoc. }
+    eapply map.disjoint_putmany_r. split.
+    + eapply map.disjointb_spec. eassumption.
+    + eapply map.disjoint_putmany_l. rewrite map.putmany_comm.
+      1: eassumption. apply map.disjoint_comm. eapply map.disjointb_spec. assumption.
   Qed.
 End HeapletwiseHyps.
 
@@ -453,7 +456,11 @@ Ltac reify_mem_tree e :=
       let t1 := reify_mem_tree e1 in
       let t2 := reify_mem_tree e2 in
       constr:(NEqualUnion t1 t2)
-  | mmap.Def ?m => constr:(NLeaf m)
+  | mmap.Def ?m =>
+      lazymatch m with
+      | @map.empty ?k ?v ?mem => constr:(@NEmpty k v mem)
+      | _ => constr:(NLeaf m)
+      end
   end.
 
 Ltac should_unpack P :=
@@ -907,7 +914,7 @@ Section HeapletwiseHypsTests.
     match goal with
     | |- forall _, _ => intro
     | H: with_mem _ (scalar ?v ?a) |- canceling (cons (scalar ?v' ?a) _) _ _ =>
-        replace v with v' in H by Lia.lia
+        progress (replace v with v' in H by Lia.lia)
     | |- _ => progress fwd
     | |- wp (cmd_call frobnicate _) _ _ _ _ => eapply wp_call; [eapply frobnicate_ok | ]
     | |- exists _, _ => eexists
@@ -948,7 +955,7 @@ Section HeapletwiseHypsTests.
     canceling_step.
     canceling_step.
     step.
-  Qed.
+  Succeed Qed. Abort.
 
   Goal forall m v1 v2 v3 v4 (Rest: mem -> Prop),
       (sep (scalar v1 1) (sep (sep (scalar v2 2) (scalar v3 3)) (sep (scalar v4 4) Rest))) m ->
@@ -961,7 +968,7 @@ Section HeapletwiseHypsTests.
     step. (* ex1 *)
     step. (* sep *)
     step. step. step. step.
-  Qed.
+  Succeed Qed. Abort.
 
   (* sample caller: *)
   Goal forall (p1 p2 p3 x y: nat) t (m: mem) l (R: mem -> Prop),
@@ -972,7 +979,7 @@ Section HeapletwiseHypsTests.
            sep (scalar 0 p1) (sep (scalar y p2) (sep (scalar res p3) R)) m)).
   Proof.
     repeat step.
-  Qed.
+  Succeed Qed. Abort.
 
   Let scalar_pair(v1 v2 a1 a2: nat) := sep (scalar v1 a1) (scalar v2 a2).
 
@@ -1001,7 +1008,18 @@ Section HeapletwiseHypsTests.
     step. step. step. step. step. step. step. step. step. step. step. step. step.
 
     repeat step.
-  Qed.
+  Succeed Qed. Abort.
+
+  Goal let nonzeroscalar := fun v a => sep (scalar v a) (emp (0 < a)%nat) in
+       forall v a m R, sep (nonzeroscalar v a) R m -> sep (scalar v a) R m.
+  Proof.
+    intros.
+    repeat step.
+    unfold nonzeroscalar, with_mem in H0.
+    step. step. (* now we have a map.empty in the heaplets passed to canceling! *)
+    step. (* map.empty gets deleted *)
+    step. step.
+  Succeed Qed. Abort.
 
 (* sample unfolded spec of indirect_add:
 
@@ -1043,5 +1061,5 @@ Section HeapletwiseHypsTests.
     repeat step.
     eapply wp_call. 1: eapply aliasing_add_ok.
     repeat step.
-  Qed.
+  Succeed Qed. Abort.
 End HeapletwiseHypsTests.
