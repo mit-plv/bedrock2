@@ -33,7 +33,7 @@ Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          
   uintptr_t tmp = load16(p-2);                                             /**.
 
   test_error Error:("Exactly one of the following subrange claims should hold:"
-                      [|subrange (p ^- /[2]) 2 p (8 + len (barPayload b) * 4)|]).
+                      [|subrange (p ^- /[2]) 2 p (8 + n * 4)|]).
 Abort.
 
 Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          .**/

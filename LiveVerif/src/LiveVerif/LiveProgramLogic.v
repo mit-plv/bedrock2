@@ -722,9 +722,7 @@ Ltac new_heapletwise_hyp_hook h t ::=
 Ltac heapletwise_hyp_pre_clear_hook H ::=
   let T := type of H in puri_simpli_zify_hyp accept_unless_follows_by_xlia H T.
 
-(* TODO maybe only do fwd_subst in inv_rec, or for only var vars created by fwd,
-   or not at all?
-Ltac fwd_subst H ::= idtac. *)
+Ltac fwd_subst H ::= idtac.
 
 Ltac heapletwise_step' logger :=
   heapletwise_step;
