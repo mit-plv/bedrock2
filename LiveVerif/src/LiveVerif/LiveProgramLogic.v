@@ -25,6 +25,7 @@ Require Import bedrock2.ident_to_string.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.HeapletwiseAutoSplitMerge.
 Require Import bedrock2.SepLib.
+Require Import bedrock2.sepapp.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.PurifyHeapletwise.
 Require Import bedrock2.bottom_up_simpl.
@@ -544,6 +545,20 @@ Ltac default_eq_prover_step :=
   | |- ?l = ?r => is_evar r; reflexivity
   | |- ?l = ?r => constr_eq l r; reflexivity
   | |- _ => bottom_up_simpl_in_goal (* fails if nothing to simplify *)
+  | |- _ => record.simp_goal (* fails if nothing to simplify *)
+  | |- sepapps nil _ = sepapps nil _ => reflexivity
+  | |- sepapps (cons _ _) _ = sepapps (cons _ _) _ => eapply f_equal2
+  | |- sepapps _ _ = ?rhs =>
+      lazymatch rhs with
+      | sepapps _ _ => fail
+      | _ => symmetry
+      end
+  | |- ?lhs = sepapps _ _ =>
+      let h := head lhs in
+      unfold h;
+      lazymatch goal with
+      | |- sepapps _ _ = sepapps _ _ => idtac
+      end
   | |- _ => safe_f_equal_step
   | |- ?l = ?r => subst l
   | |- ?l = ?r => subst r

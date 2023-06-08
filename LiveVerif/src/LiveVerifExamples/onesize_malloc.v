@@ -111,7 +111,6 @@ Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      
   }                                                                        /**. .**/
   return p;                                                                /**. .**/
 }                                                                          /**.
-reflexivity.
 Qed.
 
 #[export] Instance spec_of_free: fnspec :=                                      .**/
