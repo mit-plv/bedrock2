@@ -199,7 +199,7 @@ Section SepLog.
         with (word.of_Z (word := word) (elemSize * len vsm)) in * by
           (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
 
-      collect_heaplets_into_one_sepclause m'.
+      collect_heaplets_into_one_sepclause. cbn [seps] in D.
       repeat heapletwise_step.
       rewrite 2 List.app_length; ZnWords.
     }

@@ -282,7 +282,7 @@ Ltac strip_conss l :=
   end.
 
 Ltac package_heapletwise_context :=
-  let H := fresh "M" in collect_heaplets_into_one_sepclause H;
+  collect_heaplets_into_one_sepclause;
   package_context.
 
 Ltac unset_loop_body_vars :=

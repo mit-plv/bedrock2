@@ -126,11 +126,6 @@ Ltac add_hyp_to_post Post :=
       tryif ident_starts_with Def H then fail else idtac; (* to be added last as an elet *)
       lazymatch T with
       | scope_marker _ => fail 1 "done (scope marker reached)"
-      | _ ?m => let t := type of m in
-                lazymatch t with
-                | @map.rep (@word.rep _ _) Init.Byte.byte _ => flatten_seps_in H
-                | _ => idtac
-                end
       | _ => idtac
       end;
       eapply (ands_cons H) in Post; clear H

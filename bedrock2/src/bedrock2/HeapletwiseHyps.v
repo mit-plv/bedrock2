@@ -373,6 +373,74 @@ Section HeapletwiseHyps.
     intros. unfold sep, map.split. do 2 eexists. eapply map.disjointb_spec in H.
     ssplit. 1: reflexivity. all: eassumption.
   Qed.
+
+  Definition collecting_heaplets(mAll: mem)(omAvailable: mmap mem)(Ps: list (mem -> Prop)) :=
+    exists mUsed, mmap.du omAvailable (mmap.Def mUsed) = mmap.Def mAll /\ seps Ps mUsed.
+
+  Lemma start_collecting_heaplets: forall mAll om,
+      om = mmap.Def mAll ->
+      collecting_heaplets mAll om nil.
+  Proof.
+    unfold collecting_heaplets. intros. subst. exists map.empty. split.
+    - apply mmap.du_empty_r.
+    - unfold seps, emp. auto.
+  Qed.
+
+  Lemma done_collecting_heaplets: forall mAll Ps,
+      collecting_heaplets mAll (mmap.Def map.empty) Ps ->
+      seps Ps mAll.
+  Proof.
+    unfold collecting_heaplets. intros. subst. fwd.
+    unfold mmap.du, mmap.of_option, map.du in *. fwd. subst.
+    rewrite map.putmany_empty_l. assumption.
+  Qed.
+
+  Lemma step_collecting_heaplets: forall mAll P Ps hs ohs' path m,
+      with_mem m P ->
+      mem_tree_lookup hs path = Some m ->
+      mem_tree_remove hs path = Some ohs' ->
+      collecting_heaplets mAll (interp_mem_tree hs) Ps ->
+      collecting_heaplets mAll (match ohs' with
+                                | Some hs' => interp_mem_tree hs'
+                                | None => mmap.Def map.empty
+                                end) (cons P Ps).
+  Proof.
+    unfold with_mem, collecting_heaplets.
+    intros. destruct H2 as (mUsed & H2 & HmUsed).
+    unfold mmap.du, mmap.of_option, map.du in H2. fwd. subst.
+    destruct ohs' as [hs'| ].
+    - pose proof (split_mem_tree H0 H1 E) as A.
+      unfold mmap.du, mmap.of_option, map.du in A. fwd. subst.
+      eapply map.disjointb_spec in E1.
+      eexists. split.
+      2: {
+        apply seps'_iff1_seps. simpl. unfold sep, map.split. do 2 eexists.
+        ssplit.
+        4: apply seps'_iff1_seps; eassumption.
+        3: eassumption.
+        1: reflexivity.
+        eapply map.disjoint_putmany_l. eassumption.
+      }
+      unfold mmap.du, mmap.of_option, map.du.
+      rewrite (proj2 (map.disjointb_spec _ _)).
+      { f_equal. eapply map.putmany_assoc. }
+      eapply map.disjoint_putmany_r. split.
+      + eapply map.disjointb_spec. eassumption.
+      + eapply map.disjoint_putmany_l. rewrite map.putmany_comm.
+        1: eassumption. apply map.disjoint_comm. eapply map.disjointb_spec. assumption.
+    - eapply consume_mem_tree in H1. 2,3: eassumption.
+      subst m0.
+      eexists. split.
+      2: {
+        apply seps'_iff1_seps. simpl. unfold sep, map.split. do 2 eexists.
+        ssplit.
+        4: apply seps'_iff1_seps; eassumption.
+        3: eassumption.
+        1: reflexivity.
+        eapply map.disjointb_spec. assumption.
+      }
+      apply mmap.du_empty_l.
+  Qed.
 End HeapletwiseHyps.
 
 Ltac reify_mem_tree e :=
@@ -765,30 +833,32 @@ Ltac heapletwise_step :=
     | start_canceling
     | canceling_step ].
 
-Ltac collect_heaplets_into_one_sepclause M :=
+Ltac collecting_heaplets_step D :=
+  lazymatch type of D with
+  | collecting_heaplets ?mAll ?om ?Ps =>
+      let hs := reify_mem_tree om in
+      lazymatch goal with
+      | H: with_mem ?m ?P |- _ =>
+          let p := match constr:(Set) with
+                   | _ => path_in_mem_tree hs m
+                   | _ => constr:(tt)
+                   end in
+          lazymatch p with
+          | tt => idtac
+          | _ => eapply (step_collecting_heaplets mAll P Ps hs _ p m H) in D;
+                 [ | reflexivity | reflexivity ];
+                 cbn [interp_mem_tree] in D
+          end;
+          clear m H
+      end
+  end.
+
+Ltac collect_heaplets_into_one_sepclause :=
   lazymatch goal with
-  | D: _ = mmap.Def ?m |- _ =>
-      eassert (_ m) as M;
-      unfold mmap.du in D; unfold mmap.of_option, map.du in D; fwd;
-      [ solve [ repeat lazymatch goal with
-                  | WM: with_mem ?m _ |- _ ?m => exact WM
-                  | D: map.disjointb ?m1 ?m2 = true |- _ (map.putmany ?m1 ?m2) =>
-                      eapply sep_from_disjointb; [exact D | | ]
-                  | |- ?g => fail 2 "no heaplet hypothesis for" g
-                  end ]
-      | ]
-  end;
-  repeat match goal with
-    | H: with_mem _ _ |- _ => clear H
-    | H: map.disjointb _ _ = true |- _ => clear H
-    end;
-  lazymatch type of M with
-  | _ ?putmanys =>
-      let m := fresh "m0" in forget putmanys as m;
-      let mem := type of m in
-      repeat match goal with
-        | heaplet: mem |- _ => clear heaplet
-        end
+  | D: _ = mmap.Def _ |- _ =>
+      eapply start_collecting_heaplets in D;
+      repeat collecting_heaplets_step D;
+      eapply done_collecting_heaplets in D
   end.
 
 Section HeapletwiseHypsTests.
@@ -853,7 +923,7 @@ Section HeapletwiseHypsTests.
     (* split seps into separate hyps: *)
     step. step. step. step.
     (* just for desting, join them back together: *)
-    let H := fresh in collect_heaplets_into_one_sepclause H.
+    collect_heaplets_into_one_sepclause. cbn [seps] in D.
     (* and split again: *)
     step. step. step. step.
     (* existentials: *)
