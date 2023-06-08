@@ -33,6 +33,9 @@ typedef struct __attribute__ ((__packed__)) {
 } foo_t;
 /**.
 
+Local Hint Extern 1 (cannot_purify (bar_t _ _ _))
+      => constructor : suppressed_warnings.
+
 #[export] Instance spec_of_swap_barAB: fnspec :=                                .**/
 
 void swap_barAB(uintptr_t p) /**#

@@ -432,7 +432,8 @@ Ltac purified_hyp_of_pred h pred m :=
   | true => constr:(mk_nothing_to_purify) (* it's probably a frame *)
   | false =>
       let pf := match constr:(Set) with
-                | _ => constr:(ltac:(eauto with purify) : purify pred _)
+                (* typeclasses eauto is "more modern" and has unlimited search depth *)
+                | _ => constr:(ltac:(typeclasses eauto with purify) : purify pred _)
                 | _ => let __ :=
                          match constr:(Set) with
                          | _ => pose_warning (mk_cannot_purify pred)

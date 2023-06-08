@@ -17,6 +17,8 @@ Definition bar(n: Z)(b: bar_t): word -> mem -> Prop := record!
   (cons (mk_record_field_description barC uintptr)
   (cons (mk_record_field_description barPayload (array (uint 32) n)) nil)))).
 
+Ltac check_for_warnings_hook ::= continue_if_warning.
+
 #[export] Instance spec_of_swap_barAB: fnspec :=                                .**/
 
 void swap_barAB(uintptr_t p) /**#
@@ -28,17 +30,21 @@ void swap_barAB(uintptr_t p) /**#
           * R }> m' #**/                                                   /**.
 Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          .**/
 {                                                                          /**. .**/
-  uintptr_t tmp = load16(p+2);                                             /**.
+  uintptr_t tmp = load16(p-2);                                             /**.
 
   test_error Error:("Exactly one of the following subrange claims should hold:"
-                      [|\[p ^+ /[2] ^- p] + 2 <= 8 + n * 4|]).
+                      [|subrange (p ^- /[2]) 2 p (8 + len (barPayload b) * 4)|]).
+Abort.
 
-  clear Error.
-  forget bar as bar'.
+Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          .**/
+{                                                                          /**.
 
-  steps.
+  forget bar as bar'.                                                           .**/
+
+  uintptr_t tmp = load16(p+2);                                             /**.
+
   lazymatch goal with
-  | _: message_scope_marker (PredicateSize_not_found (bar' n b)) |- _ => idtac
+  | _: warning_marker (PredicateSize_not_found (bar' _ b)) |- _ => idtac
   end.
   test_error Error:("Exactly one of the following subrange claims should hold:" nil).
 Abort.

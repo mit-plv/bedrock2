@@ -18,6 +18,7 @@ Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Arr
 Require Import bedrock2.unzify.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.TacticError. Local Open Scope Z_scope.
+Require Import bedrock2.SuppressibleWarnings.
 Require Import LiveVerif.string_to_ident.
 Require Import bedrock2.find_hyp.
 Require Import bedrock2.ident_to_string.
@@ -809,6 +810,7 @@ Ltac add_snippet s :=
 
 Ltac next_snippet s :=
   assert_no_error;
+  check_for_warnings_hook;
   add_snippet s.
 
 (* Standard usage:   .**/ snippet /**.    *)

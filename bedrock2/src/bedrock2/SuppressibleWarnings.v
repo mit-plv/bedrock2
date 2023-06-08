@@ -1,11 +1,11 @@
 Declare Scope message_scope.
-Definition message_scope_marker{T: Type}(msg: T) := msg.
-Arguments message_scope_marker {T} msg%message_scope.
+Definition warning_marker{T: Type}(msg: T) := msg.
+Arguments warning_marker {T} msg%message_scope.
 
 (* Call this tactic to obtain a pattern-matchable representation of the warning *)
-Ltac unexplain := unfold message_scope_marker in *.
+Ltac unexplain := unfold warning_marker in *.
 
-Notation "x" := (message_scope_marker x) (at level 100, only printing).
+Notation "x" := (warning_marker x) (at level 100, only printing).
 
 (* Convention: All warnings whose type can be proved by `eauto with suppressed_warnings`
    will be suppressed.
@@ -17,7 +17,19 @@ Ltac pose_warning w :=
   let t := type of w in
   tryif (let __ := constr:(ltac:(eauto with suppressed_warnings): t) in idtac)
   then idtac (*suppressed*)
-  else let name := fresh "Warning" in pose proof (w : message_scope_marker t) as name.
+  else let name := fresh "Warning" in pose proof (w : warning_marker t) as name.
+
+Ltac continue_if_warning := idtac.
+Ltac stop_if_warning :=
+  lazymatch goal with
+  | _: warning_marker _ |- _ =>
+      fail "There's a warning to be fixed or suppressed before you can continue"
+        "(or use" "'Ltac check_for_warnings_hook ::= continue_if_warning.'"
+        "to continue anyways)"
+  | |- _ => idtac
+  end.
+
+Ltac check_for_warnings_hook := stop_if_warning.
 
 Module Examples.
   Inductive no_frobnicator_found(terms: list nat)(T: Type)(x: T): Set :=
@@ -38,6 +50,7 @@ Module Examples.
   Goal exists (n: nat), n = n.
     eexists.
     sample_tac true. (* displays a warning *)
+    assert_fails (idtac; check_for_warnings_hook).
     sample_tac true. (* doesn't duplicate the same warning *)
     unexplain. (* displays the warning in a pattern-matchable way *)
 
@@ -48,6 +61,8 @@ Module Examples.
     clear Warning.
 
     sample_tac true. (* no warning any more *)
+    check_for_warnings_hook.
     sample_tac false. (* but this one is still shown *)
+    assert_fails (idtac; check_for_warnings_hook).
   Abort.
 End Examples.
