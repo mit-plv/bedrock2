@@ -213,6 +213,13 @@ Section HeapletwiseHyps.
     unfold canceling. intros. fwd. eapply Tree.flatten_iff1_to_sep. eauto.
   Qed.
 
+  Lemma canceling_done_nil: forall {Rest: Prop},
+      Rest ->
+      canceling nil (mmap.Def map.empty) Rest.
+  Proof.
+    unfold canceling. intros. split. 2: assumption. simpl. unfold emp. intros. fwd. auto.
+  Qed.
+
   Lemma canceling_done_anymem: forall {om} {Rest: Prop},
       Rest -> canceling [anymem] om Rest.
   Proof.
@@ -807,6 +814,7 @@ Ltac canceling_step :=
                  end in
                cancel_head_with_hyp H
         end
+  | |- canceling nil (mmap.Def map.empty) _ => eapply canceling_done_nil
   | |- True => constructor
   end.
 
@@ -917,6 +925,7 @@ Section HeapletwiseHypsTests.
         progress (replace v with v' in H by Lia.lia)
     | |- _ => progress fwd
     | |- wp (cmd_call frobnicate _) _ _ _ _ => eapply wp_call; [eapply frobnicate_ok | ]
+    | H: ?P |- ?P => exact H
     | |- exists _, _ => eexists
     end.
 
@@ -969,6 +978,14 @@ Section HeapletwiseHypsTests.
     step. (* sep *)
     step. step. step. step.
   Succeed Qed. Abort.
+
+  Goal forall v1 a1 v2 a2 (P: Prop),
+      P ->
+      impl1 (sep (scalar v2 a2) (scalar v1 a1))
+            (sep (scalar v1 a1) (sep (scalar v2 a2) (emp P))).
+  Proof.
+    unfold impl1. intros. repeat step.
+  Qed.
 
   (* sample caller: *)
   Goal forall (p1 p2 p3 x y: nat) t (m: mem) l (R: mem -> Prop),
