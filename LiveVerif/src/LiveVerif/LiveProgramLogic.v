@@ -704,6 +704,7 @@ Ltac final_program_logic_step logger :=
         logger ltac:(fun _ => idtac "put_into_current_locals")
       | lazymatch goal with
         | |- exists _, _ => eexists
+        | |- ex1 _ _ => eexists
         | |- elet _ _ => refine (mk_elet _ _ _ eq_refl _)
         end;
         logger ltac:(fun _ => idtac "eexists")

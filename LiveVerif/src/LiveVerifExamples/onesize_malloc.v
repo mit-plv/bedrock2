@@ -36,19 +36,24 @@ Inductive fixed_size_free_list(block_size: Z): word -> mem -> Prop :=
      * fixed_size_free_list block_size q }> m ->
   fixed_size_free_list block_size p m.
 
-Definition allocator: mem -> Prop :=
+Definition allocator_with_potential_failure(f: option word): mem -> Prop :=
   ex1 (fun addr => <{
     * malloc_state_t {| free_list := addr |} /[malloc_state_ptr]
     * fixed_size_free_list malloc_block_size addr
+    * emp (match f with
+           | Some n => (* empty free list *)
+                       addr = /[0] \/
+                       (* trying to allocate more than supported *)
+                       malloc_block_size < \[n]
+           | None => True
+           end)
+    * emp (8 <= malloc_block_size < 2 ^ 32)
   }>).
 
+Definition allocator: mem -> Prop :=
+  allocator_with_potential_failure None.
 Definition allocator_cannot_allocate(n: word): mem -> Prop :=
-  ex1 (fun addr => <{
-    * malloc_state_t {| free_list := addr |} /[malloc_state_ptr]
-    * fixed_size_free_list malloc_block_size addr
-    * emp (addr = /[0] \/ (* empty free list *)
-           malloc_block_size mod 2 ^ 32 < \[n]) (* trying to allocate more than supported *)
-  }>).
+  allocator_with_potential_failure (Some n).
 
 Definition freeable(sz: Z)(a: word): mem -> Prop :=
   anybytes (malloc_block_size - sz) (a ^+ /[sz]).
@@ -59,12 +64,26 @@ Local Hint Extern 1 (cannot_purify allocator)
       => constructor : suppressed_warnings.
 Local Hint Extern 1 (cannot_purify (allocator_cannot_allocate _))
       => constructor : suppressed_warnings.
+Local Hint Extern 1 (cannot_purify (allocator_with_potential_failure _))
+      => constructor : suppressed_warnings.
 Local Hint Extern 1 (cannot_purify (freeable _ _))
       => constructor : suppressed_warnings.
 Local Hint Extern 1 (PredicateSize_not_found (fixed_size_free_list _))
       => constructor : suppressed_warnings.
 
-Local Hint Unfold allocator allocator_cannot_allocate freeable : heapletwise_always_unfold.
+Local Hint Unfold
+  allocator
+  allocator_cannot_allocate
+  allocator_with_potential_failure
+  freeable
+: heapletwise_always_unfold.
+
+Lemma recover_allocation_failure: forall n,
+    impl1 (allocator_cannot_allocate n) allocator.
+Proof.
+  unfold allocator_cannot_allocate, allocator, allocator_with_potential_failure.
+  intros n m M. steps.
+Qed.
 
 #[export] Instance spec_of_malloc: fnspec :=                                    .**/
 
@@ -99,7 +118,7 @@ Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      
     store(malloc_state_ptr, load(l));                                      /**. .**/
     p = l;                                                                 /**.
 
-    rename H5 into h.
+    let H := constr:(#(anybytes ??)) in rename H into h.
     unfold with_mem in h.
     eapply cast_to_anybytes in h.
     2: { eauto with contiguous. }
@@ -124,6 +143,26 @@ void free (uintptr_t p) /**#
   ensures t' m' := t' = t /\
                    <{ * allocator
                       * R }> m' #**/                                       /**.
-Derive free SuchThat (fun_correct! free) As free_ok. Abort.
+Derive free SuchThat (fun_correct! free) As free_ok.                            .**/
+{                                                                          /**.
+  pose proof merge_anybytes as M.
+  specialize M with (addr :=  p).
+  start_canceling_in_hyp M.
+  canceling_step_in_hyp M.
+  rewrite word.of_Z_unsigned in M.
+  canceling_step_in_hyp M.
+  eapply canceling_done_in_hyp in M.
+  destruct M as (?m, (?D, ?H)).
+  bottom_up_simpl_in_hyp H.
+                                                                                .**/
+  uintptr_t x = load(malloc_state_ptr);                                    /**. .**/
+  store(p, x);                                                             /*?.
+  (* creates evar ?v_old waay too early (would have to unwrap bytes in anybytes) *)
+(*
+ .**/
+  store(p, load(malloc_state_ptr));                                        /**. .**/
+*)
+
+Abort.
 
 End LiveVerif. Comments .**/ //.
