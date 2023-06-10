@@ -5,7 +5,7 @@ Load LiveVerif.
 
 Goal forall n l (i j count p: word) R (m' m1 m: mem),
     m1 |= R ->
-    m1 \*/ m = m' ->
+    mmap.du m1 m = m' ->
     m |= array (uint 16) n
            (l[:\[i]] ++
             l[\[j]:][:\[count]] ++

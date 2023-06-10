@@ -192,13 +192,10 @@ Module mmap. Section __.
   | Def(m: map)
   | Undef.
 
-  Axiom map__eqb: map -> map -> bool.
-  Global Instance map_eqb_spec: EqDecider map__eqb. Admitted.
-
-  Definition equal_union(om1 om2: mmap): mmap :=
+  Definition equal_union(value_eqb: value -> value -> bool)(om1 om2: mmap): mmap :=
     match om1, om2 with
     | Def m1, Def m2 =>
-        if map__eqb m1 m2 then Def m1 else Undef
+        if map.eqb value_eqb m1 m2 then Def m1 else Undef
     | _, _ => Undef
     end.
 
@@ -344,7 +341,8 @@ Notation mmap := mmap.mmap.
 Coercion mmap.Def : map.rep >-> mmap.
 
 Notation "a \*/ b" := (mmap.du a b) (at level 34, no associativity).
-Notation "a \=/ b" := (mmap.equal_union a b) (at level 34, no associativity).
+(* Notation "a \=/ b" :=
+     (mmap.equal_union TODO_value_eqb a b) (at level 34, no associativity). *)
 
 Module Tree.
   Inductive t(A: Type): Type :=
