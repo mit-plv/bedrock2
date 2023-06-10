@@ -116,20 +116,35 @@ Lemma purify_uintptr{width}{BW: Bitwidth width}{word: word width}
 Proof. unfold purify. intros. constructor. Qed.
 #[export] Hint Resolve purify_uintptr : purify.
 
+Definition anyval{word mem T: Type}(p: T -> word -> mem -> Prop)(a: word): mem -> Prop :=
+  ex1 (fun v => p v a).
+
+(* makes __ a keyword, so "let __ := uselessvalue in blah" in Ltac
+   doesn't parse any more!
+Notation "p '__' a" := (anyval p a) (at level 20, a at level 9).
+Infix "__" := anyval (at level 20).
+*)
+
+Notation "p ? a" := (anyval p a) (at level 20, a at level 9).
+
+Lemma anyval_is_emp{word: Type}{mem: map.map word Coq.Init.Byte.byte}{T: Type}
+  (p: T -> word -> mem -> Prop)(q: T -> Prop)(a: word):
+  (forall x: T, is_emp (p x a) (q x)) -> is_emp (anyval p a) (exists x: T, q x).
+Proof. unfold anyval, is_emp, impl1, emp, ex1. intros. firstorder idtac. Qed.
+
+#[export] Hint Resolve anyval_is_emp : is_emp.
+
 Section WithMem.
   Context {width} {BW: Bitwidth width} {word: word width} {mem: map.map word Byte.byte}
           {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
-  Definition anybytes(sz: Z)(a: word): mem -> Prop :=
-    ex1 (fun bytes => array (uint 8) sz bytes a).
-
-  Lemma purify_anybytes sz a:
-    purify (anybytes sz a) (0 <= sz).
+  Lemma purify_anyval_array T (elem: T -> word -> mem -> Prop) {sz: PredicateSize elem} n a:
+    purify (array elem n ? a) (0 <= n).
     (* Note:
-     - (sz <= 2^width) would hold (because of max memory size)
-     - (sz < 2^width) would be more useful but is not provable currently *)
+     - (n <= 2^width) would hold (because of max memory size)
+     - (n < 2^width) would be more useful but is not provable currently *)
   Proof.
-    unfold purify, anybytes, ex1. intros * [bytes Hm].
+    unfold purify, anyval, ex1. intros * [vs Hm].
     eapply purify_array in Hm. lia.
   Qed.
 
@@ -143,7 +158,7 @@ Section WithMem.
   Local Open Scope zlist_scope.
 
   Section Array.
-    Context {T: Type} (elem: T -> word -> mem -> Prop) {sz: PredicateSize elem}.
+    Context [T: Type] (elem: T -> word -> mem -> Prop) {sz: PredicateSize elem}.
 
     (* The opposite direction does not hold because (len (vs1 ++ vs2) = n1 + n2) does
      not imply (len vs1 = n1 /\ len vs2 = n2), but we can quantify over a vs:=vs1++vs2
@@ -214,44 +229,44 @@ Section WithMem.
       - unfold is_emp, array, impl1. intros. eapply sep_emp_l in H0. apply proj1 in H0.
         subst n. discriminate.
     Qed.
+
+    Hint Resolve array_0_is_emp : is_emp.
+
+    Lemma anyval_array_0_is_emp: forall n a, n = 0 -> is_emp (array elem n ? a) True.
+    Proof.
+      intros. eapply weaken_is_emp. 1: intros _; constructor.
+      typeclasses eauto with is_emp.
+    Qed.
+
+    Lemma merge_anyval_array: forall n1 n2 addr m,
+        sep (array elem n1 ? addr)
+            (array elem n2 ? (word.add addr (word.of_Z (sz * n1)))) m ->
+        (array elem (n1 + n2) ? addr) m.
+    Proof.
+      unfold anyval. intros * Hm.
+      eapply sep_ex1_l in Hm. destruct Hm as [bs1 Hm].
+      eapply sep_ex1_r in Hm. destruct Hm as [bs2 Hm].
+      exists (bs1 ++ bs2).
+      eapply merge_array. exact Hm.
+    Qed.
+
+    Lemma split_anyval_array: forall n i addr m,
+        0 <= i <= n ->
+        (array elem n ? addr) m ->
+        sep (array elem i ? addr)
+            (array elem (n-i) ? (word.add addr (word.of_Z (sz * i)))) m.
+    Proof.
+      intros * B Hm.
+      destruct Hm as [bs Hm].
+      pose proof Hm as HP. eapply purify_array in HP.
+      unfold anyval.
+      eapply sep_ex1_l. exists bs[:i].
+      eapply sep_ex1_r. exists bs[i:].
+      subst n.
+      eapply split_array in Hm. 2: eassumption.
+      exact Hm.
+    Qed.
   End Array.
-
-  Hint Resolve array_0_is_emp : is_emp.
-
-  Lemma anybytes_is_emp: forall n a, n = 0 -> is_emp (anybytes n a) True.
-  Proof.
-    unfold anybytes. intros. eapply weaken_is_emp. 1: intros _; constructor.
-    typeclasses eauto with is_emp.
-  Qed.
-
-  Lemma merge_anybytes: forall n1 n2 addr m,
-      sep (anybytes n1 addr) (anybytes n2 (word.add addr (word.of_Z n1))) m ->
-      anybytes (n1 + n2) addr m.
-  Proof.
-    unfold anybytes. intros * Hm.
-    eapply sep_ex1_l in Hm. destruct Hm as [bs1 Hm].
-    eapply sep_ex1_r in Hm. destruct Hm as [bs2 Hm].
-    exists (bs1 ++ bs2).
-    eapply merge_array. rewrite Z.mul_1_l.
-    exact Hm.
-  Qed.
-
-  Lemma split_anybytes: forall n i addr m,
-      0 <= i <= n ->
-      anybytes n addr m ->
-      sep (anybytes i addr) (anybytes (n-i) (word.add addr (word.of_Z i))) m.
-  Proof.
-    intros * B Hm.
-    destruct Hm as [bs Hm].
-    pose proof Hm as HP. eapply purify_array in HP.
-    unfold anybytes.
-    eapply sep_ex1_l. exists bs[:i].
-    eapply sep_ex1_r. exists bs[i:].
-    subst n.
-    eapply split_array in Hm. 2: eassumption.
-    rewrite Z.mul_1_l in Hm.
-    exact Hm.
-  Qed.
 
   Lemma ptsto_to_uint8: forall a b m, ptsto a b m -> uint 8 (Byte.byte.unsigned b) a m.
   Proof.
@@ -271,9 +286,9 @@ Section WithMem.
   Qed.
 
   Lemma anybytes_from_alt: forall addr n m,
-      0 <= n -> Memory.anybytes addr n m -> anybytes n addr m.
+      0 <= n -> Memory.anybytes addr n m -> (array (uint 8) n ? addr) m.
   Proof.
-    unfold anybytes. intros * B H.
+    unfold anyval. intros * B H.
     eapply anybytes_to_array_1 in H. destruct H as (bs & Hm & Hl).
     exists (List.map Byte.byte.unsigned bs).
     unfold array. eapply sep_emp_l. split.
@@ -284,9 +299,9 @@ Section WithMem.
   Qed.
 
   Lemma anybytes_to_alt: forall addr n m,
-      anybytes n addr m -> Memory.anybytes addr n m.
+      (array (uint 8) n ? addr) m -> Memory.anybytes addr n m.
   Proof.
-    unfold anybytes. intros. destruct H as (bs & H).
+    unfold anyval. intros. destruct H as (bs & H).
     unfold array in H. eapply sep_emp_l in H. destruct H as (? & H). subst n.
     eapply impl1_array in H.
     - eapply (array_map ptsto Byte.byte.of_Z addr bs (word.of_Z 1)) in H.
@@ -295,12 +310,14 @@ Section WithMem.
   Qed.
 End WithMem.
 
-#[export] Hint Extern 1 (PredicateSize (anybytes ?sz)) => exact sz : typeclass_instances.
+#[export] Hint Extern 1
+  (PredicateSize (anyval (@array ?width ?BW ?word ?mem ?T ?elem ?elemSize ?n))) =>
+  exact (n * elemSize) : typeclass_instances.
 
-#[export] Hint Resolve purify_anybytes : purify.
+#[export] Hint Resolve purify_anyval_array : purify.
 
 #[export] Hint Resolve array_nil_is_emp : is_emp.
 #[export] Hint Extern 1 (is_emp (array ?elem ?n ?xs ?a) _) =>
   eapply (array_0_is_emp elem n xs a ltac:(xlia zchecker)) : is_emp.
-#[export] Hint Extern 1 (is_emp (anybytes ?n ?a) _) =>
-  eapply (anybytes_is_emp n a ltac:(xlia zchecker)) : is_emp.
+#[export] Hint Extern 1 (is_emp (array ?elem ?n ? ?a) _) =>
+  eapply (anyval_array_0_is_emp n a ltac:(xlia zchecker)) : is_emp.

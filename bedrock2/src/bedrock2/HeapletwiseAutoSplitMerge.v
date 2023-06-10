@@ -211,36 +211,38 @@ Section SepLog.
       word.unsigned (word.sub a' a) = i ->
       0 <= nReq /\ 0 <= i /\ i+nReq <= nAll ->
       (forall m,
-        anybytes nAll a m ->
-        sep (anybytes i a)
-          (sep (anybytes nReq a')
-             (anybytes (nAll-i-nReq) (word.add a' (word.of_Z nReq)))) m) /\
+        (array (uint 8) nAll ? a) m ->
+        sep (array (uint 8) i ? a)
+          (sep (array (uint 8) nReq ? a')
+             (array (uint 8) (nAll-i-nReq) ? (word.add a' (word.of_Z nReq)))) m) /\
       (* Note: often, this second part will not be used, because the split-off
          bytes get initialized to something, but if the callee just used it as
          scratch space, this second part will be used *)
       (forall m,
-        sep (anybytes i a)
-          (sep (anybytes nReq a')
-             (anybytes (nAll-i-nReq)
-              (word.add a' (word.of_Z nReq)))) m  ->
-        anybytes nAll a m).
+        sep (array (uint 8) i ? a)
+          (sep (array (uint 8) nReq ? a')
+             (array (uint 8) (nAll-i-nReq) ? (word.add a' (word.of_Z nReq)))) m  ->
+        array (uint 8) nAll ? a m).
   Proof.
     split; intros.
-    - eapply split_anybytes with (i := i) in H1. 2: lia.
+    - eapply split_anyval_array with (i := i) in H1. 2: lia.
       repeat heapletwise_step.
-      eapply split_anybytes with (i := nReq) in H3. 2: lia.
+      eapply split_anyval_array with (i := nReq) in H3. 2: lia.
       repeat heapletwise_step.
       subst i.
+      rewrite ?Z.mul_1_l in *.
       rewrite word.of_Z_unsigned in *.
       rewrite word.add_sub_r_same_r in *.
       repeat heapletwise_step.
     - repeat heapletwise_step.
       replace nAll with (i + (nAll - i)) by lia.
-      eapply merge_anybytes.
+      eapply merge_anyval_array.
       repeat heapletwise_step.
+      rewrite Z.mul_1_l.
       refine (conj _ I). intros. cbn.
       replace (nAll - i) with (nReq + (nAll - i - nReq)) by lia.
-      eapply merge_anybytes.
+      eapply merge_anyval_array.
+      rewrite Z.mul_1_l.
       subst i.
       rewrite word.of_Z_unsigned in *.
       rewrite word.add_sub_r_same_r in *.
@@ -414,7 +416,7 @@ Ltac split_range_from_hyp_default :=
       lazymatch P with
       | sepapps _ _ => idtac
       | array _ _ _ _ => idtac
-      | anybytes _ _ => idtac
+      | anyval _ _ => idtac
       | _ => let h := head P in unfold h in H;
              record.simp_hyp H;
              lazymatch P with
@@ -442,7 +444,7 @@ Ltac split_range_from_hyp_default :=
           | ZnWords
           | eapply (proj1 pf) in H;
             turn_split_merge_lemma_into_merge_step pf ]
-      | with_mem _ (anybytes ?nAll ?start') =>
+      | with_mem _ (array (uint 8) ?nAll ? ?start') =>
           unshelve epose proof
             (split_anybytes_from_anybytes start' start nAll size _ _ _) as pf;
           [ (* offset of first element *)

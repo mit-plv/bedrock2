@@ -12,7 +12,7 @@ Goal forall (T: Type) (elem: T -> word -> mem -> Prop) (elemSize: PredicateSize 
        * array elem (n1 - n2) xs a1
        * array elem n3 nil a2
        * F2 a3
-       * anybytes (n1 - n2) a4
+       * array (uint 8) (n1 - n2) ? a4
        * R }> m ->
     <{ * F1 a0
        * F2 a3

@@ -32,7 +32,7 @@ Inductive fixed_size_free_list(block_size: Z): word -> mem -> Prop :=
 | fixed_size_free_list_cons p q m:
   p <> /[0] ->
   <{ * <{ + uintptr q
-          + anybytes (block_size - 4) }> p
+          + anyval (array (uint 8) (block_size - 4)) }> p
      * fixed_size_free_list block_size q }> m ->
   fixed_size_free_list block_size p m.
 
@@ -56,7 +56,7 @@ Definition allocator_cannot_allocate(n: word): mem -> Prop :=
   allocator_with_potential_failure (Some n).
 
 Definition freeable(sz: Z)(a: word): mem -> Prop :=
-  anybytes (malloc_block_size - sz) (a ^+ /[sz]).
+  array (uint 8) (malloc_block_size - sz) ? (a ^+ /[sz]).
 
 Local Hint Extern 1 (cannot_purify (fixed_size_free_list _ _))
       => constructor : suppressed_warnings.
@@ -97,7 +97,7 @@ uintptr_t malloc (uintptr_t n) /**#
            * R }> m'
       else
         <{ * allocator
-           * anybytes \[n] p
+           * array (uint 8) \[n] ? p
            * freeable \[n] p
            * R }> m') #**/                                                   /**.
 Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      .**/
@@ -118,12 +118,14 @@ Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      
     store(malloc_state_ptr, load(l));                                      /**. .**/
     p = l;                                                                 /**.
 
-    let H := constr:(#(anybytes ??)) in rename H into h.
+    let H := constr:(#(array (uint 8))) in rename H into h.
     unfold with_mem in h.
     eapply cast_to_anybytes in h.
     2: { eauto with contiguous. }
     bottom_up_simpl_in_hyp h.
-    change (with_mem m0 (anybytes malloc_block_size l)) in h.
+    lazymatch type of h with
+    | ?p ?m => change (with_mem m p) in h
+    end.
                                                                                 .**/
   } else {                                                                 /**. .**/
     /* empty */                                                            /**. .**/
@@ -137,7 +139,7 @@ Qed.
 void free (uintptr_t p) /**#
   ghost_args := n (R: mem -> Prop);
   requires t m := <{ * allocator
-                     * anybytes \[n] p
+                     * array (uint 8) \[n] ? p
                      * freeable \[n] p
                      * R }> m;
   ensures t' m' := t' = t /\
@@ -145,10 +147,11 @@ void free (uintptr_t p) /**#
                       * R }> m' #**/                                       /**.
 Derive free SuchThat (fun_correct! free) As free_ok.                            .**/
 {                                                                          /**.
-  pose proof merge_anybytes as M.
+  pose proof merge_anyval_array as M.
   specialize M with (addr :=  p).
   start_canceling_in_hyp M.
   canceling_step_in_hyp M.
+  rewrite Z.mul_1_l in M.
   rewrite word.of_Z_unsigned in M.
   canceling_step_in_hyp M.
   eapply canceling_done_in_hyp in M.

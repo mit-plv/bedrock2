@@ -12,17 +12,17 @@ Section WithMem.
           {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Definition contiguous(P: word -> mem -> Prop)(n: Z): Prop :=
-    forall addr, impl1 (P addr) (anybytes n addr).
+    forall addr, impl1 (P addr) (array (uint 8) n ? addr).
 
   Lemma cast_to_anybytes: forall (P: word -> mem -> Prop) a n m,
-      contiguous P n -> P a m -> anybytes n a m.
+      contiguous P n -> P a m -> (array (uint 8) n ? a) m.
   Proof. unfold contiguous, impl1. intros. eauto. Qed.
 
   (* the direction we care about is anybytes -> P, but it is very likely to
      also imply the converse direction, and probably also easy to prove,
      so we make it an iff1 *)
   Definition fillable{V: Type}(P: V -> word -> mem -> Prop)(n: Z): Prop :=
-    forall addr, iff1 (anybytes n addr) (ex1 (fun v => P v addr)).
+    forall addr, iff1 (array (uint 8) n ? addr) (ex1 (fun v => P v addr)).
 
   Lemma fillable_to_contiguous{V: Type} P (v: V) n: fillable P n -> contiguous (P v) n.
   Proof.
@@ -34,12 +34,12 @@ Section WithMem.
     eauto.
   Qed.
 
-  Lemma anybytes_contiguous: forall n, contiguous (anybytes n) n.
+  Lemma anybytes_contiguous: forall n, contiguous (anyval (array (uint 8) n)) n.
   Proof. unfold contiguous. intros. reflexivity. Qed.
 
   Lemma sepapps_nil_contiguous: contiguous (sepapps nil) 0.
   Proof.
-    unfold contiguous, sepapps, anybytes, Memory.anybytes, impl1.
+    unfold contiguous, sepapps, anyval, Memory.anybytes, impl1.
     simpl. intros *. intros [? _]. subst.
     exists nil. unfold array.
     eapply sep_emp_l. split; [reflexivity| ].
@@ -55,10 +55,10 @@ Section WithMem.
     rewrite sepapps_cons.
     simpl.
     intros m Hm.
-    eapply merge_anybytes.
+    eapply merge_anyval_array.
     destruct Hm as (m1 & m2 & D & Hm1 & Hm2).
     unfold impl1 in *.
-    exists m1, m2. eauto.
+    exists m1, m2. rewrite Z.mul_1_l. eauto.
   Qed.
 
   Lemma uintptr_contiguous: forall v, contiguous (uintptr v) (Memory.bytes_per_word width).
