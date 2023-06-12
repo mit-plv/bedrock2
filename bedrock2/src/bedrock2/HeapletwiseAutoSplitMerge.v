@@ -528,6 +528,22 @@ Notation "'(PredicateSize'  pred ')'  'cannot'  'be'  'solved'  'by'  'typeclass
   (at level 1, pred at level 9, only printing)
 : message_scope.
 
+Ltac _with_PredicateSize_of P k :=
+  let maybesize := match constr:(Set) with
+                   | _ => lazymatch constr:(_: PredicateSize P) with ?s => s end
+                   | _ => constr:(tt)
+                   end in
+  lazymatch maybesize with
+  | tt =>
+      (* progress could fail because warning was already posed or because
+                 warning is suppressed *)
+      progress pose_warning (mk_PredicateSize_not_found P)
+  | ?size => k size
+  end.
+
+Tactic Notation "with_PredicateSize_of" constr(P) tactic0(k) :=
+  _with_PredicateSize_of P k.
+
 Ltac gather_is_subrange_claims_into_error start size :=
   fold_hyps_upwards_cont
     (fun res h tp =>
@@ -555,22 +571,13 @@ Ltac is_singleton_record_predicate p :=
 Ltac split_step :=
   lazymatch goal with
   | |- canceling (cons (?P ?start) _) ?m _ =>
-      let size := lazymatch constr:(_: PredicateSize P) with ?s => s end in
-      let g := lazymatch goal with |- ?x => x end in
-      change (find_superrange_hyp start size g)
+      with_PredicateSize_of P (fun size =>
+        let g := lazymatch goal with |- ?x => x end in
+        change (find_superrange_hyp start size g))
   | |- find_superrange_hyp ?start ?size ?g =>
       match goal with
       | H: with_mem ?mH (?P' ?start') |- _ =>
-          let maybesize' := match constr:(Set) with
-                            | _ => lazymatch constr:(_: PredicateSize P') with ?s => s end
-                            | _ => constr:(tt)
-                            end in
-          lazymatch maybesize' with
-          | tt =>
-              (* progress could fail because warning was already posed or because
-                 warning is suppressed *)
-              progress pose_warning (mk_PredicateSize_not_found P')
-          | ?size' =>
+          with_PredicateSize_of P' (fun size' =>
               is_subrange start size start' size';
               tryif assert_succeeds (idtac; assert (size = size') by ZnWords);
                     (* TODO: below check should be more general and see if one of the
@@ -581,8 +588,7 @@ Ltac split_step :=
                 change g;
                 let P := lazymatch goal with | |- canceling (cons ?P _) _ _ => P end in
                 eapply (rew_with_mem (P' start') P mH) in H (* <-- leaves 2 open goals *)
-              ) else change (split_range_from_hyp start size _ H g)
-          end
+              ) else change (split_range_from_hyp start size _ H g))
       | _ => gather_is_subrange_claims_into_error start size
       end
   | |- split_range_from_hyp ?start ?size ?tH ?H ?g => split_range_from_hyp_hook

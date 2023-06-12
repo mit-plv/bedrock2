@@ -13,7 +13,7 @@ void test(uintptr_t p, uintptr_t q) /**#
                      * my_pred2 q
                      * R }> m;
   ensures t' m' := t' = t /\
-            <{ * my_pred1 p
+            <{ * my_pred2 p (* <-- deliberate typo: my_pred2 instead of my_pred1 *)
                * my_pred2 q
                * R }> m' #**/                                              /**.
 Derive test SuchThat (fun_correct! test) As test_ok.                            .**/
@@ -62,6 +62,20 @@ Derive test SuchThat (fun_correct! test) As test_ok.                            
   | |- _ => idtac
   end.
 
+Abort.
+
+Local Hint Extern 1 (cannot_purify _)
+      => constructor : suppressed_warnings.
+
+Derive test SuchThat (fun_correct! test) As test_ok.                            .**/
+{                                                                          /**. .**/
+}                                                                          /**.
+  (* maybe my_pred2 could be split off from my_pred1, so we should inform
+     the user that this option could not be considered because my_pred2's
+     size is not known (and my_pred1's neither) *)
+  lazymatch goal with
+  | _: warning_marker (PredicateSize_not_found my_pred2) |- _ => idtac
+  end.
 Abort.
 
 End LiveVerif.
