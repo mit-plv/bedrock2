@@ -788,17 +788,23 @@ Ltac step_is_done :=
   | |- after_if _ _ _ _ _ _ => idtac
   end.
 
-Ltac steps :=
+Ltac can_continue :=
+  assert_no_error;
+  check_for_warnings_hook.
+
+Ltac steps_rec :=
   lazymatch goal with
   | _: tactic_error _ |- _ => idtac
   | |- _ => tryif step_is_done then idtac
-            else tryif step_silent then steps
+            else tryif step_silent then steps_rec
             else pose_err Error:("The 'step' tactic should not fail here")
   end.
 
+Ltac steps := can_continue; steps_rec.
+
 (* If really needed, this hook can be overridden with idtac for debugging,
    but the preferred way is to use /*?. instead of /**. *)
-Ltac run_steps_internal_hook := steps.
+Ltac run_steps_internal_hook := steps_rec.
 
 Ltac add_snippet s :=
   lazymatch goal with
@@ -822,10 +828,7 @@ Ltac add_snippet s :=
   | |- _ => fail "can't add snippet in non-ready goal"
   end.
 
-Ltac next_snippet s :=
-  assert_no_error;
-  check_for_warnings_hook;
-  add_snippet s.
+Ltac next_snippet s := can_continue; add_snippet s.
 
 (* Standard usage:   .**/ snippet /**.    *)
 Tactic Notation ".*" constr(s) "*" := next_snippet s; run_steps_internal_hook.
