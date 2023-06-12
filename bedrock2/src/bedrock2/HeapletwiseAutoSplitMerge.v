@@ -492,6 +492,12 @@ Ltac merge_step_in_hyp H :=
 Lemma f_equal_fun[A B: Type]: forall (f g: A -> B) (x: A), f = g -> f x = g x.
 Proof. intros. subst. reflexivity. Qed.
 
+Lemma eq_to_impl1[mem: Type]: forall (P Q: mem -> Prop), P = Q -> impl1 P Q.
+Proof. intros. subst. reflexivity. Qed.
+
+Lemma eq_to_iff1[mem: Type]: forall (P Q: mem -> Prop), P = Q -> iff1 P Q.
+Proof. intros. subst. reflexivity. Qed.
+
 Ltac syntactic_f_equal_step_with_ZnWords :=
   lazymatch goal with
   | |- ?x = ?x => reflexivity
@@ -504,11 +510,9 @@ Ltac syntactic_f_equal_step_with_ZnWords :=
 Ltac syntactic_f_equal_with_ZnWords := solve [repeat syntactic_f_equal_step_with_ZnWords].
 
 Lemma rew_with_mem{mem: Type}: forall (P1 P2: mem -> Prop) (m: mem),
-    P1 = P2 ->
+    impl1 P1 P2 ->
     with_mem m P1 -> with_mem m P2.
-Proof. intros. subst. assumption. Qed.
-
-Ltac sepclause_equality_hook := syntactic_f_equal_with_ZnWords.
+Proof. unfold impl1, with_mem. intros. eauto. Qed.
 
 (* Returns a Prop claiming that start..start+size is a subrange of start'..start'+size'.
    Assumes 0<=size<2^width and 0<=size'<2^width.
@@ -593,6 +597,9 @@ Ltac split_step :=
       end
   | |- split_range_from_hyp ?start ?size ?tH ?H ?g => split_range_from_hyp_hook
   | |- @eq (@map.rep (@word.rep _ _) Init.Byte.byte _ -> Prop) _ _ =>
+      syntactic_f_equal_with_ZnWords
+  | |- @impl1 (@map.rep (@word.rep _ _) Init.Byte.byte _) _ _ =>
+      eapply eq_to_impl1;
       syntactic_f_equal_with_ZnWords
   end.
 

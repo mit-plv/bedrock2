@@ -29,7 +29,7 @@ Require Import bedrock2.sepapp.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.PurifyHeapletwise.
 Require Import bedrock2.bottom_up_simpl.
-Require Import bedrock2.safe_f_equal.
+Require Import bedrock2.safe_implication.
 Require Import coqutil.Tactics.ident_ops.
 Require Import bedrock2.Logging.
 Require Import LiveVerif.LiveRules.
@@ -721,6 +721,8 @@ Ltac final_program_logic_step logger :=
       | (* tried first because it also solves some goals of shape (_ = _) and (_ /\ _) *)
         zify_goal; xlia zchecker;
         logger ltac:(fun _ => idtac "xlia zchecker")
+      | safe_implication_step;
+        logger ltac:(fun _ => idtac "safe_implication_step")
       | lazymatch goal with
         | |- ?P /\ ?Q =>
             split;

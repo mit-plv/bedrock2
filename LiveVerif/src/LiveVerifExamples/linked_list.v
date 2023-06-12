@@ -62,8 +62,7 @@ Derive malloc_node SuchThat (fun_correct! malloc_node) As malloc_node_ok. .**/
   instantiate (1 := {| data := r0; next := r1 |}).
   unfold array.
   simpl.
-  eapply iff1ToEq. cancel.
-  unfold seps. unfold iff1. unfold emp. intuition.
+  intros m Hm. steps.
 Qed.
 
 Fixpoint sll (L : list word) (p : word): mem -> Prop :=

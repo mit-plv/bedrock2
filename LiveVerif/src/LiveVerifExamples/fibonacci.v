@@ -33,8 +33,10 @@ Proof.
   ZnWords.
 Qed.
 
+Lemma fib_f_equal: forall x y, safe_implication (x = y) (fib x = fib y).
+Proof. unfold safe_implication. intros. subst. reflexivity. Qed.
 (* Tells the proof automation to apply f_equal on goals of shape `fib _ = fib _` *)
-#[local] Instance fib_inj: fake_injective fib. Qed.
+#[local] Hint Resolve fib_f_equal: safe_implication.
 
 (* TODO also something like  word.unsigned (if c then a else b) = ... ? *)
 Lemma if_to_or: forall (c: bool) (P Q: Prop),
