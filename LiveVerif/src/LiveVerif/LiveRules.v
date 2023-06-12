@@ -415,16 +415,17 @@ Section WithParams.
     cbn -[map.put]. eexists. split. 1: eassumption. unfold dlet.dlet. assumption.
   Qed.
 
-  Lemma wp_store_uintptr0: forall fs ea ev a v v_old R t m l rest (post: _->_->_->Prop),
+  Lemma wp_store_uintptr0: forall fs ea ev a v R t m l rest (post: _->_->_->Prop),
       dexpr m l ea a ->
       dexpr m l ev v ->
-      sep (uintptr v_old a) R m ->
+      sep (uintptr ? a) R m ->
       (forall m', sep (uintptr v a) R m' -> wp_cmd fs rest t m' l post) ->
       wp_cmd fs (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion H0; clear H0.
     constructor. hnf.
     eexists. split. 1: eassumption.
+    unfold anyval in H1. eapply sep_ex1_l in H1. destruct H1 as (v_old & H1).
     eexists. split. 1: eassumption.
     unfold store.
     unfold uintptr, Scalars.scalar in *.
@@ -432,11 +433,11 @@ Section WithParams.
     intros. eapply H2. assumption.
   Qed.
 
-  Lemma wp_store_uint0: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
+  Lemma wp_store_uint0: forall fs sz ea ev a v R t m l rest (post: _->_->_->Prop),
       dexpr m l ea a ->
       dexpr m l ev v ->
       0 <= word.unsigned v < 2 ^ access_size_to_nbits sz ->
-      sep (uint (access_size_to_nbits sz) v_old a) R m ->
+      sep (uint (access_size_to_nbits sz) ? a) R m ->
       (forall m', sep (uint (access_size_to_nbits sz) (word.unsigned v) a) R m' ->
                   wp_cmd fs rest t m' l post) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
@@ -444,6 +445,7 @@ Section WithParams.
     intros. inversion H; clear H. inversion H0; clear H0.
     constructor. hnf.
     eexists. split. 1: eassumption.
+    unfold anyval in H2. eapply sep_ex1_l in H2. destruct H2 as (v_old & H2).
     eexists. split. 1: eassumption.
     unfold store.
     unfold uint in H2. eapply sep_assoc in H2. eapply sep_emp_l in H2.
@@ -564,10 +566,10 @@ Section WithParams.
     intros. subst. eapply wp_unset_many. destruct b; congruence.
   Qed.
 
-  Lemma wp_store_uintptr: forall fs ea ev a v v_old R t m l rest (post: _->_->_->Prop),
+  Lemma wp_store_uintptr: forall fs ea ev a v R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
         (dexpr1 m l ev v
-           (sep (uintptr v_old a) R m /\
+           (sep (uintptr ? a) R m /\
             (forall m, sep (uintptr v a) R m -> wp_cmd fs rest t m l post))) ->
       wp_cmd fs (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
   Proof.
@@ -575,11 +577,11 @@ Section WithParams.
     eapply wp_store_uintptr0; eassumption.
   Qed.
 
-  Lemma wp_store_uint: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
+  Lemma wp_store_uint: forall fs sz ea ev a v R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
         (dexpr1 m l ev v
            (0 <= word.unsigned v < 2 ^ access_size_to_nbits sz /\
-            sep (uint (access_size_to_nbits sz) v_old a) R m /\
+            sep (uint (access_size_to_nbits sz) ? a) R m /\
             (forall m,
                 sep (uint (access_size_to_nbits sz) (word.unsigned v) a) R m ->
                 wp_cmd fs rest t m l post))) ->

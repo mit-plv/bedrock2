@@ -10,6 +10,7 @@ Require Import bedrock2.TacticError.
 Require Import bedrock2.SuppressibleWarnings.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.is_emp.
+Require Import bedrock2.anyval.
 Require Import bedrock2.Map.SeparationLogic. Local Open Scope sep_scope.
 
 (* to mark hypotheses about heaplets *)
@@ -876,12 +877,19 @@ Ltac canceling_step :=
         | emp _ => eapply cancel_pure_head
         | ex1 _ => eapply cancel_ex1_head
         | sep _ _ => eapply cancel_sep_head
-        | _ => let H :=
-                 match goal with
-                 | H: with_mem _ ?P' |- _ =>
-                     let __ := match constr:(Set) with _ => syntactic_unify P' R end in H
-                 end in
-               cancel_head_with_hyp H
+        | _ => match R with
+               | _ =>
+                   match goal with
+                   | H: with_mem _ ?P' |- _ =>
+                       syntactic_unify P' R; cancel_head_with_hyp H
+                   end
+               | anyval ?p ?a =>
+                   eapply cancel_ex1_head;
+                   match goal with
+                   | H: with_mem _ ?P' |- canceling (cons ?R ?Ps) ?om ?P =>
+                       syntactic_unify P' R; cancel_head_with_hyp H
+                   end
+               end
         end
   | |- canceling nil (mmap.Def map.empty) _ => eapply canceling_done_nil
   | |- True => constructor

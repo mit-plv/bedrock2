@@ -6,6 +6,7 @@ Require Import coqutil.Datatypes.ZList. Import ZList.List.ZIndexNotations.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.is_emp.
+Require Export bedrock2.anyval.
 Require Import bedrock2.Array bedrock2.Scalars.
 
 (* PredTp equals `Z -> mem -> Prop` if the predicate takes any number of values
@@ -116,23 +117,18 @@ Lemma purify_uintptr{width}{BW: Bitwidth width}{word: word width}
 Proof. unfold purify. intros. constructor. Qed.
 #[export] Hint Resolve purify_uintptr : purify.
 
-Definition anyval{word mem T: Type}(p: T -> word -> mem -> Prop)(a: word): mem -> Prop :=
-  ex1 (fun v => p v a).
-
-(* makes __ a keyword, so "let __ := uselessvalue in blah" in Ltac
-   doesn't parse any more!
-Notation "p '__' a" := (anyval p a) (at level 20, a at level 9).
-Infix "__" := anyval (at level 20).
-*)
-
-Notation "p ? a" := (anyval p a) (at level 20, a at level 9).
-
 Lemma anyval_is_emp{word: Type}{mem: map.map word Coq.Init.Byte.byte}{T: Type}
   (p: T -> word -> mem -> Prop)(q: T -> Prop)(a: word):
   (forall x: T, is_emp (p x a) (q x)) -> is_emp (anyval p a) (exists x: T, q x).
 Proof. unfold anyval, is_emp, impl1, emp, ex1. intros. firstorder idtac. Qed.
 
 #[export] Hint Resolve anyval_is_emp : is_emp.
+
+#[export] Hint Extern 1 (PredicateSize (anyval ?p)) =>
+  lazymatch constr:(_: PredicateSize p) with
+  | ?s => exact s
+  end
+: typeclass_instances.
 
 Section WithMem.
   Context {width} {BW: Bitwidth width} {word: word width} {mem: map.map word Byte.byte}

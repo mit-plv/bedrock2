@@ -159,8 +159,7 @@ Derive free SuchThat (fun_correct! free) As free_ok.                            
   bottom_up_simpl_in_hyp H.
                                                                                 .**/
   uintptr_t x = load(malloc_state_ptr);                                    /**. .**/
-  store(p, x);                                                             /*?.
-  (* creates evar ?v_old waay too early (would have to unwrap bytes in anybytes) *)
+  store(p, x);                                                             /**.
 (*
  .**/
   store(p, load(malloc_state_ptr));                                        /**. .**/
