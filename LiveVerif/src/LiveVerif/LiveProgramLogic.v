@@ -533,39 +533,49 @@ Ltac cleanup_step :=
   | |- _ => progress fwd
   end.
 
-Definition don't_know_how_to_prove_equal{A: Type} := @eq A.
-Notation "'don't_know_how_to_prove_equal' x y" :=
-  (don't_know_how_to_prove_equal x y)
+Definition don't_know_how_to_prove{A: Type}(R: A -> A -> Prop) := R.
+Notation "'don't_know_how_to_prove' R x y" :=
+  (don't_know_how_to_prove R x y)
   (only printing, at level 10, x at level 0, y at level 0,
-   format "don't_know_how_to_prove_equal '//' x '//' y").
+   format "don't_know_how_to_prove  R '//' x '//' y").
 
-Ltac default_eq_prover_step :=
+Ltac turn_relation_into_eq :=
+  lazymatch goal with
+  | |- _ = _ => idtac
+  | |- impl1 _ _ => eapply eq_to_impl1
+  | |- iff1 _ _ => eapply eq_to_iff1
+  end.
+
+Ltac default_careful_reflexivity_step :=
   match goal with
-  | |- ?l = ?r => is_evar l; reflexivity
-  | |- ?l = ?r => is_evar r; reflexivity
-  | |- ?l = ?r => constr_eq l r; reflexivity
+  | |- _ ?l ?r => is_evar l; reflexivity
+  | |- _ ?l ?r => is_evar r; reflexivity
+  | |- _ ?l ?r => constr_eq l r; reflexivity
   | |- _ => bottom_up_simpl_in_goal (* fails if nothing to simplify *)
   | |- _ => record.simp_goal (* fails if nothing to simplify *)
-  | |- sepapps nil _ = sepapps nil _ => reflexivity
-  | |- sepapps (cons _ _) _ = sepapps (cons _ _) _ => eapply f_equal2
-  | |- sepapps _ _ = ?rhs =>
-      lazymatch rhs with
-      | sepapps _ _ => fail
-      | _ => symmetry
+  | |- _ (sepapps nil _) (sepapps nil _) => reflexivity
+  | |- _ (sepapps (cons _ _) _) (sepapps (cons _ _) _) =>
+      turn_relation_into_eq; eapply f_equal2
+  | |- _ (sepapps _ _) ?rhs =>
+      let h := head rhs in
+      unfold h;
+      lazymatch goal with
+      | |- _ (sepapps _ _) (sepapps _ _) => idtac
       end
-  | |- ?lhs = sepapps _ _ =>
+  | |- _ ?lhs (sepapps _ _) =>
       let h := head lhs in
       unfold h;
       lazymatch goal with
-      | |- sepapps _ _ = sepapps _ _ => idtac
+      | |- _ (sepapps _ _) (sepapps _ _) => idtac
       end
-  | |- _ => safe_f_equal_step
-  | |- ?l = ?r => subst l
-  | |- ?l = ?r => subst r
-  | |- ?l = ?r => change (don't_know_how_to_prove_equal l r)
+  | |- _ ?l ?r => subst l
+  | |- _ ?l ?r => subst r
+  | |- ?rel ?l ?r => change (don't_know_how_to_prove rel l r)
   end.
 
-Ltac eq_prover_step_hook := default_eq_prover_step.
+(* supposed to work on goals of the form (?rel ?lhs ?rhs), with rel being on of
+   eq, impl1, iff1 *)
+Ltac careful_reflexivity_step_hook := default_careful_reflexivity_step.
 
 Ltac eval_dexpr_bool3_step e :=
   lazymatch e with
@@ -716,8 +726,14 @@ Ltac final_program_logic_step logger :=
             split;
             logger ltac:(fun _ => idtac "split")
         | |- _ = _ =>
-            eq_prover_step_hook;
-            logger ltac:(fun _ => idtac "eq_prover_step_hook")
+            careful_reflexivity_step_hook;
+            logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")
+        | |- impl1 _ _ =>
+            careful_reflexivity_step_hook;
+            logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")
+        | |- iff1 _ _ =>
+            careful_reflexivity_step_hook;
+            logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")
         | |- if _ then _ else _ =>
             logger ltac:(fun _ => idtac "split if");
             eapply prove_if; intros; after_command_simpl_hook
@@ -784,7 +800,7 @@ Ltac step_silent := step0 ignore_logger_thunk.
 Ltac step_is_done :=
   lazymatch goal with
   | |- @ready _ => idtac
-  | |- don't_know_how_to_prove_equal _ _ => idtac
+  | |- don't_know_how_to_prove _ _ _ => idtac
   | |- after_if _ _ _ _ _ _ => idtac
   end.
 
