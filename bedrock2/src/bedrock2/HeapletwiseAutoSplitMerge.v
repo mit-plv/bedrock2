@@ -604,7 +604,7 @@ Ltac split_step :=
   end.
 
 Ltac merge_step :=
-  lazymatch goal with
+  match goal with
   | H: merge_step _ |- _ => merge_step_in_hyp H
   | F: @fold_step ?R _ _ ?pred |- _ =>
       let c := lazymatch open_constr:(ltac:(constructor) : R) with ?c => c end in

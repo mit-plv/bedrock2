@@ -157,13 +157,7 @@ Derive free SuchThat (fun_correct! free) As free_ok.                            
   destruct M as (?m, (?D, ?H)).
   bottom_up_simpl_in_hyp H.
                                                                                 .**/
-  uintptr_t x = load(malloc_state_ptr);                                    /**. .**/
-  store(p, x);                                                             /**.
-(*
- .**/
-  store(p, load(malloc_state_ptr));                                        /**. .**/
-*)
-
+  store(p, load(malloc_state_ptr));                                        /**.
 Abort.
 
 End LiveVerif. Comments .**/ //.
