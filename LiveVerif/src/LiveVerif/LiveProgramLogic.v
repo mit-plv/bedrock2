@@ -30,6 +30,7 @@ Require Import bedrock2.PurifySep.
 Require Import bedrock2.PurifyHeapletwise.
 Require Import bedrock2.bottom_up_simpl.
 Require Import bedrock2.safe_implication.
+Require Import bedrock2.to_from_anybytes.
 Require Import coqutil.Tactics.ident_ops.
 Require Import bedrock2.Logging.
 Require Import LiveVerif.LiveRules.
@@ -730,9 +731,22 @@ Ltac final_program_logic_step logger :=
         | |- _ = _ =>
             careful_reflexivity_step_hook;
             logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")
-        | |- impl1 _ _ =>
-            careful_reflexivity_step_hook;
-            logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")
+        | |- impl1 ?lhs ?rhs =>
+            first [ lazymatch lhs with
+                    | sep _ _ => fail "not an atomic sep clause"
+                    | _ => idtac
+                    end;
+                    lazymatch rhs with
+                    | sep _ _ => fail "not an atomic sep clause"
+                    | _ => idtac
+                    end;
+                    solve [ eapply contiguous_implies_anyval_of_fillable;
+                            [ eauto with contiguous
+                            | eauto with fillable] ];
+                    logger ltac:(fun _ => idtac "contiguous_implies_anyval_of_fillable")
+                  | (* goes last because it might wrap goal in don't_know_how_to_prove *)
+                    careful_reflexivity_step_hook;
+                    logger ltac:(fun _ => idtac "careful_reflexivity_step_hook") ]
         | |- iff1 _ _ =>
             careful_reflexivity_step_hook;
             logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")

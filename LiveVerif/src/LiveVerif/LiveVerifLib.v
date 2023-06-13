@@ -30,7 +30,8 @@ Require Export bedrock2.SepLib.
 Require Export bedrock2.PurifySep.
 Require Export bedrock2.PurifyHeapletwise.
 Require Export bedrock2.RecordPredicates.
-Require Export bedrock2.safe_implication. (* for the #[export] hints *)
+Require Export bedrock2.safe_implication.
+Require Export bedrock2.to_from_anybytes.
 Require Export coqutil.Datatypes.RecordSetters.
 Require Export LiveVerif.LiveRules.
 Require Export LiveVerif.PackageContext.

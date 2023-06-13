@@ -34,6 +34,16 @@ Section WithMem.
     eauto.
   Qed.
 
+  Lemma contiguous_implies_anyval_of_fillable{T: Type}:
+    forall (P: word -> mem -> Prop) (F: T -> word -> mem -> Prop) (n: Z) (a: word),
+      contiguous P n ->
+      fillable F n ->
+      impl1 (P a) (anyval F a).
+  Proof.
+    unfold contiguous, fillable, impl1, iff1, anyval. intros.
+    eapply H0. eapply H. assumption.
+  Qed.
+
   Lemma anybytes_contiguous: forall n, contiguous (anyval (array (uint 8) n)) n.
   Proof. unfold contiguous. intros. reflexivity. Qed.
 
@@ -69,6 +79,15 @@ Section WithMem.
     1: destruct width_cases as [E|E]; rewrite E; cbv; discriminate.
     assumption.
   Qed.
+
+  Lemma uintptr_fillable: fillable uintptr (Memory.bytes_per_word width).
+  Proof.
+    unfold fillable, iff1, uintptr. intros a m. split; intro Hm.
+    - eapply Scalars.anybytes_to_scalar. eapply anybytes_to_alt. assumption.
+    - destruct Hm as [bs Hm]. eapply Scalars.scalar_to_anybytes in Hm.
+      eapply anybytes_from_alt. 2: exact Hm.
+      destruct width_cases as [E|E]; rewrite E; cbv; discriminate.
+  Qed.
 End WithMem.
 
 Section WithMem32.
@@ -77,6 +96,9 @@ Section WithMem32.
 
   Lemma uintptr32_contiguous: forall v, contiguous (uintptr v) 4.
   Proof. eapply (uintptr_contiguous (width := 32)). Qed.
+
+  Lemma uintptr32_fillable: fillable uintptr 4.
+  Proof. eapply (uintptr_fillable (width := 32)). Qed.
 End WithMem32.
 
 Section WithMem64.
@@ -85,6 +107,9 @@ Section WithMem64.
 
   Lemma uintptr64_contiguous: forall v, contiguous (uintptr v) 8.
   Proof. eapply (uintptr_contiguous (width := 64)). Qed.
+
+  Lemma uintptr64_fillable: fillable uintptr 8.
+  Proof. eapply (uintptr_fillable (width := 64)). Qed.
 End WithMem64.
 
 Create HintDb contiguous.
@@ -95,3 +120,9 @@ Create HintDb contiguous.
   uintptr64_contiguous
   anybytes_contiguous
 : contiguous.
+
+Create HintDb fillable.
+#[export] Hint Resolve
+  uintptr32_fillable
+  uintptr64_fillable
+: fillable.
