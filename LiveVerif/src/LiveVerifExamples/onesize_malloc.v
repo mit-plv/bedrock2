@@ -55,7 +55,8 @@ Definition allocator_cannot_allocate(n: word): mem -> Prop :=
   allocator_with_potential_failure (Some n).
 
 Definition freeable(sz: Z)(a: word): mem -> Prop :=
-  array (uint 8) (malloc_block_size - sz) ? (a ^+ /[sz]).
+  <{ * emp (a <> /[0]) (* TODO maybe this should be in array instead? *)
+     * array (uint 8) (malloc_block_size - sz) ? (a ^+ /[sz]) }>.
 
 Local Hint Extern 1 (cannot_purify (fixed_size_free_list _ _))
       => constructor : suppressed_warnings.
@@ -157,7 +158,19 @@ Derive free SuchThat (fun_correct! free) As free_ok.                            
   destruct M as (?m, (?D, ?H)).
   bottom_up_simpl_in_hyp H.
                                                                                 .**/
-  store(p, load(malloc_state_ptr));                                        /**.
-Abort.
+  store(p, load(malloc_state_ptr));                                        /**. .**/
+  store(malloc_state_ptr, p);                                              /**.
+
+  discard_merge_step.
+  epose proof (fixed_size_free_list_cons malloc_block_size p) as HL.
+  lazymatch goal with
+  | H: p <> /[0] |- _ => specialize HL with (1 := H)
+  end.
+  unfold sepapps, List.fold_right, proj_predicate, sepapp_sized_predicates,
+    sepapp, sized_emp in HL.
+  cancel_in_hyp HL.
+                                                                                .**/
+}                                                                          /**.
+Qed.
 
 End LiveVerif. Comments .**/ //.

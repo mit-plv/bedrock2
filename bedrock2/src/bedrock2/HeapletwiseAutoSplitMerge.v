@@ -615,3 +615,16 @@ Ltac merge_step :=
       end;
       clear F
   end.
+
+Ltac prove_emp_in_hyps :=
+  repeat match goal with
+         | h: with_mem _ ?p |- _ => prove_emp_in h p
+         end.
+
+(* to be called manually to acknowledge that the latest merge step is not needed: *)
+Ltac discard_merge_step :=
+  lazymatch goal with
+  | H: merge_step _ |- _ => clear H
+  end;
+  prove_emp_in_hyps;
+  repeat heapletwise_step.

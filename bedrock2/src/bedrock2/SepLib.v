@@ -125,7 +125,7 @@ Lemma anyval_is_emp{word: Type}{mem: map.map word Coq.Init.Byte.byte}{T: Type}
   (forall x: T, is_emp (p x a) (q x)) -> is_emp (anyval p a) (exists x: T, q x).
 Proof. unfold anyval, is_emp, impl1, emp, ex1. intros. firstorder idtac. Qed.
 
-#[export] Hint Resolve anyval_is_emp : is_emp.
+#[export] Hint Resolve anyval_is_emp | 5 : is_emp.
 
 #[export] Hint Extern 1 (PredicateSize (anyval ?p)) =>
   lazymatch constr:(_: PredicateSize p) with
@@ -319,4 +319,4 @@ End WithMem.
 #[export] Hint Extern 1 (is_emp (array ?elem ?n ?xs ?a) _) =>
   eapply (array_0_is_emp elem n xs a ltac:(xlia zchecker)) : is_emp.
 #[export] Hint Extern 1 (is_emp (array ?elem ?n ? ?a) _) =>
-  eapply (anyval_array_0_is_emp n a ltac:(xlia zchecker)) : is_emp.
+  eapply (anyval_array_0_is_emp elem n a ltac:(xlia zchecker)) : is_emp.

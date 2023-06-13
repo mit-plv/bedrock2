@@ -514,6 +514,16 @@ Section HeapletwiseHyps.
       + symmetry. eapply map.disjointb_spec. eapply map.disjoint_putmany_l. auto.
   Qed.
 
+  Lemma canceling_emp_in_hyp: forall (P: Prop) (Ps: list (mem -> Prop)) Q mAll om,
+      P ->
+      canceling_in_hyp mAll om (cons (emp P) Ps) Q ->
+      canceling_in_hyp mAll om Ps Q.
+  Proof.
+    unfold canceling_in_hyp. intros. fwd. eexists. split. 1: eassumption.
+    intros. eapply H0p1. 1: eassumption. eapply seps_cons. eapply sep_emp_l.
+    split; assumption.
+  Qed.
+
   Lemma canceling_done_in_hyp: forall Q mAll omAvailable,
       canceling_in_hyp mAll omAvailable nil Q ->
       exists m, mmap.du omAvailable (mmap.Def m) = mAll /\ with_mem m Q.
@@ -689,6 +699,9 @@ Ltac will_merge_back_later :=
 (* For hints registered with `Hint Unfold`, used by autounfold *)
 Create HintDb heapletwise_always_unfold.
 
+Ltac prove_emp_in h p :=
+  eapply (use_is_emp p) in h; [ | solve [ eauto with is_emp ] ].
+
 Ltac new_mem_hyp h :=
   autounfold with heapletwise_always_unfold in h;
   let t := type of h in
@@ -703,7 +716,7 @@ Ltac new_mem_hyp h :=
   | _ => (tryif will_merge_back_later
           then idtac (* don't simplify empty arrays away because merge step happening later
                         will need it even if empty *)
-          else (eapply (use_is_emp p) in h; [ | solve [ eauto with is_emp ] ]))
+          else prove_emp_in h p)
          || new_heapletwise_hyp_hook h t
   end.
 
@@ -968,8 +981,11 @@ Ltac start_canceling_in_hyp H :=
       let clausetree := SeparationLogic.reify A in
       change (forall m, SeparationLogic.Tree.to_sep clausetree m -> B m) in H;
       lazymatch goal with
-      | D: _ = mmap.Def _ |- _ =>
-          eapply (start_canceling_in_hyp clausetree _ _ _ D) in H;
+      | D: _ = @mmap.Def ?key ?value ?mem _ |- _ =>
+          let mok := constr:(_: map.ok mem) in
+          let spec := constr:(_: forall (x y: key), BoolSpec (x = y) (x <> y) (_ x y)) in
+          eapply (start_canceling_in_hyp (mem_ok := mok) (key_eqb_spec := spec)
+                    clausetree _ _ _ D) in H;
           clear D;
           cbn [SeparationLogic.Tree.flatten
                SeparationLogic.Tree.interp
@@ -979,6 +995,12 @@ Ltac start_canceling_in_hyp H :=
 
 Ltac canceling_step_in_hyp C :=
   lazymatch type of C with
+  | canceling_in_hyp ?mAll ?om (cons (emp ?P) ?Ps) ?Q =>
+      eapply canceling_emp_in_hyp in C;
+      [ | lazymatch goal with
+          | H: P |- P => exact H
+          | |- True => constructor
+          end ]
   | canceling_in_hyp ?mAll ?om (cons ?P ?Ps) ?Q =>
       let H := match goal with
                | H: with_mem _ ?P' |- _ =>
