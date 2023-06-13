@@ -567,14 +567,6 @@ Ltac is_var_b x :=
   | _ => constr:(false)
   end.
 
-Inductive cannot_purify{mem: Type}(pred: mem -> Prop): Set :=
-  mk_cannot_purify.
-
-Notation "'(purify'  pred  '_)'  'cannot'  'be'  'solved'  'by'  'eauto' 'with' 'purify'" :=
-  (cannot_purify pred)
-  (at level 1, pred at level 9, only printing)
-  : message_scope.
-
 Inductive nothing_to_purify: Prop := mk_nothing_to_purify.
 
 (* Returns a proof of the purified (h: pred m) or mk_nothing_to_purify.

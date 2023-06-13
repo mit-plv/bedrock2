@@ -91,3 +91,13 @@ Ltac purify :=
   lazymatch goal with
   | H: sep _ _ _ |- _ => purify_hyp H
   end.
+
+Require Import bedrock2.SuppressibleWarnings.
+
+Inductive cannot_purify{mem: Type}(pred: mem -> Prop): Set :=
+  mk_cannot_purify.
+
+Notation "'(purify'  pred  '_)'  'cannot'  'be'  'solved'  'by'  'eauto' 'with' 'purify'" :=
+  (cannot_purify pred)
+  (at level 1, pred at level 9, only printing)
+  : message_scope.
