@@ -640,13 +640,25 @@ Ltac clear_heapletwise_hyps :=
          end.
 
 (* can be overridden using ::= *)
-Ltac same_pred_and_addr P Q :=
+Ltac get_pred_of_sep_clause P :=
   lazymatch P with
-  | ?pred ?val1 ?addr =>
-      lazymatch Q with
-      | pred ?val2 addr => idtac
-      end
+  | anyval ?pred ?addr => pred
+  | ?pred ?val ?addr => pred
   end.
+
+(* can be overridden using ::= *)
+Ltac get_addr_of_sep_clause P :=
+  lazymatch P with
+  | ?pred ?val ?addr => addr
+  end.
+
+Ltac same_pred_and_addr P Q :=
+  let addr1 := get_addr_of_sep_clause P in
+  let addr2 := get_addr_of_sep_clause Q in
+  constr_eq addr1 addr2;
+  let pred1 := get_pred_of_sep_clause P in
+  let pred2 := get_pred_of_sep_clause Q in
+  constr_eq pred1 pred2.
 
 (* given a new mem hyp H, replace the corresponding old mem hyp by H *)
 Ltac replace_with_new_mem_hyp H :=
