@@ -81,6 +81,12 @@ Notation "b" := (fun ff: False => b) (in custom pat at level 0, b constr at leve
 Notation "# p" := ltac:(find_hyp_by_pat p)
   (at level 6, p custom pat at level 0, only parsing).
 
+(* Because we prefer
+     let h := find #(my ?? pattern) in ...
+   over
+     let h := constr:(#(my ?? pattern)) in ... *)
+Ltac find h := h.
+
 Goal forall a b: nat, a = 5 -> a < b -> a < 3 /\ 1 <= a -> a < 4 /\ b < 4 -> False.
   intros.
   pose proof #(?? < b) as AB.

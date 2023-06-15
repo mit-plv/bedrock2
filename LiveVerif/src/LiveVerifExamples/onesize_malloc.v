@@ -85,6 +85,51 @@ Proof.
   intros n m M. steps.
 Qed.
 
+#[export] Instance spec_of_malloc_init: fnspec :=                                .**/
+
+uintptr_t malloc_init (uintptr_t p, uintptr_t n) /**#
+  ghost_args := (R: mem -> Prop);
+  requires t m := 8 <= malloc_block_size < 2 ^ 32 /\
+                  \[n] mod malloc_block_size = 0 /\
+                  <{ * array (uint 8) (sizeof malloc_state_t) ? /[malloc_state_ptr]
+                     * array (uint 8) \[n] ? p
+                     * R }> m;
+  ensures t' m' p := t' = t /\
+        <{ * allocator
+           * R }> m' #**/                                                     /**.
+Derive malloc_init SuchThat (fun_correct! malloc_init) As malloc_init_ok.          .**/
+{                                                                          /**. .**/
+  store(malloc_state_ptr, p);                                              /**. .**/
+  uintptr_t tail = NULL;                                                   /**. .**/
+  uintptr_t head = p + n;                                                  /**.
+
+  assert (\[n] = \[n] / malloc_block_size * malloc_block_size) as NAlt. {
+    Z.div_mod_to_equations. (* <-- also adds eqs for non-const modulo *)
+    lia.
+  }
+  assert (0 <= \[n] / malloc_block_size). {
+    zify_goal.
+    Z.div_mod_to_equations. (* <-- also adds eqs for non-const modulo *)
+    lia.
+  }
+  forget (\[n] / malloc_block_size) as c.
+  let h := find #(array (uint 8)) in rewrite NAlt in h.
+  let h := find #(head = ??) in replace n with /[c * malloc_block_size] in Def1 by steps.
+  pose proof (fixed_size_free_list_nil malloc_block_size tail map.empty
+                ltac:(assumption) ltac:(unfold emp; auto)) as A.
+  rewrite <- (mmap.du_empty_r m3) in D0.
+  forget (map.empty (map := mem)) as m.
+  change (m |= fixed_size_free_list malloc_block_size tail) in A.
+  delete #(tail = ??).
+  let h := find #(8 <= malloc_block_size) in move h after tail.
+  delete #(?? mod malloc_block_size = 0).
+  loop invariant above tail.
+                                                                                .**/
+  while (head != p) /* decreases c */ {                                    /**. .**/
+    head = head - malloc_block_size;                                       /**. .**/
+    store(head, tail);                                                     /**.
+Abort.
+
 #[export] Instance spec_of_malloc: fnspec :=                                    .**/
 
 uintptr_t malloc (uintptr_t n) /**#
