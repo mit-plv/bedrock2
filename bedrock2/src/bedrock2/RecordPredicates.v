@@ -33,8 +33,32 @@ Ltac create_predicate fields :=
   end.
 
 #[export] Hint Extern 20 (PredicateSize ?p) =>
-  let h := head p in unfold h; typeclasses eauto
+  let h := head p in
+  (* seemingly superfluous match strips cast added by unfold *)
+  lazymatch constr:(ltac:(unfold h; typeclasses eauto) : PredicateSize p) with
+  | ?sz => exact sz
+  end
 : typeclass_instances.
+
+(* Try if predicate size is value-independent *)
+#[export] Hint Extern 2 (PredicateSize (fun _ => _)) =>
+  lazymatch goal with
+  | |- PredicateSize (fun v: ?T => ?body) =>
+      lazymatch constr:(_ : forall v: T, PredicateSize body) with
+      | (fun _ => ?sz_maybe_with_casts) =>
+          lazymatch sz_maybe_with_casts with
+          | ?sz => exact sz
+          end
+      end
+  end
+: typeclass_instances.
+
+Notation sizeof p := ltac:(lazymatch constr:(_: PredicateSize p) with
+                           | ?sz => exact sz
+                           end) (only parsing).
+(* alternative that doesn't require a Notation, but needs to be unfolded
+   to reveal the constant:
+Definition sizeof{PredTp: Type}(p: PredTp){sz : PredicateSize p}: Z := sz. *)
 
 Notation "'record!' fields" := ltac:(create_predicate fields)
   (at level 10, only parsing).
@@ -171,6 +195,12 @@ Module Examples_TODO_move.
 
     Goal forall p, (_ : PredicateSize (ARPPacket_t p)) = 28.
     Proof. intros. reflexivity. Abort.
+
+    Goal (_ : PredicateSize ARPPacket_t) = 28.
+    Proof. reflexivity. Abort.
+
+    Goal sizeof ARPPacket_t = 28.
+    Proof. reflexivity. Abort.
 
     Definition EthernetHeader_t(r: EthernetHeader): word -> mem -> Prop := .**/
       typedef struct __attribute__ ((__packed__)) {
