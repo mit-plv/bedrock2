@@ -1,4 +1,4 @@
-Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Notations coqutil.Map.Interface coqutil.Map.OfListWord.
+Require Import coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import Coq.ZArith.BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 
@@ -12,11 +12,11 @@ Section WeakestPrecondition.
   Definition literal v (post : word -> Prop) : Prop :=
     dlet! v := word.of_Z v in post v.
   Definition get (l : locals) (x : String.string) (post : word -> Prop) : Prop :=
-    bind_ex_Some v <- map.get l x; post v.
+    exists v, map.get l x = Some v /\ post v.
   Definition load s m a (post : _ -> Prop) : Prop :=
-    bind_ex_Some v <- load s m a; post v.
+    exists v, load s m a = Some v /\ post v.
   Definition store sz m a v post :=
-    bind_ex_Some m <- store sz m a v; post m.
+    exists m', store sz m a v = Some m' /\ post m'.
 
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
@@ -65,15 +65,15 @@ Section WeakestPrecondition.
       match c with
       | cmd.skip => post t m l
       | cmd.set x ev =>
-        bind_ex v <- dexpr m l ev;
+        exists v, dexpr m l ev v /\
         dlet! l := map.put l x v in
         post t m l
       | cmd.unset x =>
         dlet! l := map.remove l x in
         post t m l
       | cmd.store sz ea ev =>
-        bind_ex a <- dexpr m l ea;
-        bind_ex v <- dexpr m l ev;
+        exists a, dexpr m l ea a /\
+        exists v, dexpr m l ev v /\
         store sz m a v (fun m =>
         post t m l)
       | cmd.stackalloc x n c =>
@@ -86,7 +86,7 @@ Section WeakestPrecondition.
           anybytes a n mStack' /\ map.split mCombined' m' mStack' /\
           post t' m' l')
       | cmd.cond br ct cf =>
-        bind_ex v <- dexpr m l br;
+        exists v, dexpr m l br v /\
         (word.unsigned v <> 0%Z -> rec ct t m l post) /\
         (word.unsigned v = 0%Z -> rec cf t m l post)
       | cmd.seq c1 c2 =>
@@ -96,20 +96,20 @@ Section WeakestPrecondition.
         Coq.Init.Wf.well_founded lt /\
         (exists v, inv v t m l) /\
         (forall v t m l, inv v t m l ->
-          bind_ex b <- dexpr m l e;
+          exists b, dexpr m l e b /\
           (word.unsigned b <> 0%Z -> rec c t m l (fun t' m l =>
             exists v', inv v' t' m l /\ lt v' v)) /\
           (word.unsigned b = 0%Z -> post t m l))
       | cmd.call binds fname arges =>
-        bind_ex args <- dexprs m l arges;
+        exists args, dexprs m l arges args /\
         call fname t m args (fun t m rets =>
-          bind_ex_Some l <- map.putmany_of_list_zip binds rets l;
-          post t m l)
+          exists l', map.putmany_of_list_zip binds rets l = Some l' /\
+          post t m l')
       | cmd.interact binds action arges =>
-        bind_ex args <- dexprs m l arges;
+        exists args, dexprs m l arges args /\
         exists mKeep mGive, map.split m mKeep mGive /\
         ext_spec t mGive action args (fun mReceive rets =>
-          bind_ex_Some l' <- map.putmany_of_list_zip binds rets l;
+          exists l', map.putmany_of_list_zip binds rets l = Some l' /\
           forall m', map.split m' mKeep mReceive ->
           post (cons ((mGive, action, args), (mReceive, rets)) t) m' l')
       end.
@@ -117,7 +117,7 @@ Section WeakestPrecondition.
   End WithFunctions.
 
   Definition func call '(innames, outnames, c) (t : trace) (m : mem) (args : list word) (post : trace -> mem -> list word -> Prop) :=
-      bind_ex_Some l <- map.of_list_zip innames args;
+      exists l, map.of_list_zip innames args = Some l /\
       cmd call c t m l (fun t m l =>
         list_map (get l) outnames (fun rets =>
         post t m rets)).

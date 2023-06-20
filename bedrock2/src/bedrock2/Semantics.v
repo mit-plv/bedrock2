@@ -3,7 +3,7 @@ Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import coqutil.Decidable.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.
-Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
+Require Import bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import bedrock2.MetricLogging.
 Require Export bedrock2.Memory.
@@ -89,6 +89,10 @@ Section semantics.
   (* this is the expr evaluator that is used to verify execution time, the just-correctness-oriented version is below *)
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
+
+    Local Notation "' x <- a | y ; f" := (match a with x => f | _ => y end)
+      (right associativity, at level 70, x pattern).
+
     Fixpoint eval_expr (e : expr) (mc : metrics) : option (word * metrics) :=
       match e with
       | expr.literal v => Some (word.of_Z v, addMetricInstructions 8
