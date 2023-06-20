@@ -26,7 +26,7 @@ Require Import coqutil.Tactics.eplace Coq.setoid_ring.Ring_tac.
 
 Section WithParameters.
   Context {mem: map.map word32 Byte.byte} {mem_ok: map.ok mem}.
-  Local Notation "m =* P" := ((P%sep) (m : mem)) (at level 70, only parsing) (* experiment*).
+  Implicit Types (R : mem -> Prop).
 
   Instance spec_of_swap : spec_of "swap" :=
     fnspec! "swap" a_addr b_addr / a b R,

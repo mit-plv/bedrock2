@@ -14,7 +14,6 @@ Local Notation string := String.string.
 (*Require Import bedrock2.ptsto_bytes.*)
 Require Import coqutil.Map.OfListWord.
 Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
-Local Notation "m =* P" := ((P%sep) m) (at level 70, only parsing) (* experiment*).
 
 Section WithParameters.
   Context {width} {BW: Bitwidth width}.

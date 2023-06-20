@@ -48,8 +48,6 @@ Local Ltac invert H := inversion H; clear H.
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
-  Local Notation "m =* P" := ((P%sep) m) (at level 70, only parsing) (* experiment*).
-  Local Notation "m =*> P" := (exists R, (sep P R) m) (at level 70, only parsing) (* experiment*).
   Import ProgramLogic.Coercions.
   Local Number Notation nat Nat.of_num_uint Nat.to_num_hex_uint (abstract after 5001) : core_scope.
   Local Number Notation nat Nat.of_num_uint Nat.to_num_uint (abstract after 5001) : core_scope.
