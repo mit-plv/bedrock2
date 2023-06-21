@@ -26,7 +26,6 @@ Section WithParameters.
 
   Definition f (a b : word) := word.add (word.add a b) b.
 
-  Local Notation "m =* P" := (P%sep m) (at level 70, only parsing). (* experiment *)
   Instance spec_of_indirect_add : spec_of "indirect_add" :=
     fnspec! "indirect_add" a b c / va Ra vb Rb vc Rc,
     { requires t m := m =* scalar a va * Ra /\ m =* scalar b vb * Rb /\ m =* scalar c vc * Rc;

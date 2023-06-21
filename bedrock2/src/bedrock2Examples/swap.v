@@ -32,7 +32,6 @@ Require Import coqutil.Tactics.rdelta.
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
-  Local Notation "m =* P" := ((P%sep) m) (at level 70, only parsing) (* experiment*).
 
   Instance spec_of_swap : spec_of "swap" :=
     fnspec! "swap" a_addr b_addr / a b R,

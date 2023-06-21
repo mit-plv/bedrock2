@@ -7,7 +7,7 @@ Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.D
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics coqutil.Datatypes.Option.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndianList.
-Require Import bedrock2.Notations bedrock2.Syntax.
+Require Import bedrock2.Syntax.
 Require Import coqutil.Byte.
 Require Import coqutil.Map.OfListWord.
 

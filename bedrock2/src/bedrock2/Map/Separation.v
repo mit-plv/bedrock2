@@ -20,3 +20,5 @@ Declare Scope sep_scope.
 Delimit Scope sep_scope with sep.
 Infix "*" := sep (at level 40, left associativity) : sep_scope.
 Infix "⋆" := sep (at level 40, left associativity) : sep_scope.
+Notation "m =* P" := ((P%sep) m) (at level 70, only parsing).
+Notation "m =*> P" := (exists R, (sep P R) m) (at level 70, only parsing).
