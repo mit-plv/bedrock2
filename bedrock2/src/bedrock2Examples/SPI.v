@@ -269,8 +269,7 @@ Section WithParameters.
           { ZnWordsL. } }
           { ZnWords. }
           { ZnWords. } }
-      { letexists; split; repeat straightline.
-        eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
+      { eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
         eexists. split.
         { econstructor; try eassumption; right; eauto. }
         eexists (byte.of_Z (word.unsigned x)), _; split.
@@ -315,10 +314,7 @@ Section WithParameters.
           { econstructor; try eassumption; right; eauto. }
           subst i.
           rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent in H1; contradiction. } }
-      { eexists _; split.
-        { repeat straightline. }
-        split; trivial.
-        (* copy-paste from above, trace manipulation *)
+      { (* copy-paste from above, trace manipulation *)
         eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
         eexists. split.
         { econstructor; try eassumption; right; eauto. }

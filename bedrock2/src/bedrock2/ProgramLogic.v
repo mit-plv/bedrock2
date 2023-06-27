@@ -255,7 +255,9 @@ Ltac straightline :=
   | |- dexpr _ _ _ _ => cbv beta delta [dexpr]
   | |- dexprs _ _ _ _ => cbv beta delta [dexprs]
   | |- literal _ _ => cbv beta delta [literal]
-  | |- get _ _ _ => cbv beta delta [get]
+  | |- @get ?w ?W ?L ?l ?x ?P =>
+      let get' := eval cbv [get] in @get in
+      change (get' w W L l x P); cbv beta
   | |- load _ _ _ _ => cbv beta delta [load]
   | |- @Loops.enforce ?width ?word ?locals ?names ?values ?map =>
     let values := eval cbv in values in

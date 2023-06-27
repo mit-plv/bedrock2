@@ -90,10 +90,7 @@ Section WithParameters.
     set [Byte.byte.of_Z (word.unsigned v0); b0; b1; b2] as ss in *.
     assert (length ss = Z.to_nat 4) by reflexivity.
     repeat straightline.
-    cbn.
-    eexists; split; [exact eq_refl|].
-    subst R. subst m1.
-    eexists _, _; Tactics.ssplit; eauto.
+    Tactics.ssplit; eauto.
 
     subst v. subst v1. subst ss.
     eapply Properties.word.unsigned_inj.
