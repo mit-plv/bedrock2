@@ -522,29 +522,22 @@ Section WithParameters.
         eapply Z.ltb_nlt in HJ.
         ZnWords. }
       repeat straightline.
-      repeat letexists. split. { repeat straightline. }
-      eexists _, _. split. { exact eq_refl. }
 
-      repeat straightline.
       subst i.
-      match goal with H: _ |- _ =>
-        progress repeat (unshelve erewrite (_ : forall x, word.add x (word.of_Z 0) = x) in H; [intros; ring|]);
-        progress repeat (unshelve erewrite (_ : forall x, word.sub x (word.of_Z 0) = x) in H; [intros; ring|])
-      end.
+      progress replace (Z.to_nat (word.unsigned (word.sub p_addr p_addr) / 1)) with O in * by ZnWords.
+      rewrite ?word.add_0_r, ?word.sub_0_r, ?Z.mul_1_l, ?Nat.add_0_l, ?Z2Nat.id, ?word.of_Z_unsigned in * by apply word.unsigned_range.
+
       eexists; split.
       1: { repeat match goal with |- context [?x] => match type of x with list _ => subst x end end.
         repeat rewrite List.app_assoc. f_equal. }
       eexists; split.
       1:repeat eapply List.Forall2_app; eauto.
       destruct H14; [left|right]; repeat straightline; repeat split; eauto.
-      { trans_ltu.
-        Import eplace.
-        eplace (word.add p_addr _) with (word.add p_addr num_bytes) in * by ZnWords.
-        eplace (Z.to_nat (word.unsigned (word.sub p_addr p_addr) / 1)) with O in * by ZnWords.
+      { progress trans_ltu.
         cbn [List.firstn array] in *.
         replace (word.unsigned (word.of_Z 1521)) with 1521 in *
           by (rewrite word.unsigned_of_Z; exact eq_refl).
-          eexists _, _; repeat split.
+        eexists _, _; repeat split.
         { cbn [seps] in *. SeparationLogic.ecancel_assumption. }
         { revert dependent x2. revert dependent x6. intros.
           destruct H5; repeat straightline; try contradiction.
@@ -563,10 +556,9 @@ Section WithParameters.
         all: try ZnWords.
         }
       { repeat match goal with H : _ |- _ => rewrite H; intro HX; solve[inversion HX] end. }
-      { trans_ltu;
-        replace (word.unsigned (word.of_Z 1521)) with 1521 in * by
+      { progress trans_ltu;
+        progress replace (word.unsigned (word.of_Z 1521)) with 1521 in * by
           (rewrite word.unsigned_of_Z; exact eq_refl).
-        replace (Z.to_nat (word.unsigned (word.sub p_addr p_addr) / 1)) with O in * by ZnWords.
         all : cbn [seps array List.firstn List.skipn] in *.
         eexists _; split; eauto; repeat split; try blia.
         { SeparationLogic.seprewrite_in @bytearray_index_merge H10.
@@ -578,7 +570,6 @@ Section WithParameters.
           rewrite ?Znat.Z2Nat.id by eapply word.unsigned_range; blia. }
         right. right. split; eauto using TracePredicate.any_app_more. } }
 
-    all: repeat letexists; split; repeat straightline.
     all: eexists; split;
       [repeat match goal with |- context [?x] => match type of x with list _ => subst x end end;
       rewrite ?List.app_assoc; eauto|].

@@ -1,20 +1,26 @@
-Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
-Require Import bedrock2.NotationsCustomEntry Coq.Lists.List.
+From bedrock2 Require Import Syntax NotationsCustomEntry.
+Local Open Scope string_scope. Local Open Scope Z_scope.
 
-Import BinInt String ListNotations.
-Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
+Example addsub := func! (a, b) ~> (x, y) {
+  x = a + b;
+  y = a - b
+}.
 
-Section MultipleReturnValues.
-  Example addsub := func! (a, b) ~> (x, y) {
-    x = a + b;
-    y = a - b
-  }.
+Example addsub_test := func! () ~> ret {
+  unpack! ret, ret = addsub($14, $7);
+  ret = ret - $7
+}.
 
-  Example addsub_test := func! () ~> ret {
-    unpack! ret, ret = addsub($14, $7);
-    ret = ret - $7
-  }.
-End MultipleReturnValues.
+From bedrock2 Require Import WeakestPrecondition ProgramLogic BasicC64Semantics.
+Import coqutil.Word.Interface.
+
+Local Instance spec_of_addsub : spec_of "addsub" :=
+  fnspec! "addsub" a b ~> x y,
+  { requires m t := True; ensures M T := m=M /\ t=T /\
+    x = word.add a b /\ y = word.sub a b }.
+
+Lemma addsub_correct : program_logic_goal_for_function! addsub.
+Proof. repeat straightline. Qed.
 
 (*
 Require Import bedrock2.ToCString coqutil.Macros.WithBaseName.
