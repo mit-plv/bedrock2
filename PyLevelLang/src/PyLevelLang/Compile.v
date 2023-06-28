@@ -92,6 +92,10 @@ Fixpoint compile_expr {t : type} (e : expr t) : result (Syntax.cmd * Syntax.expr
       '(c1, e1') <- compile_expr e1;;
       '(c2, e2') <- compile_expr e2;;
       Success (Syntax.cmd.seq c1 c2, f e1' e2')
+  | ELet x e1 e2 =>
+      '(c1, e1') <- compile_expr e1;;
+      '(c2, e2') <- compile_expr e2;;
+      Success (Syntax.cmd.seq c1 (Syntax.cmd.seq (Syntax.cmd.set x e1') c2), e2')
   | _ => error:("unimplemented")
   end.
 
@@ -145,6 +149,40 @@ Section WithMap.
     - destruct Hl.
   Qed.
 
+  Lemma locals_relation_get (lo : locals) (l : locals') :
+    locals_relation lo l ->
+    forall (x : string) (t : type) (s : {t & interp_type t}),
+    map.get lo x = Some s -> exists (w : word),
+    map.get l x = Some w.
+  Proof.
+    intros Hl x t s Hs.
+    unfold locals_relation, map.forall_keys in Hl.
+    specialize Hl with (1 := Hs).
+    rewrite Hs in Hl.
+    destruct map.get.
+    - now exists r.
+    - destruct s, Hl.
+  Qed.
+
+  Lemma locals_relation_put (lo : locals) (l : locals') :
+    locals_relation lo l ->
+    forall (x : string) (t : type) (v : interp_type t) (w : word),
+    value_relation v w ->
+    locals_relation (set_local lo x v) (map.put l x w).
+  Proof.
+    intros Hl x t v w Hvw.
+    unfold locals_relation, map.forall_keys, set_local.
+    intros x' [t' v'].
+    repeat rewrite Properties.map.get_put_dec.
+    destruct (x =? x')%string.
+    - easy.
+    - intros Hx'. fwd.
+      unfold locals_relation, map.forall_keys in Hl.
+      specialize Hl with (1 := Hx').
+      rewrite Hx' in Hl.
+      assumption.
+  Qed.
+
   Definition tenv_relation (G : tenv) (lo : locals) : Prop :=
     map.forall_keys (fun key =>
     match map.get G key with
@@ -169,19 +207,22 @@ Section WithMap.
     - destruct Hlo.
   Qed.
 
-  Lemma locals_relation_get (lo : locals) (l : locals') :
-    locals_relation lo l ->
-    forall (x : string) (t : type) (s : {t & interp_type t}),
-    map.get lo x = Some s -> exists (w : word),
-    map.get l x = Some w.
+  Lemma tenv_relation_put (G : tenv) (lo : locals) :
+    tenv_relation G lo ->
+    forall (x : string) (t : type) (b : bool) (v : interp_type t),
+    tenv_relation (map.put G x (t, b)) (set_local lo x v).
   Proof.
-    intros Hl x t s Hs.
-    unfold locals_relation, map.forall_keys in Hl.
-    specialize Hl with (1 := Hs).
-    rewrite Hs in Hl.
-    destruct map.get.
-    - now exists r.
-    - destruct s, Hl.
+    intros Hlo x t b v.
+    unfold tenv_relation, map.forall_keys, set_local.
+    intros x' [t' b'].
+    repeat rewrite Properties.map.get_put_dec.
+    destruct (x =? x')%string.
+    - easy.
+    - intros Hx'. fwd.
+      unfold tenv_relation, map.forall_keys in Hlo.
+      specialize Hlo with (1 := Hx').
+      rewrite Hx' in Hlo.
+      assumption.
   Qed.
 
   Lemma proj_expected_existT (t : type) (v : interp_type t) :
@@ -424,7 +465,58 @@ Section WithMap.
             rewrite word.unsigned_eqb;
             try rewrite word.unsigned_of_Z_0;
             now try rewrite word.unsigned_of_Z_1.
-  Qed.
+    - (* ELet x e1 e2 *)
+      unfold compile_expr in He'.
+      fwd.
+      rename E into E1, E0 into E2.
+      rename e into e1', e' into e2'.
+      rename c0 into c1, c1 into c2.
+      fold (compile_expr (t := t1)) in E1, IHe1.
+      fold (compile_expr (t := t2)) in E2, IHe2.
+      inversion He;
+      repeat lazymatch goal with
+      | h: existT _ _ _ = existT _ _ _ |- _ =>
+          apply Eqdep_dec.inj_pair2_eq_dec in h as [= ->]; try exact type_eq_dec
+      end;
+      subst;
+      rename H3 into He1, H6 into He2.
+
+      eapply exec.seq.
+      { apply IHe1 with (1 := Hlo) (2 := He1) (3 := E1) (4 := Hl). }
+      cbv beta.
+      intros tr' m' l' mc' Hw.
+      fwd.
+
+      apply exec.seq with (mid := fun tr'' m'' l'' mc''' => m'' = m /\ l'' = map.put l' x w).
+      {
+        eapply exec.set.
+        + exact Hwp0.
+        + now split.
+      }
+      intros tr'' m'' l'' mc''' Hw'.
+      fwd.
+      eassert (H : interp_expr lo (ELet x e1 e2) = interp_expr _ _) by now simpl.
+      rewrite H. clear H.
+
+      eapply exec.weaken.
+      {
+        apply IHe2 with (2 := He2) (3 := E2) (lo := (set_local lo x (interp_expr lo e1))).
+        + now apply tenv_relation_put.
+        + apply locals_relation_put.
+          * now apply locals_relation_extends with l.
+          * assumption.
+      }
+      cbv beta.
+      intros tr''' m''' l''' mc'''' [w0 H].
+      fwd.
+      exists w0. ssplit.
+      + now exists mc''0.
+      + exact Hp1.
+      + reflexivity.
+      + apply extends_trans with (map.put l' x w). { assumption. }
+        apply put_extends_l. 2: assumption.
+        admit.
+  Admitted.
 
 End WithMap.
 
