@@ -353,7 +353,6 @@ Section WithArguments.
         diff (of_list l1) (of_list l2).
   Proof.
     intros.
-    induction l2.
     (* PR for this lemma being proved in coqutil exists;
        unsure how to prove it without the assumptions
        in the file that ListSet.of_list_list_union
