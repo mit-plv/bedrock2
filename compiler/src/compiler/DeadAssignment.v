@@ -26,7 +26,7 @@ Section WithArguments.
     subset_diff
     in_singleton
     subset_union_rr : set_hints.
- 
+
   Definition compile_post used_after (postH : Semantics.trace -> mem  -> locals -> MetricLog  -> Prop) : (Semantics.trace -> mem  -> locals -> MetricLog  -> Prop) :=
     (fun t' m' lL' mcL' =>
        exists lH' mcH',
@@ -42,6 +42,608 @@ Section WithArguments.
            -> exec eL (deadAssignment used_after sH) t m lL mcL (compile_post used_after postH).
   Proof.
     induction 2.
+    - simpl.
+      intros.
+      eapply @exec.interact; fwd.
+      + match goal with
+        | H: map.split ?m _ _ |- map.split m _ _ => eapply H
+        end.
+      + match goal with
+        | H1: map.getmany_of_list ?l ?argvars = Some ?argvals,
+            H2: map.agree_on _ ?l ?lL
+          |- map.getmany_of_list ?lL ?argvars = Some ?y =>
+            cut (map.getmany_of_list l argvars = map.getmany_of_list lL argvars);
+            intros;
+            match goal with
+            | H: map.getmany_of_list l argvars
+                 = map.getmany_of_list lL argvars
+              |- map.getmany_of_list lL argvars = Some _ =>
+                rewrite <- H; eassumption
+            | |- map.getmany_of_list l argvars
+                 = map.getmany_of_list lL argvars =>
+                eapply agree_on_getmany; eapply agree_on_subset;
+                [ eapply H2 | ]
+            end
+        end.
+        repeat match goal with
+               | |- context[of_list (ListSet.list_union _ _ _)]  => rewrite ListSet.of_list_list_union
+               | |- context[ListSet.list_diff] => rewrite of_list_list_diff
+               end.
+        match goal with
+        | |- subset ?x (union ?x ?y)  =>
+            eapply subset_union_rl; eapply subset_ref
+        end.
+      + match goal with
+        | |- ext_spec _ _ _ _ _ => eassumption
+        end.
+      + intros.
+        match goal with
+        | H: outcome ?mReceive ?resvals,
+            H1: forall mReceive resvals,
+              outcome mReceive resvals -> _ |- _ =>
+            apply H1 in H;
+            repeat match goal with
+              | H: exists l, _ |- _ => destr H
+              | H: _ /\ _ |- _ => destr H
+              end
+        end.
+        match goal with
+        | H: map.putmany_of_list_zip ?resvars ?resvals _ = _ |-
+            exists l,
+              map.putmany_of_list_zip resvars resvals _ = Some _ /\ _
+          =>
+            let Heq := fresh in
+            pose proof H as Heq; eapply putmany_Some in H; destr H
+        end.
+        match goal with
+        | H: map.putmany_of_list_zip _ _ _ = Some ?x0 |- _ => eexists x0; split; [ eapply H | ]
+        end.
+        match goal with
+        | |- forall m', map.split m' mKeep mReceive -> _
+          => intros
+        end.
+        match goal with
+        | H: map.split ?m ?mKeep ?mReceive,
+            H': forall m',
+              map.split m' mKeep mReceive -> _
+              |- _ => eapply H' in H
+        end.
+        match goal with
+        | |- context[compile_post] => unfold compile_post
+        end.
+        match goal with
+        | H: post ?t ?m' ?x _ |- exists lH' mcH',
+            map.agree_on _ lH' _ /\
+              (post _ _ lH' _)  =>
+            exists x; eexists;  split;  [ | eapply H ]
+        end.
+        (* miscellaneous set reasoning;
+           unclear how to automate this across cases *)
+        repeat match goal with
+               | H: context[of_list (ListSet.list_union _ _ _)] |- _ => rewrite ListSet.of_list_list_union in H
+               | H: context[ListSet.list_diff] |- _ => rewrite of_list_list_diff in H
+               end.
+        match goal with
+        | H: map.agree_on (union _ _) _ _ |- _ => apply agree_on_union in H; destr H
+        end.
+        match goal with
+        | H: map.agree_on (diff (of_list ?l1) (of_list ?l2)) ?l ?lL
+          |- _ =>
+            match goal with
+            | H': map.putmany_of_list_zip l2 ?v l = Some ?x |- _ =>
+                match goal with
+                | H'': map.putmany_of_list_zip l2 v lL = Some ?x0
+                  |-  map.agree_on (of_list l1) x x0 =>
+                    eapply agree_on_subset;
+                    [ eauto using agree_on_putmany
+                    |  eapply subset_trans;
+                       [ eapply subset_union_rl; eapply subset_ref
+                       | eapply sameset_union_diff_oflist ]
+                    ]
+                end
+            end
+        end.
+    - simpl.
+      intros.
+      eapply @exec.call; fwd.
+      + match goal with
+        | H: deadassignment_functions ?eH = Success ?eL,
+          H1: map.get eH ?fname = Some ?x |-
+            map.get eL fname = Some _ =>
+            unfold deadassignment_functions in H;
+            unfold deadassignment_function in H;
+            eapply map.try_map_values_fw in H; [ | eapply H1 ];
+            repeat (destr H; simpl in H)
+        end.
+        match goal with
+        | H: Success _ = Success ?x,
+            H1: map.get ?eL ?fname = Some x
+          |- map.get eL fname = Some _
+          => inversion H; fwd; eapply H1
+        end.
+      + match goal with
+        | H: map.getmany_of_list ?l ?args = Some ?argvs
+          |- map.getmany_of_list lL args = Some _ =>
+            replace (map.getmany_of_list lL args)  with (map.getmany_of_list l args); [ eapply H | ]
+        end.
+        match goal with
+        | H: map.agree_on ?s ?l ?lL
+          |- map.getmany_of_list l ?args
+             = map.getmany_of_list lL ?args
+          => eapply agree_on_getmany;
+             eapply agree_on_subset; [ eapply H | ]
+        end.
+        (* set reasoning *)
+        repeat match goal with
+               | |- context[of_list (ListSet.list_union _ _ _)]  => rewrite ListSet.of_list_list_union
+               | |- context[ListSet.list_diff] => rewrite of_list_list_diff
+               end.
+        match goal with
+        | |- subset ?x (union ?x ?y)  =>
+            eapply subset_union_rl; eapply subset_ref
+        end.
+      + match goal with
+        | |- map.putmany_of_list_zip _ _ _ = Some _ => eassumption
+        end.
+      + match goal with
+        | |- exec _ _ _ _ _ _ _ => eauto using agree_on_refl
+        end.
+      + match goal with
+        | |- forall t' m' mc' st1,
+            compile_post ?rets ?outcome t' m' st1 mc' -> _
+          => unfold compile_post; intros; fwd
+        end.
+
+        match goal with
+        | H: outcome _ _ _ _,
+            H1: forall t' m' mc' st1,
+              outcome _ _ _ _ ->
+              exists retvs l',
+                map.getmany_of_list st1 ?rets = Some retvs /\ _
+                |- _ => eapply H1 in H; fwd
+        end.
+
+        match goal with
+        | H: map.putmany_of_list_zip ?binds ?x1 ?l = Some ?x2,
+            H1: map.agree_on _ l ?lL
+          |- context[map.putmany_of_list_zip ?binds _ ?lL] =>
+            let Heq := fresh in
+            pose proof H as Heq; eapply putmany_Some in H; destr H; fwd
+        end.
+
+        match goal with
+        | H: map.agree_on (of_list ?rets) ?lH' ?st1,
+            H1: map.getmany_of_list ?lH' ?rets = Some ?retvs,
+          H2: map.putmany_of_list_zip ?binds ?retvs _ = Some ?x |-
+            exists retvs0 l'0,
+              map.getmany_of_list st1 rets = Some retvs0 /\ _
+          => exists retvs; exists x; repeat split; [ | eapply H2 | ]
+        end.
+        * match goal with
+          | H: map.agree_on (of_list ?rets) ?lH' ?st1,
+              H1: map.getmany_of_list ?lH' ?rets = Some ?retvs
+            |- map.getmany_of_list ?st1 ?rets = Some ?retvs
+            => apply agree_on_getmany in H; rewrite <- H; eapply H1
+          end.
+        * match goal with
+          | H: post ?t' ?m' ?l' _
+            |- exists lH'0 mcH'0,
+              map.agree_on (of_list ?used_after) lH'0 ?x /\
+                post ?t' ?m' lH'0 mcH'0
+            => exists l'; eexists; split; [ | eapply H ]
+          end.
+          repeat match goal with
+               | H: context[of_list (ListSet.list_union _ _ _)] |- _ => rewrite ListSet.of_list_list_union in H
+               | H: context[ListSet.list_diff] |- _ => rewrite of_list_list_diff in H
+                 end.
+          match goal with
+          | H: map.agree_on (union _ _) ?l ?lL
+            |- _ => apply agree_on_union in H; destr H
+          end.
+          match goal with
+          | H: map.agree_on (diff (of_list ?used_after) (of_list ?binds)) ?l ?lL,
+              H1: map.putmany_of_list_zip binds ?retvs l = Some ?l',
+                H2:  map.putmany_of_list_zip binds retvs lL = Some ?x
+            |- map.agree_on (of_list used_after) l' x
+            => eapply agree_on_subset;
+               [ eauto using agree_on_putmany |
+                 eapply subset_trans;
+                 [ eapply subset_union_rl; eapply subset_ref |
+                 eapply sameset_union_diff_oflist ]
+               ]
+          end.
+    - simpl.
+      intros.
+      match goal with
+      | H: map.agree_on (of_list (if _ then _ else _)) _ _ |- _ =>
+          apply agree_on_find in H; destr H
+      end.
+      eapply @exec.load; fwd.
+      + match goal with
+        | H: map.agree_on (of_list [?a]) ?l ?lL,
+            H1: map.get ?l ?a = Some ?addr |-
+            map.get ?lL ?a = Some _ => rewrite <- H; [ eassumption | ]
+        end.
+        match goal with
+        | |- ?s \in of_list [?s] => cut (of_list [s] s); [ simpl; intro; auto | unfold of_list; simpl; auto ]
+        end.
+      + match goal with
+        | H: Memory.load _ _ _ = Some _ |- Memory.load _ _ _ = Some _ => eapply H
+        end.
+      + match goal with
+        | |- compile_post _ _ _ _ _ _ => unfold compile_post
+        end.
+        match goal with
+        | H: post ?t m (map.put ?l ?x ?v) _,
+            H1: map.agree_on (of_list (List.removeb eqb ?x ?used_after)) ?l ?lL
+          |- exists lH' mcH',
+            map.agree_on (of_list used_after) lH'
+              (map.put lL x v) /\
+              post t m lH' mcH'
+          => exists (map.put l x v); eexists; split; [ | ] ;
+             match goal with
+             | H: post ?t ?m (map.put ?l ?x ?v) _ |- post t m (map.put l x v) _ => eapply H
+             | |- _ => idtac
+             end
+        end.
+
+        match goal with
+        | H: map.agree_on (of_list (List.removeb eqb ?x ?used_after)) ?l ?lL
+          |- map.agree_on (of_list used_after) (map.put ?l ?x ?v) (map.put ?lL ?x ?v)
+          => rewrite ListSet.of_list_removeb in H;
+             eapply agree_on_subset;
+             match goal with
+             | |- map.agree_on _ (map.put l x v) (map.put lL x v)
+               => eapply agree_on_put;
+                  match goal with
+                  | |- map.put _ _ _ = map.put _ _ _ => reflexivity
+                  | |- _ => idtac
+                  end;
+                  match goal with
+                  | |- map.agree_on _ l lL => eapply H
+                  end
+             (* Note that order matters in execution of these two tactics, ^ which is why they aren't in the same match-goal *)
+             | |- _ => idtac
+             end
+        end.
+
+        match goal with
+        | |- subset (of_list ?s)
+               (union (diff (of_list ?s) (singleton_set ?x))
+                  (singleton_set ?x)) =>
+            eapply subset_trans;
+            match goal with
+            | |- subset (of_list _) _ => idtac
+            | |- subset _ (union _ _) =>
+                eapply union_sameset;
+                match goal with
+                | |- sameset (diff _ _) _ =>
+                    eapply sameset_sym; eapply sameset_diff_singleton
+                | |- sameset (singleton_set _) _ =>
+                    eapply sameset_sym; eapply of_list_singleton
+                end
+            end;
+            eapply subset_trans;
+            match goal with
+            | |- subset (of_list _) _ => idtac
+            | |- subset _ (union (diff _ _) _) => eapply sameset_union_diff_oflist
+            end;
+            eapply subset_union_rl;
+            eapply subset_ref
+        end.
+    - simpl. intros.
+      repeat match goal with
+             | H: map.agree_on (of_list (if _ then _ else _)) _ _ |- _
+               => apply agree_on_find in H; destr H
+             end.
+      eapply @exec.store; fwd.
+      + match goal with
+        | H: map.get ?l ?a = Some _,
+          H1: map.agree_on (of_list [?a]) ?l ?lL|- map.get ?lL ?a = Some _ =>
+            rewrite <- H1; [ eapply H | ]; cut (of_list [a] a); [ auto | constructor; reflexivity ]
+        end.
+      + match goal with
+        | H: map.get ?l ?a = Some _,
+          H1: map.agree_on (of_list [?a]) ?l ?lL|- map.get ?lL ?a = Some _ =>
+            rewrite <- H1; [ eapply H | ]; cut (of_list [a] a); [ auto | constructor; reflexivity ]
+        end.
+      + match goal with
+        | |- Memory.store _ _ (word.add _ _) _ = Some _ => eassumption
+        end.
+      + match goal with
+        | |- context[compile_post] => unfold compile_post
+        end.
+        match goal with
+        | H: map.agree_on ?s ?l ?lL,
+            H1: post ?t ?m' ?l ?mcH'
+          |- exists lH' mcH',
+            map.agree_on ?s lH' ?lL /\
+              post ?t ?m' lH' mcH'
+          => exists l; eexists; split; [ eapply H | eapply H1 ]
+        end.
+    - simpl. intros.
+      match goal with
+      | H: map.agree_on (of_list (if _ then _ else _)) _ _ |- _ =>
+          apply agree_on_find in H; destr H
+      end.
+      eapply @exec.inlinetable.
+      + match goal with
+        | |- ?x <> ?i => assumption
+        end.
+      + match goal with
+        | H: map.get ?l ?a = Some _,
+          H1: map.agree_on (of_list [?a]) ?l ?lL|- map.get ?lL ?a = Some _ =>
+            rewrite <- H1; [ eapply H | ]; cut (of_list [a] a); [ auto | constructor; reflexivity ]
+        end.
+      + match goal with
+        | |- Memory.load _ (OfListWord.map.of_list_word _) _ = Some _ => eassumption
+        end.
+      + (* Note for further automation:
+           this goal's proof is exactly lifted from
+           the exec.load case's corresponding goal. *)
+
+        match goal with
+        | |- context[compile_post] => unfold compile_post
+        end.
+
+        match goal with
+        | H: post ?t m (map.put ?l ?x ?v) _,
+            H1: map.agree_on (of_list (List.removeb eqb ?x ?used_after)) ?l ?lL
+          |- exists lH' mcH',
+            map.agree_on (of_list used_after) lH'
+              (map.put lL x v) /\
+              post t m lH' mcH'
+          => exists (map.put l x v); eexists; split; [ | ] ;
+             match goal with
+             | H: post ?t ?m (map.put ?l ?x ?v) _ |- post t m (map.put l x v) _ => eapply H
+             | |- _ => idtac
+             end
+        end.
+        match goal with
+        | H: map.agree_on (of_list (List.removeb eqb ?x ?used_after)) ?l ?lL
+          |- map.agree_on (of_list used_after) (map.put ?l ?x ?v) (map.put ?lL ?x ?v)
+          => rewrite ListSet.of_list_removeb in H;
+             eapply agree_on_subset;
+             match goal with
+             | |- map.agree_on _ (map.put l x v) (map.put lL x v)
+               => eapply agree_on_put;
+                  match goal with
+                  | |- map.put _ _ _ = map.put _ _ _ => reflexivity
+                  | |- _ => idtac
+                  end;
+                  match goal with
+                  | |- map.agree_on _ l lL => eapply H
+                  end
+             (* Note that order matters in execution of these two tactics, ^ which is why they aren't in the same match-goal *)
+             | |- _ => idtac
+             end
+        end.
+
+        match goal with
+        | |- subset (of_list ?s)
+               (union (diff (of_list ?s) (singleton_set ?x))
+                  (singleton_set ?x)) =>
+            eapply subset_trans;
+            match goal with
+            | |- subset (of_list _) _ => idtac
+            | |- subset _ (union _ _) =>
+                eapply union_sameset;
+                match goal with
+                | |- sameset (diff _ _) _ =>
+                    eapply sameset_sym; eapply sameset_diff_singleton
+                | |- sameset (singleton_set _) _ =>
+                    eapply sameset_sym; eapply of_list_singleton
+                end
+            end;
+            eapply subset_trans;
+            match goal with
+            | |- subset (of_list _) _ => idtac
+            | |- subset _ (union (diff _ _) _) => eapply sameset_union_diff_oflist
+            end;
+            eapply subset_union_rl;
+            eapply subset_ref
+        end.
+
+    - simpl.
+      intros.
+      eapply @exec.stackalloc.
+      + match goal with
+        | |- ?n mod Memory.bytes_per_word ?width = 0 => assumption
+        end.
+      + (* For complicated goals like this,
+           unsure how sound automation will be. *)
+        match goal with
+        | |- forall a mStack mCombined,
+            Memory.anybytes a ?n mStack ->
+            map.split mCombined ?mSmall mStack ->
+            exec _ _ _ mCombined _ _ _
+           => intros
+        end.
+        match goal with
+        | H: context[exec _ (deadAssignment _ _) _ _ _ _ _],
+            H1: Memory.anybytes _ _ _,
+              H2: map.agree_on (of_list (List.removeb eqb ?x ?l')) ?l ?lL |- exec _ (deadAssignment _ _) _ _ (map.put ?lL ?x ?a) _ _ =>
+            eapply H with (lL := map.put lL x a) in H1
+        end.
+        all: try match goal with
+               | H: map.split _ ?mSmall ?mStack |-
+                   map.split _ ?mSmall ?mStack => eapply H
+               end.
+        all: try match goal with
+               | |- map.agree_on
+                   _ (map.put ?l ?x ?a) (map.put ?lL ?x ?a)
+                 => eapply agree_on_subset;
+                    match goal with
+                    | |- map.agree_on _ (map.put ?l ?x ?a)
+                           (map.put ?lL ?x ?a) =>
+                        eapply agree_on_put;
+                        match goal with
+                        | |- map.put _ _ _ = map.put _ _ _
+                          => reflexivity
+                        | |- map.agree_on _ ?l ?lL => eassumption
+                        end
+                    | |- subset _ _ => idtac
+                    end
+               end.
+        all: try match goal with
+               | |- subset _ (union (of_list (List.removeb eqb ?x ?l)) (singleton_set ?x)) => rewrite ListSet.of_list_removeb
+               end.
+        (* Copy pasted from earlier,
+           but this time the left argument to subset is unspecified
+         *)
+        all:  try match goal with
+                | |- subset (of_list _)
+                       (union (diff (of_list ?s) (singleton_set ?x))
+                          (singleton_set ?x)) =>
+                    eapply subset_trans;
+                    match goal with
+                    | |- subset (of_list _) _ => idtac
+                    | |- subset _ (union _ _) =>
+                        eapply union_sameset;
+                        match goal with
+                        | |- sameset (diff _ _) _ =>
+                            eapply sameset_sym; eapply sameset_diff_singleton
+                        | |- sameset (singleton_set _) _ =>
+                            eapply sameset_sym; eapply of_list_singleton
+                        end
+                    end;
+                    eapply subset_trans;
+                    match goal with
+                    | |- subset (of_list _) _ => idtac
+                    | |- subset _ (union (diff _ _) _) => eapply sameset_union_diff_oflist
+                    end;
+                    eapply subset_union_rl;
+                    eapply subset_ref
+                end.
+        match goal with
+        | H: exec ?eL ?s ?t ?m ?l _ ?post |- exec ?eL ?s ?t ?m ?l _ ?post' => eapply exec.weaken; [ eapply H |  simpl ]
+        end.
+        match goal with
+        | |- context[compile_post] =>
+            unfold compile_post; simpl; intros; fwd
+        end.
+        match goal with
+        | H: Memory.anybytes ?a ?n ?mStack',
+            H1: map.split ?m' ?mSmall' ?mStack',
+              H2: post ?t' ?mSmall' ?lH' ?mcH',
+                H3: map.agree_on (of_list ?used_after) ?lH' ?l'
+          |- exists mSmall'1 mStack'1,
+            Memory.anybytes ?a ?n mStack'1 /\
+              map.split ?m' mSmall'1 mStack'1 /\
+              (exists lH'0 mcH'0,
+                  map.agree_on (of_list ?used_after) lH'0 ?l' /\
+                    post ?t' mSmall'1 lH'0 mcH'0) =>
+            exists mSmall'; exists mStack'; propositional idtac
+        end.
+    - simpl. intros.
+      destr (existsb (eqb x) used_after).
+      + eapply @exec.lit.
+        unfold compile_post.
+        exists (map.put l x (word.of_Z v)).
+        eexists.
+        propositional idtac.
+        * simpl in *.
+          eapply agree_on_subset.
+          -- eapply agree_on_put.
+             2-3: reflexivity.
+             eapply H1.
+          -- rewrite ListSet.of_list_removeb.
+             try match goal with
+                | |- subset (of_list _)
+                       (union (diff (of_list ?s) (singleton_set ?x))
+                          (singleton_set ?x)) =>
+                    eapply subset_trans;
+                    match goal with
+                    | |- subset (of_list _) _ => idtac
+                    | |- subset _ (union _ _) =>
+                        eapply union_sameset;
+                        match goal with
+                        | |- sameset (diff _ _) _ =>
+                            eapply sameset_sym; eapply sameset_diff_singleton
+                        | |- sameset (singleton_set _) _ =>
+                            eapply sameset_sym; eapply of_list_singleton
+                        end
+                    end;
+                    eapply subset_trans;
+                    match goal with
+                    | |- subset (of_list _) _ => idtac
+                    | |- subset _ (union (diff _ _) _) => eapply sameset_union_diff_oflist
+                    end;
+                    eapply subset_union_rl;
+                    eapply subset_ref
+                 end.
+        * eapply H0.
+      + eapply @exec.skip.
+        unfold compile_post.
+        simpl in *.
+        eexists (map.put l x (word.of_Z v)).
+        eexists.
+        split.
+
+        repeat eexists.
+        eapply H0.
+
+        exists mSmall'.
+        exists mStack'.
+        propositional idtac.
+        fwd.
+        eapply exec.weaken.
+        * eapply H4.
+        * unfold compile_post.
+          simpl. intros.
+          fwd.
+          exists mSmall'.
+          exists mStack'.
+          propositional idtac.
+    -
+        Search @exec.exec.
+
+
+
+
+        2: { eapply agree_on_put.
+
+        eapply H2 in H4.
+        2: eassumption.
+        * eapply H4.
+        eaply H2.
+        match goal with
+        | H: _ -> exec ?eL (deadAssignment ?used_After
+
+
+            * eassumption.
+        * eapply agree_on_getmany.
+          eapply agree_on_subset; [ eapply H4 | ].
+          rewrite ListSet.of_list_list_union.
+          eapply subset_union_rl.
+          eapply subset_ref.
+      + eassumption.
+      + unfold compile_post.
+        intros.
+        eapply H3 in H5.
+        destr H5.
+        destr H5.
+        pose proof H5 as H5'.
+        eapply putmany_Some in H5'.
+        destr H5'.
+        eexists x0.
+        split; [ eapply H7 | ].
+        intros.
+        eapply H6 in H8.
+        exists x.
+        eexists.
+        split.
+        2: eapply H8.
+        rewrite ListSet.of_list_list_union in H4.
+        rewrite of_list_list_diff in H4.
+        apply agree_on_union in H4.
+        destr H4.
+        eapply agree_on_subset;
+          [ eauto using agree_on_putmany | ].
+        eapply subset_trans.
+        2: eapply sameset_union_diff.
+        eapply subset_union_rl.
+        eapply subset_ref.
     13: {
       intros.
       simpl.
@@ -219,7 +821,7 @@ Section WithArguments.
   Admitted.
 
 End WithArguments.
-(* 
+(*
  Lemma live_monotone :
     forall s used_after used_after',
       subset (of_list used_after) (of_list used_after') ->
