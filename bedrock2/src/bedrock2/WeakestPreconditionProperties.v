@@ -81,7 +81,7 @@ Section WeakestPrecondition.
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
      Basics.impl)))))) WeakestPrecondition.cmd.
-  Proof.
+  Proof using env_ok ext_spec_ok locals_ok mem_ok word_ok.
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl]; ind_on Syntax.cmd.cmd;
       cbn in *; cbv [dlet.dlet] in *; intuition (try typeclasses eauto with core).
     { destruct H1 as (?&?&?). eexists. split.
@@ -147,7 +147,7 @@ Section WeakestPrecondition.
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
      Basics.impl)))))) WeakestPrecondition.func.
-  Proof.
+  Proof using word_ok mem_ok locals_ok ext_spec_ok env_ok.
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  WeakestPrecondition.func]; intros.
     destruct a. destruct p.
     destruct H1; intuition idtac.
@@ -176,7 +176,7 @@ Section WeakestPrecondition.
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
      Basics.impl)))))))) WeakestPrecondition.call.
-  Proof.
+  Proof using word_ok mem_ok locals_ok ext_spec_ok env_ok.
     cbv [Proper respectful pointwise_relation Basics.impl]; ind_on (list (String.string * (list String.string * list String.string * Syntax.cmd.cmd)));
       cbn in *; intuition (try typeclasses eauto with core).
     destruct a.
@@ -195,7 +195,7 @@ Section WeakestPrecondition.
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
      Basics.impl)))))) WeakestPrecondition.program.
-  Proof.
+  Proof using word_ok mem_ok locals_ok ext_spec_ok env_ok.
     cbv [Proper respectful pointwise_relation Basics.impl  WeakestPrecondition.program]; intros.
     eapply Proper_cmd;
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  WeakestPrecondition.func];
@@ -217,10 +217,10 @@ Section WeakestPrecondition.
              | _ => progress cbv [dlet.dlet WeakestPrecondition.dexpr WeakestPrecondition.dexprs WeakestPrecondition.store] in *
              end; eauto.
 
-  Lemma expr_sound m l e mc post (H : WeakestPrecondition.expr m l e post)
-    : exists v mc', Semantics.eval_expr m l e mc = Some (v, mc') /\ post v.
-  Proof.
-    ind_on Syntax.expr; t.
+  Lemma expr_sound: forall m l e mc post (H : WeakestPrecondition.expr m l e post),
+    exists v mc', Semantics.eval_expr m l e mc = Some (v, mc') /\ post v.
+  Proof using word_ok.
+    induction e; t.
     { destruct H. destruct H. eexists. eexists. rewrite H. eauto. }
     { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
@@ -230,10 +230,48 @@ Section WeakestPrecondition.
       { eapply IHe2 in H0; t. } }
   Qed.
 
+  Import ZArith coqutil.Tactics.Tactics.
+
+  Lemma expr_complete: forall m l e mc v mc',
+    Semantics.eval_expr m l e mc = Some (v, mc') ->
+    WeakestPrecondition.dexpr m l e v.
+  Proof using word_ok.
+    induction e; cbn; intros.
+    - inversion_clear H. reflexivity.
+    - destruct_one_match_hyp. 2: discriminate. inversion H. subst r.
+      eexists. eauto.
+    - repeat (destruct_one_match_hyp; try discriminate; []).
+      inversion H. subst r0 mc'. clear H.
+      eapply Proper_expr.
+      2: { eapply IHe. eassumption. }
+      intros addr ?. subst r. unfold WeakestPrecondition.load. eauto.
+    - repeat (destruct_one_match_hyp; try discriminate; []).
+      inversion H. subst r0 mc'. clear H.
+      eapply Proper_expr.
+      2: { eapply IHe. eassumption. }
+      intros addr ?. subst r. unfold WeakestPrecondition.load. eauto.
+    - repeat (destruct_one_match_hyp; try discriminate; []).
+      inversion H. subst v mc'. clear H.
+      eapply Proper_expr.
+      2: { eapply IHe1. eassumption. }
+      intros v1 ?. subst r.
+      eapply Proper_expr.
+      2: { eapply IHe2. eassumption. }
+      intros v2 ?. subst r0.
+      reflexivity.
+    - repeat (destruct_one_match_hyp; try discriminate; []).
+      eapply Proper_expr.
+      2: { eapply IHe1. eassumption. }
+      intros vc ?. subst r.
+      destr (word.eqb vc (word.of_Z 0)).
+      + eapply IHe3. eassumption.
+      + eapply IHe2. eassumption.
+  Qed.
+
   Lemma sound_args : forall m l args mc P,
       WeakestPrecondition.list_map (WeakestPrecondition.expr m l) args P ->
       exists x mc', Semantics.evaluate_call_args_log m l args mc = Some (x, mc') /\ P x.
-  Proof.
+  Proof using word_ok.
     induction args; cbn; repeat (subst; t).
     unfold Semantics.eval_expr in *.
     eapply expr_sound in H; t; rewrite H.
@@ -244,7 +282,7 @@ Section WeakestPrecondition.
   Lemma sound_getmany l a P :
     WeakestPrecondition.list_map (WeakestPrecondition.get l) a P
     -> exists vs, map.getmany_of_list l a = Some vs /\ P vs.
-  Proof.
+  Proof using.
     cbv [map.getmany_of_list] in *.
     revert P l; induction a; cbn; repeat (subst; t).
     cbv [WeakestPrecondition.get] in H; t.
@@ -337,7 +375,7 @@ Section WeakestPrecondition.
            exists l0 : locals, map.putmany_of_list_zip action rets l = Some l0 /\
            post (cons (map.empty, binds, args, (map.empty, rets)) t) m l0))
     : WeakestPrecondition.cmd call (cmd.interact action binds arges) t m l post.
-  Proof.
+  Proof using word_ok mem_ok ext_spec_ok.
     exists args; split; [exact Hargs|].
     exists m.
     exists map.empty.
@@ -351,7 +389,7 @@ Section WeakestPrecondition.
       WeakestPrecondition.expr m l e post1 ->
       WeakestPrecondition.expr m l e post2 ->
       WeakestPrecondition.expr m l e (fun v => post1 v /\ post2 v).
-  Proof.
+  Proof using word_ok.
     induction e; cbn; unfold literal, dlet.dlet, WeakestPrecondition.get; intros.
     - eauto.
     - decompose [and ex] H. decompose [and ex] H0. assert (x0 = x1) by congruence. subst. eauto.
@@ -385,7 +423,7 @@ Section WeakestPrecondition.
   Lemma dexpr_expr (m : mem) l e P
     (H : WeakestPrecondition.expr m l e P)
     : exists v, WeakestPrecondition.dexpr m l e v /\ P v.
-  Proof.
+  Proof using word_ok.
     revert dependent P; induction e; cbn.
     { cbv [WeakestPrecondition.literal dlet.dlet]; cbn; eauto. }
     { cbv [WeakestPrecondition.get]; intros ?(?&?&?); eauto. }
