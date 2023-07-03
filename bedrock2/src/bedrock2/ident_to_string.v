@@ -5,7 +5,7 @@ Require Import Ltac2.Ltac2.
    a bool list where 0 and false and 1 is true *)
 Ltac2 rec int_to_bits_rec(val: int)(i: int) :=
   if Int.lt i 0 then [] else
-    (if Int.equal (Int.land (Int.lsr val i) 1) 1 then true else false)
+    (Int.equal (Int.land (Int.lsr val i) 1) 1)
       :: int_to_bits_rec val (Int.sub i 1).
 
 Ltac2 char_to_bits(c: char) :=
