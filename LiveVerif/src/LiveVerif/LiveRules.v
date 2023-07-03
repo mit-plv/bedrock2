@@ -340,16 +340,18 @@ Section WithParams.
     - assumption.
   Qed.
 
+  Ltac pose_env :=
+    let env := fresh "env" in
+    unshelve epose (env := _ : map.map string (list string * list string * cmd));
+    [ eapply SortedListString.map
+    | assert (env_ok: map.ok env) by apply SortedListString.ok; clearbody env ].
+
   Lemma WP_weaken_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
       WeakestPrecondition.cmd (call fs) c t m l post1 ->
       (forall t m l, post1 t m l -> post2 t m l) ->
       WeakestPrecondition.cmd (call fs) c t m l post2.
   Proof.
-    intros.
-    unshelve epose (env := _ : map.map string (list string * list string * cmd)).
-    1: eapply SortedListString.map.
-    (* TODO why are pairs printed back as prod rather than * ? *)
-    assert (env_ok: map.ok env) by apply SortedListString.ok. clearbody env.
+    pose_env. intros.
     eapply WeakestPreconditionProperties.Proper_cmd. 3: eassumption.
     1: eapply WeakestPreconditionProperties.Proper_call.
     cbv [RelationClasses.Reflexive Morphisms.pointwise_relation
@@ -712,6 +714,56 @@ Section WithParams.
       apply NE. apply word.unsigned_of_Z_0.
     - intro E. rewrite word.eqb_eq in H1. 1: eapply invert_wp_cmd; eapply H1.
       eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
+  Qed.
+
+  Lemma wp_while_tailrec {measure: Type} {Ghost: Type} (v0: measure) (g0: Ghost)
+    (e: expr) (c: cmd) t0 (m0: mem) l0 fs rest
+    (pre post: measure -> Ghost -> trace -> mem -> locals -> Prop) {lt}
+    {finalpost: trace -> mem -> locals -> Prop}
+    (Hwf: well_founded lt)
+    (* packaging generalized context at entry of loop determines pre: *)
+    (Hpre: pre v0 g0 t0 m0 l0)
+    (Hbody: forall v g t m l,
+      pre v g t m l ->
+      exists b, dexpr_bool3 m l e b
+                  (loop_body_marker (wp_cmd fs c t m l
+                      (fun t' m' l' => exists v' g',
+                           pre v' g' t' m' l' /\
+                             lt v' v)))
+                  (* packaging generalized context at exit of loop (with final, smallest
+                     measure) determines post: *)
+                  (post v g t m l)
+                  True)
+    (Hpost: forall v g t m l v' g' t' m' l',
+        pre v g t m l ->
+        lt v' v ->
+        post v' g' t' m' l' ->
+        post v g t' m' l')
+    (Hrest: forall v g t m l, post v g t m l -> wp_cmd fs rest t m l finalpost)
+    : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 finalpost.
+  Proof.
+    eapply wp_seq.
+    econstructor. cbn.
+    pose_env.
+    eapply tailrec_localsmap_1ghost.
+    1: eapply Hwf.
+    1: eapply Hpre.
+    2: eapply Hrest.
+    intros.
+    specialize Hbody with (1 := H).
+    destruct Hbody as (b & Hbody).
+    inversion Hbody. subst c0 b Ptrue Pfalse Palways. clear Hbody.
+    destruct H2 as (HIf & _).
+    inversion H0. unfold WeakestPrecondition.dexpr in *.
+    eexists. split. 1: eassumption.
+    unfold loop_body_marker in *.
+    split; intro Hv; destruct_one_match_hyp.
+    - inversion HIf. eapply WP_weaken_cmd. 1: eassumption.
+      cbv beta. intros. fwd. eauto 10.
+    - exfalso. apply Hv. apply word.unsigned_of_Z_0.
+    - exfalso. apply E. eapply word.unsigned_inj. rewrite Hv. symmetry.
+      apply word.unsigned_of_Z_0.
+    - eauto.
   Qed.
 
   Definition dexprs(m: mem)(l: locals): list expr -> list word -> Prop :=

@@ -21,6 +21,41 @@ Section Loops.
   Context {functions : list (String.string * (list String.string * list String.string * Syntax.cmd))}.
   Let call := WeakestPrecondition.call functions.
 
+  Lemma tailrec_localsmap_1ghost
+    {e c t} {m: mem} {l} {post : trace -> mem -> locals -> Prop}
+    {measure: Type} {Ghost: Type}
+    (P Q: measure -> Ghost -> trace -> mem -> locals -> Prop)
+    (lt: measure -> measure -> Prop)
+    (Hwf: well_founded lt)
+    (v0: measure) (g0: Ghost)
+    (Hpre: P v0 g0 t m l)
+    (Hbody: forall v g t m l,
+      P v g t m l ->
+      exists br, expr m l e (eq br) /\
+      (word.unsigned br <> 0%Z -> cmd call c t m l
+        (fun t' m' l' => exists v' g',
+          P v' g' t' m' l' /\
+          lt v' v /\
+          (forall t'' m'' l'', Q v' g' t'' m'' l'' -> Q v g t'' m'' l''))) /\
+      (word.unsigned br = 0%Z -> Q v g t m l))
+    (Hpost: forall t m l, Q v0 g0 t m l -> post t m l)
+    : cmd call (cmd.while e c) t m l post.
+  Proof.
+    eexists measure, lt, (fun v t m l =>
+      exists g, P v g t m l /\ forall t'' m'' l'', Q v g t'' m'' l'' -> Q v0 g0 t'' m'' l'').
+    split; [assumption|].
+    split; [solve[eauto]|].
+    intros vi ti mi li (gi & HPi & HQimpl).
+    specialize (Hbody vi gi ti mi li HPi).
+    destruct Hbody as (br & ? & Hbody). exists br; split; [assumption|].
+    destruct Hbody as (Htrue & Hfalse). split; intros Hbr;
+      [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
+    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
+      { eapply Proper_call; firstorder idtac. }
+      intros tj mj lj (vj& gj & HPj & Hlt & Qji); eauto 9. }
+    { eauto. }
+  Qed.
+
   (* marking logical connectives with the source file they were used in for limiting unfolding *)
   Local Notation "A /\ B" := (Markers.split (A /\ B)).
   Local Notation "A /\ B" := (Markers.split (A /\ B)) : type_scope.

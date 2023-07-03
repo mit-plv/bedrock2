@@ -186,6 +186,97 @@ all: steps.
 }                                                                          /**.
 Qed.
 
+#[export] Instance spec_of_sll_inc: fnspec := .**/
+
+uintptr_t sll_inc(uintptr_t p) /**#
+  ghost_args := (l : list word) (R: mem -> Prop);
+  requires t m := <{ * sll l p
+                     * R }> m;
+  ensures t' m' r := t' = t /\
+       <{ * sll (List.map (word.add (word.of_Z 1)) l) r
+          * R }> m' #**/ /**.
+Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   .**/
+{                                                                          /**.
+
+  let H := constr:(#sll) in loop invariant above H.
+  unfold ready.
+
+  let cond := constr:(live_expr:(p != 0)) in
+  let measure0 := constr:(len l) in
+  eapply (wp_while_tailrec measure0 (l, R) cond)
+         with (pre := fun v (g: (list word * (mem -> Prop))) ti m l =>
+                        let (L, F) := g in
+                        exists p, l = map.of_list [|("p", p)|] /\
+                        v = len L /\
+                        <{ * sll L p * F }> m /\
+                        ti = t).
+
+  1: eauto with wf_of_type.
+  1: solve [steps].
+  {
+    intros v (? & ?) *. intros. fwd. subst t0 l1.
+    clear H0 H1 D p m m0 m1 l. rename l0 into l, p0 into p.
+    steps.
+    { (* loop body *)
+
+      let H := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as H.
+
+      match goal with
+      | H: _ |= sll _ p |- _ => rename H into HT
+      end.
+      eapply invert_sll_nonnull in HT. 2: assumption. fwd. repeat heapletwise_step.
+
+      .**/ uintptr_t val = load(p); /**.
+      (* unfold ready. *)
+      .**/ store(p, val + 1); /**.
+      .**/ p = load(p + 4); /**.
+
+      .**/ } /*?.
+    (* symbolic state at end of loop body implies smaller loop precondition: *)
+    steps. clear Error.
+    instantiate (2 := (_, _)).
+    cbv iota.
+    step. step. step. step. step. step. step. step. step.
+    clear Error. step. clear Error.
+    (* TODO this is an example where seeing through equalities matters: *)
+    subst v l. erewrite push_down_len_cons. 2: reflexivity. step.
+  }
+  clear Error.
+
+  (* when loop condition is false, post must hold, and by generalizing it from
+     the symbolic state, we can design it, hopefully without spelling it out
+     completely... *)
+
+  instantiate (1 := fun v (g: (list word * (mem -> Prop))) ti m l =>
+                        let (L, F) := g in
+                        exists p, l = map.of_list [|("p", p)|] /\
+                        v = len L /\
+                        <{ * sll (List.map (word.add (word.of_Z 1)) L) p * F }> m /\
+                        ti = t).
+  cbv beta iota.
+  subst p.
+  eapply invert_sll_null in H0.
+  heapletwise_step.
+  (* note: only one heaplet left --> D gets deleted, and heapletwise stops working *)
+  repeat heapletwise_step.
+  subst l.
+  simpl (sll _ _).
+  steps.
+  clear Error.
+  eapply sep_emp_l. auto. }
+
+  cbv beta.
+
+  (* small post implies bigger post: *)
+  intros. fwd.
+  step. step. step. step. step. step. step. step. step.
+  (* problem: as expected, small ghosts and big ghosts are not related enough,
+     but putting this "small post implies bigger post" sidecondition at the
+     end of the loop body would require us to prove the implication when post
+     is still an evar *)
+Abort.
+
+
 #[export] Instance spec_of_sll_prepend: fnspec := .**/
 
 uintptr_t sll_prepend(uintptr_t p, uintptr_t val) /**#
