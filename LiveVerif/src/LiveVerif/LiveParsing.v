@@ -12,7 +12,7 @@ Require Import Ltac2.Ltac2.
 
 Ltac2 exact_basename_string_of_ref_constr(c: constr) :=
   let ref := reference_of_constr c in
-  let s := ident_to_string.string_to_coq (Ident.to_string (List.last (Env.path ref))) in
+  let s := ident_to_coq (List.last (Env.path ref)) in
   exact $s.
 
 Ltac exact_basename_string_of_ref_constr :=
