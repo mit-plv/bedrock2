@@ -1,8 +1,8 @@
 Require Import Coq.Strings.String.
 Require Import Ltac2.Ltac2.
 
-(* Converts the lower i + 1 bits of an Ltac2 integer into
-   a bool list where 0 and false and 1 is true *)
+(* Converts the lower i + 1 bits of an Ltac2 integer into a bool list
+  (lower bits to the left) where 0 is false and 1 is true *)
 Ltac2 rec int_to_bits_rec(val: int)(i: int) :=
   if Int.lt i 0 then [] else
     (Int.equal (Int.land (Int.lsr val i) 1) 1)
