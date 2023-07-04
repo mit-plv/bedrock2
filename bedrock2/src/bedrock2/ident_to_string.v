@@ -1,29 +1,15 @@
 Require Import Coq.Strings.String.
 Require Import Ltac2.Ltac2.
-Require Ltac2.Option.
 
-(* Takes a list of powers instead of one power and dividing because
-   Ltac2 does not have integer division: https://github.com/coq/coq/issues/13802 *)
-Ltac2 rec int_to_bits_rec(powers: int list)(val: int) :=
-  match powers with
-  | p :: rest =>
-    if Int.le p val
-    then true :: int_to_bits_rec rest (Int.sub val p)
-    else false :: int_to_bits_rec rest val
-  | [] => []
-  end.
-
-(* [2^(n-1); ..., 2^0] *)
-Ltac2 rec powers_of_two(n: int) :=
-  if Int.equal n 1 then [1] else
-  let r := powers_of_two (Int.sub n 1) in
-  match r with
-  | h :: t => Int.mul 2 h :: r
-  | [] => []
-  end.
+(* Converts the lower i + 1 bits of an Ltac2 integer into a bool list
+  (lower bits to the left) where 0 is false and 1 is true *)
+Ltac2 rec int_to_bits_rec(val: int)(i: int) :=
+  if Int.lt i 0 then [] else
+    (Int.equal (Int.land (Int.lsr val i) 1) 1)
+      :: int_to_bits_rec val (Int.sub i 1).
 
 Ltac2 char_to_bits(c: char) :=
-  int_to_bits_rec (powers_of_two 8) (Char.to_int c).
+  int_to_bits_rec (Char.to_int c) 7.
 
 Ltac2 bool_to_coq(b: bool) :=
   if b then constr:(true) else constr:(false).
