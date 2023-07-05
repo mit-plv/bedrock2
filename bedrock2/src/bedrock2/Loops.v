@@ -56,6 +56,47 @@ Section Loops.
     { eauto. }
   Qed.
 
+  Lemma tailrec_localsmap_1ghost_parameterized_finalpost
+    {e c rest t} {m: mem} {l}
+    {measure: Type} {Ghost: Type}
+    (P Q: measure -> Ghost -> trace -> mem -> locals -> Prop)
+    (lt: measure -> measure -> Prop)
+    (Hwf: well_founded lt)
+    (v0: measure) (g0: Ghost)
+    (Hpre: P v0 g0 t m l)
+    (Hbody: forall v g t m l,
+      P v g t m l ->
+      exists br, expr m l e (eq br) /\
+      (word.unsigned br <> 0%Z -> cmd call c t m l
+        (fun t' m' l' => exists v' g',
+          P v' g' t' m' l' /\
+          lt v' v /\
+          (forall t'' m'' l'', Q v' g' t'' m'' l'' -> Q v g t'' m'' l''))) /\
+      (word.unsigned br = 0%Z -> cmd call rest t m l (Q v g)))
+    : cmd call (cmd.seq (cmd.while e c) rest) t m l (Q v0 g0).
+  Proof.
+    cbn. eapply tailrec_localsmap_1ghost with
+      (Q := fun v g t m l => cmd call rest t m l (Q v g)).
+    1: eassumption.
+    1: exact Hpre.
+    2: intros *; exact id.
+    intros vi gi ti mi li HPi.
+    specialize (Hbody vi gi ti mi li HPi).
+    destruct Hbody as (br & ? & Hbody). exists br; split; [assumption|].
+    destruct Hbody as (Htrue & Hfalse). split; intros Hbr;
+      [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
+    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
+      { eapply Proper_call; firstorder idtac. }
+      intros tj mj lj (vj& gj & HPj & Hlt & Qji). do 2 eexists.
+      split. 1: eassumption. split. 1: assumption.
+      intros.
+      eapply Proper_cmd; [reflexivity..| | | ].
+      3: eassumption.
+      { eapply Proper_call; firstorder idtac. }
+      intros tk mk lk HH. eapply Qji. assumption. }
+    eapply Hpc.
+  Qed.
+
   (* marking logical connectives with the source file they were used in for limiting unfolding *)
   Local Notation "A /\ B" := (Markers.split (A /\ B)).
   Local Notation "A /\ B" := (Markers.split (A /\ B)) : type_scope.
