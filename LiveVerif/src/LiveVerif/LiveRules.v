@@ -726,20 +726,19 @@ Section WithParams.
     (Hbody: forall v g t m l,
       pre v g t m l ->
       exists b, dexpr_bool3 m l e b
-                  (loop_body_marker (wp_cmd fs c t m l
-                      (fun t' m' l' => exists v' g',
-                           pre v' g' t' m' l' /\
-                             lt v' v)))
+                  (* can't put loop body under context of b=true because we
+                     first need to treat the b=false case (which determines post): *)
+                  True
                   (* packaging generalized context at exit of loop (with final, smallest
                      measure) determines post: *)
                   (post v g t m l)
-                  True)
-    (Hpost: forall v g t m l v' g' t' m' l',
-        pre v g t m l ->
-        lt v' v ->
-        post v' g' t' m' l' ->
-        post v g t' m' l')
-    (Hrest: forall v g t m l, post v g t m l -> wp_cmd fs rest t m l finalpost)
+                  (loop_body_marker (bool_expr_branches b (wp_cmd fs c t m l
+                      (fun t' m' l' => exists v' g',
+                           pre v' g' t' m' l' /\
+                           lt v' v /\
+                           (forall t'' m'' l'', post v' g' t'' m'' l'' ->
+                                                post v  g  t'' m'' l''))) True True)))
+    (Hrest: forall t m l, post v0 g0 t m l -> wp_cmd fs rest t m l finalpost)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 finalpost.
   Proof.
     eapply wp_seq.
@@ -753,17 +752,17 @@ Section WithParams.
     specialize Hbody with (1 := H).
     destruct Hbody as (b & Hbody).
     inversion Hbody. subst c0 b Ptrue Pfalse Palways. clear Hbody.
-    destruct H2 as (HIf & _).
+    destruct H2 as (HDone & HAgain).
     inversion H0. unfold WeakestPrecondition.dexpr in *.
     eexists. split. 1: eassumption.
     unfold loop_body_marker in *.
     split; intro Hv; destruct_one_match_hyp.
-    - inversion HIf. eapply WP_weaken_cmd. 1: eassumption.
-      cbv beta. intros. fwd. eauto 10.
+    - apply proj1 in HAgain. inversion HAgain. eapply WP_weaken_cmd. 1: eassumption.
+      cbv beta. intros *. exact id.
     - exfalso. apply Hv. apply word.unsigned_of_Z_0.
     - exfalso. apply E. eapply word.unsigned_inj. rewrite Hv. symmetry.
       apply word.unsigned_of_Z_0.
-    - eauto.
+    - exact HDone.
   Qed.
 
   Definition dexprs(m: mem)(l: locals): list expr -> list word -> Prop :=

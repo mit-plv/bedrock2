@@ -188,12 +188,12 @@ Qed.
 
 #[export] Instance spec_of_sll_inc: fnspec := .**/
 
-uintptr_t sll_inc(uintptr_t p) /**#
+void sll_inc(uintptr_t p) /**#
   ghost_args := (l : list word) (R: mem -> Prop);
   requires t m := <{ * sll l p
                      * R }> m;
-  ensures t' m' r := t' = t /\
-       <{ * sll (List.map (word.add (word.of_Z 1)) l) r
+  ensures t' m' := t' = t /\
+       <{ * sll (List.map (word.add (word.of_Z 1)) l) p
           * R }> m' #**/ /**.
 Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   .**/
 {                                                                          /**.
@@ -203,10 +203,10 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
 
   let cond := constr:(live_expr:(p != 0)) in
   let measure0 := constr:(len l) in
-  eapply (wp_while_tailrec measure0 (l, R) cond)
-         with (pre := fun v (g: (list word * (mem -> Prop))) ti m l =>
-                        let (L, F) := g in
-                        exists p, l = map.of_list [|("p", p)|] /\
+  eapply (wp_while_tailrec measure0 (l, p, R) cond)
+         with (pre := fun v (g: (list word * word * (mem -> Prop))) ti m l =>
+                        let '(L, p, F) := g in
+                        l = map.of_list [|("p", p)|] /\
                         v = len L /\
                         <{ * sll L p * F }> m /\
                         ti = t).
@@ -214,15 +214,39 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
   1: eauto with wf_of_type.
   1: solve [steps].
   {
-    intros v (? & ?) *. intros. fwd. subst t0 l1.
-    clear H0 H1 D p m m0 m1 l. rename l0 into l, p0 into p.
+    intros v (? & ?) *. intros. fwd. subst t0 l0.
+    clear H0 H1 D p m m0 m1 l.
     steps.
+    { (* when loop condition is false, post must hold, and by generalizing it from
+         the symbolic state, we can design it, hopefully without spelling it out
+         completely... *)
+
+      instantiate (1 := fun v (g: (list word * word * (mem -> Prop))) ti m l =>
+                          let '(L, oldp, F) := g in
+                          exists p, l = map.of_list [|("p", p)|] /\
+                          v = len L /\
+                          <{ * sll (List.map (word.add (word.of_Z 1)) L) oldp
+                             * F }> m /\
+                          ti = t).
+      cbv beta iota.
+      subst r.
+      eapply invert_sll_null in H0.
+      heapletwise_step.
+      (* note: only one heaplet left --> D gets deleted, and heapletwise stops working *)
+      repeat heapletwise_step.
+      subst l1.
+      simpl (sll _ _).
+      clear Error.
+      steps.
+      clear Error.
+      eapply sep_emp_l. auto. }
+
     { (* loop body *)
 
       let H := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as H.
 
       match goal with
-      | H: _ |= sll _ p |- _ => rename H into HT
+      | H: _ |= sll _ ?addr |- _ => rename H into HT, addr into p
       end.
       eapply invert_sll_nonnull in HT. 2: assumption. fwd. repeat heapletwise_step.
 
@@ -232,50 +256,46 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
       .**/ p = load(p + 4); /**.
 
       .**/ } /*?.
+    eexists _, (_, _, _).
+    rewrite ->?and_assoc. (* to make sure frame evar appears in Rest of canceling, so
+                             that canceling_step doesn't instantiate frame with anymem *)
+
     (* symbolic state at end of loop body implies smaller loop precondition: *)
-    steps. clear Error.
-    instantiate (2 := (_, _)).
-    cbv iota.
-    step. step. step. step. step. step. step. step. step.
-    clear Error. step. clear Error.
-    (* TODO this is an example where seeing through equalities matters: *)
-    subst v l. erewrite push_down_len_cons. 2: reflexivity. step.
-  }
-  clear Error.
+    step. step. step. step. step.
+    instantiate (2 := l').
+    assert (and_flip: forall A B C: Prop, B /\ A /\ C -> A /\ B /\ C). {
+      clear. intuition idtac.
+    }
+    (* manual flipping to make it look more like a function call so that
+       heapletwise's "instantiate frame with wand" trick works: *)
+    eapply and_flip. split. 1: reflexivity.
+    eapply and_flip. split. 1: lia.
+    eapply and_flip. split.
+    { (* TODO this is an example where seeing through equalities matters: *)
+      subst v l1. erewrite push_down_len_cons. 2: reflexivity. step. }
+    step. step. step.
 
-  (* when loop condition is false, post must hold, and by generalizing it from
-     the symbolic state, we can design it, hopefully without spelling it out
-     completely... *)
+    (* small post implies bigger post: *)
+    step. step.
+    clear and_flip. intros. fwd.
+    step. step. step.
 
-  instantiate (1 := fun v (g: (list word * (mem -> Prop))) ti m l =>
-                        let (L, F) := g in
-                        exists p, l = map.of_list [|("p", p)|] /\
-                        v = len L /\
-                        <{ * sll (List.map (word.add (word.of_Z 1)) L) p * F }> m /\
-                        ti = t).
-  cbv beta iota.
-  subst p.
-  eapply invert_sll_null in H0.
-  heapletwise_step.
-  (* note: only one heaplet left --> D gets deleted, and heapletwise stops working *)
-  repeat heapletwise_step.
-  subst l.
-  simpl (sll _ _).
-  steps.
-  clear Error.
-  eapply sep_emp_l. auto. }
+    epose proof (fold_sll_cons _ #(p' <> /[0])) as HL.
+    cancel_in_hyp HL.
+    subst l1.
 
-  cbv beta.
+    simpl (List.map _ (_ :: _)).
 
-  (* small post implies bigger post: *)
-  intros. fwd.
-  step. step. step. step. step. step. step. step. step.
-  (* problem: as expected, small ghosts and big ghosts are not related enough,
-     but putting this "small post implies bigger post" sidecondition at the
-     end of the loop body would require us to prove the implication when post
-     is still an evar *)
-Abort.
+    step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+  } }
 
+  (* after loop: *)
+  cbv beta. intros. fwd. steps.
+  clear Scope2.
+
+  .**/ } /*?.
+  subst. steps.
+Qed.
 
 #[export] Instance spec_of_sll_prepend: fnspec := .**/
 
