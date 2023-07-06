@@ -585,6 +585,7 @@ Ltac eval_dexpr_bool3_step e :=
   | expr.not _              => eapply dexpr_bool3_not
   | expr.op bopname.eq _ _  => eapply dexpr_bool3_eq
   | expr.op bopname.ltu _ _ => eapply dexpr_bool3_ltu
+  | expr.var _              => eapply dexpr_bool3_to_dexpr1
   | _ => fail 1000 "expression" e "not yet supported"
   end.
 

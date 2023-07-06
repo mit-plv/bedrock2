@@ -314,6 +314,17 @@ Section WithParams.
       reflexivity.
   Qed.
 
+  Lemma dexpr_bool3_to_dexpr1: forall m l e b (Pt Pf Pa: Prop),
+      dexpr1 m l e b (bool_expr_branches (negb (word.eqb b (word.of_Z 0))) Pt Pf Pa) ->
+      dexpr_bool3 m l e (negb (word.eqb b (word.of_Z 0))) Pt Pf Pa.
+  Proof.
+    intros. inversion H. clear H. inversion Hp. clear Hp.
+    econstructor.
+    - eassumption.
+    - reflexivity.
+    - unfold bool_expr_branches. split; assumption.
+  Qed.
+
   Lemma dexpr_bool3_ltu: forall m l e1 e2 v1 v2 (Pt Pf Pa: Prop),
       dexpr1 m l e1 v1 (dexpr1 m l e2 v2 (bool_expr_branches (word.ltu v1 v2) Pt Pf Pa)) ->
       dexpr_bool3 m l (expr.op bopname.ltu e1 e2) (word.ltu v1 v2) Pt Pf Pa.
