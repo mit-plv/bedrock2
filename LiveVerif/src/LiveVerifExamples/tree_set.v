@@ -32,6 +32,7 @@ Fixpoint bst'(sk: tree_skeleton)(s: set Z)(addr: word){struct sk}: mem -> Prop :
   | Leaf => emp (addr = /[0] /\ forall x, ~ s x)
   | Node skL skR => ex1 (fun p: word => (ex1 (fun v: Z => (ex1 (fun q: word =>
       <{ * emp (addr <> /[0])
+         * emp (s v)
          * freeable 12 addr
          * <{ + uintptr p
               + uint 32 v
@@ -75,6 +76,7 @@ Lemma invert_bst'_nonnull: forall sk s p m,
     m |= bst' sk s p ->
     exists skL skR pL v pR,
       sk = Node skL skR /\
+      s v /\
       <{ * freeable 12 p
          * <{ + uintptr pL
               + uint 32 v
@@ -87,8 +89,23 @@ Proof.
   { exfalso. unfold with_mem, emp in *. intuition idtac. }
   repeat heapletwise_step.
   do 5 eexists. split. 1: reflexivity.
+  split. 1: eassumption.
   repeat heapletwise_step.
 Qed.
+
+  (* TODO use and move or delete *)
+  Lemma after_if_skip' b fs (PThen PElse Post: trace -> mem -> locals -> Prop):
+    bool_expr_branches b (forall t m l, PThen t m l -> Post t m l)
+                         (forall t m l, PElse t m l -> Post t m l) True ->
+    @after_if _ _ _ _ _ _ fs b PThen PElse cmd.skip Post.
+  Proof.
+    intros.
+    unfold after_if.
+    intros ? ? ? [? ? ?]. subst x.
+    eapply wp_skip.
+    apply proj1 in H.
+    destruct b; eauto.
+  Qed.
 
 #[export] Instance spec_of_bst_contains: fnspec :=                              .**/
 
@@ -116,8 +133,8 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
                         let '(s, a, F) := g in
                         exists res,
                         li = map.of_list [|("a", a); ("p", p); ("res", res); ("v", v)|] /\
-                        (\[res] = 1 /\ s \[v] \/ \[res] = 0) /\
                         <{ * bst' sk s a * F }> mi /\
+                        (\[res] = 1 /\ s \[v] \/ \[res] = 0) /\
                         ti = t).
   1: eauto with wf_of_type.
   1: solve [steps].
@@ -138,13 +155,13 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
       destruct H.
       { steps. clear Error.
         assert (res0 = /[1]) by (zify_hyps; zify_goal; xlia zchecker). subst res0.
-        destruct Hp1. 2: { exfalso. bottom_up_simpl_in_hyps. discriminate. }
+        destruct Hp2. 2: { exfalso. bottom_up_simpl_in_hyps. discriminate. }
         bottom_up_simpl_in_goal. intuition auto. }
       { steps. clear Error.
         subst r.
         let H := constr:(#bst') in eapply invert_bst'_null in H.
         steps. clear Error.
-        right. destruct Hp1.
+        right. destruct Hp2.
         { exfalso. eapply H2. eapply H. }
         eauto. }
     }
@@ -155,25 +172,52 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
     2: assumption.
     fwd. repeat heapletwise_step.
     .**/ uintptr_t here = load32(a+4); /**.
-    .**/ if (here == v) {  /**.
-    .**/   res = 1;        /**.
-    .**/ } else {          /**.
-    .**/   if (v < here) { /**.
-    .**/     a = load(a);  /**.
-    .**/   } else {        /**.
-    .**/     a = load(a+8); /**.
-    .**/   }                /**.
+    .**/ res = (here == v); /**.
+    (* need to update a to a subtree to make sure termination measure decreases,
+       even if we set res to true and are about to exit *)
+    .**/ if (v < here) {  /**.
+    .**/   a = load(a);   /**.
+    .**/ } else {         /**.
+    .**/   a = load(a+8); /**.
+    .**/ }                /**.
     .**/ a = a; /**.
-    .**/ }                  /**.
-    .**/ a = a; /**.
-    .**/ } /**.
-    all: clear Error.
+    .**/ } /*?.
+    destr (word.ltu v /[v0]); subst c.
+    all: steps; clear Error.
     { (* smaller precondition holds: *)
-      instantiate (2 := (_, _, _)). cbv iota.
-      step. step. step.
-      apply and_comm.
       unzify.
-      (* TODO don't merge before proving smaller pre, lt, and impl *)
+      instantiate (2 := (_, _, _)). cbv iota. eexists.
+      step. step. step. subst a.
+      step. step. step. step. step. step.
+      subst here.
+      destr (word.eqb /[v0] v); subst res.
+      { exfalso. lia. }
+      { right. bottom_up_simpl_in_goal. reflexivity. }
+      step. }
+    { (* measure decreases: *)
+      subst sk0. cbn. auto. }
+    { (* small postcondition implies bigger postcondition: *)
+      cbv iota.
+      intros. fwd. subst sk0. cbn [bst']. repeat step.
+      { intuition lia. }
+      { assumption. } }
+    { (* smaller precondition holds: *)
+      unzify.
+      instantiate (2 := (_, _, _)). cbv iota. eexists.
+      step. step. step. subst a.
+      step. step. step. step. step. step.
+      subst here.
+      destr (word.eqb /[v0] v); subst res.
+      { bottom_up_simpl_in_goal.
+        (* oh no, doing a fake recursive call (even though we're done)
+           just to evaluate the loop condition one more time (to find it's false)
+           requires us to prove its pre, and since the termination measure is
+           required to go down, new set membership condition becomes (s0 v0 /\ v0 < v0) *)
 Abort.
+
+(* note: inability to break out of loop is cumbersome, because it complicates pre:
+   it has to incorporate almost all of post for the res=true case,
+   and even if we break, we still have to decrease the termination measure *)
+
 
 End LiveVerif. Comments .**/ //.
