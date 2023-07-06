@@ -776,6 +776,128 @@ Section WithParams.
     - exact HDone.
   Qed.
 
+  Lemma simplify_ret_one_post: forall fs rest t m kvs retname temps Q,
+      (* TODO additional hyp to determine temps *)
+      wp_cmd fs rest t m (map.of_list kvs) (fun t' m' l' =>
+          exists res: word, l' = map.of_list (cons (retname, res) nil) /\ Q res t' m') ->
+      wp_cmd fs (cmd.seq rest (unset_many temps)) t m (map.of_list kvs) (fun t' m' l' =>
+         exists retvals : list word,
+           map.getmany_of_list l' (cons retname nil) = Some retvals /\
+           (exists res : word, retvals = (cons res nil) /\ Q res t' m')).
+  Abort. (* not sure if a big-enough simplification to be worth it *)
+
+  Definition with_again_flag{T: Type}(R: T -> T -> Prop): bool * T -> bool * T -> Prop :=
+    fun '(again1, x1) '(again2, x2) =>
+      if again2 then
+        if again1 then R x1 x2 else True
+      else
+        if again1 then False else R x1 x2.
+
+  Lemma well_founded_with_again_flag T (R: T -> T -> Prop) (Hwf: well_founded R):
+    well_founded (with_again_flag R).
+  Proof.
+    unfold well_founded.
+    assert (false_Acc: forall x2, Acc (with_again_flag R) (false, x2)). {
+      intros x2. remember false as b2. revert b2 Heqb2. pattern x2. revert x2.
+      eapply well_founded_ind. 1: exact Hwf.
+      intros x2 IH b2 Eb2. subst b2. eapply Acc_intro. intros (b1 & x1) HR.
+      destruct b1; simpl in HR.
+      1: contradiction.
+      eapply IH. 1: exact HR. reflexivity.
+    }
+    intros (b2 & x2). destruct b2. 2: eapply false_Acc.
+    remember true as b2. revert b2 Heqb2. pattern x2. revert x2.
+    eapply well_founded_ind. 1: exact Hwf.
+    intros x2 IH b2 Eb2. subst b2. eapply Acc_intro. intros (b1 & x1) HR.
+    destruct b1; simpl in HR.
+    + eapply IH. 1: exact HR. reflexivity.
+    + eapply false_Acc.
+  Qed.
+
+  (* Useful for while loops with a done flag:
+     Once done is set to true, we don't need to prove pre again for the
+     next non-iteration, but we can prove post instead. *)
+  Lemma wp_while_tailrec_with_done_flag {measure: Type} {Ghost: Type}
+    (v0: measure) (g0: Ghost)
+    (e: expr) (c: cmd) t0 (m0: mem) l0 fs rest
+    (pre post: measure -> Ghost -> trace -> mem -> locals -> Prop) {lt}
+    {finalpost: trace -> mem -> locals -> Prop}
+    (Hwf: well_founded lt)
+    (* packaging generalized context at entry of loop determines pre: *)
+    (Hpre: pre v0 g0 t0 m0 l0)
+    (Hbody: forall v g t m l,
+      pre v g t m l ->
+      exists b, dexpr_bool3 m l e b
+                  (* can't put loop body under context of b=true because we
+                     first need to treat the b=false case (which determines post): *)
+                  True
+                  (* packaging generalized context at exit of loop (with final, smallest
+                     measure) determines post: *)
+                  (post v g t m l)
+                  (loop_body_marker (bool_expr_branches b (wp_cmd fs c t m l
+                      (fun t' m' l' => exists b',
+                         (* evaluating condition e again!! *)
+                         dexpr_bool3 m' l' e b'
+                           (exists v' g',
+                               pre v' g' t' m' l' /\
+                               lt v' v /\
+                               (forall t'' m'' l'', post v' g' t'' m'' l'' ->
+                                                    post v  g  t'' m'' l''))
+                           (post v g t' m' l')
+                           True)) True True)))
+    (Hrest: forall t m l, post v0 g0 t m l -> wp_cmd fs rest t m l finalpost)
+    : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 finalpost.
+  Proof.
+    pose proof Hbody as Hinit.
+    specialize Hinit with (1 := Hpre). destruct Hinit as (b & Hinit).
+    inversion Hinit. subst. clear Hinit. unfold bool_expr_branches in H1.
+    apply proj1 in H1.
+    eapply wp_while_tailrec with
+      (v0 := (negb (word.eqb v (word.of_Z 0)), v0))
+      (pre := fun (av: bool * measure) g t m l =>
+                let (again, v) := av in
+                (exists w, dexpr m l e w /\ again = negb (word.eqb w (word.of_Z 0))) /\
+                if again then  pre v g t m l else post v g t m l)
+      (post := fun (av: bool * measure) g t m l =>
+                 let (again, v) := av in post v g t m l).
+    { eapply well_founded_with_again_flag. eapply Hwf. }
+    { split.
+      { eexists. split. 1: eassumption. reflexivity. }
+      destr (word.eqb v (word.of_Z 0)); simpl in *.
+      1: eassumption. assumption. }
+    { intros. fwd. destr (word.eqb w (word.of_Z 0)); simpl in *.
+      { exists false. econstructor. 1: eassumption.
+        { rewrite word.eqb_eq; reflexivity. }
+        { unfold bool_expr_branches, loop_body_marker. auto. } }
+      { specialize Hbody with (1 := H0p1). destruct Hbody as (b & Hbody).
+        inversion Hbody. subst c0. exists b. clear Hbody. subst.
+        econstructor. 1: eassumption. 1: reflexivity.
+        unfold bool_expr_branches in *.
+        destr (word.eqb v1 (word.of_Z 0)); simpl in *.
+        1: assumption.
+        split. 1: constructor. apply proj2 in H3. unfold loop_body_marker in *.
+        apply proj1 in H3. split. 2: constructor.
+        eapply weaken_wp_cmd. 1: eassumption.
+        cbv beta. clear H3. intros. fwd. inversion H2. subst. clear H2.
+        unfold bool_expr_branches in *. apply proj1 in H5.
+        destr (word.eqb v2 (word.of_Z 0)); simpl in *.
+        { eexists (false, m1(* old, big measure! *)), _.
+          ssplit.
+          { eexists. split. 1: eassumption. rewrite word.eqb_eq; reflexivity. }
+          { eassumption. }
+          { exact I. }
+          intros *. exact id. }
+        { fwd.
+          eexists (true, v'(* new, smaller measure *)), _.
+          ssplit.
+          { eexists. split. 1: eassumption. rewrite word.eqb_ne by assumption.
+            reflexivity. }
+          { eassumption. }
+          { simpl. assumption. }
+          assumption. } } }
+      { assumption. }
+  Qed.
+
   Definition dexprs(m: mem)(l: locals): list expr -> list word -> Prop :=
     List.Forall2 (dexpr m l).
 
