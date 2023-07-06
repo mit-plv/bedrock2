@@ -36,8 +36,6 @@ Section HeapletwiseHyps.
     - eapply map.disjointb_spec in E0. auto.
   Qed.
 
-  Definition anymem: mem -> Prop := fun _ => True.
-
   Definition wand(P1 P2: mem -> Prop): mem -> Prop :=
     fun mdiff => forall m1 m2, map.split m2 mdiff m1 -> P1 m1 -> P2 m2.
 
@@ -223,12 +221,6 @@ Section HeapletwiseHyps.
     unfold canceling. intros. split. 2: assumption. simpl. unfold emp. intros. fwd. auto.
   Qed.
 
-  Lemma canceling_done_anymem: forall {om} {Rest: Prop},
-      Rest -> canceling [anymem] om Rest.
-  Proof.
-    unfold canceling, anymem. simpl. intros. auto.
-  Qed.
-
   Lemma canceling_done_frame_generic: forall om (P: (mem -> Prop) -> Prop),
       (* This hypothesis holds for all (P F) of the form
          "forall m', (calleePost * F) m' -> callerPost m'"
@@ -372,6 +364,16 @@ Section HeapletwiseHyps.
     unfold canceling. intros. destruct H as [H HR]. split; [intros | exact HR].
     simpl in *. subst om. destruct Ps as [ | R Rs]. 1: eauto.
     eapply sep_assoc. eauto.
+  Qed.
+
+  Lemma cancel_frame_evar_filling_step: forall hs path {P hs' m F Rest},
+      with_mem m P ->
+      mem_tree_lookup hs path = Some m ->
+      mem_tree_remove hs path = Some hs' ->
+      canceling (cons F nil) (interp_mem_tree hs') Rest ->
+      canceling (cons (sep P F) nil) (interp_mem_tree hs) Rest.
+  Proof.
+    intros. eapply cancel_sep_head. eapply cancel_head; eassumption.
   Qed.
 
   Lemma canceling_last_step: forall hs path {P m} {Rest: Prop},
@@ -876,16 +878,25 @@ Ltac cancel_head_with_hyp H :=
 
 Ltac canceling_step :=
   lazymatch goal with
-  | |- canceling [anymem] _ _ => eapply canceling_done_anymem
   | |- canceling (cons ?R ?Ps) ?om ?P =>
       tryif is_evar R then
         lazymatch Ps with
         | nil =>
-            let P := lazymatch eval pattern R in P with ?f _ => f end in
-            lazymatch P with
-            | (fun _ => ?doesNotDependOnArg) => eapply canceling_done_anymem
-            | _ => eapply (canceling_done_frame_generic om P);
-                   [ solve [clear; unfold sep; intros; fwd; eauto 20] | ]
+            match goal with
+            | |- _ => let P := lazymatch eval pattern R in P with ?f _ => f end in
+                      eapply (canceling_done_frame_generic om P);
+                      [ solve [clear; unfold sep; intros; fwd; eauto 20] | ]
+            | H: with_mem ?m ?PH |- _ =>
+                let hs := reify_mem_tree om in
+                let p := path_in_mem_tree hs m in
+                let lem := lazymatch p with
+                           | nil => open_constr:(canceling_last_step hs p H)
+                           | cons _ _ => open_constr:(cancel_frame_evar_filling_step hs p H)
+                           end in
+                eapply lem;
+                [ reflexivity
+                | reflexivity
+                | cbn [interp_mem_tree] ]
             end
         | cons _ _ => fail 1000 "frame evar must be last in list"
         end
@@ -1110,6 +1121,8 @@ Section HeapletwiseHypsTests.
     canceling_step.
     canceling_step.
     step.
+    step.
+    step.
   Succeed Qed. Abort.
 
   Goal forall m v1 v2 v3 v4 (Rest: mem -> Prop),
@@ -1122,7 +1135,7 @@ Section HeapletwiseHypsTests.
     step.
     step. (* ex1 *)
     step. (* sep *)
-    step. step. step. step.
+    step. step. step. step. step. step.
   Succeed Qed. Abort.
 
   Goal forall v1 a1 v2 a2 (P: Prop),
