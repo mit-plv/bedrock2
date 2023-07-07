@@ -419,13 +419,21 @@ Section WithParams.
       update_locals (cons s nil) (cons v nil) l post.
   Proof. unfold update_locals. intros. apply (H _ eq_refl). Qed.
 
+  Lemma wp_set00: forall fs x e v t m l (post: trace -> mem -> locals -> Prop),
+      dexpr m l e v ->
+      post t m (map.put l x v) ->
+      wp_cmd fs (cmd.set x e) t m l post.
+  Proof.
+    intros. inversion H; clear H. econstructor.
+    cbn -[map.put]. eexists. split. 1: eassumption. unfold dlet.dlet. assumption.
+  Qed.
+
   Lemma wp_set0: forall fs x e v t m l rest post,
       dexpr m l e v ->
       wp_cmd fs rest t m (map.put l x v) post ->
       wp_cmd fs (cmd.seq (cmd.set x e) rest) t m l post.
   Proof.
-    intros. inversion H; clear H. inversion H0; clear H0. econstructor.
-    cbn -[map.put]. eexists. split. 1: eassumption. unfold dlet.dlet. assumption.
+    intros. eapply wp_seq. eapply wp_set00; eassumption.
   Qed.
 
   Lemma wp_store_uintptr0: forall fs ea ev a v R t m l rest (post: _->_->_->Prop),
@@ -510,12 +518,33 @@ Section WithParams.
       assumption.
   Qed.
 
+  Lemma wp_push_if_into_merge_locals: forall fs t m rest c kvs1 kvs2 post,
+    merge_locals c kvs1 kvs2 (fun kvs => wp_cmd fs rest t m (map.of_list kvs) post) ->
+    wp_cmd fs rest t m (if c then map.of_list kvs1 else map.of_list kvs2) post.
+  Proof.
+    intros. eapply push_if_into_merge_locals in H. destruct c; exact H.
+  Qed.
+
   Lemma merge_locals_same: forall c h t1 t2 post,
       merge_locals c t1 t2 (fun l => post (cons h l)) ->
       merge_locals c (cons h t1) (cons h t2) post.
   Proof.
     simpl. intros. destruct h as [x v]. rewrite String.eqb_refl. intros. subst.
     destruct c; assumption.
+  Qed.
+
+  Lemma wp_if00: forall fs c thn els b t m l post,
+      dexpr m l c b ->
+      (word.unsigned b <> 0 -> wp_cmd fs thn t m l post) ->
+      (word.unsigned b =  0 -> wp_cmd fs els t m l post) ->
+      wp_cmd fs (cmd.cond c thn els) t m l post.
+  Proof.
+    intros. inversion H; clear H. constructor. hnf.
+    eexists. split. 1: eassumption.
+    split; intro A;
+      match goal with
+      | H: _ -> _ |- _ => specialize (H A); inversion H; clear H; assumption
+      end.
   Qed.
 
   Lemma wp_if0: forall fs c thn els rest b Q1 Q2 t m l post,
@@ -527,13 +556,11 @@ Section WithParams.
                         wp_cmd fs rest t' m' l' post) ->
       wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Proof.
-    intros. inversion H; clear H. constructor. hnf.
-    eexists. split. 1: eassumption.
-    split; intro A;
-      match goal with
-      | H: _ -> _ |- _ => specialize (H A); inversion H; clear H
-      end;
-      (eapply WP_weaken_cmd; [eauto|intros; eauto using invert_wp_cmd]).
+    intros. eapply wp_seq. eapply wp_if00. 1: eassumption.
+    all: intro A; match goal with
+      | H: _ -> _ |- _ => specialize (H A)
+      end.
+    all: eauto using weaken_wp_cmd.
   Qed.
 
   Definition after_loop: list (string * (list string * list string * cmd)) ->
@@ -547,10 +574,25 @@ Section WithParams.
     unfold update_locals. intros. inversion H. eapply wp_set0; eassumption.
   Qed.
 
+  Lemma wp_unset00: forall fs x t m l (post: trace -> mem -> locals -> Prop),
+      post t m (map.remove l x) ->
+      wp_cmd fs (cmd.unset x) t m l post.
+  Proof. intros. constructor. assumption. Qed.
+
   Lemma wp_unset: forall fs x t m l rest post,
       wp_cmd fs rest t m (map.remove l x) post ->
       wp_cmd fs (cmd.seq (cmd.unset x) rest) t m l post.
-  Proof. intros. constructor. inversion H. clear H. assumption. Qed.
+  Proof. intros. eapply wp_seq. eapply wp_unset00. assumption. Qed.
+
+  (* when setting a new variable, we will first use this lemma to also unset it at the end of
+     the block, so that proper scoping is maintained *)
+  Lemma wp_unset_at_end: forall fs x t m l rest post,
+      wp_cmd fs rest t m l (fun t' m' l' => post t' m' (map.remove l' x)) ->
+      wp_cmd fs (cmd.seq rest (cmd.unset x)) t m l post.
+  Proof.
+    intros. eapply wp_seq. eapply weaken_wp_cmd. 1: eassumption.
+    cbv beta. intros. eapply wp_unset00. assumption.
+  Qed.
 
   Definition unset_many: list string -> cmd :=
     List.fold_right (fun v c => (cmd.seq (cmd.unset v) c)) cmd.skip.
@@ -568,16 +610,6 @@ Section WithParams.
       wp_cmd fs rest t m (map.remove_many l vars) post ->
       wp_cmd fs (cmd.seq (unset_many vars) rest) t m l post.
   Proof. intros. eapply wp_seq. eapply wp_unset_many0. assumption. Qed.
-
-  Lemma wp_unset_many_after_if: forall vars (b: bool) fs t m l l1 l2 li1 li2 rest post,
-      l = (if b then l1 else l2) ->
-      map.remove_many l1 vars = map.of_list li1 ->
-      map.remove_many l2 vars = map.of_list li2 ->
-      wp_cmd fs rest t m (map.of_list (if b then li1 else li2)) post ->
-      wp_cmd fs (cmd.seq (unset_many vars) rest) t m l post.
-  Proof.
-    intros. subst. eapply wp_unset_many. destruct b; congruence.
-  Qed.
 
   Lemma wp_store_uintptr: forall fs ea ev a v R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
@@ -636,30 +668,19 @@ Section WithParams.
     destruct_one_match; reflexivity.
   Qed.
 
-  Definition branch_post(initial_locals: locals)(new_vars: list string)
-                        (Q: trace -> mem -> locals -> Prop)
-                        (t: trace)(m: mem)(l: locals): Prop :=
-    cons_structure_exposing_reversing_equality new_vars
-      (list_diff String.eqb (map.keys l) (map.keys initial_locals)) /\
-    (* ^- Note: the above equality is not needed to make the proof of wp_if_bool_dexpr work:
-          We are free to unset whatever variables we want at the end of a branch.
-          But picking new_vars such that the equality holds is what's consistent
-          with C scoping rules: if a variable was declared in both branches, but
-          not before the if, it's not available after the if. *)
-    Q t m (map.remove_many l new_vars).
+  Definition package_context_marker(Q: trace -> mem -> locals -> Prop)
+    (t: trace)(m: mem)(l: locals): Prop := Q t m l.
 
-  Lemma wp_if_bool_dexpr fs c thn els rest t0 m0 l0 b new_thn_vars new_els_vars Q1 Q2 post:
+  Lemma wp_if_bool_dexpr fs c thn els rest t0 m0 l0 b Q1 Q2 post:
       dexpr_bool3 m0 l0 c b
-        (then_branch_marker (wp_cmd fs thn t0 m0 l0 (branch_post l0 new_thn_vars Q1)))
-        (else_branch_marker (wp_cmd fs els t0 m0 l0 (branch_post l0 new_els_vars Q2)))
+        (then_branch_marker (wp_cmd fs thn t0 m0 l0 (package_context_marker Q1)))
+        (else_branch_marker (wp_cmd fs els t0 m0 l0 (package_context_marker Q2)))
         (pop_scope_marker (after_if fs b Q1 Q2 rest post)) ->
-      wp_cmd fs (cmd.seq (cmd.cond c (cmd.seq thn (unset_many new_thn_vars))
-                                     (cmd.seq els (unset_many new_els_vars)))
-                         rest) t0 m0 l0 post.
+      wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t0 m0 l0 post.
   Proof.
     intros. inversion H. subst. clear H.
     unfold then_branch_marker, else_branch_marker, pop_scope_marker,
-      after_if, bool_expr_branches in *.
+      after_if, bool_expr_branches, package_context_marker in *.
     destruct H2.
     destr (word.eqb v (word.of_Z 0)); (eapply wp_if0; [ eassumption | .. ]).
     all: try (intro C; rewrite ?word.unsigned_of_Z_nowrap in C
@@ -672,14 +693,39 @@ Section WithParams.
     }
     2,4: intros * [(? & ?) | (? & ?)].
     2-5: eapply H1; econstructor; try reflexivity; simpl; eassumption.
-    all: eapply wp_seq.
-    all: eapply weaken_wp_cmd.
     all: simpl in *.
-    1,3: exact H.
-    all: unfold branch_post.
-    all: intros * [? ?]; subst.
-    all: eapply wp_unset_many0.
-    all: assumption.
+    all: exact H.
+  Qed.
+
+  (* TODO use or remove, but make sure it doesn't prevent expect_1expr_return from being
+     recognized *)
+  Definition needs_to_be_closed_by_single_rbrace(P: Prop) := P.
+
+  Definition needs_opening_else_and_lbrace(P: Prop) := P.
+
+  Lemma wp_if_bool_dexpr_split fs c thn els t0 m0 l0 b post:
+      dexpr_bool3 m0 l0 c b
+        (then_branch_marker (wp_cmd fs thn t0 m0 l0 post))
+        (else_branch_marker (needs_opening_else_and_lbrace (wp_cmd fs els t0 m0 l0 post)))
+        (* Contrary to most other lemmas, this lemma doesn't have a (cmd.seq _ rest)
+           and a corresponding subgoal for rest, in which the closing brace for the
+           current block can be consumed. So we add a dummy goal to consume that
+           closing brace: *)
+        (pop_scope_marker (wp_cmd fs cmd.skip t0 m0 l0 (fun _ _ _ => True))) ->
+      wp_cmd fs (cmd.cond c thn els) t0 m0 l0 post.
+  Proof.
+    intros. inversion H. subst. clear H.
+    unfold then_branch_marker, else_branch_marker, pop_scope_marker,
+      after_if, bool_expr_branches,
+      needs_to_be_closed_by_single_rbrace, needs_opening_else_and_lbrace in *.
+    apply proj1 in H2.
+    destr (word.eqb v (word.of_Z 0)); simpl in H2; (eapply wp_if00; [ eassumption | .. ]).
+    all: try (intro C; rewrite ?word.unsigned_of_Z_nowrap in C
+                  by (destruct width_cases as [W|W]; rewrite W in *; lia); try congruence).
+    exfalso. eapply E. eapply word.unsigned_inj.
+    rewrite word.unsigned_of_Z_nowrap
+      by (destruct width_cases as [W|W]; rewrite W in *; lia).
+    exact C.
   Qed.
 
   Lemma after_if_skip {Bt Bf b} {_: BoolSpec Bt Bf b} fs
@@ -775,16 +821,6 @@ Section WithParams.
       apply word.unsigned_of_Z_0.
     - exact HDone.
   Qed.
-
-  Lemma simplify_ret_one_post: forall fs rest t m kvs retname temps Q,
-      (* TODO additional hyp to determine temps *)
-      wp_cmd fs rest t m (map.of_list kvs) (fun t' m' l' =>
-          exists res: word, l' = map.of_list (cons (retname, res) nil) /\ Q res t' m') ->
-      wp_cmd fs (cmd.seq rest (unset_many temps)) t m (map.of_list kvs) (fun t' m' l' =>
-         exists retvals : list word,
-           map.getmany_of_list l' (cons retname nil) = Some retvals /\
-           (exists res : word, retvals = (cons res nil) /\ Q res t' m')).
-  Abort. (* not sure if a big-enough simplification to be worth it *)
 
   Definition with_again_flag{T: Type}(R: T -> T -> Prop): bool * T -> bool * T -> Prop :=
     fun '(again1, x1) '(again2, x2) =>
@@ -989,6 +1025,64 @@ Section WithParams.
     eapply weaken_wp_cmd. 1: eassumption.
     cbv beta. intros. fwd.
     eapply cpsify_getmany_of_list; eassumption.
+  Qed.
+
+  (* applied at beginning of void functions *)
+  Lemma simplify_no_return_post: forall fs body t m l P,
+      wp_cmd fs body t m l (fun t' m' l' => P t' m') ->
+      wp_cmd fs body t m l (fun t' m' l' =>
+        exists retvals: list word,
+        map.getmany_of_list l' nil = Some retvals /\
+        (retvals = nil /\ P t' m')).
+  Proof.
+    intros. eapply weaken_wp_cmd. 1: eassumption.
+    cbv beta. intros. fwd. eexists.
+    split. 1: reflexivity. auto.
+  Qed.
+
+  Definition RETNAME := "RET"%string.
+
+  Inductive expect_1expr_return
+    (P: trace -> mem -> word -> Prop)(t: trace)(m: mem)(l: locals): Prop :=
+  | mk_expect_1expr_return(retv: word)(G: map.get l RETNAME = Some retv)(HP: P t m retv).
+
+  (* applied at the beginning of functions with 1 return value *)
+  Lemma simplify_1retval_post: forall fs body t m l P,
+      wp_cmd fs body t m l (expect_1expr_return P) ->
+      wp_cmd fs body t m l (fun t' m' l' =>
+        exists retvals : list word,
+        map.getmany_of_list l' (cons RETNAME nil) = Some retvals /\
+        (exists retv, retvals = cons retv nil /\ P t' m' retv)).
+  Proof.
+    intros. eapply weaken_wp_cmd. 1: eassumption.
+    intros. inversion H0. subst. clear H0. eexists.
+    split. {
+      simpl. unfold map.getmany_of_list. simpl. rewrite G. reflexivity.
+    }
+    eauto.
+  Qed.
+
+  (* Applied at the end of a function with one return value,
+     when the user provides a return statement.
+     post will have a shape like
+     (fun t' m' l' => expect_1expr_return P t' m' (map.remove (.. (map.remove l' x) ..) y))
+     ie all the locals (except the function arguments) were removed for scoping reasons,
+     and l will have a shape like
+     (map.of_list (cons (_, _) (.. (cons (_, _) nil) ..))).
+     Therefore, the first two goals should be solvable by reflexivity. *)
+  Lemma wp_return: forall fs e t m l lShrunk retv P post,
+      post t m (map.put l RETNAME retv) = expect_1expr_return P t m lShrunk ->
+      map.get lShrunk RETNAME = Some retv ->
+      (* Note: this would be simpler, but for uniformity, we insert a superfluous
+         cmd.skip, so that the closing brace always applies wp_skip
+      dexpr1 m l e (fun retv => P t m retv) *)
+      dexpr1 m l e retv (wp_cmd fs cmd.skip t m l (fun _ _ _ => P t m retv)) ->
+      wp_cmd fs (cmd.set RETNAME e) t m l post.
+  Proof.
+    intros. inversion H1. clear H1.
+    eapply wp_set00. 1: eassumption.
+    inversion Hp. cbn in H1.
+    rewrite H. econstructor. 2: eassumption. assumption.
   Qed.
 
 End WithParams.

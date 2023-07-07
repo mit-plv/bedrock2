@@ -51,11 +51,13 @@ uintptr_t fibonacci(uintptr_t n) /**#
   ensures t' m' res := t' = t /\ sep dummy R m' /\ res = fib n #**/   /**.
 Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             .**/
 {                                                                          /**. .**/
-  uintptr_t b = 0;                                                         /**. .**/
-  if (n == 0) {                                                            /**. .**/
-  } else {                                                                 /**. .**/
+  if (n == 0) /* split */ {                                                /**. .**/
+    return 0;                                                              /**. .**/
+  }                                                                        /**.
+    unfold fib. bottom_up_simpl_in_goal. reflexivity.                           .**/
+  else {                                                                   /**. .**/
     uintptr_t a = 0;                                                       /**. .**/
-    b = 1;                                                                 /**. .**/
+    uintptr_t b = 1;                                                       /**. .**/
     uintptr_t i = 1;                                                       /**.
 
     swap /[0] with (fib (i ^- /[1])) in #(a = /[0]).
@@ -73,10 +75,9 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
       i = i + 1;                                                           /**. .**/
     }                                                                      /**.
     subst a' i. rewrite fib_recursion by steps; reflexivity.                    .**/
+    return b;                                                              /**. .**/
   }                                                                        /**. .**/
-  return b;                                                                /**. .**/
 }                                                                          /**.
-unfold fib. bottom_up_simpl_in_goal. reflexivity.
 Qed.
 
 End LiveVerif. Comments .**/ //.

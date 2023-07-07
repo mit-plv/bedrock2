@@ -9,10 +9,10 @@ Inductive snippet :=
 | SAssign(is_decl: bool)(x: string)(r: assignment_rhs)
 | SVoidCall(fname: string)(args: list Syntax.expr)
 | SStore(sz: access_size)(addr val: Syntax.expr)
-| SIf(cond: Syntax.expr)
-| SElse
+| SIf(cond: Syntax.expr)(split: bool)
+| SElse(startsWithClosingBrace: bool)
 | SWhile(cond: Syntax.expr){Measure: Type}(measure0: Measure)
 | SStart
 | SEnd
-| SRet(xs: list string)
+| SRet(retexpr: Syntax.expr)
 | SEmpty.

@@ -40,4 +40,32 @@ Derive u_min3 SuchThat (fun_correct! u_min3) As u_min3_ok.                      
 }                                                                          /**.
 Qed.
 
+#[export] Instance spec_of_u_min3_alt: fnspec :=                                 .**/
+
+uintptr_t u_min3_alt (uintptr_t a, uintptr_t b, uintptr_t c) /**#
+  ghost_args := (R: mem -> Prop);
+  requires t m := sep dummy R m;
+  ensures t' m' retv := t' = t /\ sep dummy R m' /\
+      \[retv] = Z.min \[a] (Z.min \[b] \[c]) #**/                          /**.
+Derive u_min3_alt SuchThat (fun_correct! u_min3_alt) As u_min3_alt_ok.          .**/
+{                                                                          /**. .**/
+  if (a < b) /* split */ {                                                 /**. .**/
+    if (a < c) /* split */ {                                               /**. .**/
+      return a;                                                            /**. .**/
+    }                                                                      /**. .**/
+    else {                                                                 /**. .**/
+      return c;                                                            /**. .**/
+    }                                                                      /**. .**/
+  }                                                                        /**. .**/
+  else {                                                                   /**. .**/
+    if (c < b) /* split */ {                                               /**. .**/
+      return c;                                                            /**. .**/
+    }                                                                      /**. .**/
+    else {                                                                 /**. .**/
+      return b;                                                            /**. .**/
+    }                                                                      /**. .**/
+  }                                                                        /**. .**/
+}                                                                          /**.
+Qed.
+
 End LiveVerif. Comments .**/ //.

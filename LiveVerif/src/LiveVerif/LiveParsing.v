@@ -224,13 +224,17 @@ Notation "store( a , v ) ;" := (SStore access_size.word a v)
   (in custom snippet at level 0,
    a custom live_expr at level 100, v custom live_expr at level 100).
 
-Notation "'return' l ;" := (SRet l)
-  (in custom snippet at level 0, l custom bound_name_or_literal_list at level 1).
+Notation "'return' e ;" := (SRet e)
+  (in custom snippet at level 0, e custom live_expr at level 100).
 
-Notation "'if' ( e ) {" := (SIf e) (in custom snippet at level 0, e custom live_expr).
+Notation "'if' ( e ) {" := (SIf e false)
+  (in custom snippet at level 0, e custom live_expr).
+Notation "'if' ( e ) /* 'split' */ {" := (SIf e true)
+  (in custom snippet at level 0, e custom live_expr).
 Notation "{" := SStart (in custom snippet at level 0).
 Notation "}" := SEnd (in custom snippet at level 0).
-Notation "} 'else' {" := SElse (in custom snippet at level 0).
+Notation "} 'else' {" := (SElse true) (in custom snippet at level 0).
+Notation "'else' {" := (SElse false) (in custom snippet at level 0).
 
 Notation "'while' ( e ) /* 'decreases' m */ {" :=
   (SWhile e m) (in custom snippet at level 0, e custom live_expr, m constr at level 0).

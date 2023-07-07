@@ -23,6 +23,16 @@ Qed.
 
 #[local] Hint Resolve tree_skeleton_lt_wf: wf_of_type.
 
+Lemma tree_skeleton_lt_l: forall sk1 sk2 skOther,
+    sk2 = Node sk1 skOther -> safe_implication True (tree_skeleton_lt sk1 sk2).
+Proof. unfold safe_implication, tree_skeleton_lt. intros. subst. auto. Qed.
+
+Lemma tree_skeleton_lt_r: forall sk1 sk2 skOther,
+    sk2 = Node skOther sk1 -> safe_implication True (tree_skeleton_lt sk1 sk2).
+Proof. unfold safe_implication, tree_skeleton_lt. intros. subst. auto. Qed.
+
+#[local] Hint Resolve tree_skeleton_lt_l tree_skeleton_lt_r : safe_implication.
+
 Load LiveVerif.
 
 Context {consts: malloc_constants}.
@@ -128,14 +138,13 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
 
   let cond := constr:(live_expr:(!res && a != 0)) in
   let measure0 := constr:(sk) in
-  eapply (wp_while_tailrec measure0 (s, a, R) cond)
+  eapply (wp_while_tailrec_with_done_flag measure0 (s, a, R) cond)
          with (pre := fun sk (g: (set Z * word * (mem -> Prop))) ti mi li =>
                         let '(s, a, F) := g in
-                        exists res,
+                        exists res, res = /[0] /\
                         li = map.of_list [|("a", a); ("p", p); ("res", res); ("v", v)|] /\
-                        <{ * bst' sk s a * F }> mi /\
-                        (\[res] = 1 /\ s \[v] \/ \[res] = 0) /\
-                        ti = t).
+                        ti = t /\
+                        <{ * bst' sk s a * F }> mi).
   1: eauto with wf_of_type.
   1: solve [steps].
   {
@@ -152,18 +161,12 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
                         ti = t).
       cbv beta iota.
       clear Error.
-      destruct H.
-      { steps. clear Error.
-        assert (res0 = /[1]) by (zify_hyps; zify_goal; xlia zchecker). subst res0.
-        destruct Hp2. 2: { exfalso. bottom_up_simpl_in_hyps. discriminate. }
-        bottom_up_simpl_in_goal. intuition auto. }
+      destruct H. 1: contradiction.
       { steps. clear Error.
         subst r.
         let H := constr:(#bst') in eapply invert_bst'_null in H.
         steps. clear Error.
-        right. destruct Hp2.
-        { exfalso. eapply H2. eapply H. }
-        eauto. }
+        right. bottom_up_simpl_in_goal. eauto. }
     }
     (* loop body: *)
     let H := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as H.
@@ -171,17 +174,140 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
     let H := constr:(#(bst')) in eapply invert_bst'_nonnull in H.
     2: assumption.
     fwd. repeat heapletwise_step.
-    .**/ uintptr_t here = load32(a+4); /**.
-    .**/ res = (here == v); /**.
-    (* need to update a to a subtree to make sure termination measure decreases,
-       even if we set res to true and are about to exit *)
-    .**/ if (v < here) {  /**.
-    .**/   a = load(a);   /**.
+                                                                                .**/
+    uintptr_t here = load32(a+4);                                          /**. .**/
+    if (v < here) /* split */ {                                            /**. .**/
+      a = load(a);                                                         /**. .**/
+    }                                                                      /**.
+      clear Error. intros.
+Abort.
+(*
+      step. step. step. step. step.
+
+subst l''.
+
+let logger := fun _ => idtac in
+lazymatch goal with
+  | |- @eq (@map.rep string (@word.rep _ _) _) ?LHS ?RHS =>
+      is_map_expr_with_ground_keys LHS;
+      is_map_expr_with_ground_keys RHS;
+      logger ltac:(fun _ => idtac "proving equality between two locals maps");
+      let LHS' := normalize_locals_expr LHS in
+      let RHS' := normalize_locals_expr RHS in
+      change (LHS' = RHS');
+      repeat f_equal
+end.
+
+
+      (* TODO *)
+
+ step. step. step.
+
+      f_equal.
+
+step. step. step. step. step.
+      step. step. step. step. step. step. step. step. step. step. step.
+      step. step. step. step. step.
+step. step. step. step. step. step. step. step. step. step.
+step. step. step.
+Set Nested Proofs Allowed.
+
+step.
+  lazymatch goal with
+  | |- tree_skeleton_lt ?sk1 ?sk2 => try subst sk1; try subst sk2
+  end.
+
+unfold tree_skeleton_lt.
+step.
+auto.
+
+subst sk0.
+
+step.
+
+      f_equal.
+      f_equal.
+      f_equal.
+      f_equal.
+      f_equal.
+      f_equal.
+
+
+Ltac evar_tuple t :=
+  lazymatch t with
+  | prod ?t1 ?t2 =>
+      let e1 := evar_tuple t1 in
+      let e2 := evar_tuple t2 in
+      constr:(pair e1 e2)
+  | _ => lazymatch open_constr:(_ : t) with
+         | ?e => e
+         end
+  end.
+
+      lazymatch goal with
+      | |- exists x: ?t, _ => let e := evar_tuple t in exists e
+      end.
+                                                              split.
+      lazymatch goal with
+      | |- exists x: ?t, _ => let e := evar_tuple t in exists e
+      end.
+
+
+
+      lazymatch goal with
+      | |- exists g: _ * _, let '(_, _) := g in _ => idtac g
+      end.
+
+
+
+ step.
+      step. step.
+      instantiate (2 := (_, _, _)). cbv iota. eexists.
+      step. step. step. step.
+      steps.
+
+          eapply wp_skip;
+          lazymatch goal with
+          | |- needs_to_be_closed_by_single_rbrace ?g => change g
+          | |- _ => fail "this then-branch needs to be closed by '} else {'"
+          end.
+
+
+lazymatch goal with
+  | |- branch_post ?l0 ?new_vars ?Q ?t ?m ?l =>
+      split; [ reflexivity | ];
+      let l' := normalize_locals_expr l in
+      change (Q t m l');
+      tryif is_evar Q then package_heapletwise_context else cbv beta
+end.
+
+          step.
+
+unfold ready.
+    .**/ } /**.
+      bla_tac.
+    .**/
+    else {                   /**.
+ unfold ready.
+2: {
+
     .**/ } else {         /**.
-    .**/   a = load(a+8); /**.
-    .**/ }                /**.
+    .**/   if (here < v) {  /**.
+    .**/     a = load(a+8); /**.
+    .**/   } else {         /**.
+    .**/     res = 1;       /**.
+    .**/   }                /**.
+    .**/   a = a; /**.
+    .**/ }                  /**.
     .**/ a = a; /**.
     .**/ } /*?.
+    step. step. step. step. step. step. step. step. step. step.
+    step. step. step. step. step. step. step. step. step.
+    2,3,4: exact I.
+    2: step. 2,4: exact I.
+    (* two possible outcomes
+    2: {
+step.
     destr (word.ltu v /[v0]); subst c.
     all: steps; clear Error.
     { (* smaller precondition holds: *)
@@ -213,7 +339,8 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
            just to evaluate the loop condition one more time (to find it's false)
            requires us to prove its pre, and since the termination measure is
            required to go down, new set membership condition becomes (s0 v0 /\ v0 < v0) *)
-Abort.
+*)
+*)
 
 (* note: inability to break out of loop is cumbersome, because it complicates pre:
    it has to incorporate almost all of post for the res=true case,

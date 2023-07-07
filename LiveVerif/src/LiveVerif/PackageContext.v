@@ -731,19 +731,14 @@ Ltac after_if :=
   lazymatch goal with
   | H: ?l = (if _ then map.of_list ?l1 else map.of_list ?l2) |- wp_cmd _ _ _ _ ?l _ =>
       (* common case: then branch and else branch modified locals in different ways *)
-      let only_in_l1 := list_map_ignoring_failures ltac:(key_of_pair_if_not_in l2) l1 in
-      let only_in_l2 := list_map_ignoring_failures ltac:(key_of_pair_if_not_in l1) l2 in
-      eapply (wp_unset_many_after_if (List.app only_in_l1 only_in_l2));
-      [ exact H
-      | normalize_locals_eq; reflexivity
-      | normalize_locals_eq; reflexivity
-      | eapply push_if_into_merge_locals ];
-      clear H
+      subst l;
+      eapply wp_push_if_into_merge_locals
   | H: ?l = map.of_list _ |- wp_cmd _ _ _ _ ?l _ =>
       (* special case: then branch and else branch modified locals in exactly the same
          way, so `merge_and_pair constr_eqb merge_ands_at_indices_same_prop` already
          got rid (or did not introduce at all) the if *)
       subst l
+  | |- _ => fail 1000 "unexpected shape of locals"
   end.
 
 Ltac unpackage_context_step :=

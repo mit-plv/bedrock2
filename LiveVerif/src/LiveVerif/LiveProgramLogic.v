@@ -4,7 +4,7 @@ Require Import coqutil.Z.Lia.
 Require Import Coq.Strings.String.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.Tactics.
-Require Import coqutil.Map.Interface.
+Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Tactics.syntactic_unify.
 Require Import coqutil.Tactics.destr.
@@ -136,6 +136,7 @@ Ltac start :=
              reflexivity
         end
       | ];
+      first [eapply simplify_no_return_post | eapply simplify_1retval_post];
       pose_state stepping
   | |- _ => fail "goal needs to be of shape (@program_logic_goal_for ?fname ?evar ?spec)"
   end.
@@ -260,22 +261,24 @@ Ltac destruct_ors :=
 
 Create HintDb prove_post.
 
-Ltac ret_generic c post retnames :=
+Ltac ret retexpr :=
   lazymatch goal with
   | B: scope_marker ?sk |- _ =>
       lazymatch sk with
       | FunctionBody => idtac
-      | ThenBranch => fail "return inside a then-branch is not supported"
-      | ElseBranch => fail "return inside an else-branch is not supported"
-      | LoopBody => fail "return inside a loop body is not supported"
+      | ThenBranch => idtac
+      | ElseBranch => idtac
+      | _ => fail "return inside a" sk "is not supported"
       end
   | |- _ => fail "block structure lost (could not find a scope_marker)"
   end;
-  unify c cmd.skip;
-  lazymatch post with
-  | (fun t' m' l' => exists rets, map.getmany_of_list l' ?eretnames = Some rets /\ _) =>
-      unify eretnames retnames
-  end.
+  cbv beta;
+  let P := lazymatch goal with
+           | |- wp_cmd ?fs _ _ _ _ (fun t m l => expect_1expr_return ?P t m _) => P
+           | |- wp_cmd ?fs _ _ _ _ (expect_1expr_return ?P) => P
+           | |- _ => fail "return at this position is not supported"
+           end in
+  eapply (wp_return _ retexpr _ _ _ _ _ P _); [ reflexivity | reflexivity | ].
 
 Ltac strip_conss l :=
   lazymatch l with
@@ -287,43 +290,33 @@ Ltac package_heapletwise_context :=
   collect_heaplets_into_one_sepclause;
   package_context.
 
-Ltac unset_loop_body_vars :=
-  lazymatch goal with
-  | |- wp_cmd _ _ _ _ (map.of_list ?l) ?post =>
-      let newvars := list_map_ignoring_failures ltac:(key_of_pair_if_not_in post) l in
-      eapply (wp_unset_many newvars);
-      normalize_locals_wp
-  end.
-
 Ltac close_function :=
   lazymatch goal with
   | H: functions_correct ?fs ?l |- _ =>
       let T := lazymatch type of l with list ?T => T end in
       let e := strip_conss l in
       unify e (@nil T)
-  end;
-  lazymatch goal with
-  | |- exists _, map.getmany_of_list _ ?retnames = Some _ /\ _ =>
-      (tryif is_evar retnames then unify retnames (@nil string) else idtac);
-      eexists; split; [ reflexivity | ]
   end.
 
 Ltac close_block :=
   lazymatch goal with
   | B: scope_marker ?sk |- _ =>
+      eapply wp_skip;
       lazymatch sk with
-      | ElseBranch =>
-          eapply wp_skip
-      | LoopBody =>
-          unset_loop_body_vars;
-          eapply wp_skip;
-          autounfold with heapletwise_always_unfold
-      | FunctionBody =>
-          eapply wp_skip;
-          close_function;
-          autounfold with heapletwise_always_unfold
+      | ThenBranch => idtac
+          (* TODO would be better to fail already here rather than only when
+             trying to do `else {`, but that requires needs_to_be_closed_by_single_rbrace
+             to be used in such a way that it doesn't interfere with expect_1expr_return
+          lazymatch goal with
+          | |- needs_to_be_closed_by_single_rbrace ?g => change g
+          | |- _ => fail "this then-branch needs to be closed by '} else {'"
+          end *)
+      | ElseBranch => idtac
+      | LoopBody => idtac
+      | FunctionBody => close_function
       | _ => fail "Can't end a block here"
-      end
+      end;
+      autounfold with heapletwise_always_unfold
   | _ => fail "no scope marker found"
   end.
 
@@ -457,7 +450,7 @@ Ltac add_regular_snippet s :=
   lazymatch s with
   | SAssign ?is_decl ?name ?rhs =>
       lazymatch is_decl with
-      | true => isnt_local_var name
+      | true => isnt_local_var name; eapply (wp_unset_at_end _ name)
       | false => is_local_var name
       end;
       lazymatch rhs with
@@ -467,19 +460,28 @@ Ltac add_regular_snippet s :=
   | SVoidCall ?fname ?arges => call (@None (prod bool string)) fname arges
   | SStore access_size.word ?addr ?val => eapply (wp_store_uintptr _ addr val)
   | SStore ?sz ?addr ?val => eapply (wp_store_uint _ sz addr val)
-  | SIf ?c => eapply (wp_if_bool_dexpr _ c);
-              let n := fresh "Scope0" in
-              pose proof (mk_scope_marker IfCondition) as n
-  | SElse =>
-      assert_scope_kind ThenBranch;
-      eapply wp_skip (* leaves a branch_post marker to be taken care of by step *)
+  | SIf ?c ?spl =>
+      lazymatch spl with
+      | true => eapply (wp_if_bool_dexpr_split _ c)
+      | false => eapply (wp_if_bool_dexpr _ c)
+      end;
+      let n := fresh "Scope0" in
+      pose proof (mk_scope_marker IfCondition) as n
+  | SElse ?startsWithClosingBrace =>
+      lazymatch startsWithClosingBrace with
+      | true =>
+          assert_scope_kind ThenBranch;
+          eapply wp_skip (* leaves a branch_post marker to be taken care of by step *)
+      | false =>
+          lazymatch goal with
+          | |- needs_opening_else_and_lbrace ?g => change g
+          | |- _ => fail "'else' is not expected here"
+          end
+      end
   | SWhile ?cond ?measure0 => while cond measure0
   | SStart => fail "SStart can only be used to start a function"
   | SEnd => close_block
-  | SRet ?retnames =>
-      lazymatch goal with
-      | |- wp_cmd ?fs ?c ?t ?m ?l ?post => ret_generic c post retnames
-      end
+  | SRet ?retexpr => ret retexpr
   | SEmpty => idtac
   end.
 
@@ -611,6 +613,26 @@ Ltac clear_heaplets :=
     | m: @map.rep (@word.rep _ _) Coq.Init.Byte.byte _ |- _ => clear m
     end.
 
+Ltac is_ground_string s :=
+  lazymatch s with
+  | String.EmptyString => idtac
+  | String.String (Ascii.Ascii _ _ _ _ _ _ _ _) ?t => is_ground_string t
+  | _ => fail 1000 s
+  end.
+
+Ltac is_tuple_list_with_ground_keys kvs :=
+  lazymatch kvs with
+  | cons (?s, _) ?rest => is_ground_string s; is_tuple_list_with_ground_keys rest
+  | nil => idtac
+  end.
+
+Ltac is_map_expr_with_ground_keys l :=
+  lazymatch l with
+  | map.of_list ?kvs => is_tuple_list_with_ground_keys kvs
+  | map.remove ?l' ?k => is_ground_string k; is_map_expr_with_ground_keys l'
+  | map.put ?l' ?k _ => is_ground_string k; is_map_expr_with_ground_keys l'
+  end.
+
 Ltac conclusion_shape_based_step logger :=
   lazymatch goal with
   | |- dexpr_bool3 _ _ ?e _ _ _ _ =>
@@ -638,9 +660,10 @@ Ltac conclusion_shape_based_step logger :=
       let n := fresh "Scope0" in
       pose proof (mk_scope_marker ElseBranch) as n;
       change G
-  | |- branch_post ?l0 ?new_vars ?Q ?t ?m ?l =>
-      split; [ reflexivity | ];
-      normalize_locals_post;
+  | |- package_context_marker ?Q ?t ?m ?l =>
+      logger ltac:(fun _ => idtac "package_heapletwise_context");
+      let l' := normalize_locals_expr l in
+      change (Q t m l');
       package_heapletwise_context
   | |- loop_body_marker ?G =>
       logger ltac:(fun _ => idtac "Starting loop body");
@@ -662,6 +685,12 @@ Ltac conclusion_shape_based_step logger :=
       clear_heapletwise_hyps;
       clear_mem_split_eqs;
       clear_heaplets
+  | |- pop_scope_marker (wp_cmd _ cmd.skip _ _ _ (fun _ _ _ => True)) =>
+      logger ltac:(fun _ => idtac
+         "Removing IfCondition marker after tail if");
+      lazymatch goal with
+      | H: scope_marker IfCondition |- pop_scope_marker ?g => clear H; change g
+      end
   | |- True =>
       logger ltac:(fun _ => idtac "constructor");
       constructor
@@ -687,11 +716,13 @@ Ltac conclusion_shape_based_step logger :=
   | |- forall t' m' (retvs: list ?word), _ -> update_locals _ retvs ?l _ =>
       logger ltac:(fun _ => idtac "intro new state after function call");
       intros
-  | |- @eq (@map.rep string (@word.rep _ _) _) (map.of_list _) (map.of_list _) =>
+  | |- @eq (@map.rep string (@word.rep _ _) _) ?LHS ?RHS =>
+      is_map_expr_with_ground_keys LHS;
+      is_map_expr_with_ground_keys RHS;
       logger ltac:(fun _ => idtac "proving equality between two locals maps");
-      (* doesn't make the goal unprovable because we keep tuple lists passed
-         to map.of_list sorted by key, and all values in the key-value tuples
-         are variables or evars *)
+      let LHS' := normalize_locals_expr LHS in
+      let RHS' := normalize_locals_expr RHS in
+      change (LHS' = RHS');
       repeat f_equal
   | |- ands _ =>
       logger ltac:(fun _ => idtac "cbn [ands]");
@@ -701,6 +732,17 @@ Ltac conclusion_shape_based_step logger :=
 Lemma prove_if {Bt Bf b} {_: BoolSpec Bt Bf b} (Pt Pf: Prop):
   (Bt -> Pt) -> (Bf -> Pf) -> if b then Pt else Pf.
 Proof. intros. destruct H; auto. Qed.
+
+Ltac evar_tuple t :=
+  lazymatch t with
+  | prod ?t1 ?t2 =>
+      let e1 := evar_tuple t1 in
+      let e2 := evar_tuple t2 in
+      constr:(pair e1 e2)
+  | _ => lazymatch open_constr:(_ : t) with
+         | ?e => e
+         end
+  end.
 
 Ltac final_program_logic_step logger :=
   (* Note: Here, the logger has to be invoked *after* the tactic, because we only
@@ -715,7 +757,7 @@ Ltac final_program_logic_step logger :=
         put_into_current_locals;
         logger ltac:(fun _ => idtac "put_into_current_locals")
       | lazymatch goal with
-        | |- exists _, _ => eexists
+        | |- exists x: ?t, _ => let e := evar_tuple t in exists e
         | |- ex1 _ _ => eexists
         | |- elet _ _ => refine (mk_elet _ _ _ eq_refl _)
         end;
@@ -819,6 +861,8 @@ Ltac step_is_done :=
   | |- @ready _ => idtac
   | |- don't_know_how_to_prove _ _ _ => idtac
   | |- after_if _ _ _ _ _ _ => idtac
+  | |- needs_opening_else_and_lbrace _ => idtac
+  | |- expect_1expr_return _ _ _ _ => idtac
   end.
 
 Ltac can_continue :=
@@ -848,15 +892,11 @@ Ltac add_snippet s :=
       | _ => fail "expected {, but got" s
       end
   | |- after_if ?fs ?b ?PThen ?PElse ?c ?Post =>
+      after_if_cleanup; run_steps_internal_hook; unfold ready; add_regular_snippet s
+  | |- needs_opening_else_and_lbrace ?g =>
       lazymatch s with
-      | SEnd =>
-          autounfold with heapletwise_always_unfold;
-          eapply after_if_skip;
-          intros;
-          unpackage_context;
-          close_function (* TODO what if we're not in the outermost block? *)
-      | SRet ?retnames => ret_generic c Post retnames
-      | _ => after_if_cleanup; run_steps_internal_hook
+      | SElse false => add_regular_snippet s
+      | _ => fail "expected 'else {', but got" s
       end
   | |- _ => fail "can't add snippet in non-ready goal"
   end.

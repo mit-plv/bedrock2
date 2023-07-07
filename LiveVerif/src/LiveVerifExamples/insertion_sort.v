@@ -57,8 +57,7 @@ Derive insert SuchThat (fun_correct! insert) As insert_ok.
     reflexivity.
   }
 .**/ } /*?.
-step. step. step. step. step. step. step. step. step. step. step. step.
-step.
+step. step. step. step. step. step. step. step. step. step. step.
 change (x :: l2) with ([|x|] ++ l2).
 rewrite List.from_app_discard_l.
 step. step. cbn. step.
