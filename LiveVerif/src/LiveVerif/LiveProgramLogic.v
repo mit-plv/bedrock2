@@ -759,6 +759,8 @@ Ltac evar_tuple t :=
          end
   end.
 
+Ltac step_hook := fail.
+
 Ltac final_program_logic_step logger :=
   (* Note: Here, the logger has to be invoked *after* the tactic, because we only
      find out whether it's the right one by running it.
@@ -808,6 +810,16 @@ Ltac final_program_logic_step logger :=
         | |- iff1 _ _ =>
             careful_reflexivity_step_hook;
             logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")
+        | |- forall _, _ =>
+            logger ltac:(fun _ => idtac "intros");
+            intros (* don't put this too early, because heapletwise has some
+                      specialized intros that rename and move new hyps *)
+        end
+      | solve [intuition idtac];
+        logger ltac:(fun _ => idtac "intuition idtac")
+      | step_hook;
+        logger ltac:(fun _ => idtac "step_hook")
+      | lazymatch goal with
         | |- if _ then _ else _ =>
             logger ltac:(fun _ => idtac "split if");
             eapply prove_if; intros; after_command_simpl_hook

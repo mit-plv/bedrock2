@@ -117,6 +117,12 @@ Qed.
     destruct b; eauto.
   Qed.
 
+Ltac step_hook ::=
+  match goal with
+  | |- _ => progress cbn [bst']
+  | sk: tree_skeleton |- _ => progress subst sk
+  end.
+
 #[export] Instance spec_of_bst_contains: fnspec :=                              .**/
 
 uintptr_t bst_contains(uintptr_t p, uintptr_t v) /**#
@@ -185,13 +191,23 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
       step. step. step. step. step. step. step. step. step.
       step.
       step. step. step. step. step. step. step. step.
+
       (* smaller post implies bigger post: *)
-      intros.
       step. step. step. step. step. step. step. step. step. step. step.
       intuition idtac.
-      step. step.
+      step. step. step. step. step. step. step. step. step.
+      1-2: cycle 1.
+      step. step. step. step. step. step. step. step. step. step.
 
-      step.
+      step. step. step. step. step. step. step. step. step.
+      1-2: cycle 1.
+      step. step. step. step. step. step. step. step. step. step. step. step. step.
+      step. step. step. step. step. step. step.
+
+      destruct H.
+      left; steps.
+      exfalso. step. (* safe_implication_step?? *)
+
 Abort.
 (*
 
