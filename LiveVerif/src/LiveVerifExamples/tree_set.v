@@ -191,9 +191,7 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
       intuition idtac.
       step. step.
 
-      step. (* todo this step may only take place if both clauses are contiguous
-               (ie, not other memory involved than the range under consideration)
-               or if the impl1 sidecondition can be solved right away *)
+      step.
 Abort.
 (*
 

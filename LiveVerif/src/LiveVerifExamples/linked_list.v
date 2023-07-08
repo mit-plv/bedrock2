@@ -286,7 +286,7 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
 
     simpl (List.map _ (_ :: _)).
 
-    step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+    steps.
   } }
 
   (* after loop: *)

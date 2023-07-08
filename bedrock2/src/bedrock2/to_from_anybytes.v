@@ -2,6 +2,7 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Datatypes.ZList. Import ZList.List.ZIndexNotations.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.SepLib.
@@ -13,6 +14,14 @@ Section WithMem.
 
   Definition contiguous(P: word -> mem -> Prop)(n: Z): Prop :=
     forall addr, impl1 (P addr) (array (uint 8) n ? addr).
+
+  (* sometimes, we don't need the actual proof, but only want to know whether it's
+     contiguous to determine whether a proof step is safe, so we can save the proof effort *)
+  Inductive fake_contiguous(P: word -> mem -> Prop): Prop :=
+    mk_fake_contiguous.
+
+  Lemma contiguous_to_fake P n: contiguous P n -> fake_contiguous P.
+  Proof. intros. constructor. Qed.
 
   Lemma cast_to_anybytes: forall (P: word -> mem -> Prop) a n m,
       contiguous P n -> P a m -> (array (uint 8) n ? a) m.
@@ -80,6 +89,20 @@ Section WithMem.
     assumption.
   Qed.
 
+  Lemma uint_contiguous: forall (nbits v: Z),
+      contiguous (uint nbits v) (nbits_to_nbytes nbits).
+  Proof.
+    unfold contiguous, impl1. intros nbits v addr m H. eapply anybytes_from_alt.
+    { apply nbits_to_nbytes_nonneg. }
+    unfold uint in H. eapply sep_emp_l in H. apply proj2 in H.
+    unfold Scalars.littleendian, ptsto_bytes.ptsto_bytes in H.
+    rewrite HList.tuple.to_list_of_list in H.
+    eapply Array.array_1_to_anybytes in H.
+    rewrite LittleEndianList.length_le_split in H.
+    rewrite Z2Nat.id in H by apply nbits_to_nbytes_nonneg.
+    exact H.
+  Qed.
+
   Lemma uintptr_fillable: fillable uintptr (Memory.bytes_per_word width).
   Proof.
     unfold fillable, iff1, uintptr. intros a m. split; intro Hm.
@@ -88,6 +111,27 @@ Section WithMem.
       eapply anybytes_from_alt. 2: exact Hm.
       destruct width_cases as [E|E]; rewrite E; cbv; discriminate.
   Qed.
+
+  (* TODO make non-fake *)
+  Lemma array_fake_contiguous: forall T (elem: T -> word -> mem -> Prop)
+                                      {sz: PredicateSize elem} n vs,
+      (forall v, fake_contiguous (elem v)) ->
+      fake_contiguous (array elem n vs).
+  Proof. intros. constructor. Qed.
+
+  Lemma sepapps_nil_fake_contiguous: fake_contiguous (sepapps nil).
+  Proof. constructor. Qed.
+
+  Lemma sepapps_cons_fake_contiguous: forall p sz l,
+      fake_contiguous p ->
+      fake_contiguous (sepapps l) ->
+      fake_contiguous (sepapps (cons (mk_sized_predicate p sz) l)).
+  Proof. intros. constructor. Qed.
+
+  Lemma anyval_fake_contiguous{T: Type}: forall p: T -> word -> mem -> Prop,
+      (forall v, fake_contiguous (p v)) ->
+      fake_contiguous (anyval p).
+  Proof. intros. constructor. Qed.
 End WithMem.
 
 Section WithMem32.
@@ -118,7 +162,13 @@ Create HintDb contiguous.
   sepapps_nil_contiguous
   uintptr32_contiguous
   uintptr64_contiguous
+  uint_contiguous
   anybytes_contiguous
+  contiguous_to_fake
+  array_fake_contiguous
+  sepapps_nil_fake_contiguous
+  sepapps_cons_fake_contiguous
+  anyval_fake_contiguous
 : contiguous.
 
 Create HintDb fillable.
@@ -126,3 +176,42 @@ Create HintDb fillable.
   uintptr32_fillable
   uintptr64_fillable
 : fillable.
+
+#[export] Hint Extern 20 (contiguous ?p ?n) =>
+  let h := head p in
+  (* seemingly superfluous match strips cast added by unfold *)
+  lazymatch constr:(ltac:(unfold h; typeclasses eauto) : contiguous p n) with
+  | ?res => exact res
+  end
+: contiguous.
+
+Ltac is_contiguous P :=
+  let __ := constr:(ltac:(solve [typeclasses eauto with contiguous]
+                          || fail "not contiguous")
+                     : contiguous P _) in idtac.
+
+Ltac is_fake_contiguous P :=
+  let __ := constr:(ltac:(solve [typeclasses eauto with contiguous]
+                          || fail "not fake_contiguous")
+                     : fake_contiguous P) in idtac.
+
+Section TestsWithMem64.
+  Context {word: word 64} {BW: Bitwidth 64} {mem: map.map word Byte.byte}
+          {word_ok: word.ok word} {mem_ok: map.ok mem}.
+
+  Goal forall (foo: word -> mem -> Prop) (v: word), True.
+    intros.
+    is_contiguous (uintptr v).
+    Fail is_contiguous foo.
+    Fail is_fake_contiguous foo.
+    assert (fake_contiguous foo) as A.
+    2: {
+      Fail is_contiguous foo.
+      is_fake_contiguous foo.
+      clear A.
+      assert (contiguous foo 42) as A.
+      2: {
+        is_contiguous foo.
+        is_fake_contiguous foo.
+  Abort.
+End TestsWithMem64.

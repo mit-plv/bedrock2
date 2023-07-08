@@ -16,6 +16,7 @@ Require Import bedrock2.PurifySep.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.sepapp.
 Require Import bedrock2.ZnWords.
+Require Import bedrock2.to_from_anybytes.
 Require Import bedrock2.SuppressibleWarnings.
 Require Import bedrock2.TacticError.
 Require Import bedrock2.HeapletwiseHyps.
@@ -489,26 +490,6 @@ Ltac merge_step_in_hyp H :=
   unfold merge_step in H;
   cancel_in_hyp H.
 
-Lemma f_equal_fun[A B: Type]: forall (f g: A -> B) (x: A), f = g -> f x = g x.
-Proof. intros. subst. reflexivity. Qed.
-
-Lemma eq_to_impl1[mem: Type]: forall (P Q: mem -> Prop), P = Q -> impl1 P Q.
-Proof. intros. subst. reflexivity. Qed.
-
-Lemma eq_to_iff1[mem: Type]: forall (P Q: mem -> Prop), P = Q -> iff1 P Q.
-Proof. intros. subst. reflexivity. Qed.
-
-Ltac syntactic_f_equal_step_with_ZnWords :=
-  lazymatch goal with
-  | |- ?x = ?x => reflexivity
-  | |- @eq (@word.rep _ _) _ _ => ZnWords
-  | |- @eq Z _ _ => ZnWords
-  | |- ?f ?a = ?f ?b => eapply (@f_equal _ _ f a b)
-  | |- ?f ?x = ?g ?x => eapply (f_equal_fun f g x)
-  end.
-
-Ltac syntactic_f_equal_with_ZnWords := solve [repeat syntactic_f_equal_step_with_ZnWords].
-
 Lemma rew_with_mem{mem: Type}: forall (P1 P2: mem -> Prop) (m: mem),
     impl1 P1 P2 ->
     with_mem m P1 -> with_mem m P2.
@@ -572,6 +553,9 @@ Ltac is_singleton_record_predicate p :=
   | _ => fail "not a singleton record predicate"
   end.
 
+(* can be redefined with ::= *)
+Ltac sepclause_impl_step_hook := fail.
+
 Ltac split_step :=
   lazymatch goal with
   | |- canceling (cons (?P ?start) _) ?m _ =>
@@ -591,16 +575,28 @@ Ltac split_step :=
               then (
                 change g;
                 let P := lazymatch goal with | |- canceling (cons ?P _) _ _ => P end in
-                eapply (rew_with_mem (P' start') P mH) in H (* <-- leaves 2 open goals *)
+                ((eapply (rew_with_mem (P' start') P mH) in H;
+                  [ (* main goal *)
+                  | (* sidecondition: (impl1 (P' start') P) *)
+                    first [ solve [repeat sepclause_impl_step_hook]
+                          | (* If we can't solve it right away, we need to be careful
+                               not to create an unprovable goal.
+                               We already know that the two predicates start at the same
+                               address and have the same size, but we need to exclude
+                               that they differ in further memory that some of their fields
+                               might point to, so we simply disallow all pointers to
+                               further memory by requiring that the whole footprint is
+                               within [start..start+size): *)
+                            is_fake_contiguous P';
+                            lazymatch P with
+                            | ?P0 ?start0 => is_fake_contiguous P0
+                            end ] ])
+                 || pose_err Error:("Cannot cancel" P "with" (P' start')
+                       "even though both span the same range:" size "bytes from" start))
               ) else change (split_range_from_hyp start size _ H g))
       | _ => gather_is_subrange_claims_into_error start size
       end
   | |- split_range_from_hyp ?start ?size ?tH ?H ?g => split_range_from_hyp_hook
-  | |- @eq (@map.rep (@word.rep _ _) Init.Byte.byte _ -> Prop) _ _ =>
-      syntactic_f_equal_with_ZnWords
-  | |- @impl1 (@map.rep (@word.rep _ _) Init.Byte.byte _) _ _ =>
-      eapply eq_to_impl1;
-      syntactic_f_equal_with_ZnWords
   end.
 
 Ltac merge_step :=

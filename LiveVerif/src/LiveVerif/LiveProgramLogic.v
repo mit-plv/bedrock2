@@ -31,6 +31,7 @@ Require Import bedrock2.PurifyHeapletwise.
 Require Import bedrock2.bottom_up_simpl.
 Require Import bedrock2.safe_implication.
 Require Import bedrock2.to_from_anybytes.
+Require Import bedrock2.syntactic_f_equal_with_ZnWords.
 Require Import coqutil.Tactics.ident_ops.
 Require Import bedrock2.Logging.
 Require Import LiveVerif.LiveRules.
@@ -542,6 +543,12 @@ Notation "'don't_know_how_to_prove' R x y" :=
   (only printing, at level 10, x at level 0, y at level 0,
    format "don't_know_how_to_prove  R '//' x '//' y").
 
+Lemma eq_to_impl1[mem: Type]: forall (P Q: mem -> Prop), P = Q -> impl1 P Q.
+Proof. intros. subst. reflexivity. Qed.
+
+Lemma eq_to_iff1[mem: Type]: forall (P Q: mem -> Prop), P = Q -> iff1 P Q.
+Proof. intros. subst. reflexivity. Qed.
+
 Ltac turn_relation_into_eq :=
   lazymatch goal with
   | |- _ = _ => idtac
@@ -573,7 +580,15 @@ Ltac default_careful_reflexivity_step :=
       end
   | |- _ ?l ?r => subst l
   | |- _ ?l ?r => subst r
-  | |- ?rel ?l ?r => change (don't_know_how_to_prove rel l r)
+  | |- _ => turn_relation_into_eq; syntactic_f_equal_with_ZnWords
+  | |- ?rel ?l ?r =>
+      lazymatch rel with
+      | @eq _ => idtac
+      | @impl1 _ => idtac
+      | @iff1 _ => idtac
+      (* fails if rel is already a (don't_know_how_to_prove _) *)
+      end;
+      change (don't_know_how_to_prove rel l r)
   end.
 
 (* supposed to work on goals of the form (?rel ?lhs ?rhs), with rel being on of
@@ -818,6 +833,8 @@ Ltac fwd_subst H ::= idtac.
 Ltac heapletwise_step' logger :=
   heapletwise_step;
   logger ltac:(fun _ => idtac "heapletwise_step").
+
+Ltac sepclause_impl_step_hook ::= default_careful_reflexivity_step.
 
 Ltac split_step' logger :=
   split_step;
