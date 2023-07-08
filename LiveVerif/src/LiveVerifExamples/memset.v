@@ -27,7 +27,7 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
                                                                                 .**/
   while (i < n) /* decreases (n ^- i) */ {                                 /**. .**/
     store8(a + i, b);                                                      /**. .**/
-     i = i + 1;                                                            /**. .**/
+    i = i + 1;                                                             /**. .**/
   }                                                                        /**.
 
   (* TODO in series of List.app, try to merge each pair of two adjacent lists *)

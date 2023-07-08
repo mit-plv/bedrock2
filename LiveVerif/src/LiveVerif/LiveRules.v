@@ -13,6 +13,7 @@ Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Arr
 Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic bedrock2.Loops.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.SepLib.
+Require Import bedrock2.enable_frame_trick.
 
 (* A let-binding using an equality instead of :=, living in Prop.
    Equivalent to (exists x, x = rhs /\ body x).
@@ -170,16 +171,20 @@ Section WithParams.
     intros. constructor. 2: assumption. eapply dexpr_var; eassumption.
   Qed.
 
-  Lemma dexpr1_load_uintptr: forall m l e addr v (R: mem -> Prop) (P: Prop),
-      dexpr1 m l e addr (sep (uintptr v addr) R m /\ P) ->
+  (* Note: (fun _ => True) instead of a frame to make it really clear that
+     no one cares about the value of this frame, so heapletwise will not waste
+     any effort on collecting all the remaining facts *)
+  Lemma dexpr1_load_uintptr: forall m l e addr v (P: Prop),
+      dexpr1 m l e addr (sep (uintptr v addr) (fun _ => True) m /\ P) ->
       dexpr1 m l (expr.load access_size.word e) v P.
   Proof.
     intros. inversion H; clear H. fwd. constructor. 2: assumption.
     eapply dexpr_load_uintptr; eassumption.
   Qed.
 
-  Lemma dexpr1_load_uint: forall m l e addr sz v (R: mem -> Prop) (P: Prop),
-      dexpr1 m l e addr (sep (uint (access_size_to_nbits sz) v addr) R m /\ P) ->
+  Lemma dexpr1_load_uint: forall m l e addr sz v (P: Prop),
+      dexpr1 m l e addr
+        (sep (uint (access_size_to_nbits sz) v addr) (fun _ => True) m /\ P) ->
       dexpr1 m l (expr.load sz e) (word.of_Z v) P.
   Proof.
     intros. inversion H; clear H. fwd. constructor. 2: assumption.
@@ -614,7 +619,7 @@ Section WithParams.
   Lemma wp_store_uintptr: forall fs ea ev a v R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
         (dexpr1 m l ev v
-           (sep (uintptr ? a) R m /\
+           (sep (uintptr ? a) R m /\ enable_frame_trick
             (forall m, sep (uintptr v a) R m -> wp_cmd fs rest t m l post))) ->
       wp_cmd fs (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
   Proof.
@@ -626,7 +631,7 @@ Section WithParams.
       dexpr1 m l ea a
         (dexpr1 m l ev v
            (0 <= word.unsigned v < 2 ^ access_size_to_nbits sz /\
-            sep (uint (access_size_to_nbits sz) ? a) R m /\
+            sep (uint (access_size_to_nbits sz) ? a) R m /\ enable_frame_trick
             (forall m,
                 sep (uint (access_size_to_nbits sz) (word.unsigned v) a) R m ->
                 wp_cmd fs rest t m l post))) ->
@@ -982,14 +987,15 @@ Section WithParams.
       (* definition-site format: *)
       (calleePre -> WeakestPrecondition.call fs fname t m argvs calleePost) ->
       (* use-site format: *)
-      dexprs1 m l arges argvs (calleePre /\
+      dexprs1 m l arges argvs (calleePre /\ enable_frame_trick (
          forall t' m' retvs, calleePost t' m' retvs ->
                              update_locals resnames retvs l (fun l' =>
-                                 wp_cmd fs rest t' m' l' finalPost)) ->
+                                 wp_cmd fs rest t' m' l' finalPost))) ->
       (* conclusion: *)
       wp_cmd fs (cmd.seq (cmd.call resnames fname arges) rest) t m l finalPost.
   Proof.
     intros. inversion H0. clear H0. destruct Hp as (Pre & Impl).
+    unfold enable_frame_trick in *.
     setoid_rewrite update_locals_spec in Impl.
     specialize (H Pre). clear Pre.
     eapply wp_seq.

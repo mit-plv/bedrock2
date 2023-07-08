@@ -17,6 +17,7 @@ Require Import coqutil.Word.Interface coqutil.Map.Interface bedrock2.Map.Separat
 Require Import coqutil.Tactics.fwd.
 Require Import bedrock2.Map.DisjointUnion.
 Require Import bedrock2.HeapletwiseHyps.
+Require Import bedrock2.enable_frame_trick.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 
@@ -176,7 +177,8 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
       (* definition-site format: *)
       (calleePre -> call funs f t m args calleePost) ->
       (* use-site format: *)
-      (calleePre /\ forall t' m' rets, calleePost t' m' rets -> callerPost t' m' rets) ->
+      (calleePre /\ enable_frame_trick
+                      (forall t' m' rets, calleePost t' m' rets -> callerPost t' m' rets)) ->
       (* conclusion: *)
       call funs f t m args callerPost.
   Proof.

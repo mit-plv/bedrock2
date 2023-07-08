@@ -178,11 +178,24 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
     uintptr_t here = load32(a+4);                                          /**. .**/
     if (v < here) /* split */ {                                            /**. .**/
       a = load(a);                                                         /**. .**/
-    }                                                                      /**.
-      clear Error. intros.
+    }                                                                      /*?.
+
+      step. step. step. step. step. step. step. step. step. step. step.
+      step. step. step. step. step. step. step. step. step. step. step.
+      step. step. step. step. step. step. step. step. step.
+      step.
+      step. step. step. step. step. step. step. step.
+      (* smaller post implies bigger post: *)
+      intros.
+      step. step. step. step. step. step. step. step. step. step. step.
+      intuition idtac.
+      step. step.
+
+      step. (* todo this step may only take place if both clauses are contiguous
+               (ie, not other memory involved than the range under consideration)
+               or if the impl1 sidecondition can be solved right away *)
 Abort.
 (*
-      step. step. step. step. step.
 
 subst l''.
 

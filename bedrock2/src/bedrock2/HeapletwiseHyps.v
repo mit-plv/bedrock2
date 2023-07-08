@@ -11,6 +11,7 @@ Require Import bedrock2.SuppressibleWarnings.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.is_emp.
 Require Import bedrock2.anyval.
+Require Import bedrock2.enable_frame_trick.
 Require Import bedrock2.Map.SeparationLogic. Local Open Scope sep_scope.
 
 (* to mark hypotheses about heaplets *)
@@ -221,6 +222,12 @@ Section HeapletwiseHyps.
     unfold canceling. intros. split. 2: assumption. simpl. unfold emp. intros. fwd. auto.
   Qed.
 
+  Lemma canceling_done_anymem: forall {om} {Rest: Prop},
+      Rest -> canceling [fun _ => True] om Rest.
+  Proof.
+    unfold canceling. simpl. intros. auto.
+  Qed.
+
   Lemma canceling_done_frame_generic: forall om (P: (mem -> Prop) -> Prop),
       (* This hypothesis holds for all (P F) of the form
          "forall m', (calleePost * F) m' -> callerPost m'"
@@ -229,7 +236,8 @@ Section HeapletwiseHyps.
       P (fun mFrame : mem => P (eq mFrame)) ->
       (* This hypothesis verifies the rest of the program: *)
       (forall mFrame, om = mmap.Def mFrame -> P (eq mFrame)) ->
-      canceling [fun mFrame => P (eq mFrame)] om (P (fun mFrame => P (eq mFrame))).
+      canceling [fun mFrame => P (eq mFrame)] om
+        (enable_frame_trick (P (fun mFrame => P (eq mFrame)))).
   Proof.
     intros. split; assumption.
   Qed.
@@ -876,16 +884,42 @@ Ltac cancel_head_with_hyp H :=
       | cbn [interp_mem_tree] ]
   end.
 
+(* An evar/frame trick inspired by unfolding the definition of magic wand.
+   Advantages:
+   - Works even if the predicates about the remaining memory contain variables
+     that are not in the evar ?R's evar scope
+   - Picks the strongest fact that can be said about the frame (what heaplet it equals),
+     so if there are multiple assertions (or splits) about the same heaplet, all of
+     them are retained
+   - Sep clauses that are not used by the callee are not introduced again after the
+     call, but stay. This can be important because if they are introduced again
+     (by splitting a big sep formula corresponding to the frame), they might undergo
+     additional simplification such as detection of emp predicates (eg array of nil),
+     which might break a merge_step
+   Disadvantage:
+   - If ?R occurs somewhere far away, not in ?P, ?R gets instantiated only to P,
+     which will be too weak for the other occurrence of ?R far away.
+   Because of the disadvantage, this trick should only be used when canceling
+   function calls, but not in cases where the disadvantage might matter, such as
+   tailrec loop pre and postconditions.
+   So we use enable_frame_trick as an opt-in marker. *)
+Ltac instantiate_frame_evar_with_remaining_obligation :=
+  lazymatch goal with
+  | |- canceling (cons ?R nil) ?om (enable_frame_trick ?P) =>
+      let P := lazymatch eval pattern R in P with ?f _ => f end in
+      eapply (canceling_done_frame_generic om P);
+      [ solve [clear; unfold sep; intros; fwd; eauto 20] | ]
+end.
+
 Ltac canceling_step :=
   lazymatch goal with
-  | |- canceling (cons ?R ?Ps) ?om ?P =>
+  | |- canceling [fun _ => True] _ _ => eapply canceling_done_anymem
+  | |- canceling (cons ?R ?Ps) ?om _ =>
       tryif is_evar R then
         lazymatch Ps with
         | nil =>
             match goal with
-            | |- _ => let P := lazymatch eval pattern R in P with ?f _ => f end in
-                      eapply (canceling_done_frame_generic om P);
-                      [ solve [clear; unfold sep; intros; fwd; eauto 20] | ]
+            | |- _ => instantiate_frame_evar_with_remaining_obligation
             | H: with_mem ?m ?PH |- _ =>
                 let hs := reify_mem_tree om in
                 let p := path_in_mem_tree hs m in
@@ -1062,9 +1096,9 @@ Section HeapletwiseHypsTests.
       (* definition-site format: *)
       (calleePre -> call f t m args calleePost) ->
       (* use-site format: *)
-      (calleePre /\
-         forall t' m' l' rets,
-           calleePost t' m' rets -> update_locals l rets l' -> callerPost t' m' l') ->
+      (calleePre /\ enable_frame_trick
+         (forall t' m' l' rets,
+             calleePost t' m' rets -> update_locals l rets l' -> callerPost t' m' l')) ->
       (* conclusion: *)
       wp (cmd_call f args) t m l callerPost.
 
@@ -1181,6 +1215,10 @@ Section HeapletwiseHypsTests.
     step.
     step. (* <- instantiates the frame ?R with a P that gets passed itself as an argument,
                 see canceling_done_frame_generic *)
+    lazymatch goal with
+    | |- canceling _ _ _ => fail "should not be canceling any more"
+    | |- forall _, _ => idtac
+    end.
     step. step. step. step. step. step. step. step. step. step. step. step. step.
 
     repeat step.
