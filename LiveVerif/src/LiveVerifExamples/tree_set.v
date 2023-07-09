@@ -23,13 +23,13 @@ Qed.
 
 #[local] Hint Resolve tree_skeleton_lt_wf: wf_of_type.
 
-Lemma tree_skeleton_lt_l: forall sk1 sk2 skOther,
-    sk2 = Node sk1 skOther -> safe_implication True (tree_skeleton_lt sk1 sk2).
-Proof. unfold safe_implication, tree_skeleton_lt. intros. subst. auto. Qed.
+Lemma tree_skeleton_lt_l: forall sk1 sk2,
+    safe_implication True (tree_skeleton_lt sk1 (Node sk1 sk2)).
+Proof. unfold safe_implication, tree_skeleton_lt. intros. auto. Qed.
 
-Lemma tree_skeleton_lt_r: forall sk1 sk2 skOther,
-    sk2 = Node skOther sk1 -> safe_implication True (tree_skeleton_lt sk1 sk2).
-Proof. unfold safe_implication, tree_skeleton_lt. intros. subst. auto. Qed.
+Lemma tree_skeleton_lt_r: forall sk1 sk2,
+    safe_implication True (tree_skeleton_lt sk2 (Node sk1 sk2)).
+Proof. unfold safe_implication, tree_skeleton_lt. intros. auto. Qed.
 
 #[local] Hint Resolve tree_skeleton_lt_l tree_skeleton_lt_r : safe_implication.
 
@@ -123,6 +123,12 @@ Ltac step_hook ::=
   | sk: tree_skeleton |- _ => progress subst sk
   end.
 
+(* TODO move *)
+Local Hint Extern 1 (cannot_purify (freeable _ _))
+      => constructor : suppressed_warnings.
+Local Hint Extern 1 (PredicateSize_not_found (freeable _))
+      => constructor : suppressed_warnings.
+
 #[export] Instance spec_of_bst_contains: fnspec :=                              .**/
 
 uintptr_t bst_contains(uintptr_t p, uintptr_t v) /**#
@@ -194,184 +200,65 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
 
       (* smaller post implies bigger post: *)
       step. step. step. step. step. step. step. step. step. step. step.
-      intuition idtac.
+      solve [intuition idtac].
       step. step. step. step. step. step. step. step. step.
       1-2: cycle 1.
       step. step. step. step. step. step. step. step. step. step.
 
-      step. step. step. step. step. step. step. step. step.
-      1-2: cycle 1.
-      step. step. step. step. step. step. step. step. step. step. step. step. step.
+      step. step. step.
+
+      (* if loop condition at end of loop false, post holds *)
       step. step. step. step. step. step. step.
-
-      destruct H.
-      left; steps.
-      exfalso. step. (* safe_implication_step?? *)
-
-Abort.
-(*
-
-subst l''.
-
-let logger := fun _ => idtac in
-lazymatch goal with
-  | |- @eq (@map.rep string (@word.rep _ _) _) ?LHS ?RHS =>
-      is_map_expr_with_ground_keys LHS;
-      is_map_expr_with_ground_keys RHS;
-      logger ltac:(fun _ => idtac "proving equality between two locals maps");
-      let LHS' := normalize_locals_expr LHS in
-      let RHS' := normalize_locals_expr RHS in
-      change (LHS' = RHS');
-      repeat f_equal
-end.
-
-
-      (* TODO *)
-
- step. step. step.
-
-      f_equal.
-
-step. step. step. step. step.
-      step. step. step. step. step. step. step. step. step. step. step.
-      step. step. step. step. step.
-step. step. step. step. step. step. step. step. step. step.
-step. step. step.
-Set Nested Proofs Allowed.
-
-step.
-  lazymatch goal with
-  | |- tree_skeleton_lt ?sk1 ?sk2 => try subst sk1; try subst sk2
-  end.
-
-unfold tree_skeleton_lt.
-step.
-auto.
-
-subst sk0.
-
-step.
-
-      f_equal.
-      f_equal.
-      f_equal.
-      f_equal.
-      f_equal.
-      f_equal.
-
-
-Ltac evar_tuple t :=
-  lazymatch t with
-  | prod ?t1 ?t2 =>
-      let e1 := evar_tuple t1 in
-      let e2 := evar_tuple t2 in
-      constr:(pair e1 e2)
-  | _ => lazymatch open_constr:(_ : t) with
-         | ?e => e
-         end
-  end.
-
-      lazymatch goal with
-      | |- exists x: ?t, _ => let e := evar_tuple t in exists e
-      end.
-                                                              split.
-      lazymatch goal with
-      | |- exists x: ?t, _ => let e := evar_tuple t in exists e
-      end.
-
-
-
-      lazymatch goal with
-      | |- exists g: _ * _, let '(_, _) := g in _ => idtac g
-      end.
-
-
-
- step.
-      step. step.
-      instantiate (2 := (_, _, _)). cbv iota. eexists.
-      step. step. step. step.
+      subst res. right.
+      destruct H. 1: exfalso; congruence. subst a.
+      (* left subtree empty, so nothing will be found there, so leaving res at 0 was ok *)
+      eapply invert_bst'_null in H1.
       steps.
+      specialize (H1 \[v]). solve [intuition idtac].
 
-          eapply wp_skip;
-          lazymatch goal with
-          | |- needs_to_be_closed_by_single_rbrace ?g => change g
-          | |- _ => fail "this then-branch needs to be closed by '} else {'"
-          end.
+      steps.
+      destruct H. 1: exfalso; congruence. subst a.
+      (* left subtree empty, so nothing will be found there, so leaving res at 0 was ok *)
+      eapply invert_bst'_null in H1.
+      clear Error. steps.
+      step.
+                                                                                .**/
+    else {                                                                 /**. .**/
+      if (here < v) /* split */ {                                          /**. .**/
+        a = load(a+8);                                                     /**. .**/
+      }                                                                    /**.
+        (* goal ordering problem/evars *)
+        { clear Error. step. }
+        { clear Error. subst res.
+          right.
+          destruct H. 1: exfalso; congruence. subst a.
+          (* subtree empty, so nothing will be found there, so leaving res at 0 was ok *)
+          eapply invert_bst'_null in H5.
+          steps.
+          specialize (H5 \[v]). solve [intuition idtac]. }
+        { clear Error. step. }
+                                                                                .**/
+      else {                                                               /**. .**/
+        res = 1;                                                           /**. .**/
+      }                                                                    /**.
 
-
-lazymatch goal with
-  | |- branch_post ?l0 ?new_vars ?Q ?t ?m ?l =>
-      split; [ reflexivity | ];
-      let l' := normalize_locals_expr l in
-      change (Q t m l');
-      tryif is_evar Q then package_heapletwise_context else cbv beta
-end.
-
-          step.
-
-unfold ready.
-    .**/ } /**.
-      bla_tac.
-    .**/
-    else {                   /**.
- unfold ready.
-2: {
-
-    .**/ } else {         /**.
-    .**/   if (here < v) {  /**.
-    .**/     a = load(a+8); /**.
-    .**/   } else {         /**.
-    .**/     res = 1;       /**.
-    .**/   }                /**.
-    .**/   a = a; /**.
-    .**/ }                  /**.
-    .**/ a = a; /**.
-    .**/ } /*?.
-    step. step. step. step. step. step. step. step. step. step.
-    step. step. step. step. step. step. step. step. step.
-    2,3,4: exact I.
-    2: step. 2,4: exact I.
-    (* two possible outcomes
-    2: {
-step.
-    destr (word.ltu v /[v0]); subst c.
-    all: steps; clear Error.
-    { (* smaller precondition holds: *)
-      unzify.
-      instantiate (2 := (_, _, _)). cbv iota. eexists.
-      step. step. step. subst a.
-      step. step. step. step. step. step.
-      subst here.
-      destr (word.eqb /[v0] v); subst res.
-      { exfalso. lia. }
-      { right. bottom_up_simpl_in_goal. reflexivity. }
-      step. }
-    { (* measure decreases: *)
-      subst sk0. cbn. auto. }
-    { (* small postcondition implies bigger postcondition: *)
-      cbv iota.
-      intros. fwd. subst sk0. cbn [bst']. repeat step.
-      { intuition lia. }
-      { assumption. } }
-    { (* smaller precondition holds: *)
-      unzify.
-      instantiate (2 := (_, _, _)). cbv iota. eexists.
-      step. step. step. subst a.
-      step. step. step. step. step. step.
-      subst here.
-      destr (word.eqb /[v0] v); subst res.
-      { bottom_up_simpl_in_goal.
-        (* oh no, doing a fake recursive call (even though we're done)
-           just to evaluate the loop condition one more time (to find it's false)
-           requires us to prove its pre, and since the termination measure is
-           required to go down, new set membership condition becomes (s0 v0 /\ v0 < v0) *)
-*)
-*)
+        { left. clear Error. replace \[v] with v0 by steps. steps. }
+        assumption.
+                                                                                .**/
+    }                                                                      /**. .**/
+  }                                                                        /**.
+  }
+  (* after loop *)
+  steps.
+  fwd.
+  clear res Def0. rename res0 into res. subst l.
+                                                                                .**/
+  return res;                                                              /**. .**/
+}                                                                          /**.
+Qed.
 
 (* note: inability to break out of loop is cumbersome, because it complicates pre:
    it has to incorporate almost all of post for the res=true case,
    and even if we break, we still have to decrease the termination measure *)
-
 
 End LiveVerif. Comments .**/ //.

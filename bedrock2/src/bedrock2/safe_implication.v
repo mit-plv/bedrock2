@@ -4,6 +4,8 @@ Definition safe_implication(P: Prop)(Q: Prop): Prop := P -> Q.
 
 Create HintDb safe_implication.
 
+#[global] Hint Mode safe_implication - + : safe_implication.
+
 Lemma f_equal_app[A B: Type][f g: A -> B][x y: A]: f = g -> x = y -> f x = g y.
 Proof. intros. subst. reflexivity. Qed.
 
@@ -22,7 +24,7 @@ Ltac safe_implication_step :=
       eapply f_equal_app
   | |- ?Q =>
       let H := fresh in
-      eassert (safe_implication _ Q) as H by (eauto with safe_implication);
+      eassert (safe_implication _ Q) as H by (typeclasses eauto with safe_implication);
       unfold safe_implication in H;
       apply H;
       clear H
@@ -79,6 +81,10 @@ Module Tests.
 
     Goal forall (l1 l2 l2': list nat), l2 = l2' -> l1 ++ l2 = l1 ++ l2'.
     Proof. intros. t. assumption. Succeed Qed. Abort.
+
+    (* eauto might unfold safe_implication, but typeclasses eauto won't: *)
+    Goal forall (P Q: Prop), Q -> (P -> Q) -> Q.
+    Proof. intros. Fail t. assumption. Succeed Qed. Abort.
 
     Goal forall (a b: nat),
         a + b = b + a.

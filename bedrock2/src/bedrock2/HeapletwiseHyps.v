@@ -911,6 +911,21 @@ Ltac instantiate_frame_evar_with_remaining_obligation :=
       [ solve [clear; unfold sep; intros; fwd; eauto 20] | ]
 end.
 
+(* both x and y may contain evars, but only evars in y will be instantiated *)
+Ltac syntactic_unify_only_inst_r x y :=
+  first
+    [ is_evar y; unify x y
+    | lazymatch x with
+      | ?f ?a => lazymatch y with
+                 | ?g ?b => syntactic_unify_only_inst_r f g;
+                            syntactic_unify_only_inst_r a b
+                 end
+      | _ => constr_eq x y
+      end ].
+
+Ltac hyp_clause_matches_goal_clause hypClause goalClause :=
+  syntactic_unify_only_inst_r hypClause goalClause.
+
 Ltac canceling_step :=
   lazymatch goal with
   | |- canceling [fun _ => True] _ _ => eapply canceling_done_anymem
@@ -943,13 +958,13 @@ Ltac canceling_step :=
                | _ =>
                    match goal with
                    | H: with_mem _ ?P' |- _ =>
-                       syntactic_unify P' R; cancel_head_with_hyp H
+                       hyp_clause_matches_goal_clause P' R; cancel_head_with_hyp H
                    end
                | anyval ?p ?a =>
                    eapply cancel_ex1_head;
                    match goal with
                    | H: with_mem _ ?P' |- canceling (cons ?R ?Ps) ?om ?P =>
-                       syntactic_unify P' R; cancel_head_with_hyp H
+                       hyp_clause_matches_goal_clause P' R; cancel_head_with_hyp H
                    end
                end
         end
@@ -1049,7 +1064,9 @@ Ltac canceling_step_in_hyp C :=
   | canceling_in_hyp ?mAll ?om (cons ?P ?Ps) ?Q =>
       let H := match goal with
                | H: with_mem _ ?P' |- _ =>
-                   let __ := match constr:(Set) with _ => syntactic_unify P P' end in H
+                   let __ := match constr:(Set) with
+                             |  _ => hyp_clause_matches_goal_clause P' P
+                             end in H
                end in
       let m := lazymatch type of H with with_mem ?m _ => m end in
       let hs := reify_mem_tree om in

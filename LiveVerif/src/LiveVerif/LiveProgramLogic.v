@@ -648,6 +648,9 @@ Ltac is_map_expr_with_ground_keys l :=
   | map.put ?l' ?k _ => is_ground_string k; is_map_expr_with_ground_keys l'
   end.
 
+Lemma contradictory_branch(B Q: Prop): ~ B -> B -> Q.
+Proof. intuition idtac. Qed.
+
 Ltac conclusion_shape_based_step logger :=
   lazymatch goal with
   | |- dexpr_bool3 _ _ ?e _ _ _ _ =>
@@ -663,8 +666,10 @@ Ltac conclusion_shape_based_step logger :=
       logger ltac:(fun _ => idtac "Done evaluating expression list");
       eapply dexprs1_nil
   | |- bool_expr_branches _ _ _ _ =>
-      logger ltac:(fun _ => idtac "Splitting bool_expr_branches into three subgoals");
-      eapply BoolSpec_expr_branches; [ intro | intro | ]
+      logger ltac:(fun _ => idtac "Splitting bool_expr_branches");
+      eapply BoolSpec_expr_branches;
+      [ first [ eapply contradictory_branch; zify_goal; xlia zchecker
+              | intro ] .. | ]
   | |- then_branch_marker ?G =>
       logger ltac:(fun _ => idtac "Starting `then` branch");
       let n := fresh "Scope0" in

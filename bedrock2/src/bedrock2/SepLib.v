@@ -9,15 +9,22 @@ Require Import bedrock2.is_emp.
 Require Export bedrock2.anyval.
 Require Import bedrock2.Array bedrock2.Scalars.
 
-(* PredTp equals `Z -> mem -> Prop` if the predicate takes any number of values
+(* PredTp equals `word -> mem -> Prop` if the predicate takes any number of values
    and its size depends on these values.
-   PredTp equals `V1 -> ... -> Vn -> Z -> mem -> Prop` for some `V1..Vn` if the
+   PredTp equals `V1 -> ... -> Vn -> word -> mem -> Prop` for some `V1..Vn` if the
    predicate takes `n` values, but its size does not depend on these values. *)
 Definition PredicateSize{PredTp: Type}(pred: PredTp) := Z.
 Existing Class PredicateSize.
 
+Ltac can_have_PredicateSize PredTp :=
+  lazymatch PredTp with
+  | @word.rep ?wi ?wo -> @map.rep (@word.rep ?wi ?wo) Coq.Init.Byte.byte _ -> Prop => idtac
+  | ?V -> ?P => can_have_PredicateSize P
+  end.
+
 (* Derives the size of a value-independent predicate applied to a value *)
 #[export] Hint Extern 4 (PredicateSize (?pred ?v)) =>
+  let t := type of pred in can_have_PredicateSize t;
   lazymatch constr:(_: PredicateSize pred) with
   | ?sz => exact sz
   end
