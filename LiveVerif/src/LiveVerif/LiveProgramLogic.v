@@ -908,7 +908,7 @@ Ltac steps_rec :=
   | _: tactic_error _ |- _ => idtac
   | |- _ => tryif step_is_done then idtac
             else tryif step_silent then steps_rec
-            else pose_err Error:("The 'step' tactic should not fail here")
+            else idtac
   end.
 
 Ltac steps := can_continue; steps_rec.

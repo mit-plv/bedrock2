@@ -35,7 +35,9 @@ Derive test_local_from_branches SuchThat
   assert_succeeds (
     idtac;
     .**/ uintptr_t test = r; /** ;
-    test_error Error:("The 'step' tactic should not fail here")).
+    lazymatch goal with
+    | |- dexpr1 _ _ _ ?v _ => is_evar v
+    end).
 
   .**/ uintptr_t test = g; /**.
   .**/ return test; /**.

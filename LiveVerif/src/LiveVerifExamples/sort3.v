@@ -38,7 +38,6 @@ Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .*
     store32(a+8, w2);                                                    /**. .**/
   }                                                                      /**. .**/
 }                                                                        /**.
-all: clear Error.
 (* TODO automate *)
 Import coqutil.Tactics.ident_ops.
 all: repeat match goal with

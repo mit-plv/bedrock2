@@ -168,11 +168,11 @@ Derive sll_reverse SuchThat (fun_correct! sll_reverse) As sll_reverse_ok.       
     acc = p;                                                               /**. .**/
     p = tail;                                                              /**. .**/
   }                                                                        /**.
-1,2: clear Error.
+clear Error.
 instantiate (1 := l').
 all: steps.
 {
-  subst v. subst lTodo. clear Error.
+  subst v. subst lTodo.
   bottom_up_simpl_in_goal.
   step.
 }
@@ -236,9 +236,7 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
       repeat heapletwise_step.
       subst l1.
       simpl (sll _ _).
-      clear Error.
       steps.
-      clear Error.
       eapply sep_emp_l. auto. }
 
     { (* loop body *)

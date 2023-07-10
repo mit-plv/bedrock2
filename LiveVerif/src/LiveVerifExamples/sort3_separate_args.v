@@ -45,7 +45,6 @@ As sort3_separate_args_ok.                                                    .*
     store32(a2, w2);                                                     /**. .**/
   }                                                                      /**. .**/
 }                                                                        /**.
-all: clear Error.
 (* TODO automate *)
 Import coqutil.Tactics.ident_ops.
 all: repeat match goal with

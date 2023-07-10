@@ -129,15 +129,6 @@ Local Hint Extern 1 (cannot_purify (freeable _ _))
 Local Hint Extern 1 (PredicateSize_not_found (freeable _))
       => constructor : suppressed_warnings.
 
-
-Ltac steps_rec ::=
-  lazymatch goal with
-  | _: tactic_error _ |- _ => idtac
-  | |- _ => tryif step_is_done then idtac
-            else tryif step_silent then steps_rec
-            else idtac
-  end.
-
 #[export] Instance spec_of_bst_contains: fnspec :=                              .**/
 
 uintptr_t bst_contains(uintptr_t p, uintptr_t v) /**#
