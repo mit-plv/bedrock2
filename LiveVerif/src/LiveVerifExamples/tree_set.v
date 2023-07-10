@@ -127,6 +127,20 @@ Ltac step_hook ::=
       assert_fails (has_evar H); eapply (invert_bst'_null E) in H
   | H: _ |= bst' _ _ ?p, N: ?p <> /[0] |- _ =>
       assert_fails (has_evar H); eapply (invert_bst'_nonnull N) in H
+  | s: set Z, H: forall x: Z, ~ _ |- _ =>
+      lazymatch goal with
+      | |- context[s ?v] =>
+          lazymatch type of H with
+          | context[s] => unique pose proof (H v)
+          end
+      end
+  | |- ?A \/ ?B =>
+      tryif (assert_succeeds (assert (~ A) by (zify_goal; xlia zchecker)))
+      then right else
+      tryif (assert_succeeds (assert (~ B) by (zify_goal; xlia zchecker)))
+      then left else fail
+  | H1: ?x <= ?y, H2: ?y <= ?x, C: ?s ?x |- ?s ?y =>
+      (replace y with x by xlia zchecker); exact C
   | |- _ => solve [auto 3]
   end.
 
@@ -191,17 +205,14 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
     uintptr_t here = load32(a+4);                                          /**. .**/
     if (v < here) /* split */ {                                            /**. .**/
       a = load(a);                                                         /**. .**/
-    }                                                                      /**.
-      specialize (H4p1 \[v]). solve [intuition idtac].                          .**/
+    }                                                                      /**. .**/
     else {                                                                 /**. .**/
       if (here < v) /* split */ {                                          /**. .**/
         a = load(a+8);                                                     /**. .**/
-      }                                                                    /**.
-        specialize (H7p1 \[v]). solve [intuition idtac].                        .**/
+      }                                                                    /**. .**/
       else {                                                               /**. .**/
         res = 1;                                                           /**. .**/
-      }                                                                    /**.
-        left. replace \[v] with v1 by steps. steps.                             .**/
+      }                                                                    /**. .**/
     }                                                                      /**. .**/
   }                                                                        /**.
   }
