@@ -167,7 +167,9 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
   uintptr_t res = 0;                                                       /**. .**/
   uintptr_t a = p;                                                         /**.
 
-  unfold ready.
+  unfold ready, bst.
+ex1 in post needs to become termination measure! tricky generalization step when not written down completely manually
+"just" pull out ex1 from sep and ands? no, still need weakening step to introduce existential
 
   let cond := constr:(live_expr:(!res && a != 0)) in
   let measure0 := constr:(sk) in
@@ -183,17 +185,33 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
   {
     intros. fwd. subst t0 l.
     steps.
-    { (* loop condition false implies post (which could be constructed here from
-         the context, hopefully) *)
-      instantiate (1 := fun sk (g: (set Z * word * (mem -> Prop))) ti mi li =>
+    { unfold bst.
+      lazymatch goal with
+      | |- with_finalpost_fyi (fun _ _ _ => expect_1expr_return ?P _ _ _)
+                              (?post_evar _ ?g0 _ _ _) =>
+          let tg := type of g0 in
+          lazymatch eval pattern s, p, R in P with
+          | ?genP s p R =>
+              unify post_evar (fun (sk: tree_skeleton) (g: tg) ti mi li =>
+               let '(s, olda, F) := g in
+               exists a res,
+                 li = map.of_list [|("a", a); ("p", p); ("res", res); ("v", v)|] /\
+                   genP s a F ti mi res);
+              let post := eval cbv beta in post_evar in idtac post
+          end
+      end.
+
+fun sk (g: (set Z * word * (mem -> Prop))) ti mi li =>
                         let '(s, olda, F) := g in
                         exists a res,
                         li = map.of_list [|("a", a); ("p", p); ("res", res); ("v", v)|] /\
                         <{ * bst' sk s olda * F }> mi /\
                         (\[res] = 1 /\ s \[v] \/ \[res] = 0 /\ ~ s \[v]) /\
                         ti = t).
-      cbv beta iota.
+
+      unfold with_finalpost_fyi, bst.
       steps.
+      eapply sep_ex1_l. exists Leaf. steps.
       (* TODO heapletwise with only one heaplet *)
       eapply sep_emp_l. split. 2: assumption.
       steps.
@@ -205,7 +223,10 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
     uintptr_t here = load32(a+4);                                          /**. .**/
     if (v < here) /* split */ {                                            /**. .**/
       a = load(a);                                                         /**. .**/
-    }                                                                      /**. .**/
+    }                                                                      /**.
+
+{
+.**/
     else {                                                                 /**. .**/
       if (here < v) /* split */ {                                          /**. .**/
         a = load(a+8);                                                     /**. .**/

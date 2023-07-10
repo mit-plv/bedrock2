@@ -855,6 +855,8 @@ Section WithParams.
     + eapply false_Acc.
   Qed.
 
+  Definition with_finalpost_fyi(finalpost: trace -> mem -> locals -> Prop)(P: Prop) := P.
+
   (* Useful for while loops with a done flag:
      Once done is set to true, we don't need to prove pre again for the
      next non-iteration, but we can prove post instead. *)
@@ -874,7 +876,7 @@ Section WithParams.
                   True
                   (* packaging generalized context at exit of loop (with final, smallest
                      measure) determines post: *)
-                  (post v g t m l)
+                  (with_finalpost_fyi finalpost (post v g t m l))
                   (loop_body_marker (bool_expr_branches b (wp_cmd fs c t m l
                       (fun t' m' l' => exists b',
                          (* evaluating condition e again!! *)
@@ -938,6 +940,35 @@ Section WithParams.
           assumption. } } }
       { assumption. }
   Qed.
+
+  (* Useful for while loops with a done flag:
+     Once done is set to true, we don't need to prove pre again for the
+     next non-iteration, but we can prove post instead. *)
+  Lemma wp_while_tailrec_with_done_flag_no_post {measure: Type} {Ghost: Type}
+    (v0: measure) (g0: Ghost)
+    (e: expr) (c: cmd) t0 (m0: mem) l0 fs rest
+    (pre finalpost: measure -> Ghost -> trace -> mem -> locals -> Prop) {lt}
+    (Hwf: well_founded lt)
+    (* packaging generalized context at entry of loop determines pre: *)
+    (Hpre: pre v0 g0 t0 m0 l0)
+    (Hbody: forall v g t m l,
+      pre v g t m l ->
+      exists b, dexpr_bool3 m l e b
+                  (loop_body_marker (wp_cmd fs c t m l
+                      (fun t' m' l' => exists b',
+                         (* evaluating condition e again!! *)
+                         dexpr_bool3 m' l' e b'
+                           (exists v' g',
+                               pre v' g' t' m' l' /\
+                               lt v' v /\
+                               (forall t'' m'' l'', finalpost v' g' t'' m'' l'' ->
+                                                    finalpost v  g  t'' m'' l''))
+                           (finalpost v g t' m' l')
+                           True)))
+                  (finalpost v g t m l)
+                  True)
+    : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 (finalpost v0 g0).
+  Abort.
 
   Definition dexprs(m: mem)(l: locals): list expr -> list word -> Prop :=
     List.Forall2 (dexpr m l).
