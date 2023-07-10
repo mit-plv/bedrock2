@@ -791,6 +791,11 @@ Ltac final_program_logic_step logger :=
       | safe_implication_step;
         logger ltac:(fun _ => idtac "safe_implication_step")
       | lazymatch goal with
+        | H: _ \/ _ |- _ =>
+            destruct H; try (exfalso; congruence);
+            [ logger ltac:(fun _ => idtac "discarding contradictory branch of \/ in" H) ]
+        end
+      | lazymatch goal with
         | |- ?P /\ ?Q =>
             split;
             logger ltac:(fun _ => idtac "split")

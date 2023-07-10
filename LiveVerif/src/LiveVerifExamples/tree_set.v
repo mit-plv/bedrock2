@@ -72,16 +72,18 @@ Local Hint Extern 1 (PredicateSize (bst' ?sk)) =>
 
 #[local] Hint Unfold bst : heapletwise_always_unfold.
 
-Lemma invert_bst'_null: forall sk s m,
-    m |= bst' sk s /[0] ->
+Lemma invert_bst'_null{sk s p m}:
+    p = /[0] ->
+    m |= bst' sk s p ->
+    sk = Leaf /\
     m |= emp (forall x, ~ s x).
 Proof.
-  unfold with_mem. intros. destruct sk; simpl in *.
+  unfold with_mem. intros. subst. destruct sk; simpl in *.
   - unfold emp in *. intuition auto.
-  - repeat heapletwise_step. exfalso. apply H0. reflexivity.
+  - repeat heapletwise_step. exfalso. apply H1. reflexivity.
 Qed.
 
-Lemma invert_bst'_nonnull: forall sk s p m,
+Lemma invert_bst'_nonnull{sk s p m}:
     p <> /[0] ->
     m |= bst' sk s p ->
     exists skL skR pL v pR,
@@ -121,6 +123,11 @@ Ltac step_hook ::=
   match goal with
   | |- _ => progress cbn [bst']
   | sk: tree_skeleton |- _ => progress subst sk
+  | H: _ |= bst' _ _ ?p, E: ?p = /[0] |- _ =>
+      assert_fails (has_evar H); eapply (invert_bst'_null E) in H
+  | H: _ |= bst' _ _ ?p, N: ?p <> /[0] |- _ =>
+      assert_fails (has_evar H); eapply (invert_bst'_nonnull N) in H
+  | |- _ => solve [auto 3]
   end.
 
 (* TODO move *)
@@ -172,51 +179,29 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
                         (\[res] = 1 /\ s \[v] \/ \[res] = 0 /\ ~ s \[v]) /\
                         ti = t).
       cbv beta iota.
-      destruct H. 1: contradiction.
-      { steps.
-        subst r.
-        let H := constr:(#bst') in eapply invert_bst'_null in H.
-        steps.
-        right. bottom_up_simpl_in_goal. eauto. }
+      steps.
+      (* TODO heapletwise with only one heaplet *)
+      eapply sep_emp_l. split. 2: assumption.
+      steps.
     }
     (* loop body: *)
     let H := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as H.
-    clear H0 H1 D. rename v0 into sk0, r into a, res0 into res.
-    let H := constr:(#(bst')) in eapply invert_bst'_nonnull in H.
-    2: assumption.
-    fwd. repeat heapletwise_step.
+    clear H0 H1 D. rename r into a, res0 into res.
                                                                                 .**/
     uintptr_t here = load32(a+4);                                          /**. .**/
     if (v < here) /* split */ {                                            /**. .**/
       a = load(a);                                                         /**. .**/
     }                                                                      /**.
-      all: steps.
-
-      destruct H; try (exfalso; congruence); [].
-      subst a.
-      (* left subtree empty, so nothing will be found there, so leaving res at 0 was ok *)
-      eapply invert_bst'_null in H1.
-      steps.
-      specialize (H1 \[v]). solve [intuition idtac].
-                                                                                .**/
+      specialize (H4p1 \[v]). solve [intuition idtac].                          .**/
     else {                                                                 /**. .**/
       if (here < v) /* split */ {                                          /**. .**/
         a = load(a+8);                                                     /**. .**/
       }                                                                    /**.
-        { subst res.
-          right.
-          destruct H. 1: exfalso; congruence. subst a.
-          (* subtree empty, so nothing will be found there, so leaving res at 0 was ok *)
-          eapply invert_bst'_null in H5.
-          steps.
-          specialize (H5 \[v]). solve [intuition idtac]. }
-                                                                                .**/
+        specialize (H7p1 \[v]). solve [intuition idtac].                        .**/
       else {                                                               /**. .**/
         res = 1;                                                           /**. .**/
       }                                                                    /**.
-
-        { left. replace \[v] with v0 by steps. steps. }
-                                                                                .**/
+        left. replace \[v] with v1 by steps. steps.                             .**/
     }                                                                      /**. .**/
   }                                                                        /**.
   }
