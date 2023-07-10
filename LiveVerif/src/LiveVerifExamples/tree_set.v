@@ -129,6 +129,15 @@ Local Hint Extern 1 (cannot_purify (freeable _ _))
 Local Hint Extern 1 (PredicateSize_not_found (freeable _))
       => constructor : suppressed_warnings.
 
+
+Ltac steps_rec ::=
+  lazymatch goal with
+  | _: tactic_error _ |- _ => idtac
+  | |- _ => tryif step_is_done then idtac
+            else tryif step_silent then steps_rec
+            else idtac
+  end.
+
 #[export] Instance spec_of_bst_contains: fnspec :=                              .**/
 
 uintptr_t bst_contains(uintptr_t p, uintptr_t v) /**#
@@ -168,16 +177,15 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
                         let '(s, olda, F) := g in
                         exists a res,
                         li = map.of_list [|("a", a); ("p", p); ("res", res); ("v", v)|] /\
-                        (\[res] = 1 /\ s \[v] \/ \[res] = 0 /\ ~ s \[v]) /\
                         <{ * bst' sk s olda * F }> mi /\
+                        (\[res] = 1 /\ s \[v] \/ \[res] = 0 /\ ~ s \[v]) /\
                         ti = t).
       cbv beta iota.
-      clear Error.
       destruct H. 1: contradiction.
-      { steps. clear Error.
+      { steps.
         subst r.
         let H := constr:(#bst') in eapply invert_bst'_null in H.
-        steps. clear Error.
+        steps.
         right. bottom_up_simpl_in_goal. eauto. }
     }
     (* loop body: *)
@@ -190,60 +198,37 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
     uintptr_t here = load32(a+4);                                          /**. .**/
     if (v < here) /* split */ {                                            /**. .**/
       a = load(a);                                                         /**. .**/
-    }                                                                      /*?.
+    }                                                                      /**.
+      all: steps.
 
-      step. step. step. step. step. step. step. step. step. step. step.
-      step. step. step. step. step. step. step. step. step. step. step.
-      step. step. step. step. step. step. step. step. step.
-      step.
-      step. step. step. step. step. step. step. step.
-
-      (* smaller post implies bigger post: *)
-      step. step. step. step. step. step. step. step. step. step. step.
-      solve [intuition idtac].
-      step. step. step. step. step. step. step. step. step.
-      1-2: cycle 1.
-      step. step. step. step. step. step. step. step. step. step.
-
-      step. step. step.
-
-      (* if loop condition at end of loop false, post holds *)
-      step. step. step. step. step. step. step.
-      subst res. right.
-      destruct H. 1: exfalso; congruence. subst a.
+      destruct H; try (exfalso; congruence); [].
+      subst a.
       (* left subtree empty, so nothing will be found there, so leaving res at 0 was ok *)
       eapply invert_bst'_null in H1.
       steps.
       specialize (H1 \[v]). solve [intuition idtac].
-
-      steps.
-      destruct H. 1: exfalso; congruence. subst a.
-      (* left subtree empty, so nothing will be found there, so leaving res at 0 was ok *)
-      eapply invert_bst'_null in H1.
-      clear Error. steps.
-      step.
                                                                                 .**/
     else {                                                                 /**. .**/
       if (here < v) /* split */ {                                          /**. .**/
         a = load(a+8);                                                     /**. .**/
       }                                                                    /**.
         (* goal ordering problem/evars *)
-        { clear Error. step. }
-        { clear Error. subst res.
+        { step. }
+        { step. }
+        { subst res.
           right.
           destruct H. 1: exfalso; congruence. subst a.
           (* subtree empty, so nothing will be found there, so leaving res at 0 was ok *)
           eapply invert_bst'_null in H5.
           steps.
           specialize (H5 \[v]). solve [intuition idtac]. }
-        { clear Error. step. }
                                                                                 .**/
       else {                                                               /**. .**/
         res = 1;                                                           /**. .**/
       }                                                                    /**.
 
-        { left. clear Error. replace \[v] with v0 by steps. steps. }
-        assumption.
+        { step. }
+        { left. replace \[v] with v0 by steps. steps. }
                                                                                 .**/
     }                                                                      /**. .**/
   }                                                                        /**.
