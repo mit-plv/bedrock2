@@ -11,6 +11,7 @@ Require Import coqutil.Tactics.destr.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.foreach_hyp.
+Require Import coqutil.Tactics.grepeat.
 Require Import coqutil.Datatypes.RecordSetters.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
@@ -890,32 +891,26 @@ Ltac step :=
 
 Ltac step_silent := step0 ignore_logger_thunk.
 
-Ltac step_is_done :=
-  lazymatch goal with
-  | |- @ready _ => idtac
-  | |- don't_know_how_to_prove _ _ _ => idtac
-  | |- after_if _ _ _ _ _ _ => idtac
-  | |- needs_opening_else_and_lbrace _ => idtac
-  | |- expect_1expr_return _ _ _ _ => idtac
-  end.
-
 Ltac can_continue :=
   assert_no_error;
   check_for_warnings_hook.
 
-Ltac steps_rec :=
+Ltac one_step :=
   lazymatch goal with
-  | _: tactic_error _ |- _ => idtac
-  | |- _ => tryif step_is_done then idtac
-            else tryif step_silent then steps_rec
-            else idtac
+  | |- @ready _ => fail
+  | |- don't_know_how_to_prove _ _ _ => fail
+  | |- after_if _ _ _ _ _ _ => fail
+  | |- needs_opening_else_and_lbrace _ => fail
+  | |- expect_1expr_return _ _ _ _ => fail
+  | _: tactic_error _ |- _ => fail
+  | |- _ => step_silent
   end.
 
-Ltac steps := can_continue; steps_rec.
+Ltac steps := can_continue; grepeat0 ltac:(fun _ => one_step).
 
 (* If really needed, this hook can be overridden with idtac for debugging,
    but the preferred way is to use /*?. instead of /**. *)
-Ltac run_steps_internal_hook := steps_rec.
+Ltac run_steps_internal_hook := grepeat0 ltac:(fun _ => one_step).
 
 Ltac add_snippet s :=
   lazymatch goal with

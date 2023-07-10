@@ -203,9 +203,6 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
       if (here < v) /* split */ {                                          /**. .**/
         a = load(a+8);                                                     /**. .**/
       }                                                                    /**.
-        (* goal ordering problem/evars *)
-        { step. }
-        { step. }
         { subst res.
           right.
           destruct H. 1: exfalso; congruence. subst a.
@@ -218,7 +215,6 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
         res = 1;                                                           /**. .**/
       }                                                                    /**.
 
-        { step. }
         { left. replace \[v] with v0 by steps. steps. }
                                                                                 .**/
     }                                                                      /**. .**/
