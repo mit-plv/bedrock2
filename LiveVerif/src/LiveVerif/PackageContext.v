@@ -42,7 +42,7 @@ Local Open Scope live_scope.
 Inductive scope_kind :=
 | FunctionParams | FunctionBody
 | IfCondition | ThenBranch | ElseBranch
-| LoopBody | LoopInvariant.
+| LoopBody | LoopInvOrPreOrPost.
 Inductive scope_marker(sk: scope_kind): Set := mk_scope_marker.
 
 Notation "'____' sk '____'" := (scope_marker sk) (only printing) : live_scope.
@@ -183,6 +183,13 @@ Ltac add_equality_to_post x Post :=
 
 Ltac add_equalities_to_post Post :=
   lazymatch goal with
+  (* loop pre/post *)
+  | |- ?E ?Measure ?Ghosts ?T ?M ?L =>
+      add_equality_to_post L Post;
+      move M at top;
+      add_equality_to_post T Post;
+      add_equality_to_post Ghosts Post;
+      add_equality_to_post Measure Post
   (* loop invariant *)
   | |- ?E ?Measure ?T ?M ?L =>
       add_equality_to_post L Post;
@@ -222,6 +229,7 @@ Ltac package_context :=
   | _ => idtac "Warning: package_context failed to package" lasthyp "(and maybe more)"
   end;
   lazymatch goal with
+  | |- _ ?Measure ?Ghosts ?T ?M ?L => pattern Measure, Ghosts, T, M, L in Post
   | |- _ ?Measure ?T ?M ?L => pattern Measure, T, M, L in Post
   | |- _ ?T ?M ?L => pattern T, M, L in Post
   end;

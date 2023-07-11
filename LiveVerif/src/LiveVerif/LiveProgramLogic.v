@@ -105,9 +105,18 @@ Ltac intros_until_trace :=
     | |- forall _, _ => intros ?
     end.
 
+Ltac print_stats f := f ltac_identity.
+Ltac don't_print_stats f := idtac.
+
+(* use ::= to set _stats to print_stats or don't_print_stats *)
+Ltac _stats := print_stats.
+
+Tactic Notation "stats" tactic0(f) := _stats f.
+
 Ltac start :=
   lazymatch goal with
   | |- @program_logic_goal_for ?fname ?evar ?spec =>
+      stats (fun _ => idtac "Stats: START" fname; idtac "Stats: SNIPPET");
       lazymatch open_constr:((_, _): function_with_callees) with
       | ?p => unify evar p
       end;
@@ -184,16 +193,16 @@ Ltac put_into_current_locals :=
   | |- update_locals ?ks ?vs _ _ => fail 1000 "update_locals for" ks "and" vs "not supported"
   end.
 
-Ltac clear_until_LoopInvariant_marker :=
+Ltac clear_until_LoopInvOrPreOrPost_marker :=
   repeat match goal with
          | x: ?T |- _ => lazymatch T with
-                         | scope_marker LoopInvariant => fail 1
+                         | scope_marker LoopInvOrPreOrPost => fail 1
                          | _ => clear x
                          end
          end;
   match goal with
   | x: ?T |- _ => lazymatch T with
-                  | scope_marker LoopInvariant => clear x
+                  | scope_marker LoopInvOrPreOrPost => clear x
                   | _ => fail "call 'loop invariant above my_var.' before the loop"
                   end
   end.
@@ -406,9 +415,12 @@ Proof. exact (Z.lt_wf 0). Qed.
 
 #[export] Hint Resolve Z_lt_downto_0_wf | 4 : wf_of_type.
 
-Tactic Notation "loop" "invariant" "above" ident(i) :=
-  let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
+Ltac LoopInvOrPreOrPost_above i :=
+  let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvOrPreOrPost) as n;
   move n after i.
+
+Tactic Notation "loop" "invariant" "above" ident(i) := LoopInvOrPreOrPost_above i.
+Tactic Notation "loop" "pre" "above" ident(i) := LoopInvOrPreOrPost_above i.
 
 Ltac while cond measure0 :=
   eapply (wp_while measure0 cond);
@@ -417,7 +429,7 @@ Ltac while cond measure0 :=
   | repeat match goal with
       | H: sep _ _ ?M |- _ => clear M H
       end;
-    clear_until_LoopInvariant_marker;
+    clear_until_LoopInvOrPreOrPost_marker;
     (* Note: will also appear after loop, where we'll have to clear it,
        but we have to pose it here because the foralls are shared between
        loop body and after the loop *)
@@ -882,7 +894,10 @@ Ltac undisplay logger :=
       logger ltac:(fun _ => idtac "purify & zify")
   end.
 
-Ltac step0 logger :=
+Ltac step0 logger0 :=
+  let logger f :=
+    stats (fun _ => idtac "Stats: STEP");
+    logger0 f in
   first [ heapletwise_step' logger
         | conclusion_shape_based_step logger
         | undisplay logger
@@ -913,6 +928,10 @@ Ltac one_step :=
 
 Ltac steps := can_continue; grepeat0 ltac:(fun _ => one_step).
 
+Goal True = True /\ True.
+  steps. (* test stats: should print 3 lines if stats are enabled *)
+Abort.
+
 (* If really needed, this hook can be overridden with idtac for debugging,
    but the preferred way is to use /*?. instead of /**. *)
 Ltac run_steps_internal_hook := grepeat0 ltac:(fun _ => one_step).
@@ -935,7 +954,14 @@ Ltac add_snippet s :=
   | |- _ => fail "can't add snippet in non-ready goal"
   end.
 
-Ltac next_snippet s := can_continue; add_snippet s.
+Ltac next_snippet s :=
+  can_continue;
+  stats (fun _ =>
+           lazymatch s with
+           | SStart => idtac (* don't print now because only start will print fname *)
+           | _ => idtac "Stats: SNIPPET"
+           end);
+  add_snippet s.
 
 (* Standard usage:   .**/ snippet /**.    *)
 Tactic Notation ".*" constr(s) "*" := next_snippet s; run_steps_internal_hook.
