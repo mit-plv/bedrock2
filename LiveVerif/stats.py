@@ -1,3 +1,4 @@
+# Processes output of `TIMED=1 make`, plain `make` won't work!
 import sys
 import os
 import re

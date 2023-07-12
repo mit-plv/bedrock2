@@ -1,6 +1,5 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
-Require Import coqutil.Tactics.syntactic_unify.
 
 Load LiveVerif.
 
@@ -18,11 +17,12 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
 {                                                                          /**. .**/
   uintptr_t i = 0;                                                         /**.
 
-  swap bs with (List.repeatz \[b] \[i] ++ bs[\[i]:]) in #(array (uint 8)).
   prove (len bs = \[n]) as lenbs.
-  loop invariant above i.
   move lenbs before t.
-  prove (0 <= \[i] <= \[n]).
+  swap bs with
+    (List.repeatz \[b] \[i] ++ bs[\[i]:])
+    in #(array (uint 8)).
+  loop invariant above i.
   delete #(i = ??).
                                                                                 .**/
   while (i < n) /* decreases (n ^- i) */ {                                 /**. .**/
