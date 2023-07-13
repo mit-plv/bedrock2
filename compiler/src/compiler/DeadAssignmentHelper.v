@@ -624,4 +624,209 @@ Section WithArguments.
     reflexivity.
   Qed.
 
+  Lemma subset_of_list_union_diff_singleton:
+    forall (l: list string) x,
+      subset (of_list l)
+        (union (diff (of_list l) (singleton_set x))
+           (singleton_set x)).
+  Proof.
+    intros.
+    match goal with
+    | |- subset (of_list _)
+           (union (diff (of_list ?s) (singleton_set ?x))
+              (singleton_set ?x)) =>
+        eapply subset_trans;
+        match goal with
+        | |- subset (of_list _) _ => idtac
+        | |- subset _ (union _ _) =>
+            eapply union_sameset;
+            match goal with
+            | |- sameset (diff _ _) _ =>
+                eapply sameset_sym; eapply sameset_diff_singleton
+            | |- sameset (singleton_set _) _ =>
+                eapply sameset_sym; eapply of_list_singleton
+            end
+        end;
+        eapply subset_trans;
+        match goal with
+        | |- subset (of_list _) _ => idtac
+        | |- subset _ (union (diff _ _) _) => eapply sameset_union_diff_oflist
+        end;
+        eapply subset_union_rl;
+        eapply subset_ref
+    end.
+  Qed.
+
+  Lemma agree_on_diff_of_list_singleton:
+    forall (l: list string) x (m1 m2: locals),
+      map.agree_on (diff (of_list l) (singleton_set x)) m1 m2 ->
+      forall v,
+        map.agree_on (of_list l) (map.put m1 x v) (map.put m2 x v).
+  Proof.
+    intros.
+    eapply agree_on_subset.
+    - eapply agree_on_put.
+      2-3: reflexivity.
+      eapply H.
+    - eapply subset_of_list_union_diff_singleton.
+  Qed.
+
+  Lemma accessed_vars_bcond_eval :
+    forall (l lL: locals) cond val,
+      map.agree_on (of_list (accessed_vars_bcond cond)) l lL ->
+      eval_bcond l cond = Some val ->
+      eval_bcond lL cond = Some val.
+  Proof.
+    intros.
+    induction cond.
+    - simpl in *.
+      repeat (match goal with
+      | H: match ?c with _ => _ end = Some _ |- _ =>
+          destr c
+      end; try match goal with
+             | H: None = Some _ |- _
+               => inversion H
+             end).
+      repeat match goal with
+             | H: context[if ?c then _ else _] |- _ => destr c; fwd
+             end.
+      + match goal with
+        | H: map.get ?l ?s = Some ?r,
+            H1: map.get ?l ?s = Some ?r0 |- _ =>
+            rewrite H in H1; fwd
+        end.
+        match goal with
+        | H: map.agree_on (of_list [?s]) ?l ?lL,
+            H1: map.get ?l ?s = Some ?r0 |- _ =>
+            rewrite H in H1; [ | constructor; reflexivity ];
+            repeat rewrite H1
+        end.
+        reflexivity.
+      + repeat match goal with
+        | H: map.agree_on (of_list _) ?l ?lL |- _ =>
+            apply agree_on_cons in H; destr H
+               end.
+        repeat match goal with
+        | H: map.get ?l ?s = map.get ?lL ?s,
+            H1: map.get ?l ?s = Some ?r0 |- _ =>
+            rewrite H in H1; fwd
+        end.
+        reflexivity.
+    - simpl in *.
+      repeat (match goal with
+      | H: match ?c with _ => _ end = Some _ |- _ =>
+          destr c
+      end; try match goal with
+             | H: None = Some _ |- _
+               => inversion H
+             end); fwd.
+      repeat match goal with
+        | H: map.agree_on (of_list _) ?l ?lL |- _ =>
+            apply agree_on_cons in H; destr H
+             end; fwd.
+      repeat match goal with
+        | H: map.get ?l ?s = map.get ?lL ?s,
+            H1: map.get ?l ?s = Some ?r0 |- _ =>
+            rewrite H in H1; fwd
+        end.
+        reflexivity.
+  Qed.
+
+  Lemma live_deadassignment':
+    forall body,
+      subset
+        (of_list (live (deadAssignment [] body) []))
+        (of_list (live body [])).
+  Proof.
+    induction body.
+    all: try solve [simpl; eapply subset_ref].
+    - (* SStackalloc *)
+      simpl.
+      repeat rewrite ListSet.of_list_removeb.
+      eapply subset_diff.
+      assumption.
+    - (* SOp *)
+      simpl.
+      repeat match goal with
+             | |- context[match ?c with _ => _ end] => destr c
+             end.
+      all: unfold subset; intros.
+      all: match goal with
+           | H: ?c \in of_list [] |- _ => inversion H
+           end.
+    - simpl.
+      repeat match goal with
+             | |- context[match ?c with _ => _ end] => destr c
+             end.
+      all: unfold subset; intros.
+      all: match goal with
+           | H: ?c \in of_list [] |- _ => inversion H
+           end.
+    - simpl.
+      repeat match goal with
+             | |- context[match ?c with _ => _ end] => destr c
+             | |- context[of_list (ListSet.list_union _ _ _)] =>
+                 rewrite ListSet.of_list_list_union
+             end.
+      eapply subset_union_l.
+      + eapply subset_union_l.
+        * eapply subset_union_rl.
+          eapply subset_union_rl.
+          eapply IHbody1.
+        *
+      Search union subset.
+      rewrite L
+      all: unfold subset; intros.
+      all: match goal with
+           | H: ?c \in of_list [] |- _ => inversion H
+           end.
+
+      Search subset diff.
+  Lemma live_deadassignment:
+    forall s body,
+      subset (of_list (live body []))
+        (of_list (live (deadAssignment s body) [])).
+  Proof.
+    induction s.
+    -
+
+  Lemma deadassignment_subset:
+    forall used_after used_after',
+      subset (of_list used_after) (of_list used_after') ->
+      forall s,
+        subset (of_list (live s used_after))
+          (of_list (live s used_after')).
+  Proof.
+    intros.
+    induction s; induction used_after.
+    - (* SLoad, empty used_after *)
+      simpl.
+      match goal with
+      | |- context[if ?c then _ else _] => destr c
+      end.
+
+  subset
+    (of_list
+       (live
+          (deadAssignment
+             (ListSet.list_union eqb (accessed_vars_bcond cond)
+                (ListSet.list_union eqb used_after (live body2 [])))
+             body1)
+          (ListSet.list_union eqb (accessed_vars_bcond cond)
+             (ListSet.list_union eqb used_after (live body2 [])))))
+    (of_list
+       (live
+          (deadAssignment
+             (ListSet.list_union eqb (accessed_vars_bcond cond)
+                (ListSet.list_union eqb used_after (live body2 [])))
+             body1)
+          (ListSet.list_union eqb (accessed_vars_bcond cond)
+             (ListSet.list_union eqb used_after
+                (live
+                   (deadAssignment
+                      (live body1
+                         (ListSet.list_union eqb
+                            (accessed_vars_bcond cond)
+                            (ListSet.list_union eqb used_after
+                               (live body2 [])))) body2) [])))))
 End WithArguments.
