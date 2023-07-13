@@ -163,18 +163,18 @@ Section WithMap.
   Lemma locals_relation_extends (lo : locals) (l l' : locals') (nm : namemap) :
     map.extends l' l -> locals_relation lo l nm -> locals_relation lo l' nm.
   Proof.
-  Admitted.
-  (*   intros Hex. *)
-  (*   apply weaken_forall_keys. *)
-  (*   intros key Hl. *)
-  (*   destruct map.get as [s|]; try easy. *)
-  (*   destruct s as [t val]. *)
-  (*   destruct (map.get l key) as [v|] eqn:E. *)
-  (*   - apply (Properties.map.extends_get (m1 := l) (m2 := l')) in E; *)
-  (*     [| assumption]. *)
-  (*     now rewrite E. *)
-  (*   - destruct Hl. *)
-  (* Qed. *)
+    intros Hex.
+    apply weaken_forall_keys.
+    intros key Hl.
+    destruct map.get as [s|]; try easy.
+    destruct s as [t val].
+    destruct (map.get nm key) as [x'|]; try easy.
+    destruct (map.get l x') as [v|] eqn:E.
+    - apply (Properties.map.extends_get (m1 := l) (m2 := l')) in E;
+      [| assumption].
+      now rewrite E.
+    - destruct Hl.
+  Qed.
 
   Lemma locals_relation_get (lo : locals) (l : locals') (nm : namemap) :
     locals_relation lo l nm ->
@@ -183,15 +183,14 @@ Section WithMap.
     map.get nm x = Some x' -> exists (w : word),
     map.get l x' = Some w.
   Proof.
-  Admitted.
-  (*   intros Hl x t s Hs. *)
-  (*   unfold locals_relation, map.forall_keys in Hl. *)
-  (*   specialize Hl with (1 := Hs). *)
-  (*   rewrite Hs in Hl. *)
-  (*   destruct map.get. *)
-  (*   - now exists r. *)
-  (*   - destruct s, Hl. *)
-  (* Qed. *)
+    intros Hl x x' t s Hs Hx'.
+    unfold locals_relation, map.forall_keys in Hl.
+    specialize Hl with (1 := Hs).
+    rewrite Hs in Hl.
+    destruct map.get.
+    - fwd. now exists r.
+    - discriminate Hx'.
+  Qed.
 
   Lemma locals_relation_put (lo : locals) (l : locals') (nm : namemap) :
     locals_relation lo l nm ->
@@ -323,33 +322,6 @@ Section WithMap.
         now rewrite H2.
   Qed.
 
-  (* Lemma compile_nm_extends : *)
-  (*   forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr) *)
-  (*   (nm nm' : namemap), *)
-  (*   compile_expr e nm = Success (c, e', nm') -> *)
-  (*   map.extends nm' nm. *)
-  (* Proof. *)
-  (*   intros t. induction e; intros c e' nm nm' He'; try easy. *)
-  (*   all: try (unfold compile_expr in He'; now fwd). *)
-  (*   unfold compile_expr in He'. *)
-  (*   fold (compile_expr (t := t1)) in He'. *)
-  (*   fold (compile_expr (t := t2)) in He'. *)
-  (*   fwd. *)
-  (*   unfold map.extends. *)
-  (*   intros x0 w Hw. *)
-  (*   rewrite Properties.map.get_put_dec. *)
-  (*   destruct (x =? x0)%string; [| assumption]. *)
-  (*   specialize genFresh_spec with (1 := E1) as H. *)
-
-  Lemma compile_locals_relation :
-    forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr)
-    (lo : locals) (l : locals') (nm nm' : namemap) (st st' : NGstate),
-    locals_relation lo l nm ->
-    compile_expr e nm st = Success (c, e', nm', st') ->
-    locals_relation lo l nm'.
-  Proof.
-  Admitted.
-
   Lemma compile_correct :
     forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr)
     (G : tenv) (lo : locals) (nm nm' : namemap) (st st' : NGstate),
@@ -357,6 +329,7 @@ Section WithMap.
     wf G e ->
     compile_expr e nm st = Success (c, e', nm', st') -> forall tr m l,
     locals_relation lo l nm ->
+    locals_relation lo l nm' /\
     exec map.empty c tr m l (fun tr' m' l' => exists (w : word),
       eval_expr m' l' e' = Some w /\
       value_relation (interp_expr lo e) w /\
@@ -371,6 +344,7 @@ Section WithMap.
       fwd;
       simpl;
       rename s into x';
+      split; [easy |];
       apply exec.skip;
       inversion_clear He;
       destruct (tenv_relation_get _ lo Hlo _ _ _ H) as [v Hv];
@@ -386,6 +360,7 @@ Section WithMap.
     - (* EAtom a *)
       unfold compile_expr in He'.
       fwd.
+      split; [easy |].
       apply exec.skip.
       destruct a; try easy.
       + (* AInt n *)
@@ -410,6 +385,7 @@ Section WithMap.
         inversion He;
         apply Eqdep_dec.inj_pair2_eq_dec in H4 as [= ->]; try exact type_eq_dec;
         specialize IHe with (1 := Hlo) (2 := H2) (3 := E);
+        split; [easy |];
         eapply exec.weaken; [ now apply IHe |];
         cbv beta;
         intros tr' m' l' Hw;
@@ -445,6 +421,7 @@ Section WithMap.
         apply Eqdep_dec.inj_pair2_eq_dec in H5 as [= ->]; try exact type_eq_dec;
         specialize IHe1 with (1 := Hlo) (2 := H3) (3 := E);
         specialize IHe2 with (1 := Hlo) (2 := H7) (3 := E0);
+        split; [easy |];
         eapply exec.seq; [ now apply IHe1 |];
         cbv beta;
         intros tr' m' l' Hw;
@@ -540,6 +517,8 @@ Section WithMap.
       end;
       subst;
       rename H3 into He1, H6 into He2.
+      split.
+      { admit. }
 
       eapply exec.seq.
       { apply IHe1 with (1 := Hlo) (2 := He1) (3 := E1) (4 := Hl). }
@@ -563,10 +542,6 @@ Section WithMap.
         apply IHe2 with (2 := He2) (3 := E2) (lo := (set_local lo x (interp_expr lo e1))).
         + now apply tenv_relation_put.
         + admit.
-        (* + apply locals_relation_put. *)
-        (*   * now apply locals_relation_extends with l. *)
-        (*   * assumption. *)
-        (*   * *)
       }
       cbv beta.
       intros tr''' m''' l''' [w0 H].
