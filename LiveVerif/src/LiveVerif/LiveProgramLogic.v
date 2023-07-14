@@ -109,7 +109,7 @@ Ltac print_stats f := f ltac_identity.
 Ltac don't_print_stats f := idtac.
 
 (* use ::= to set _stats to print_stats or don't_print_stats *)
-Ltac _stats := print_stats.
+Ltac _stats := don't_print_stats.
 
 Tactic Notation "stats" tactic0(f) := _stats f.
 
@@ -779,7 +779,78 @@ Ltac evar_tuple t :=
 
 Ltac step_hook := fail.
 
-Ltac final_program_logic_step logger :=
+Ltac contiguous_implies_anyval_of_fillable :=
+  lazymatch goal with
+  | |- impl1 ?lhs ?rhs =>
+      lazymatch lhs with
+      | sep _ _ => fail "not an atomic sep clause"
+      | _ => idtac
+      end;
+      lazymatch rhs with
+      | sep _ _ => fail "not an atomic sep clause"
+      | _ => idtac
+      end;
+      solve [ eapply contiguous_implies_anyval_of_fillable;
+              [ eauto with contiguous
+              | eauto with fillable] ]
+end.
+
+(* means: already logged or tried to log *)
+Inductive already_logged: Type := mk_already_logged.
+Ltac clear_already_logged :=
+  lazymatch goal with
+  | H: already_logged |- _ => clear H
+  | |- _ => idtac
+  end.
+
+Global Set Printing Depth 1000000.
+
+Ltac log_goal :=
+  lazymatch goal with
+  | H: already_logged |- _ => fail
+  | |- if _ then _ else _ => fail
+  | |- wp_cmd _ _ _ _ _ _ => fail
+  | |- ?g =>
+      pose proof mk_already_logged;
+      (* make sure the goal is not too easy: *)
+      tryif assert_fails (unzify; solve [intuition auto | ZnWords.ZnWords])
+      then
+        tryif (assert_fails
+                 (assert g by (repeat final_program_logic_step ignore_logger_thunk)))
+        then
+          (* goal not provable and we don't know if it's provable, so we don't log it *)
+          idtac
+        else
+          (* solvable and not too easy: log *)
+          assert_fails ((* to revert all effects *)
+              idtac "<<<<<<";
+              unzify;
+              repeat lazymatch goal with
+                | H: ?t |- _ =>
+                    lazymatch t with
+                    | already_logged => clear H
+                    | with_mem _ _ => clear H
+                    | scope_marker _ => clear H
+                    | currently _ => clear H
+                    | ExtSpec => clear H
+                    | ext_spec.ok _ => clear H
+                    | mmap.du _ _ = _ => clear H
+                    | functions_correct _ _ => clear H
+                    | _ => lazymatch type of t with
+                           | Prop => revert H
+                           | _ => clear H || revert H
+                           end
+                    end
+                end;
+              lazymatch goal with
+              | |- ?g => idtac g; idtac ">>>>>>"
+              end;
+              fail)
+      else idtac (* goal is too easy, not logging, but still succeeding so
+                    that already_logged stays around *)
+  end
+
+with final_program_logic_step logger :=
   (* Note: Here, the logger has to be invoked *after* the tactic, because we only
      find out whether it's the right one by running it.
      To make sure that the logger is run exactly once, the thunk should only contain
@@ -797,39 +868,35 @@ Ltac final_program_logic_step logger :=
         | |- elet _ _ => refine (mk_elet _ _ _ eq_refl _)
         end;
         logger ltac:(fun _ => idtac "eexists")
+      | step_hook;
+        logger ltac:(fun _ => idtac "step_hook")
+      | safe_implication_step;
+        logger ltac:(fun _ => idtac "safe_implication_step")
+      | contiguous_implies_anyval_of_fillable;
+        logger ltac:(fun _ => idtac "contiguous_implies_anyval_of_fillable")
+      | log_goal
+
+      (* BEGIN SIDECONDS *)
       | (* tried first because it also solves some goals of shape (_ = _) and (_ /\ _) *)
         zify_goal; xlia zchecker;
         logger ltac:(fun _ => idtac "xlia zchecker")
-      | safe_implication_step;
-        logger ltac:(fun _ => idtac "safe_implication_step")
       | lazymatch goal with
         | H: _ \/ _ |- _ =>
             destruct H; try (exfalso; congruence);
-            [ logger ltac:(fun _ => idtac "discarding contradictory branch of \/ in" H) ]
+            [ logger ltac:(fun _ => idtac "discarding contradictory branch of \/ in" H);
+              clear_already_logged ]
         end
       | lazymatch goal with
         | |- ?P /\ ?Q =>
             split;
-            logger ltac:(fun _ => idtac "split")
+            logger ltac:(fun _ => idtac "split");
+            clear_already_logged
         | |- _ = _ =>
             careful_reflexivity_step_hook;
             logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")
         | |- impl1 ?lhs ?rhs =>
-            first [ lazymatch lhs with
-                    | sep _ _ => fail "not an atomic sep clause"
-                    | _ => idtac
-                    end;
-                    lazymatch rhs with
-                    | sep _ _ => fail "not an atomic sep clause"
-                    | _ => idtac
-                    end;
-                    solve [ eapply contiguous_implies_anyval_of_fillable;
-                            [ eauto with contiguous
-                            | eauto with fillable] ];
-                    logger ltac:(fun _ => idtac "contiguous_implies_anyval_of_fillable")
-                  | (* goes last because it might wrap goal in don't_know_how_to_prove *)
-                    careful_reflexivity_step_hook;
-                    logger ltac:(fun _ => idtac "careful_reflexivity_step_hook") ]
+            careful_reflexivity_step_hook;
+            logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")
         | |- iff1 _ _ =>
             careful_reflexivity_step_hook;
             logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")
@@ -840,8 +907,9 @@ Ltac final_program_logic_step logger :=
         end
       | solve [intuition idtac];
         logger ltac:(fun _ => idtac "intuition idtac")
-      | step_hook;
-        logger ltac:(fun _ => idtac "step_hook")
+      (* END SIDECONDS *)
+      (* nothing in between here! *)
+      (* these goal shapes have to be excluded in goal logger: *)
       | lazymatch goal with
         | |- if _ then _ else _ =>
             logger ltac:(fun _ => idtac "split if");
