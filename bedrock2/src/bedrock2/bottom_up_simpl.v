@@ -1160,6 +1160,37 @@ Definition forbidden(P: Prop) := P.
 
 Ltac2 Type exn ::= [ Nothing_to_simplify ].
 
+Ltac2 Type exn ::= [ Undo ].
+
+(* run t and undo its effects (except for its print output), but if it fails,
+   turn the failure into an uncatchable panic *)
+Ltac2 undo(t: unit -> unit): unit :=
+  match Control.case (fun _ => t (); Control.zero Undo) with
+  | Val _ => Control.throw Assertion_failure
+  | Err e => match e with
+             | Undo => ()
+             | _ => Control.throw e
+             end
+  end.
+
+Ltac2 log_simpl(t1: constr)(t2: constr) := undo (fun _ =>
+  assert ($t1 = $t2) >
+  [ repeat (lazy_match! goal with
+      | [ h: ?t |- _ ] =>
+          lazy_match! t with
+          | forbidden _ => Std.clear [h]
+          | word.word _ => Control.zero (Tactic_failure None) (* done *)
+          | word.ok _ => Control.zero (Tactic_failure None) (* done *)
+          | _ => lazy_match! Constr.type t with
+                 | Prop => Std.revert [h]
+                 | _ => first [ Std.clear [h] | Std.revert [h] ]
+                 end
+          end
+      end);
+    printf "<infomsg>Goal %t.</infomsg>" (Control.goal ());
+    printf "<infomsg>Proof. t. Qed.</infomsg>"
+  | ]).
+
 Ltac2 fail_if_no_progress () := Control.zero Nothing_to_simplify.
 Ltac2 silent_if_no_progress () := ().
 Ltac2 bottom_up_simpl_in_hyp_of_type(no_progress: unit -> unit)(h: ident)(t: constr): unit :=
@@ -1171,6 +1202,7 @@ Ltac2 bottom_up_simpl_in_hyp_of_type(no_progress: unit -> unit)(h: ident)(t: con
       if did_something r then
         let pf := eq_proof r in
         let t' := new_term r in
+        log_simpl t t';
         eapply (rew_Prop_hyp $t $t' $pf) in $h
       else no_progress ()
   | _ => no_progress ()
@@ -1218,6 +1250,7 @@ Ltac2 bottom_up_simpl_in_goal0(no_progress: unit -> unit) := Control.enter (fun 
       if did_something r then
         let pf := eq_proof r in
         let t' := new_term r in
+        log_simpl t t';
         eapply (rew_Prop_goal $t $t' $pf)
       else no_progress ()
   | _ => fail "not a Prop"
