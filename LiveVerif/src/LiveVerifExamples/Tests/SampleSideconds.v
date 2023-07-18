@@ -39,6 +39,17 @@ Ltac standalone_solver_step :=
 
 (* TODO investigate why standalone_solver_step is not as powerful as step *)
 
+Ltac eval_constant_pows :=
+  repeat match goal with
+         | |- context[Z.pow ?x ?y] =>
+             lazymatch isZcst x with
+             | true => lazymatch isZcst y with
+                       | true => let r := eval cbv in (Z.pow x y) in
+                                 change (Z.pow x y) with r
+                       end
+             end
+         end.
+
 Require Import Coq.Logic.Classical_Prop.
 
 Lemma ExistsNot_NotForall: forall AA (P: AA -> Prop), (exists a: AA, ~ P a) <-> ~ forall (a: AA), P a.
@@ -110,6 +121,7 @@ Ltac undo_by_contradiction :=
   end.
 
 Ltac log_goal_as_smt name :=
+  eval_constant_pows;
   by_contradiction;
   let width := lazymatch goal with
                | word: word.word ?width |- _ => width
@@ -240,8 +252,6 @@ Notation "(-  a )" := (Z.opp a)
 Notation "(+  a  b )" := (Z.add a b)
   (in custom smt_expr at level 0).
 Notation "(*  a  b )" := (Z.mul a b)
-  (in custom smt_expr at level 0).
-Notation "(^  a  b )" := (Z.pow a b) (* NONSTANDARD *)
   (in custom smt_expr at level 0).
 
 Notation "'(bv2int'  a )" := (word.unsigned a)
@@ -375,26 +385,6 @@ Goal forall (fib: word -> word) (n : word),
 Proof.
   t name:(fib2). unfold don't_know_how_to_prove. f_equal. ZnWords.
 Qed.
-
-Notation "'pow!' x y" := (ltac:(let r := eval cbv in (Z.pow x y) in exact r))
-  (at level 10, x at level 0, y at level 0, only parsing).
-
-Goal forall (in0 in1 in2 : Z) (w0 : word),
- w0 = /[in0] ->
- forall (w2'' w1 w2 : word) (c c' : bool),
- c' = negb (word.ltu /[in0] /[in1]) && negb (word.ltu /[in2] /[in1]) ->
- c = negb (word.ltu /[in0] /[in2]) && negb (word.ltu /[in1] /[in2]) ->
- w2'' = (if c then /[in0] else /[in2]) ->
- 0 <= in0 < pow! 2 width ->
- w1 = (if c' then /[in0] else /[in1]) ->
- w2 = (if c' then /[in2] else w2'') ->
- forall (c0 : bool),
- c0 = word.ltu w2 w1 ->
- 0 <= in1 < pow! 2 width ->
- 0 <= in2 < pow! 2 width ->
- (if c' then in1 else if c then in2 else in0) <=
-   \[if c0 then w2 else w1] <= \[if c0 then w1 else w2].
-Proof. t name:(sort3). Qed.
 
 Goal forall (in0 in1 in2 : Z) (w0 : word),
  w0 = /[in0] ->
