@@ -1,4 +1,5 @@
 Require Import LiveVerif.LiveVerifLib.
+Require Import coqutil.Tactics.ident_ops.
 
 Ltac standalone_solver_step :=
   first
@@ -95,10 +96,9 @@ Ltac by_contradiction :=
   let C := fresh "C" in
   intro C;
   repeat lazymatch type of C with
-  | ~ forall H, _ =>
+  | ~ forall x, _ =>
       eapply ExistsNot_NotForall in C;
-      let name := fresh (*H*) in (* TODO filter out single quotes *)
-      destruct C as [name C]
+      with_unprimed_fresh x (fun f => destruct C as [f C])
   end;
   change smtFalseAlias;
   repeat lazymatch goal with
