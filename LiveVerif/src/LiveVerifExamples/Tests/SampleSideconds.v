@@ -86,7 +86,7 @@ Ltac by_contradiction :=
   repeat lazymatch type of C with
   | ~ forall H, _ =>
       eapply ExistsNot_NotForall in C;
-      let name := fresh H in
+      let name := fresh (*H*) in (* TODO filter out single quotes *)
       destruct C as [name C]
   end;
   change smtFalseAlias;
@@ -149,15 +149,15 @@ Notation "'time' 'z3' '-in' << ' 'SMTQUERY' ' g 'SMTQUERY'" :=
   (at level 0, g custom smt_goal at level 3, only printing,
    format "time  z3  -in  << ' SMTQUERY ' '//' g '//' SMTQUERY").
 
-Notation "'(declare-const' | x | T ) P" := (forall x: T, P)
+Notation "'(declare-const' x T ) P" := (forall x: T, P)
   (in custom smt_goal at level 3, x name, T custom smt_sort, right associativity,
-   format "(declare-const  | x |  T ) '//' P").
+   format "(declare-const  x  T ) '//' P").
 
 (* TODO recursive notation for any number of parameters? *)
-Notation "'(declare-fun' | x | ( A1 ) R ) P" := (forall x: A1 -> R, P)
+Notation "'(declare-fun' x ( A1 ) R ) P" := (forall x: A1 -> R, P)
   (in custom smt_goal at level 3, x name, A1 custom smt_sort, R custom smt_sort,
    right associativity,
-   format "(declare-fun  | x |  ( A1 )  R ) '//' P").
+   format "(declare-fun  x  ( A1 )  R ) '//' P").
 
 Notation "'(assert' P ) Q" := (P -> Q)
   (in custom smt_goal at level 3, P custom smt_expr, right associativity,
@@ -241,7 +241,7 @@ Notation "(+  a  b )" := (Z.add a b)
   (in custom smt_expr at level 0).
 Notation "(*  a  b )" := (Z.mul a b)
   (in custom smt_expr at level 0).
-Notation "(pow  a  b )" := (Z.pow a b) (* NONSTANDARD *)
+Notation "(^  a  b )" := (Z.pow a b) (* NONSTANDARD *)
   (in custom smt_expr at level 0).
 
 Notation "'(bv2int'  a )" := (word.unsigned a)
@@ -271,18 +271,13 @@ Notation "( f  a1 a2 )" := (f a1 a2)
    f custom smt_func at level 0,
    a1 custom smt_expr at level 0, a2 custom smt_expr at level 0).
 
-Notation "x" := (Zpos x)
-  (in custom smt_expr at level 0, x constr at level 0, only printing).
-Notation "0" := Z0
-  (in custom smt_expr at level 0, only printing).
-
-(* fallback for variables *)
-Notation "| x |" := x
-  (in custom smt_expr at level 0, x ident, only printing, format "| x |").
+(* fallback for variables and Z literals *)
+Notation "x" := x
+  (in custom smt_expr at level 0, x constr at level 0).
 
 (* Function names that are variables: *)
-Notation "| f |" := f
-  (in custom smt_func at level 0, f ident, only printing, format "| f |").
+Notation "f" := f
+  (in custom smt_func at level 0, f ident, only printing).
 
 
 Section Tests.
@@ -364,7 +359,7 @@ Goal forall (fib: word -> word) (n : word),
  a = fib (i ^- /[1]).
 Proof.
   t name:(fib1).
-  unfold don't_know_how_to_prove. subst i. bottom_up_simpl_in_goal. reflexivity.
+  unfold don't_know_how_to_prove. subst. bottom_up_simpl_in_goal. reflexivity.
 Qed.
 
 Goal forall (fib: word -> word) (n : word),
@@ -378,8 +373,28 @@ Goal forall (fib: word -> word) (n : word),
  \[n] <= \[i] ->
  b = fib n.
 Proof.
-  t name:(fib2). unfold don't_know_how_to_prove. replace i with n by ZnWords. reflexivity.
+  t name:(fib2). unfold don't_know_how_to_prove. f_equal. ZnWords.
 Qed.
+
+Notation "'pow!' x y" := (ltac:(let r := eval cbv in (Z.pow x y) in exact r))
+  (at level 10, x at level 0, y at level 0, only parsing).
+
+Goal forall (in0 in1 in2 : Z) (w0 : word),
+ w0 = /[in0] ->
+ forall (w2'' w1 w2 : word) (c c' : bool),
+ c' = negb (word.ltu /[in0] /[in1]) && negb (word.ltu /[in2] /[in1]) ->
+ c = negb (word.ltu /[in0] /[in2]) && negb (word.ltu /[in1] /[in2]) ->
+ w2'' = (if c then /[in0] else /[in2]) ->
+ 0 <= in0 < pow! 2 width ->
+ w1 = (if c' then /[in0] else /[in1]) ->
+ w2 = (if c' then /[in2] else w2'') ->
+ forall (c0 : bool),
+ c0 = word.ltu w2 w1 ->
+ 0 <= in1 < pow! 2 width ->
+ 0 <= in2 < pow! 2 width ->
+ (if c' then in1 else if c then in2 else in0) <=
+   \[if c0 then w2 else w1] <= \[if c0 then w1 else w2].
+Proof. t name:(sort3). Qed.
 
 Goal forall (in0 in1 in2 : Z) (w0 : word),
  w0 = /[in0] ->
