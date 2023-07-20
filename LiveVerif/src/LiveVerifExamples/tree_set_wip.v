@@ -182,7 +182,9 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
                         ti = t /\
                         <{ * bst' sk s a * F }> mi) *).
   1: eauto with wf_of_type.
-  { collect_heaplets_into_one_sepclause.
+  { swap p with a in #(bst').
+    delete #(a = p).
+    collect_heaplets_into_one_sepclause.
     package_context. }
   {
 
@@ -216,11 +218,10 @@ Ltac start_loop_body :=
                         ti = t).
       cbv beta iota.
       steps.
-(*      (* TODO heapletwise with only one heaplet *)
+      (* TODO heapletwise with only one heaplet *)
       eapply sep_emp_l. split. 2: assumption.
-      steps. *)
+      steps.
     }
-Abort. (*
     (* loop body: *)
     let H := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as H.
                                                                                 .**/
@@ -239,14 +240,14 @@ Abort. (*
   }                                                                        /**.
   }
   (* after loop *)
+  subst a. clear res Def0.
+  clear_until_LoopInvOrPreOrPost_marker.
   steps.
-  fwd.
-  clear res Def0. rename res0 into res. subst l.
+  subst l.
                                                                                 .**/
   return res;                                                              /**. .**/
 }                                                                          /**.
 Qed.
-*)
 
 (* note: inability to break out of loop is cumbersome, because it complicates pre:
    it has to incorporate almost all of post for the res=true case,

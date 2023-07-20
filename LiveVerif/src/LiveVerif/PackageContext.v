@@ -203,6 +203,9 @@ Ltac add_equalities_to_post Post :=
       add_equality_to_post T Post
   end.
 
+(* can be overridden with `Ltac log_packaged_context P ::= idtac P.` *)
+Ltac log_packaged_context P := idtac.
+
 Ltac package_context :=
   lazymatch goal with
   | H: _ ?m |- ?E ?t ?m ?l =>
@@ -233,6 +236,7 @@ Ltac package_context :=
   | |- _ ?Measure ?T ?M ?L => pattern Measure, T, M, L in Post
   | |- _ ?T ?M ?L => pattern T, M, L in Post
   end;
+  (let t := type of Post in log_packaged_context t);
   exact Post.
 
 Section MergingAnd.
