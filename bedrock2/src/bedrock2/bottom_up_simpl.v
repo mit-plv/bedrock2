@@ -1176,13 +1176,15 @@ Ltac2 undo(t: unit -> unit): unit :=
 
 Ltac pre_log_simpl_hook := idtac.
 
-Ltac2 log_simpl(t1: constr)(t2: constr) := undo (fun _ =>
+Ltac2 log_simpl_inactive(t1: constr)(t2: constr) := undo (fun _ =>
   assert ($t1 = $t2) >
   [ repeat (lazy_match! goal with
             | [h: forbidden _ |- _] => Std.clear [h]
             end);
     ltac1:(pre_log_simpl_hook; log_sidecond)
   | ]).
+
+Ltac2 log_simpl(t1: constr)(t2: constr) := ().
 
 Ltac2 fail_if_no_progress () := Control.zero Nothing_to_simplify.
 Ltac2 silent_if_no_progress () := ().
