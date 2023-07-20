@@ -167,21 +167,91 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
   uintptr_t res = 0;                                                       /**. .**/
   uintptr_t a = p;                                                         /**.
 
-  unfold ready.
+  loop pre above a.
+  move R after a. move s after a.
+  swap p with a in #(bst').
 
+  unfold ready.
   let cond := constr:(live_expr:(!res && a != 0)) in
   let measure0 := constr:(sk) in
-  eapply (wp_while_tailrec_with_done_flag measure0 (s, a, R) cond)
-         with (pre := fun sk (g: (set Z * word * (mem -> Prop))) ti mi li =>
-                        let '(s, a, F) := g in
-                        exists res, res = /[0] /\
-                        li = map.of_list [|("a", a); ("p", p); ("res", res); ("v", v)|] /\
-                        ti = t /\
-                        <{ * bst' sk s a * F }> mi).
+  eapply (wp_while_tailrec_with_done_flag measure0 (s, a, R) cond).
   1: eauto with wf_of_type.
-  1: solve [steps].
+  { (* delete #(a = p). *)
+    move Def1 after Scope2.
+
+    collect_heaplets_into_one_sepclause.
+
+  lazymatch goal with
+  | H: _ ?m |- ?E ?t ?m ?l =>
+      (* always package sep log assertion, even if memory was not changed in current block *)
+      move H at bottom;
+      (* when proving a loop invariant at the end of a loop body, it tends to work better
+         if memory hyps come earlier, because they can help determine evars *)
+      lazymatch goal with
+      | s: scope_marker _ |- _ =>
+          move H before s (* <-- "before" in the direction of movement *)
+      end
+      (* Note: the two above moves should be replaced by one single `move H below s`,
+         but `below` is not implemented yet: https://github.com/coq/coq/issues/15209 *)
+  | |- ?E ?t ?m ?l => fail "No separation logic hypothesis about" m "found"
+  end;
+  let Post := fresh "Post" in
+  pose proof ands_nil as Post;
+  repeat add_hyp_to_post Post.
+
+  add_equalities_to_post Post.
+  repeat add_last_var_or_hyp_to_post Post.
+  (* add_var_as_exists_to_post a Post. : *)
+
+let x := a in
+  vpattern x in Post;
+  lazymatch type of Post with
+  | ?f x => eapply (ex_intro f x) in Post
+  end.
+(* NO  clear x. *)
+
+(*
+add ghosts and measure last, without clearing them (because eqs further above might contain the ghosts)
+why do we clear at all?
+just for bookkeeping so that the loop works?
+need tracking of what is ghost var and measure because they might be defined further
+up in order to be usable in non-loopinv assertions
+
+
+  let lasthyp := last_var_except Post in
+  lazymatch type of lasthyp with
+  | scope_marker _ => idtac
+  | _ => idtac "Warning: package_context failed to package" lasthyp "(and maybe more)"
+  end;
+  lazymatch goal with
+  | |- _ ?Measure ?Ghosts ?T ?M ?L => pattern Measure, Ghosts, T, M, L in Post
+  | |- _ ?Measure ?T ?M ?L => pattern Measure, T, M, L in Post
+  | |- _ ?T ?M ?L => pattern T, M, L in Post
+  end;
+  (let t := type of Post in log_packaged_context t);
+  exact Post.
+
+    package_context. }
   {
-    intros. fwd. subst t0 l.
+
+Ltac start_loop_body :=
+    repeat match goal with
+      | H: sep _ _ ?M |- _ => clear M H
+      end;
+    clear_until_LoopInvOrPreOrPost_marker;
+    (* Note: will also appear after loop, where we'll have to clear it,
+       but we have to pose it here because the foralls are shared between
+       loop body and after the loop *)
+    (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
+    cbv beta;
+    intros;
+    unpackage_context;
+    lazymatch goal with
+    | |- exists b, dexpr_bool3 _ _ _ b _ _ _ => eexists
+    | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
+    end.
+
+    start_loop_body. subst g.
     steps.
     { (* loop condition false implies post (which could be constructed here from
          the context, hopefully) *)
@@ -200,7 +270,6 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
     }
     (* loop body: *)
     let H := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as H.
-    clear H0 H1 D. rename r into a, res0 into res.
                                                                                 .**/
     uintptr_t here = load32(a+4);                                          /**. .**/
     if (v < here) /* split */ {                                            /**. .**/
@@ -217,13 +286,16 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
   }                                                                        /**.
   }
   (* after loop *)
+  subst a. clear res Def0.
+  clear_until_LoopInvOrPreOrPost_marker.
   steps.
-  fwd.
-  clear res Def0. rename res0 into res. subst l.
+  subst l.
                                                                                 .**/
   return res;                                                              /**. .**/
 }                                                                          /**.
 Qed.
+*)
+Abort.
 
 (* note: inability to break out of loop is cumbersome, because it complicates pre:
    it has to incorporate almost all of post for the res=true case,
