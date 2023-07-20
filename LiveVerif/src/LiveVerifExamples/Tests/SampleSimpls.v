@@ -3,6 +3,8 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Datatypes.ZList.
 Require bedrock2.WordNotations.
 Require Import bedrock2.bottom_up_simpl.
+Require Import LiveVerifExamples.Tests.PrintSmt.
+Require Import bedrock2.unzify.
 
 Section Tests.
 
@@ -157,6 +159,11 @@ Goal (forall (A : Type) (l1 l2 : list A) (i : Z),
                0 <= i <= len l1 -> ((l1 ++ l2)[:i] = l1[:i]) = (l1[:i] = l1[:i])).
 Proof. t. Qed.
 
+Goal forall (A : Type) (l1 l2 : list A) (i : Z),
+    0 <= i <= len l1 ->
+    (l1 ++ l2)[:i] = l1[:i].
+Proof. t. Qed.
+
 (* requires a different sidecond hook
 Goal (forall (A : Type) (xs1 xs2 xs3 xs4 xs5 xs6 : list A) (i j k s : Z),
                0 <= j <= len xs3 ->
@@ -175,5 +182,101 @@ Goal (forall (A : Type) (l1 l2 : list A) (x : A) (i : Z),
                ((l1 ++ [|x|] ++ l2)[:i + 1] = l1 ++ [|x|]) =
                ((l1 ++ x :: l2)[:i + 1] = l1 ++ [|x|])).
 Proof. t. Qed.
+
+Ltac t ::= intros; zify_hyps; zify_goal; bottom_up_simpl_in_goal; reflexivity.
+
+Goal (forall (x1 x2 y1 y2 : Z) (g : word),
+         g = /[0] ->
+         \[/[x1 + x2]] < \[/[y1 + y2]] ->
+         0 <= x1 + x2 < 2 ^ 32 ->
+         0 <= y1 + y2 < 2 ^ 32 ->
+         (\[/[x1 + x2]] < \[/[y1 + y2]]) = (x1 + x2 < y1 + y2)).
+Proof. t. Qed.
+
+Goal (forall (byte_of_Z : Z -> Byte.byte) (b : word) (bs : list Byte.byte),
+         List.repeatz (byte_of_Z \[b]) \[/[0]] ++ bs[\[/[0]]:] = bs).
+Proof. t. Qed.
+
+Goal forall (raw_ring_buffer: Type) (a: raw_ring_buffer) (data: raw_ring_buffer -> list Z)
+            (capacity n_elems dequeue_pos: raw_ring_buffer -> Z),
+ len (data a) = capacity a ->
+ 0 <= n_elems a <= capacity a ->
+ 0 <= dequeue_pos a < capacity a ->
+ 0 <= capacity a < 2 ^ 32 ->
+ 0 <= dequeue_pos a < 2 ^ 32 ->
+ 0 <= n_elems a < 2 ^ 32 ->
+ len (data a) = capacity a ->
+ (len (data a ++ data a)[dequeue_pos a : dequeue_pos a + n_elems a]) = n_elems a.
+Proof. t. Qed.
+
+Goal forall (p i j count : word) (l : list Z) (n : Z),
+ \[i] + \[count] <= \[j] ->
+ \[j] + \[count] <= n ->
+ 2 * n < 2 ^ 32 ->
+ len l = n ->
+       (l[:\[i]] ++
+        l[\[i] + \[count] + (\[j] - \[i] - \[count]):][:\[count]] ++
+        l[\[i] + \[count] : \[j]] ++
+        l[\[i]:][:\[count]] ++ l[\[i] + \[count] + (\[j] - \[i]):])=
+       (l[:\[i]] ++
+        l[\[j]:][:\[count]] ++
+        l[\[i] + \[count] : \[j]] ++
+        l[\[i]:][:\[count]] ++ l[\[count] + \[j]:]).
+Proof. t. Qed.
+
+Goal forall (a : word) (in1 in2 in3 : Z) (w0 w1 w2 : word),
+ w0 = /[in1] ->
+ w1 = /[in2] ->
+ w2 = /[in3] ->
+ in1 < in2 \/ in3 < in2 ->
+ in3 <= in1 ->
+ in3 <= in2 ->
+ 0 <= in1 < 2 ^ 32 ->
+ 0 <= in2 < 2 ^ 32 ->
+ 0 <= in3 < 2 ^ 32 ->
+ ([|in1; in2; in3|][:0] ++ [|\[w2]|] ++ [|in1; in2; in3|][0 + 1:]) =
+   [|in3; in2; in3|].
+Proof. t. Qed.
+
+Local Open Scope bool_scope.
+
+Goal forall (a : word) (in1 in2 in3 : Z) (w0 : word),
+    w0 = /[in1] ->
+    forall (w2'' w1 w2 : word) (c c' : bool),
+      c' = negb (word.ltu /[in1] /[in2]) && negb (word.ltu /[in3] /[in2]) ->
+      c = negb (word.ltu /[in1] /[in3]) && negb (word.ltu /[in2] /[in3]) ->
+      w2'' = (if c then /[in1] else /[in3]) ->
+      0 <= in1 < 2 ^ 32 ->
+      w1 = (if c' then /[in1] else /[in2]) ->
+      w2 = (if c' then /[in3] else w2'') ->
+      \[w1] <= \[w2] ->
+      0 <= (if c' then in2 else if c then in3 else in1) < 2 ^ 32 ->
+      0 <= in2 < 2 ^ 32 ->
+      0 <= in3 < 2 ^ 32 ->
+      ([|if c' then in2 else if c then in3 else in1; in2; in3|][:1] ++
+         [|\[w1]|] ++
+         [|if c' then in2 else if c then in3 else in1; in2; in3|][
+           1 + 1:]) =
+        [|if c' then in2 else if c then in3 else in1; \[w1]; in3|].
+Proof. t. Qed.
+
+Goal forall (sort: list Z -> list Z) (n i : word) (l1 l2 : list Z) Ql1 Qx
+   (x : Z) (Hp0 : len (sort l1) = \[i]),
+ len (sort l1) + 1 = \[i] + 1 ->
+ len (sort l1) + len l2 + 1 = \[n] ->
+ len (sort (Ql1 ++ [|Qx|])) = \[i] + 1 ->
+ len (sort Ql1) + 1 = \[i] + 1 ->
+ len (sort (Ql1 ++ [|Qx|]) ++ (x :: l2)[\[i] + 1 - len (sort l1):]) =
+ len (sort (Ql1 ++ [|Qx|])) + (len l2 - \[i] + len (sort l1)).
+Proof. t. Qed.
+
+Goal forall (arrL : list Z)
+   (x : Z) (arrR' : list Z),
+ (arrL ++ [|x|]) ++ arrR' = arrL ++ [|x|] ++ arrR'.
+Proof. t. Qed.
+
+(* TODO mark SidecondIrrelevant:
+map.ok _
+*)
 
 End Tests.

@@ -38,6 +38,7 @@ Require Import bedrock2.Logging.
 Require Import LiveVerif.LiveRules.
 Require Import LiveVerif.PackageContext.
 Require Import LiveVerif.LiveSnippet.
+Require Import bedrock2.LogSidecond.
 
 Definition functions_correct
   (* universally quantified abstract function list containing all functions: *)
@@ -112,6 +113,25 @@ Ltac don't_print_stats f := idtac.
 Ltac _stats := don't_print_stats.
 
 Tactic Notation "stats" tactic0(f) := _stats f.
+
+#[export] Hint Extern 1 (SidecondIrrelevant (with_mem _ _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (scope_marker _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (currently _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (ext_spec.ok _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (DisjointUnion.mmap.du _ _ = _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (functions_correct _ _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (merge_step _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (fold_step _)) =>
+  constructor : typeclass_instances.
+
+Ltac pre_log_simpl_hook ::= unzify.
 
 Ltac start :=
   lazymatch goal with

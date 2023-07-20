@@ -11,6 +11,7 @@ Require Import coqutil.Tactics.foreach_hyp.
 Require Import bedrock2.WordPushDownLemmas.
 Require bedrock2.WordNotations.
 Require Import bedrock2.cancel_div.
+Require Import bedrock2.LogSidecond.
 
 Ltac2 rec is_positive_literal(e: constr): bool :=
   lazy_match! e with
@@ -1173,22 +1174,14 @@ Ltac2 undo(t: unit -> unit): unit :=
              end
   end.
 
+Ltac pre_log_simpl_hook := idtac.
+
 Ltac2 log_simpl(t1: constr)(t2: constr) := undo (fun _ =>
   assert ($t1 = $t2) >
   [ repeat (lazy_match! goal with
-      | [ h: ?t |- _ ] =>
-          lazy_match! t with
-          | forbidden _ => Std.clear [h]
-          | word.word _ => Control.zero (Tactic_failure None) (* done *)
-          | word.ok _ => Control.zero (Tactic_failure None) (* done *)
-          | _ => lazy_match! Constr.type t with
-                 | Prop => Std.revert [h]
-                 | _ => first [ Std.clear [h] | Std.revert [h] ]
-                 end
-          end
-      end);
-    printf "<infomsg>Goal %t.</infomsg>" (Control.goal ());
-    printf "<infomsg>Proof. t. Qed.</infomsg>"
+            | [h: forbidden _ |- _] => Std.clear [h]
+            end);
+    ltac1:(pre_log_simpl_hook; log_sidecond)
   | ]).
 
 Ltac2 fail_if_no_progress () := Control.zero Nothing_to_simplify.
