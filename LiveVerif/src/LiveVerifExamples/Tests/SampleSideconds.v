@@ -120,6 +120,8 @@ Ltac undo_by_contradiction :=
   | C: not _ |- smtFalseAlias => apply C; clear C
   end.
 
+Ltac log x := idtac (* x *). (* comment/uncomment x to disable/enable logging *)
+
 Ltac log_goal_as_smt name :=
   eval_constant_pows;
   by_contradiction;
@@ -129,7 +131,7 @@ Ltac log_goal_as_smt name :=
   (* markNamedSmtGoal width name; *)
   markSmtGoal;
   lazymatch goal with
-  | |- ?g => idtac g
+  | |- ?g => log g
   end;
   unmarkSmtGoal;
   undo_by_contradiction.
@@ -314,7 +316,7 @@ Definition prelude1 := tt.
 Notation "'#!/bin/sh'" := prelude1 (only printing).
 Definition prelude2 := tt.
 Notation "'set' '-e'" := prelude2 (only printing).
-Goal True. let p1 := prelude1 in let p2 := prelude2 in idtac p1; idtac p2. Abort.
+Goal True. let p1 := prelude1 in let p2 := prelude2 in log p1; log p2. Abort.
 
 Ltac t name :=
   log_goal_as_smt name;
