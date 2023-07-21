@@ -150,6 +150,91 @@ Local Hint Extern 1 (cannot_purify (freeable _ _))
 Local Hint Extern 1 (PredicateSize_not_found (freeable _))
       => constructor : suppressed_warnings.
 
+
+  (* Useful for while loops with a done flag:
+     Once done is set to true, we don't need to prove pre again for the
+     next non-iteration, but we can prove post instead. *)
+  Lemma wp_while_tailrec_with_done_flag {measure: Type} {Ghost: Type}
+    (v0: measure) (g0: Ghost)
+    (e: expr) (c: cmd) t0 (m0: mem) l0 fs rest
+    (pre post: Ghost * measure * trace * mem * locals -> Prop) {lt}
+    {finalpost: trace -> mem -> locals -> Prop}
+    (Hwf: well_founded lt)
+    (* packaging generalized context at entry of loop determines pre: *)
+    (Hpre: pre (g0, v0, t0, m0, l0))
+    (Hbody: forall v g t m l,
+      pre (g, v, t, m, l) ->
+      exists b, dexpr_bool3 m l e b
+                  (* can't put loop body under context of b=true because we
+                     first need to treat the b=false case (which determines post): *)
+                  True
+                  (* packaging generalized context at exit of loop (with final, smallest
+                     measure) determines post: *)
+                  (post (g, v, t, m, l))
+                  (loop_body_marker (bool_expr_branches b (wp_cmd fs c t m l
+                      (fun t' m' l' => exists b',
+                         (* evaluating condition e again!! *)
+                         dexpr_bool3 m' l' e b'
+                           (exists v' g',
+                               pre (g', v', t', m', l') /\
+                               lt v' v /\
+                               (forall t'' m'' l'', post (g', v', t'', m'', l'') ->
+                                                    post (g , v , t'', m'', l'')))
+                           (post (g, v, t', m', l'))
+                           True)) True True)))
+    (Hrest: forall t m l, post (g0, v0, t, m, l) -> wp_cmd fs rest t m l finalpost)
+    : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 finalpost.
+  Proof.
+    pose proof Hbody as Hinit.
+    specialize Hinit with (1 := Hpre). destruct Hinit as (b & Hinit).
+    inversion Hinit. subst. clear Hinit. unfold bool_expr_branches in H1.
+    apply proj1 in H1.
+    eapply wp_while_tailrec with
+      (v0 := (negb (word.eqb v (word.of_Z 0)), v0))
+      (pre := fun (av: bool * measure) g t m l =>
+                let (again, v) := av in
+                (exists w, dexpr m l e w /\ again = negb (word.eqb w (word.of_Z 0))) /\
+                if again then  pre (g, v, t, m, l) else post (g, v, t, m, l))
+      (post := fun (av: bool * measure) g t m l =>
+                 let (again, v) := av in post (g, v, t, m, l)).
+    { eapply well_founded_with_again_flag. eapply Hwf. }
+    { split.
+      { eexists. split. 1: eassumption. reflexivity. }
+      destr (word.eqb v (word.of_Z 0)); simpl in *.
+      1: eassumption. assumption. }
+    { intros. fwd. try subst b. destr (word.eqb w (word.of_Z 0)); simpl in *.
+      { exists false. econstructor. 1: eassumption.
+        { rewrite word.eqb_eq; reflexivity. }
+        { unfold bool_expr_branches, loop_body_marker. auto. } }
+      { specialize Hbody with (1 := H0p1). destruct Hbody as (b & Hbody).
+        inversion Hbody. subst c0. exists b. clear Hbody. subst.
+        econstructor. 1: eassumption. 1: reflexivity.
+        unfold bool_expr_branches in *.
+        destr (word.eqb v1 (word.of_Z 0)); simpl in *.
+        1: assumption.
+        split. 1: constructor. apply proj2 in H3. unfold loop_body_marker in *.
+        apply proj1 in H3. split. 2: constructor.
+        eapply weaken_wp_cmd. 1: eassumption.
+        cbv beta. clear H3. intros. fwd. inversion H2. subst. clear H2.
+        unfold bool_expr_branches in *. apply proj1 in H5.
+        destr (word.eqb v2 (word.of_Z 0)); simpl in *.
+        { eexists (false, m1(* old, big measure! *)), _.
+          ssplit.
+          { eexists. split. 1: eassumption. rewrite word.eqb_eq; reflexivity. }
+          { eassumption. }
+          { exact I. }
+          intros *. exact id. }
+        { fwd.
+          eexists (true, v'(* new, smaller measure *)), _.
+          ssplit.
+          { eexists. split. 1: eassumption. rewrite word.eqb_ne by assumption.
+            reflexivity. }
+          { eassumption. }
+          { simpl. assumption. }
+          assumption. } } }
+      { assumption. }
+  Qed.
+
 #[export] Instance spec_of_bst_contains: fnspec :=                              .**/
 
 uintptr_t bst_contains(uintptr_t p, uintptr_t v) /**#
@@ -167,22 +252,20 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
   uintptr_t res = 0;                                                       /**. .**/
   uintptr_t a = p;                                                         /**.
 
-  loop pre above a.
-  move R after a. move s after a.
+  let h := constr:(#bst') in loop pre above h.
   swap p with a in #(bst').
+  let h := constr:(#(a = p)) in move h before sk.
 
   unfold ready.
   let cond := constr:(live_expr:(!res && a != 0)) in
   let measure0 := constr:(sk) in
   eapply (wp_while_tailrec_with_done_flag measure0 (s, a, R) cond).
   1: eauto with wf_of_type.
-  { (* delete #(a = p). *)
-    move Def1 after Scope2.
-
+  {
     collect_heaplets_into_one_sepclause.
 
   lazymatch goal with
-  | H: _ ?m |- ?E ?t ?m ?l =>
+  | H: _ ?m |- ?E (_, ?t, ?m, ?l) =>
       (* always package sep log assertion, even if memory was not changed in current block *)
       move H at bottom;
       (* when proving a loop invariant at the end of a loop body, it tends to work better
@@ -193,46 +276,106 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
       end
       (* Note: the two above moves should be replaced by one single `move H below s`,
          but `below` is not implemented yet: https://github.com/coq/coq/issues/15209 *)
-  | |- ?E ?t ?m ?l => fail "No separation logic hypothesis about" m "found"
+  | |- ?E (_, ?t, ?m, ?l) => fail "No separation logic hypothesis about" m "found"
   end;
   let Post := fresh "Post" in
   pose proof ands_nil as Post;
   repeat add_hyp_to_post Post.
 
-  add_equalities_to_post Post.
-  repeat add_last_var_or_hyp_to_post Post.
-  (* add_var_as_exists_to_post a Post. : *)
-
-let x := a in
-  vpattern x in Post;
-  lazymatch type of Post with
-  | ?f x => eapply (ex_intro f x) in Post
+  lazymatch goal with
+  | |- ?E (_, ?T, ?M, ?L) =>
+      add_equality_to_post L Post;
+      move M at top;
+      lazymatch type of Post with
+      | context[T] => idtac (* current packaged context already says something about the
+                               trace, so only keep that *)
+      | _ => add_equality_to_post T Post (* no assertion about trace, so let's add default
+                                            assertion saying it doesn't change *)
+      end
   end.
-(* NO  clear x. *)
 
-(*
-add ghosts and measure last, without clearing them (because eqs further above might contain the ghosts)
-why do we clear at all?
-just for bookkeeping so that the loop works?
-need tracking of what is ghost var and measure because they might be defined further
-up in order to be usable in non-loopinv assertions
+  repeat add_last_var_or_hyp_to_post Post.
+
+(* attempt to save names in dlet2's lambda (quadratic)
+
+Definition dlet2[A B R: Type](rhs : A * B)(body: A -> B -> R): R :=
+  match rhs with
+  | (a, b) => body a b
+  end.
+
+
+Ltac pattern_one_more_in_hyp p h :=
+  pattern p in h;
+  lazymatch type of h with
+  | (fun x => (fun y => @?body y x) ?paty) ?patx =>
+      let f := eval cbv beta in (fun tup0 => dlet2 tup0 body) in
+      change (f (paty, patx)) in h
+  end.
+
+Ltac pattern_tuple_in_hyp t h :=
+  lazymatch t with
+  | (?rest, ?outermost) =>
+      pattern_tuple_in_hyp rest h;
+      pattern_one_more_in_hyp outermost h
+  | _ => pattern t in h
+  end.
+
 
 
   let lasthyp := last_var_except Post in
   lazymatch type of lasthyp with
   | scope_marker _ => idtac
   | _ => idtac "Warning: package_context failed to package" lasthyp "(and maybe more)"
-  end;
+  end.
   lazymatch goal with
-  | |- _ ?Measure ?Ghosts ?T ?M ?L => pattern Measure, Ghosts, T, M, L in Post
-  | |- _ ?Measure ?T ?M ?L => pattern Measure, T, M, L in Post
-  | |- _ ?T ?M ?L => pattern T, M, L in Post
-  end;
+  | |- _ ?p => pattern_tuple_in_hyp p Post
+  end.
+*)
+
+
+
+(********)
+
+Ltac pattern_one_more_in_hyp p h :=
+  pattern p in h;
+  lazymatch type of h with
+  | (fun x => (fun y => @?body y x) ?paty) ?patx =>
+      let f := eval cbv beta in (fun tup => match tup with (a0, a1) => body a0 a1 end) in
+      change (f (paty, patx)) in h
+  end.
+
+Ltac pattern_tuple_in_hyp t h :=
+  lazymatch t with
+  | (?rest, ?outermost) =>
+      pattern_tuple_in_hyp rest h;
+      pattern_one_more_in_hyp outermost h
+  | _ => pattern t in h
+  end.
+
+
+
+  let lasthyp := last_var_except Post in
+  lazymatch type of lasthyp with
+  | scope_marker _ => idtac
+  | _ => idtac "Warning: package_context failed to package" lasthyp "(and maybe more)"
+  end.
+  lazymatch goal with
+  | |- _ ?p => pattern_tuple_in_hyp p Post
+  end.
+
   (let t := type of Post in log_packaged_context t);
   exact Post.
-
-    package_context. }
+  }
   {
+
+Ltac pair_destructuring_intros_step :=
+  lazymatch goal with
+  | |- forall (_: _ * _), _ =>
+      (* doesn't really do any intro, but does one step of splitting, leaving
+         both sides of the * up for further splitting *)
+      let x := fresh in intro x; case x; clear x
+  | |- forall _, _ => intro
+  end.
 
 Ltac start_loop_body :=
     repeat match goal with
@@ -243,20 +386,22 @@ Ltac start_loop_body :=
        but we have to pose it here because the foralls are shared between
        loop body and after the loop *)
     (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
-    cbv beta;
-    intros;
+    repeat pair_destructuring_intros_step;
     unpackage_context;
     lazymatch goal with
     | |- exists b, dexpr_bool3 _ _ _ b _ _ _ => eexists
     | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
     end.
 
-    start_loop_body. subst g.
+    start_loop_body.
+    (* TODO name locals according to string names
+       (could be useful to simplify if-then-else code too) *)
+
+    (*
     steps.
     { (* loop condition false implies post (which could be constructed here from
          the context, hopefully) *)
-      instantiate (1 := fun sk (g: (set Z * word * (mem -> Prop))) ti mi li =>
-                        let '(s, olda, F) := g in
+      instantiate (1 := fun '(s, olda, F, sk, ti, mi, li) =>
                         exists a res,
                         li = map.of_list [|("a", a); ("p", p); ("res", res); ("v", v)|] /\
                         <{ * bst' sk s olda * F }> mi /\
@@ -269,7 +414,7 @@ Ltac start_loop_body :=
       steps.
     }
     (* loop body: *)
-    let H := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as H.
+unfold ready.
                                                                                 .**/
     uintptr_t here = load32(a+4);                                          /**. .**/
     if (v < here) /* split */ {                                            /**. .**/
