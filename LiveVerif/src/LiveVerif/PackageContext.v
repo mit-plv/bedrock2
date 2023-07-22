@@ -10,6 +10,7 @@ Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.ident_ops.
+Require Import coqutil.Tactics.pattern_tuple.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
@@ -184,12 +185,15 @@ Ltac add_equality_to_post x Post :=
 Ltac add_equalities_to_post Post :=
   lazymatch goal with
   (* loop pre/post *)
-  | |- ?E ?Measure ?Ghosts ?T ?M ?L =>
+  | |- ?E (?Ghosts, ?Measure, ?T, ?M, ?L) =>
       add_equality_to_post L Post;
       move M at top;
-      add_equality_to_post T Post;
-      add_equality_to_post Ghosts Post;
-      add_equality_to_post Measure Post
+      lazymatch type of Post with
+      | context[T] => idtac (* current packaged context already says something about the
+                               trace, so only keep that *)
+      | _ => add_equality_to_post T Post (* no assertion about trace, so let's add a default
+                                            assertion saying it doesn't change *)
+      end
   (* loop invariant *)
   | |- ?E ?Measure ?T ?M ?L =>
       add_equality_to_post L Post;
@@ -203,24 +207,36 @@ Ltac add_equalities_to_post Post :=
       add_equality_to_post T Post
   end.
 
-(* can be overridden with `Ltac log_packaged_context P ::= idtac P.` *)
-Ltac log_packaged_context P := idtac.
-
-Ltac package_context :=
+Ltac get_current_mem :=
   lazymatch goal with
-  | H: _ ?m |- ?E ?t ?m ?l =>
-      (* always package sep log assertion, even if memory was not changed in current block *)
+  | |- ?E (_, ?t, ?m, ?l) => m
+  | |- ?E ?t ?m ?l => m
+  | |- ?g => fail "Unexpected goal shape while looking for current mem:" g
+  end.
+
+Ltac move_mem_hyp_just_below_scope_marker :=
+  let m := get_current_mem in
+  lazymatch goal with
+  | H: _ ?m |- _ =>
       move H at bottom;
-      (* when proving a loop invariant at the end of a loop body, it tends to work better
-         if memory hyps come earlier, because they can help determine evars *)
       lazymatch goal with
       | s: scope_marker _ |- _ =>
           move H before s (* <-- "before" in the direction of movement *)
       end
       (* Note: the two above moves should be replaced by one single `move H below s`,
          but `below` is not implemented yet: https://github.com/coq/coq/issues/15209 *)
-  | |- ?E ?t ?m ?l => fail "No separation logic hypothesis about" m "found"
-  end;
+  | |- _ => fail "No separation logic hypothesis about" m "found"
+  end.
+
+(* can be overridden with
+   Ltac log_packaged_context P ::= idtac P. *)
+Ltac log_packaged_context P := idtac.
+
+Ltac package_context :=
+  (* We always package sep log assertion, even if memory was not changed in current block.
+     When proving a loop invariant at the end of a loop body, it tends to work better
+     if memory hyps come earlier, because they can help determine evars *)
+  move_mem_hyp_just_below_scope_marker;
   let Post := fresh "Post" in
   pose proof ands_nil as Post;
   repeat add_hyp_to_post Post;
@@ -232,9 +248,9 @@ Ltac package_context :=
   | _ => idtac "Warning: package_context failed to package" lasthyp "(and maybe more)"
   end;
   lazymatch goal with
-  | |- _ ?Measure ?Ghosts ?T ?M ?L => pattern Measure, Ghosts, T, M, L in Post
   | |- _ ?Measure ?T ?M ?L => pattern Measure, T, M, L in Post
   | |- _ ?T ?M ?L => pattern T, M, L in Post
+  | |- _ ?tup => pattern_tuple_in_hyp tup Post
   end;
   (let t := type of Post in log_packaged_context t);
   exact Post.

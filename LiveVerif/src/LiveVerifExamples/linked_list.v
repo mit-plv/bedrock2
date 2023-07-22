@@ -158,8 +158,7 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
   let cond := constr:(live_expr:(p != 0)) in
   let measure0 := constr:(len l) in
   eapply (wp_while_tailrec measure0 (l, p, R) cond)
-         with (pre := fun v (g: (list word * word * (mem -> Prop))) ti m l =>
-                        let '(L, p, F) := g in
+         with (pre := fun '(L, p, F, v, ti, m, l) =>
                         l = map.of_list [|("p", p)|] /\
                         v = len L /\
                         <{ * sll L p * F }> m /\
@@ -175,8 +174,7 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
          the symbolic state, we can design it, hopefully without spelling it out
          completely... *)
 
-      instantiate (1 := fun v (g: (list word * word * (mem -> Prop))) ti m l =>
-                          let '(L, oldp, F) := g in
+      instantiate (1 := fun '(L, oldp, F, v, ti, m, l) =>
                           exists p, l = map.of_list [|("p", p)|] /\
                           v = len L /\
                           <{ * sll (List.map (word.add (word.of_Z 1)) L) oldp

@@ -442,25 +442,51 @@ Ltac LoopInvOrPreOrPost_above i :=
 Tactic Notation "loop" "invariant" "above" ident(i) := LoopInvOrPreOrPost_above i.
 Tactic Notation "loop" "pre" "above" ident(i) := LoopInvOrPreOrPost_above i.
 
+Ltac pair_destructuring_intros_step :=
+  lazymatch goal with
+  | |- forall (_: _ * _), _ =>
+      (* doesn't really do any intro, but does one step of splitting, leaving
+         both sides of the * up for further splitting *)
+      let x := fresh in intro x; case x; clear x
+  | |- forall _, _ => intro
+  end.
+
+Ltac fix_local_names ksvs :=
+  lazymatch ksvs with
+  | cons (?s, ?v) ?rest =>
+      let i := string_to_ident s in
+      (tryif constr_eq i v then
+          idtac (* nothing to do for v *)
+        else
+          (make_fresh i; rename v into i));
+      fix_local_names rest
+  | nil => idtac
+  end.
+
+Ltac start_loop_body :=
+  repeat match goal with
+    | H: sep _ _ ?M |- _ => clear M H
+    end;
+  clear_until_LoopInvOrPreOrPost_marker;
+  (* Note: will also appear after loop, where we'll have to clear it,
+     but we have to pose it here because the foralls are shared between
+     loop body and after the loop *)
+  (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
+  cbv beta;
+  repeat pair_destructuring_intros_step;
+  unpackage_context;
+  lazymatch goal with
+  | |- exists b, dexpr_bool3 _ (map.of_list ?ksvs) _ b _ _ _ =>
+      fix_local_names ksvs;
+      eexists
+  | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
+  end.
+
 Ltac while cond measure0 :=
   eapply (wp_while measure0 cond);
   [ package_heapletwise_context
   | eauto with wf_of_type
-  | repeat match goal with
-      | H: sep _ _ ?M |- _ => clear M H
-      end;
-    clear_until_LoopInvOrPreOrPost_marker;
-    (* Note: will also appear after loop, where we'll have to clear it,
-       but we have to pose it here because the foralls are shared between
-       loop body and after the loop *)
-    (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
-    cbv beta;
-    intros;
-    unpackage_context;
-    lazymatch goal with
-    | |- exists b, dexpr_bool3 _ _ _ b _ _ _ => eexists
-    | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
-    end ].
+  | start_loop_body ].
 
 Ltac is_local_var name :=
   lazymatch goal with

@@ -780,33 +780,35 @@ Section WithParams.
 
   Lemma wp_while_tailrec {measure: Type} {Ghost: Type} (v0: measure) (g0: Ghost)
     (e: expr) (c: cmd) t0 (m0: mem) l0 fs rest
-    (pre post: measure -> Ghost -> trace -> mem -> locals -> Prop) {lt}
+    (pre post: Ghost * measure * trace * mem * locals -> Prop) {lt}
     {finalpost: trace -> mem -> locals -> Prop}
     (Hwf: well_founded lt)
     (* packaging generalized context at entry of loop determines pre: *)
-    (Hpre: pre v0 g0 t0 m0 l0)
+    (Hpre: pre (g0, v0, t0, m0, l0))
     (Hbody: forall v g t m l,
-      pre v g t m l ->
+      pre (g, v, t, m, l) ->
       exists b, dexpr_bool3 m l e b
                   (* can't put loop body under context of b=true because we
                      first need to treat the b=false case (which determines post): *)
                   True
                   (* packaging generalized context at exit of loop (with final, smallest
                      measure) determines post: *)
-                  (post v g t m l)
+                  (post (g, v, t, m, l))
                   (loop_body_marker (bool_expr_branches b (wp_cmd fs c t m l
                       (fun t' m' l' => exists v' g',
-                           pre v' g' t' m' l' /\
+                           pre (g', v', t', m', l') /\
                            lt v' v /\
-                           (forall t'' m'' l'', post v' g' t'' m'' l'' ->
-                                                post v  g  t'' m'' l''))) True True)))
-    (Hrest: forall t m l, post v0 g0 t m l -> wp_cmd fs rest t m l finalpost)
+                           (forall t'' m'' l'', post (g', v', t'', m'', l'') ->
+                                                post (g , v , t'', m'', l'')))) True True)))
+    (Hrest: forall t m l, post (g0, v0, t, m, l) -> wp_cmd fs rest t m l finalpost)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 finalpost.
   Proof.
     eapply wp_seq.
     econstructor. cbn.
     pose_env.
-    eapply tailrec_localsmap_1ghost.
+    eapply tailrec_localsmap_1ghost with
+      (P := fun v g t m l => pre (g, v, t, m, l))
+      (Q := fun v g t m l => post (g, v, t, m, l)).
     1: eapply Hwf.
     1: eapply Hpre.
     2: eapply Hrest.
@@ -861,32 +863,32 @@ Section WithParams.
   Lemma wp_while_tailrec_with_done_flag {measure: Type} {Ghost: Type}
     (v0: measure) (g0: Ghost)
     (e: expr) (c: cmd) t0 (m0: mem) l0 fs rest
-    (pre post: measure -> Ghost -> trace -> mem -> locals -> Prop) {lt}
+    (pre post: Ghost * measure * trace * mem * locals -> Prop) {lt}
     {finalpost: trace -> mem -> locals -> Prop}
     (Hwf: well_founded lt)
     (* packaging generalized context at entry of loop determines pre: *)
-    (Hpre: pre v0 g0 t0 m0 l0)
+    (Hpre: pre (g0, v0, t0, m0, l0))
     (Hbody: forall v g t m l,
-      pre v g t m l ->
+      pre (g, v, t, m, l) ->
       exists b, dexpr_bool3 m l e b
                   (* can't put loop body under context of b=true because we
                      first need to treat the b=false case (which determines post): *)
                   True
                   (* packaging generalized context at exit of loop (with final, smallest
                      measure) determines post: *)
-                  (post v g t m l)
+                  (post (g, v, t, m, l))
                   (loop_body_marker (bool_expr_branches b (wp_cmd fs c t m l
                       (fun t' m' l' => exists b',
                          (* evaluating condition e again!! *)
                          dexpr_bool3 m' l' e b'
                            (exists v' g',
-                               pre v' g' t' m' l' /\
+                               pre (g', v', t', m', l') /\
                                lt v' v /\
-                               (forall t'' m'' l'', post v' g' t'' m'' l'' ->
-                                                    post v  g  t'' m'' l''))
-                           (post v g t' m' l')
+                               (forall t'' m'' l'', post (g', v', t'', m'', l'') ->
+                                                    post (g , v , t'', m'', l'')))
+                           (post (g, v, t', m', l'))
                            True)) True True)))
-    (Hrest: forall t m l, post v0 g0 t m l -> wp_cmd fs rest t m l finalpost)
+    (Hrest: forall t m l, post (g0, v0, t, m, l) -> wp_cmd fs rest t m l finalpost)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 finalpost.
   Proof.
     pose proof Hbody as Hinit.
@@ -895,12 +897,10 @@ Section WithParams.
     apply proj1 in H1.
     eapply wp_while_tailrec with
       (v0 := (negb (word.eqb v (word.of_Z 0)), v0))
-      (pre := fun (av: bool * measure) g t m l =>
-                let (again, v) := av in
+      (pre := fun '(g, (again, v), t, m, l) =>
                 (exists w, dexpr m l e w /\ again = negb (word.eqb w (word.of_Z 0))) /\
-                if again then  pre v g t m l else post v g t m l)
-      (post := fun (av: bool * measure) g t m l =>
-                 let (again, v) := av in post v g t m l).
+                if again then  pre (g, v, t, m, l) else post (g, v, t, m, l))
+      (post := fun '(g, (again, v), t, m, l) => post (g, v, t, m, l)).
     { eapply well_founded_with_again_flag. eapply Hwf. }
     { split.
       { eexists. split. 1: eassumption. reflexivity. }
