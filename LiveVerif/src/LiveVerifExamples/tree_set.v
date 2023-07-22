@@ -296,46 +296,6 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
 
   repeat add_last_var_or_hyp_to_post Post.
 
-(* attempt to save names in dlet2's lambda (quadratic)
-
-Definition dlet2[A B R: Type](rhs : A * B)(body: A -> B -> R): R :=
-  match rhs with
-  | (a, b) => body a b
-  end.
-
-
-Ltac pattern_one_more_in_hyp p h :=
-  pattern p in h;
-  lazymatch type of h with
-  | (fun x => (fun y => @?body y x) ?paty) ?patx =>
-      let f := eval cbv beta in (fun tup0 => dlet2 tup0 body) in
-      change (f (paty, patx)) in h
-  end.
-
-Ltac pattern_tuple_in_hyp t h :=
-  lazymatch t with
-  | (?rest, ?outermost) =>
-      pattern_tuple_in_hyp rest h;
-      pattern_one_more_in_hyp outermost h
-  | _ => pattern t in h
-  end.
-
-
-
-  let lasthyp := last_var_except Post in
-  lazymatch type of lasthyp with
-  | scope_marker _ => idtac
-  | _ => idtac "Warning: package_context failed to package" lasthyp "(and maybe more)"
-  end.
-  lazymatch goal with
-  | |- _ ?p => pattern_tuple_in_hyp p Post
-  end.
-*)
-
-
-
-(********)
-
 Ltac pattern_one_more_in_hyp p h :=
   pattern p in h;
   lazymatch type of h with
@@ -377,6 +337,20 @@ Ltac pair_destructuring_intros_step :=
   | |- forall _, _ => intro
   end.
 
+Import string_to_ident.
+
+Ltac fix_local_names ksvs :=
+  lazymatch ksvs with
+  | cons (?s, ?v) ?rest =>
+      let i := string_to_ident s in
+      (tryif constr_eq i v then
+          idtac (* nothing to do for v *)
+        else
+          (make_fresh i; rename v into i));
+      fix_local_names rest
+  | nil => idtac
+  end.
+
 Ltac start_loop_body :=
     repeat match goal with
       | H: sep _ _ ?M |- _ => clear M H
@@ -389,15 +363,14 @@ Ltac start_loop_body :=
     repeat pair_destructuring_intros_step;
     unpackage_context;
     lazymatch goal with
-    | |- exists b, dexpr_bool3 _ _ _ b _ _ _ => eexists
+    | |- exists b, dexpr_bool3 _ (map.of_list ?ksvs) _ b _ _ _ =>
+        fix_local_names ksvs;
+        eexists
     | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
     end.
 
     start_loop_body.
-    (* TODO name locals according to string names
-       (could be useful to simplify if-then-else code too) *)
 
-    (*
     steps.
     { (* loop condition false implies post (which could be constructed here from
          the context, hopefully) *)
@@ -414,7 +387,6 @@ Ltac start_loop_body :=
       steps.
     }
     (* loop body: *)
-unfold ready.
                                                                                 .**/
     uintptr_t here = load32(a+4);                                          /**. .**/
     if (v < here) /* split */ {                                            /**. .**/
@@ -439,8 +411,6 @@ unfold ready.
   return res;                                                              /**. .**/
 }                                                                          /**.
 Qed.
-*)
-Abort.
 
 (* note: inability to break out of loop is cumbersome, because it complicates pre:
    it has to incorporate almost all of post for the res=true case,
