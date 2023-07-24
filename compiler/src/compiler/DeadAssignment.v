@@ -21,17 +21,53 @@ Section WithArguments.
   Context {ext_spec : Semantics.ExtSpec} {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
 
   Local Hint Constructors exec: core.
-  Create HintDb set_hints.
-  Hint Resolve
+  Local Create HintDb set_hints.
+  Local Hint Resolve
     subset_diff
     in_singleton
-    subset_union_rr : set_hints.
+    subset_union_rr
+    subset_union_rl
+    subset_ref : set_hints.
+  Local Hint Rewrite ListSet.of_list_list_union : set_hints.
+  Local Hint Rewrite of_list_list_diff: set_hints.
+  Local Create HintDb agree_on_hints.
+  Hint Resolve
+    agree_on_getmany
+    agree_on_subset : agree_on_hints.
+
+  (* Ideally `autorewrite* with set_hints`
+     should be able to replace
+
+        repeat match goal with
+               | H: context[of_list (ListSet.list_union _ _ _)] |- _ => rewrite ListSet.of_list_list_union in H
+               | H: context[ListSet.list_diff] |- _ => rewrite of_list_list_diff in H
+               end.
+
+     But currently it doesn't. *)
+
+  (*
+    Currently this tactic
+        match goal with
+        | |- subset ?x (union ?x ?y)  =>
+            eauto with set_hints
+        end.
+        doesn't solve it, although this tactic clears the goal:
+
+        match goal with
+        | |- subset ?x (union ?x ?y)  =>
+            eapply subset_union_rl; eapply subset_ref
+        end.
+   *)
+
+
 
   Definition compile_post used_after (postH : Semantics.trace -> mem  -> locals -> MetricLog  -> Prop) : (Semantics.trace -> mem  -> locals -> MetricLog  -> Prop) :=
     (fun t' m' lL' mcL' =>
        exists lH' mcH',
          map.agree_on (PropSet.of_list used_after) lH' lL'
          /\ postH t' m' lH' mcH' ).
+
+
   Lemma deadassignment_correct_aux:
     forall eH eL,
        deadassignment_functions eH = Success eL ->
@@ -65,6 +101,7 @@ Section WithArguments.
                 [ eapply H2 | ]
             end
         end.
+
         repeat match goal with
                | |- context[of_list (ListSet.list_union _ _ _)]  => rewrite ListSet.of_list_list_union
                | |- context[ListSet.list_diff] => rewrite of_list_list_diff
@@ -117,8 +154,6 @@ Section WithArguments.
               (post _ _ lH' _)  =>
             exists x; eexists;  split;  [ | eapply H ]
         end.
-        (* miscellaneous set reasoning;
-           unclear how to automate this across cases *)
         repeat match goal with
                | H: context[of_list (ListSet.list_union _ _ _)] |- _ => rewrite ListSet.of_list_list_union in H
                | H: context[ListSet.list_diff] |- _ => rewrite of_list_list_diff in H
@@ -173,7 +208,6 @@ Section WithArguments.
           => eapply agree_on_getmany;
              eapply agree_on_subset; [ eapply H | ]
         end.
-        (* set reasoning *)
         repeat match goal with
                | |- context[of_list (ListSet.list_union _ _ _)]  => rewrite ListSet.of_list_list_union
                | |- context[ListSet.list_diff] => rewrite of_list_list_diff
@@ -870,13 +904,13 @@ Section WithArguments.
       + eauto 2 using IHexec.
     - intros.
       simpl in *.
+      rename IHexec into IH1.
+      rename H4 into IH2.
+      rename H6 into IH12.
       eapply @exec.loop.
-      (* All the unsure goals are
-         about map.agree_on and live *)
-      + eapply IHexec.
-        eapply agree_on_subset.
-        * eapply H7.
-        * (* The goal here isn't true; see the helper file for attempts. *)
+
+
+          (* The goal here isn't true; see the helper file for attempts. *)
         admit.
       + intros.
         unfold compile_post in H8.
