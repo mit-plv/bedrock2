@@ -845,12 +845,12 @@ Ltac final_program_logic_step logger :=
         logger ltac:(fun _ => idtac "eexists")
       | (* tried first because it also solves some goals of shape (_ = _) and (_ /\ _) *)
         zify_goal; xlia zchecker;
-        logger ltac:(fun _ => idtac "xlia zchecker")
+        logger ltac:(fun _ => idtac "zify_goal; xlia zchecker")
       | safe_implication_step;
         logger ltac:(fun _ => idtac "safe_implication_step")
       | lazymatch goal with
         | H: _ \/ _ |- _ =>
-            destruct H; try (exfalso; congruence);
+            destruct H as [H | H]; try (exfalso; congruence);
             [ logger ltac:(fun _ => idtac "discarding contradictory branch of \/ in" H) ]
         end
       | lazymatch goal with
@@ -1066,6 +1066,23 @@ Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an )
  post constr at level 200,
  only parsing).
 
+(* One return value and no arguments: *)
+Notation "'uintptr_t' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* */ /* *" :=
+  (fun fname: String.string =>
+     (fun fs =>
+        (forall g1, .. (forall gn,
+           (forall t1 m1, pre ->
+              WeakestPrecondition.call fs fname t1 m1 nil
+                (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post))) .. ))
+     : ProgramLogic.spec_of fname)
+(in custom funspec at level 1,
+ fname name,
+ g1 closed binder, gn closed binder,
+ t1 name, t2 name, m1 name, m2 name, r name,
+ pre constr at level 200,
+ post constr at level 200,
+ only parsing).
+
 (* No return value: *)
 Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* */ /* *" :=
   (fun fname: String.string =>
@@ -1079,6 +1096,23 @@ Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *
 (in custom funspec at level 1,
  fname name,
  a1 closed binder, an closed binder,
+ g1 closed binder, gn closed binder,
+ t1 name, t2 name, m1 name, m2 name,
+ pre constr at level 200,
+ post constr at level 200,
+ only parsing).
+
+(* No return value an no arguments: *)
+Notation "'void' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* */ /* *" :=
+  (fun fname: String.string =>
+     (fun fs =>
+        (forall g1, .. (forall gn,
+           (forall t1 m1, pre ->
+              WeakestPrecondition.call fs fname t1 m1 nil
+                (fun t2 m2 retvs => retvs = nil /\ post))) .. ))
+     : ProgramLogic.spec_of fname)
+(in custom funspec at level 1,
+ fname name,
  g1 closed binder, gn closed binder,
  t1 name, t2 name, m1 name, m2 name,
  pre constr at level 200,

@@ -53,6 +53,9 @@ Section WithMem.
     eapply H0. eapply H. assumption.
   Qed.
 
+  Lemma array_uint8_contiguous: forall v n, contiguous (array (uint 8) n v) n.
+  Proof. unfold contiguous. intros. unfold anyval. eapply impl1_ex1_r. reflexivity. Qed.
+
   Lemma anybytes_contiguous: forall n, contiguous (anyval (array (uint 8) n)) n.
   Proof. unfold contiguous. intros. reflexivity. Qed.
 
@@ -163,6 +166,7 @@ Create HintDb contiguous.
   uintptr32_contiguous
   uintptr64_contiguous
   uint_contiguous
+  array_uint8_contiguous
   anybytes_contiguous
   contiguous_to_fake
   array_fake_contiguous

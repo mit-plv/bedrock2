@@ -51,8 +51,12 @@ Fixpoint bst'(sk: tree_skeleton)(s: set Z)(addr: word){struct sk}: mem -> Prop :
          * bst' skR (fun x => s x /\ v < x) q }>)))))
   end.
 
+(* Note: one level of indirection because sometimes we have to change the root
+   pointer (eg from null (empty) to non-null) or it is convenient *)
 Definition bst(s: set Z)(addr: word): mem -> Prop :=
-  ex1 (fun sk: tree_skeleton => bst' sk s addr).
+  ex1 (fun rootp => <{ * uintptr rootp addr
+                       * freeable 4 addr
+                       * ex1 (fun sk: tree_skeleton => bst' sk s rootp) }>).
 
 Local Hint Extern 1 (PredicateSize (bst' ?sk)) =>
   let r := eval cbv iota in
@@ -149,6 +153,76 @@ Local Hint Extern 1 (cannot_purify (freeable _ _))
       => constructor : suppressed_warnings.
 Local Hint Extern 1 (PredicateSize_not_found (freeable _))
       => constructor : suppressed_warnings.
+Local Hint Extern 1 (PredicateSize_not_found allocator_failed_below)
+      => constructor : suppressed_warnings.
+Local Hint Extern 1 (PredicateSize_not_found (@allocator _ _))
+      => constructor : suppressed_warnings.
+Local Hint Extern 1 (cannot_purify allocator)
+      => constructor : suppressed_warnings.
+Local Hint Extern 1 (cannot_purify (if _ then _ else _))
+      => constructor : suppressed_warnings.
+
+#[export] Instance spec_of_bst_init: fnspec :=                              .**/
+
+uintptr_t bst_init( ) /**#
+  ghost_args := (R: mem -> Prop);
+  requires t m := <{ * allocator
+                     * R }> m;
+  ensures t' m' res := t' = t /\
+                       <{ * (if \[res] =? 0 then
+                               allocator_failed_below 4
+                             else
+                               <{ * allocator
+                                  * bst (fun _ => False) res }>)
+                          * R }> m' #**/                                   /**.
+Derive bst_init SuchThat (fun_correct! bst_init) As bst_init_ok.                .**/
+{                                                                          /**. .**/
+  uintptr_t res = malloc(4);                                               /**. .**/
+  if (res == NULL) /* split */ {                                           /**. .**/
+    return NULL;                                                           /**. .**/
+  }                                                                        /**.
+    replace (\[/[0]] =? 0) with true by steps.
+    replace (0 =? 0) with true in * by steps.
+    steps.
+                                                                                .**/
+  else {                                                                   /**.
+    replace (\[res] =? 0) with false in * by steps.
+    let h := constr:(#(@sep)) in unfold with_mem, anyval in h.
+    step. step. step.
+    match goal with
+    | h: _ |- _ => change (with_mem m0 (array (uint 8) 4 v res)) in h
+    end.
+                                                                                .**/
+    store(res, NULL);                                                      /**. .**/
+    return res;                                                            /**. .**/
+  }                                                                        /**.
+    replace (\[res] =? 0) with false by steps.
+    steps.
+    instantiate (2 := Leaf). clear Error. unfold find_superrange_hyp. cbn [bst'].
+    steps.
+                                                                                .**/
+}                                                                          /**.
+Qed.
+
+#[export] Instance spec_of_bst_add: fnspec :=                              .**/
+
+uintptr_t bst_add(uintptr_t p, uintptr_t v) /**#
+  ghost_args := s (R: mem -> Prop);
+  requires t m := <{ * allocator
+                     * bst s p
+                     * R }> m;
+  ensures t' m' q := t' = t /\
+                     (if \[q] =? 0 then
+                        <{ * allocator_cannot_allocate 12
+                           * bst s p
+                           * R }> m'
+                      else
+                        <{ * allocator
+                           * bst (fun x => x = \[v] \/ s x) q
+                           * R }> m') #**/                                 /**.
+Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   .**/
+{                                                                          /**.
+Abort.
 
 #[export] Instance spec_of_bst_contains: fnspec :=                              .**/
 
@@ -162,14 +236,12 @@ uintptr_t bst_contains(uintptr_t p, uintptr_t v) /**#
                         * R }> m' #**/                                     /**.
 Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    .**/
 {                                                                          /**.
-  change (bst' sk s p m0) with (m0 |= bst' sk s p) in *.
+  change (bst' sk s ?p ?m) with (m |= bst' sk s p) in *.
   (* TODO ex1 destruct should leave |= intact *)                                .**/
   uintptr_t res = 0;                                                       /**. .**/
-  uintptr_t a = p;                                                         /**.
+  uintptr_t a = load(p);                                                   /**.
 
   let h := constr:(#bst') in loop pre above h.
-  swap p with a in #(bst').
-  let h := constr:(#(a = p)) in move h before sk.
 
   unfold ready.
   let cond := constr:(live_expr:(!res && a != 0)) in
@@ -183,15 +255,16 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
     { (* loop condition false implies post (which could be constructed here from
          the context, hopefully) *)
       instantiate (1 := fun '(s, olda, F, sk, ti, mi, li) =>
-                        exists a res,
-                        li = map.of_list [|("a", a); ("p", p); ("res", res); ("v", v)|] /\
-                        <{ * bst' sk s olda * F }> mi /\
+                        exists newa res,
+                        li = map.of_list [|("a", newa); ("p", p); ("res", res); ("v", v)|] /\
+                          <{ * uintptr olda p
+                             * freeable 4 p
+                             * bst' sk s olda
+                             * F }> mi /\
                         (\[res] = 1 /\ s \[v] \/ \[res] = 0 /\ ~ s \[v]) /\
                         ti = t).
       cbv beta iota.
-      steps.
-      (* TODO heapletwise with only one heaplet *)
-      eapply sep_emp_l. split. 2: assumption.
+      cbn [bst']. (* <-- TODO step_hook invoked too late *)
       steps.
     }
     (* loop body: *)
@@ -199,7 +272,10 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
     uintptr_t here = load32(a+4);                                          /**. .**/
     if (v < here) /* split */ {                                            /**. .**/
       a = load(a);                                                         /**. .**/
-    }                                                                      /**. .**/
+    }                                                                      /**.
+Abort. (*
+{
+.**/
     else {                                                                 /**. .**/
       if (here < v) /* split */ {                                          /**. .**/
         a = load(a+8);                                                     /**. .**/
@@ -219,6 +295,7 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
   return res;                                                              /**. .**/
 }                                                                          /**.
 Qed.
+*)
 
 (* note: inability to break out of loop is cumbersome, because it complicates pre:
    it has to incorporate almost all of post for the res=true case,

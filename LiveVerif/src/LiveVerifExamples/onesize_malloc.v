@@ -35,7 +35,7 @@ Inductive fixed_size_free_list(block_size: Z): word -> mem -> Prop :=
      * fixed_size_free_list block_size q }> m ->
   fixed_size_free_list block_size p m.
 
-Definition allocator_with_potential_failure(f: option word): mem -> Prop :=
+Definition allocator_with_potential_failure(f: option Z): mem -> Prop :=
   ex1 (fun addr => <{
     * malloc_state_t {| free_list := addr |} /[malloc_state_ptr]
     * fixed_size_free_list malloc_block_size addr
@@ -43,7 +43,7 @@ Definition allocator_with_potential_failure(f: option word): mem -> Prop :=
            | Some n => (* empty free list *)
                        addr = /[0] \/
                        (* trying to allocate more than supported *)
-                       malloc_block_size < \[n]
+                       malloc_block_size < n
            | None => True
            end)
     * emp (8 <= malloc_block_size < 2 ^ 32)
@@ -51,8 +51,23 @@ Definition allocator_with_potential_failure(f: option word): mem -> Prop :=
 
 Definition allocator: mem -> Prop :=
   allocator_with_potential_failure None.
-Definition allocator_cannot_allocate(n: word): mem -> Prop :=
+Definition allocator_cannot_allocate(n: Z): mem -> Prop :=
   allocator_with_potential_failure (Some n).
+
+Definition allocator_failed_below(n: Z): mem -> Prop :=
+  ex1 (fun amount => <{ * allocator_cannot_allocate amount
+                        * emp (amount <= n) }>).
+
+Lemma allocator_failed_below_monotone: forall n1 n2 m,
+    n1 <= n2 ->
+    allocator_failed_below n1 m ->
+    allocator_failed_below n2 m.
+Proof.
+  unfold allocator_failed_below, ex1. intros. fwd. eexists.
+  eapply sep_emp_r. eapply sep_emp_r in H0. destruct H0. split.
+  - eassumption.
+  - etransitivity; eassumption.
+Qed.
 
 Definition freeable(sz: Z)(a: word): mem -> Prop :=
   <{ * emp (a <> /[0]) (* TODO maybe this should be in array instead? *)
@@ -74,15 +89,23 @@ Local Hint Extern 1 (PredicateSize_not_found (fixed_size_free_list _))
 Local Hint Unfold
   allocator
   allocator_cannot_allocate
+  allocator_failed_below
   allocator_with_potential_failure
   freeable
 : heapletwise_always_unfold.
 
-Lemma recover_allocation_failure: forall n,
+Lemma recover_allocator_cannot_allocate: forall n,
     impl1 (allocator_cannot_allocate n) allocator.
 Proof.
   unfold allocator_cannot_allocate, allocator, allocator_with_potential_failure.
   intros n m M. steps.
+Qed.
+
+Lemma recover_allocator_failed_below: forall n m,
+    allocator_failed_below n m -> allocator m.
+Proof.
+  unfold allocator_failed_below. intros. destruct H as [amount H].
+  eapply sep_emp_r in H. eapply recover_allocator_cannot_allocate. eapply H.
 Qed.
 
 #[export] Instance spec_of_malloc_init: fnspec :=                                .**/
@@ -137,14 +160,13 @@ uintptr_t malloc (uintptr_t n) /**#
   requires t m := <{ * allocator
                      * R }> m;
   ensures t' m' p := t' = t /\
-     (if \[p] =? 0 then
-        <{ * allocator_cannot_allocate n
-           * R }> m'
-      else
-        <{ * allocator
-           * array (uint 8) \[n] ? p
-           * freeable \[n] p
-           * R }> m') #**/                                                   /**.
+                     <{ * (if \[p] =? 0 then
+                             allocator_failed_below \[n]
+                           else
+                             <{ * allocator
+                                * array (uint 8) \[n] ? p
+                                * freeable \[n] p }>)
+                        * R }> m' #**/                                     /**.
 Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      .**/
 {                                                                          /**. .**/
   uintptr_t l = load(malloc_state_ptr);                                    /**. .**/
@@ -171,10 +193,14 @@ Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      
     end.
                                                                                 .**/
     return l;                                                              /**. .**/
-  }                                                                        /**. .**/
+  }                                                                        /**.
+    replace (\[l] =? 0) with false; steps.                                      .**/
   else {                                                                   /**. .**/
     return NULL;                                                           /**. .**/
-  }                                                                        /**. .**/
+  }                                                                        /**.
+    replace (\[/[0]] =? 0) with true; steps.
+    instantiate (1 := \[n]). 1-2: steps.
+                                                                                .**/
 }                                                                          /**.
 Qed.
 

@@ -3,6 +3,7 @@ Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import bedrock2.Syntax.
 Require Import LiveVerif.LiveSnippet.
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.reference_to_string.
 (* TODO consolidate with variants in coqutil: *)
 Require Import LiveVerif.string_to_ident.
@@ -23,7 +24,8 @@ Notation "x" :=
   (match x with
    | _ => ltac:(lazymatch type of x with
                 | Z => exact x
-                | _ => exact_basename_string_of_ref_constr x
+                | _ => let h := head x in (* strip off (implicit) args *)
+                       exact_basename_string_of_ref_constr h
                 end)
    end)
   (in custom bound_name_or_literal at level 0, x constr at level 0, only parsing).
