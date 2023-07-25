@@ -228,6 +228,63 @@ Section HeapletwiseHyps.
     unfold canceling. simpl. intros. auto.
   Qed.
 
+  Definition calleePostImpliesCallerPost1(calleePost callerPost F: mem -> Prop): Prop :=
+    impl1 (sep calleePost F) callerPost.
+
+  (* The frame evar of a call can always be instantiated with this *)
+  Definition genericFrame1(calleePost callerPost: mem -> Prop): mem -> Prop :=
+    fun mFrame => calleePostImpliesCallerPost1 calleePost callerPost (eq mFrame).
+
+  Lemma canceling_done_frame_generic1: forall om eeP erP,
+      (* No `P (fun mFrame : mem => P (eq mFrame))` hyp that needs to be solved by
+         brittle eauto script, but requires specific calleePostImpliesCallerPost1
+         shape that isnt' compatible with forall over trace and retvals *)
+      (forall mFrame, om = mmap.Def mFrame -> genericFrame1 eeP erP mFrame) ->
+      canceling [genericFrame1 eeP erP] om
+        (enable_frame_trick (calleePostImpliesCallerPost1 eeP erP (genericFrame1 eeP erP))).
+  Proof.
+    intros. split. 1: assumption.
+    unfold enable_frame_trick, genericFrame1, calleePostImpliesCallerPost1 in *.
+    clear.
+    unfold impl1, sep.
+    intros m Hm. fwd.
+    eapply Hmp2.
+    do 2 eexists. ssplit.
+    2: eassumption.
+    1: eassumption.
+    reflexivity.
+  Qed.
+
+  Definition calleePostImpliesCallerPost2[OtherState: Type]
+    (calleePost callerPost: OtherState -> mem -> Prop)(F: mem -> Prop): Prop :=
+    forall o m, sep (calleePost o) F m -> callerPost o m.
+
+  (* The frame evar of a call can always be instantiated with this *)
+  Definition genericFrame2[OtherState: Type](eeP erP: OtherState -> mem -> Prop) :=
+    fun mFrame => calleePostImpliesCallerPost2 eeP erP (eq mFrame).
+
+  Lemma canceling_done_frame_generic2[OtherState: Type]:
+    forall om (eeP erP: OtherState -> mem -> Prop),
+      (* No `P (fun mFrame : mem => P (eq mFrame))` hyp that needs to be solved by
+         brittle eauto script, but requires specific calleePostImpliesCallerPost2
+         shape that doesn't usually match: It's required to be
+         `sep (calleePost otherstate) F` but usually is `(PureStuff /\ sep (... * F)` *)
+      (forall mFrame, om = mmap.Def mFrame -> genericFrame2 eeP erP mFrame) ->
+      canceling (cons (genericFrame2 eeP erP) nil) om
+        (enable_frame_trick (calleePostImpliesCallerPost2 eeP erP (genericFrame2 eeP erP))).
+  Proof.
+    intros. split. 1: assumption.
+    unfold enable_frame_trick, genericFrame2, calleePostImpliesCallerPost2 in *.
+    clear.
+    unfold impl1, sep.
+    intros o m Hm. fwd.
+    eapply Hmp2.
+    do 2 eexists. ssplit.
+    2: eassumption.
+    1: eassumption.
+    reflexivity.
+  Qed.
+
   Lemma canceling_done_frame_generic: forall om (P: (mem -> Prop) -> Prop),
       (* This hypothesis holds for all (P F) of the form
          "forall m', (calleePost * F) m' -> callerPost m'"
