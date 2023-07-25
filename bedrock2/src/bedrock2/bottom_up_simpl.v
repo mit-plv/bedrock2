@@ -187,6 +187,54 @@ Ltac2 lift_res_app(original: constr)(r1: res)(r2: res): res :=
   else
     res_nothing_to_simpl original.
 
+Lemma if_cong[A: Type][b b': bool][thn thn' els els': A]:
+    b = b' ->
+    thn = thn' ->
+    els = els' ->
+    (if b then thn else els) = (if b' then thn' else els').
+Proof. intros. subst. reflexivity. Qed.
+
+(* original: term of shape (if b then a1 else a2)
+   r0: result whose lhs is b
+   r1: result whose lhs is a1
+   r2: result whose lhs is a2 *)
+Ltac2 lift_res_if(original: constr)(r0: res)(r1: res)(r2: res): res :=
+  let t0 := new_term r0 in
+  let t1 := new_term r1 in
+  let t2 := new_term r2 in
+  if did_something r0 || did_something r1 || did_something r2 then
+    if is_convertible r0 && is_convertible r1 && is_convertible r2 then
+      res_convertible '(if $t0 then $t1 else $t2)
+    else
+      let pf0 := eq_proof r0 in
+      let pf1 := eq_proof r1 in
+      let pf2 := eq_proof r2 in
+      res_rewrite '(if_cong $pf0 $pf1 $pf2)
+  else
+    res_nothing_to_simpl original.
+
+Lemma impl_cong[P P' Q Q']:
+  P = P' ->
+  Q = Q' ->
+  (P -> Q) = (P' -> Q').
+Proof. intros. subst. reflexivity. Qed.
+
+(* original: term of shape (P -> Q)
+   r1: result whose lhs is P
+   r2: result whose lhs is Q *)
+Ltac2 lift_res_impl(original: constr)(r1: res)(r2: res): res :=
+  let t1 := new_term r1 in
+  let t2 := new_term r2 in
+  if did_something r1 || did_something r2 then
+    if is_convertible r1 && is_convertible r2 then
+      res_convertible '($t1 -> $t2)
+    else
+      let pf1 := eq_proof r1 in
+      let pf2 := eq_proof r2 in
+      res_rewrite '(impl_cong $pf1 $pf2)
+  else
+    res_nothing_to_simpl original.
+
 Ltac2 chain_rewrite_res(r1: res)(r2: res): res :=
   let t1 := new_term r1 in
   let pf1 := eq_proof r1 in
@@ -1126,7 +1174,15 @@ Ltac2 rec bottom_up_simpl(parent_kind: expr_kind)(e: constr): res :=
         | ?f ?x => lift_res_app e
                      (bottom_up_simpl OtherExpr f)
                      (bottom_up_simpl OtherExpr x)
-        | _ => res_nothing_to_simpl e (* TODO enter into match, -> ? *)
+        | match ?b with
+          | true => ?thn
+          | false => ?els
+          end => lift_res_if e (bottom_up_simpl OtherExpr b)
+                               (bottom_up_simpl OtherExpr thn)
+                               (bottom_up_simpl OtherExpr els)
+        | ?p -> ?q => lift_res_impl e (bottom_up_simpl OtherExpr p)
+                                      (bottom_up_simpl OtherExpr q)
+        | _ => res_nothing_to_simpl e
         end
     | _ => (* head of app is a known function symbol that doesn't need to be simplified *)
         lazy_match! e with
@@ -1134,7 +1190,7 @@ Ltac2 rec bottom_up_simpl(parent_kind: expr_kind)(e: constr): res :=
                         (bottom_up_simpl current_kind x)
                         (bottom_up_simpl current_kind y)
         | ?f ?x => lift_res1 e f (bottom_up_simpl current_kind x)
-        | _ => res_nothing_to_simpl e (* TODO enter into match, -> ? *)
+        | _ => res_nothing_to_simpl e
         end
     end in
   let r_loc := local_simpl_hook parent_kind (new_term r_rec) in
@@ -1369,6 +1425,10 @@ Section Tests.
   Proof.
     intros. bottom_up_simpl_in_hyp @H. exact H.
   Qed.
+
+  Goal forall (b: bool) (a e: word),
+      (if b then /[\[a]] else e) = (if b then /[\[a]] else e).
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall a b: Z, (a + a, a + 1) = (2 * a, 1 + b) -> (2 * a, a + 1) = (2 * a, 1 + b).
   Proof.
