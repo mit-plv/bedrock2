@@ -101,44 +101,16 @@ Section WeakestPrecondition.
   Definition dexpr m l e v := expr m l e (eq v).
   Definition dexprs m l es vs := list_map (expr m l) es (eq vs).
 
-  (* TODO move *)
-  Lemma map__invert_get_of_list{env_ok: map.ok env}: forall ksvs k v,
-      map.get (map.of_list (map := env) ksvs) k = Some v ->
-      List.In k (List.map fst ksvs).
-  Proof.
-    induction ksvs; cbn; intros.
-    - rewrite map.get_empty in H. discriminate H.
-    - destruct a as (k' & v'). rewrite Properties.map.get_put_dec in H.
-      destr.destr (String.eqb k' k).
-      + left. reflexivity.
-      + right. eapply IHksvs. eassumption.
-  Qed.
-
-  Lemma exec_cons_env{env_ok: map.ok env}: forall fname fimpl fs c t m l mc post,
-      ~ List.In fname (List.map fst fs) ->
-      exec (map.of_list fs) c t m l mc post ->
-      exec (map.of_list ((fname, fimpl) :: fs)) c t m l mc post.
-  Proof.
-    induction 2; try solve [econstructor; eauto].
-    econstructor; try eassumption.
-    cbn. rewrite map.get_put_diff. 1: eassumption.
-    intro C. subst fname0.
-    apply H.
-    eapply map__invert_get_of_list.
-    eassumption.
-  Qed.
-
-  Section WithFunctionList1.
-    Context (fs: list (String.string * (list String.string * list String.string * cmd))).
+  Section WithFunctionEnv.
+    Context (e: env).
 
     Inductive cmd' (c : Syntax.cmd) (t : trace) (m : mem) (l : locals)
       (post : (trace -> mem -> locals -> Prop)) : Prop :=
-    | mk_cmd' (_ : forall mc, exec (map.of_list fs) c t m l mc
-                                (fun t' m' l' mc' => post t' m' l')).
+    | mk_cmd' (_ : forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l')).
 
     Lemma invert_cmd': forall c t m l post,
         cmd' c t m l post ->
-        forall mc, exec (map.of_list fs) c t m l mc (fun t' m' l' mc' => post t' m' l').
+        forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l').
     Proof. intros. inversion H. apply H0. Qed.
 
     Definition func' '(innames, outnames, c) (t : trace) (m : mem) (args : list word)
@@ -149,37 +121,19 @@ Section WeakestPrecondition.
         post t m rets)).
 
     Definition call' (fname: String.string) :=
-      match map.get (map.of_list fs) fname with
+      match map.get e fname with
       | Some fimpl => func' fimpl
       | None => fun _ _ _ _ => False
       end.
-  End WithFunctionList1.
 
-  Section Dedup.
-    Context [A: Type] (aeq: A -> A -> bool).
-
-    (* dedup on (x :: xs) with x having a duplicate in xs discards x, whereas
-     head_prio_dedup keeps x but removes its duplicate from xs *)
-    Fixpoint List__head_prio_dedup (xs : list A) : list A :=
-      match xs with
-      | nil => nil
-      | cons h t => let t' := List__head_prio_dedup t in
-                    cons h (List.removeb aeq h t')
-      end.
-  End Dedup.
-
-  Section WithFunctionList2.
     Implicit Type post : trace -> mem -> locals -> Prop.
-    Context (fs: list (String.string * (list String.string * list String.string * cmd))).
-
-    Notation cmd' := (cmd' fs).
 
     Ltac step :=
       match reverse goal with
       | H: _ /\ _ |- _ => destruct H
       | H: exists x, _ |- _ => let n := fresh x in destruct H as [n H]
       | |- _ => progress unfold dlet, dexpr, store in *
-      | H: cmd' _ _ _ _ _ |- _ => pose proof (invert_cmd' _ _ _ _ _ _ H); clear H
+      | H: cmd' _ _ _ _ _ |- _ => pose proof (invert_cmd' _ _ _ _ _ H); clear H
       | |- _ => constructor
       | |- _ => assumption
       | H: forall _: MetricLogging.MetricLog, _ |- _ => apply H
@@ -275,7 +229,7 @@ Section WeakestPrecondition.
 
     Lemma wp_call{env_ok: map.ok env}: forall binds fname arges t m l post,
        (exists args, dexprs m l arges args /\
-        call' fs fname t m args (fun t m rets =>
+        call' fname t m args (fun t m rets =>
           exists l', map.putmany_of_list_zip binds rets l = Some l' /\
           post t m l')) ->
        cmd' (cmd.call binds fname arges) t m l post.
@@ -306,7 +260,7 @@ Section WeakestPrecondition.
       eapply exprs_sound in H. destruct H as (argvs & mc' & HEv & ?). subst argvs.
       tac.
     Qed.
-  End WithFunctionList2.
+  End WithFunctionEnv.
 
   Section WithFunctions.
     Context (call : String.string -> trace -> mem -> list word -> (trace -> mem -> list word -> Prop) -> Prop).
