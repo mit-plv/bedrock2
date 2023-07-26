@@ -461,7 +461,7 @@ Module List.
 
     Lemma apps_concat: forall (xss: list (list A)), apps xss = List.concat xss.
     Proof.
-      induction xss. 1: reflexivity.
+      induction xss > [ reflexivity | ].
       simpl. rewrite <- IHxss.
       destruct xss; try reflexivity.
       simpl. symmetry. apply List.app_nil_r.
@@ -509,7 +509,7 @@ Module List.
       intros. subst. rewrite 2apps_concat. revert i xss H.
       induction n; intros; simpl in *.
       - rewrite 2List.upto_beginning; trivial.
-      - destruct xss. 1: reflexivity.
+      - destruct xss > [ reflexivity | ].
         simpl in *.
         rewrite 2upto_app. f_equal. apply IHn. lia.
     Qed.
