@@ -147,19 +147,13 @@ Section WeakestPrecondition.
       cmd' c t m l (fun t m l =>
         list_map (get l) outnames (fun rets =>
         post t m rets)).
-  End WithFunctionList1.
 
-  Definition call_body' rec (functions : list (String.string * (list String.string * list String.string * cmd.cmd)))
-    (fname : String.string) (t : trace) (m : mem) (args : list word)
-    (post : trace -> mem -> list word -> Prop) : Prop :=
-    match functions with
-    | nil => False
-    | cons (f, decl) functions =>
-        if String.eqb f fname
-        then func' functions decl t m args post
-        else rec functions fname t m args post
-    end.
-  Fixpoint call' functions := call_body' call' functions.
+    Definition call' (fname: String.string) :=
+      match map.get (map.of_list fs) fname with
+      | Some fimpl => func' fimpl
+      | None => fun _ _ _ _ => False
+      end.
+  End WithFunctionList1.
 
   Section Dedup.
     Context [A: Type] (aeq: A -> A -> bool).
@@ -173,81 +167,6 @@ Section WeakestPrecondition.
                     cons h (List.removeb aeq h t')
       end.
   End Dedup.
-
-  Lemma NoDup_head_prio_dedup[V: Type]: forall (l: list (String.string * V)),
-      List.NoDup (List.map fst (List__head_prio_dedup
-                                  (fun '(f1, _) '(f2, _) => String.eqb f1 f2) l)).
-  Proof.
-    induction l; cbn. 1: constructor.
-    destruct a as (k, v). cbn.
-    constructor.
-    - intro C. eapply List.in_map_iff in C.
-      destruct C as [[k' v'] [E C]]. cbn in E. subst k'.
-      unfold List.removeb in *.
-      eapply List.filter_In in C. apply proj2 in C. rewrite String.eqb_refl in C.
-      discriminate C.
-    -
-  Admitted. (* hopefully holds *)
-
-  Lemma map__get_of_list_filter_diff{env_ok: map.ok env}: forall k k' kvs,
-      k <> k' ->
-      map.get (map.of_list (map := env) kvs) k' =
-      map.get (map.of_list (List.filter
-                      (fun p => negb (let '(kj, _) := p in String.eqb k kj)) kvs)) k'.
-  Proof.
-    induction kvs; cbn; intros. 1: reflexivity.
-    destruct a as (kj & v).
-    rewrite Properties.map.get_put_dec. destr.destr (String.eqb kj k').
-    - destr.destr (String.eqb k k'). 1: contradiction.
-      cbn. rewrite map.get_put_same. reflexivity.
-    - destr.destr (String.eqb k kj); cbn.
-      + eapply IHkvs. assumption.
-      + rewrite map.get_put_diff by congruence. eapply IHkvs. assumption.
-  Qed.
-
-  Lemma map__of_list_ignores_head_prio_dedup{env_ok: map.ok env}: forall ksvs,
-      map.of_list (map := env) ksvs =
-      map.of_list (List__head_prio_dedup (fun '(f1, _) '(f2, _) => String.eqb f1 f2) ksvs).
-  Proof.
-    induction ksvs; cbn. 1: reflexivity.
-    destruct a as (k & v).
-    eapply map.map_ext.
-    intros k'. rewrite? Properties.map.get_put_dec. destr.destr (String.eqb k k').
-    1: reflexivity.
-    rewrite IHksvs.
-    unfold List.removeb.
-    remember (List__head_prio_dedup (fun '(f1, _) '(f2, _) => String.eqb f1 f2) ksvs) as L.
-    apply map__get_of_list_filter_diff. assumption.
-  Qed.
-
-  Lemma call'_ignores_head_prio_dedup_otherdirection{env_ok: map.ok env}:
-    forall fs fname t m args post,
-      call' (List__head_prio_dedup (fun '(f1, _) '(f2, _) => String.eqb f1 f2) fs)
-            fname t m args post ->
-      call' fs fname t m args post.
-  Proof.
-    induction fs; cbn; intros. 1: assumption.
-    destruct a as (f, decl). destr.destr (String.eqb f fname).
-    - unfold func' in *. destruct decl as ((argnames, retnames), body).
-      destruct H as (l & Hl & Hbody). exists l. split. 1: exact Hl.
-      inversion Hbody. constructor. intro mc. specialize (H mc).
-      rewrite map__of_list_ignores_head_prio_dedup in H.
-  Abort.
-
-  Lemma call'_ignores_head_prio_dedup{env_ok: map.ok env}:
-    forall fs fname t m args post,
-      call' fs fname t m args post ->
-      call' (List__head_prio_dedup (fun '(f1, _) '(f2, _) => String.eqb f1 f2) fs)
-            fname t m args post.
-  Proof.
-    induction fs; cbn; intros. 1: assumption.
-    destruct a as (f, decl). destr.destr (String.eqb f fname).
-    - unfold func' in *. destruct decl as ((argnames, retnames), body).
-      destruct H as (l & Hl & Hbody). exists l. split. 1: exact Hl.
-      constructor. intro mc. eapply invert_cmd' in Hbody.
-      rewrite map__of_list_ignores_head_prio_dedup in Hbody.
-  Admitted. (* TODO probably DOES NOT HOLD because recursive call of call' is made
-               on smaller env with current function removed *)
 
   Section WithFunctionList2.
     Implicit Type post : trace -> mem -> locals -> Prop.
@@ -354,9 +273,7 @@ Section WeakestPrecondition.
         cbv beta. intros * (v' & HInv & HLt). eauto.
     Qed.
 
-    Lemma wp_call0{env_ok: map.ok env}
-      (Hnd : List.NoDup (List.map fst fs)): (* <--------- *)
-      forall binds fname arges t m l post,
+    Lemma wp_call{env_ok: map.ok env}: forall binds fname arges t m l post,
        (exists args, dexprs m l arges args /\
         call' fs fname t m args (fun t m rets =>
           exists l', map.putmany_of_list_zip binds rets l = Some l' /\
@@ -367,23 +284,13 @@ Section WeakestPrecondition.
       unfold dexprs in *.
       eapply exprs_sound in H. destruct H as (argvs & mc' & HEv & ?). subst argvs.
       unfold call' in *.
-      revert fname H0. induction fs; intros.
-      - cbn in H0. contradiction.
-      - rename l0 into fs0.
-        destruct a as (fnameHere & ((argnames & retnames) & fbody)).
-        inversion Hnd. subst.
-        cbn in H0.
-        destr.destr (String.eqb fnameHere fname).
-        + destruct H0 as (l1 & Hl1 & Hbody).
-          inversion Hbody. clear Hbody. rename H into Hbody.
-          eapply exec.call.
-          * cbn. rewrite map.get_put_same. reflexivity.
-          * eassumption.
-          * eassumption.
-          * eapply exec_cons_env. 1: assumption. apply Hbody.
-          * cbv beta. intros. eapply getmany_sound. assumption.
-        + eapply exec_cons_env. 1: assumption.
-          eapply IHl0; assumption.
+      Tactics.destruct_one_match_hyp. 2: contradiction.
+      unfold func' in *.
+      destruct p as ((argnames & retnames) & fbody).
+      destruct H0 as (l1 & Hl1 & Hbody).
+      inversion Hbody. clear Hbody. rename H into Hbody.
+      eapply exec.call; eauto.
+      cbv beta. intros. eapply getmany_sound. assumption.
     Qed.
 
     Lemma wp_interact: forall binds action arges t m l post,
@@ -400,22 +307,6 @@ Section WeakestPrecondition.
       tac.
     Qed.
   End WithFunctionList2.
-
-  (* without NoDup assumption, but probably doesn't hold *)
-  Lemma wp_call{env_ok: map.ok env}: forall fs binds fname arges t m l post,
-      (exists args, dexprs m l arges args /\
-       call' fs fname t m args (fun t m rets =>
-       exists l', map.putmany_of_list_zip binds rets l = Some l' /\
-       post t m l')) ->
-      cmd' fs (cmd.call binds fname arges) t m l post.
-  Proof.
-    intros. destruct H as (args & Hargs & H).
-    constructor. rewrite map__of_list_ignores_head_prio_dedup. eapply invert_cmd'.
-    eapply (wp_call0 _ (env_ok := env_ok)).
-    1: eapply NoDup_head_prio_dedup.
-    eexists. split. 1: eassumption.
-    eapply call'_ignores_head_prio_dedup. assumption.
-  Qed.
 
   Section WithFunctions.
     Context (call : String.string -> trace -> mem -> list word -> (trace -> mem -> list word -> Prop) -> Prop).
