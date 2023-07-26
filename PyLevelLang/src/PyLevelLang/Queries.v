@@ -6,6 +6,7 @@ Require Import PyLevelLang.SamplePrograms.
 Require Import PyLevelLang.Optimize.
 Require Import coqutil.Map.Interface coqutil.Map.SortedListString coqutil.Map.Properties.
 Require Import coqutil.Datatypes.Result.
+Require Import compiler.NameGen compiler.StringNameGen.
 Require Import Coq.Lists.List.
 
 Local Open Scope Z_scope.
@@ -20,6 +21,9 @@ Section Queries_Section.
   Instance tenv_ok : map.ok tenv := SortedListString.ok _.
   Instance locals : map.map string {t & interp_type t} := SortedListString.map _.
   Instance locals_ok : map.ok locals := SortedListString.ok _.
+  Instance namemap : map.map string string := SortedListString.map _.
+  Instance namemap_ok : map.ok namemap := SortedListString.ok _.
+  Instance NG : NameGen string N := StringNameGen.
 
   Fixpoint record (l : list (string * type)) : type :=
     match l with
@@ -123,9 +127,12 @@ Section Queries_Section.
   }>.
   Compute run_program ((("ans", (TList TString, true)) :: nil)) select_test.
 
-  Definition select_test_elaborated' : command := 
-    Eval cbv in match elaborate_command (map.of_list (("ans", (TList TString, true))::nil)) select_test with
-    | Success x => x
+  Definition select_test_elaborated' : command := Eval cbv in
+    let nm := map.of_list (("ans", "ans")::nil) in
+    let G := map.of_list (("ans", (TList TString, true))::nil) in
+    let res := (elaborate_command nm G select_test) in
+    match res with
+    | Success c => c
     | _ => _
     end.
   
@@ -159,9 +166,12 @@ Section Queries_Section.
   }>.
   Compute run_program ((("ans", (TList (t), true))) :: nil) join_test.
 
-  Definition tmp' : command := 
-    Eval cbv in match elaborate_command (map.of_list (("ans", (TList t, true))::nil)) join_test with
-    | Success x => x
+  Definition tmp' : command := Eval cbv in
+    let nm := map.of_list (("ans", "ans")::nil) in
+    let G := map.of_list (("ans", (TList t, true))::nil) in
+    let res := (elaborate_command nm G join_test) in
+    match res with
+    | Success c => c
     | _ => _
     end.
   

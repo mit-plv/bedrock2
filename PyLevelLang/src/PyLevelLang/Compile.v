@@ -516,7 +516,7 @@ Section WithMap.
           apply Eqdep_dec.inj_pair2_eq_dec in h as [= ->]; try exact type_eq_dec
       end;
       subst;
-      rename H3 into He1, H6 into He2.
+      rename H4 into He1, H6 into He2.
       split.
       { admit. }
 
