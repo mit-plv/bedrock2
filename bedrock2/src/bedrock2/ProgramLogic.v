@@ -1,11 +1,12 @@
 From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
+Require Import coqutil.Map.Interface.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.Loops.
 Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
 
-Definition spec_of (procname:String.string) := list (String.string * (list String.string * list String.string * Syntax.cmd.cmd)) -> Prop.
+Definition spec_of (procname:String.string) := env -> Prop.
 Existing Class spec_of.
 
 Module Import Coercions.
@@ -55,9 +56,9 @@ Ltac program_logic_goal_for_function proc :=
   let __ := constr:(proc : Syntax.func) in
   constr_string_basename_of_constr_reference_cps ltac:(Tactics.head proc) ltac:(fun fname =>
   let spec := lazymatch constr:(_:spec_of fname) with ?s => s end in
-  exact (forall functions : list (string * Syntax.func), ltac:(
+  exact (forall functions : env, map.get functions fname = Some proc -> ltac:(
     let callees := eval cbv in (callees (snd proc)) in
-    let s := assuming_correctness_of_in callees functions (spec (cons (fname, proc) functions)) in
+    let s := assuming_correctness_of_in callees functions (spec functions) in
     exact s))).
 Definition program_logic_goal_for (_ : Syntax.func) (P : Prop) := P.
 
@@ -84,7 +85,7 @@ Ltac bind_body_of_function f_ :=
 
 (* note: f might have some implicit parameters (eg a record of constants) *)
 Ltac enter f :=
-  cbv beta delta [program_logic_goal_for]; intros;
+  cbv beta delta [program_logic_goal_for];
   bind_body_of_function f;
   lazymatch goal with |- ?s ?p => let s := rdelta s in change (s p); cbv beta end.
 
@@ -228,13 +229,16 @@ Ltac straightline :=
   match goal with
   | _ => straightline_cleanup
   | |- program_logic_goal_for ?f _ =>
-    enter f; intros;
-    unfold1_call_goal; cbv match beta delta [call_body];
-    lazymatch goal with |- if ?test then ?T else _ =>
-      replace test with true by reflexivity; change T end;
+    enter f;
+    cbv beta delta [call];
+    lazymatch goal with
+    | H: map.get ?functions ?fname = Some _ |- context[map.get ?functions ?fname] =>
+        rewrite H; clear H
+    end;
+    intros;
     cbv match beta delta [WeakestPrecondition.func]
   | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
-    unfold1_cmd_goal; cbv beta match delta [cmd_body];
+    eapply wp_set;
     let __ := match s with String.String _ _ => idtac | String.EmptyString => idtac end in
     ident_of_constr_string_cps s ltac:(fun x =>
       ensure_free x;
@@ -246,7 +250,7 @@ Ltac straightline :=
     | cmd.while _ _ => fail
     | cmd.cond _ _ _ => fail
     | cmd.interact _ _ _ => fail
-    | _ => unfold1_cmd_goal; cbv beta match delta [cmd_body]
+    | _ => apply_rule_for_command c
     end
   | |- @list_map _ _ (get _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
   | |- @list_map _ _ (expr _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
