@@ -158,7 +158,7 @@ Local Instance mapok: map.ok mem := SortedListWord.ok Naive.word32 _.
 Local Instance wordok: word.ok word := Naive.word32_ok.
 
 Lemma swap_chars_over_uart_correct m :
-  WeakestPrecondition.cmd (fun _ _ _ _ _ => False) swap_chars_over_uart nil m map.empty
+  WeakestPrecondition.cmd map.empty swap_chars_over_uart nil m map.empty
   (fun t m l => True).
 Proof.
   repeat t.
@@ -242,7 +242,7 @@ Definition echo_server: cmd :=
   ).
 
 Lemma echo_server_correct m :
-  WeakestPrecondition.cmd (fun _ _ _ _ _ => False) echo_server nil m map.empty
+  WeakestPrecondition.cmd map.empty echo_server nil m map.empty
   (fun t m l => echo_server_spec t None).
 Proof.
   repeat t.

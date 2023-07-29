@@ -56,7 +56,7 @@ Ltac program_logic_goal_for_function proc :=
   let __ := constr:(proc : Syntax.func) in
   constr_string_basename_of_constr_reference_cps ltac:(Tactics.head proc) ltac:(fun fname =>
   let spec := lazymatch constr:(_:spec_of fname) with ?s => s end in
-  exact (forall functions : env, map.get functions fname = Some proc -> ltac:(
+  exact (forall (functions : @map.rep _ _ env) (EnvContains : map.get functions fname = Some proc), ltac:(
     let callees := eval cbv in (callees (snd proc)) in
     let s := assuming_correctness_of_in callees functions (spec functions) in
     exact s))).
@@ -238,7 +238,7 @@ Ltac straightline :=
     intros;
     cbv match beta delta [WeakestPrecondition.func]
   | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
-    eapply wp_set;
+    unfold1_cmd_goal;
     let __ := match s with String.String _ _ => idtac | String.EmptyString => idtac end in
     ident_of_constr_string_cps s ltac:(fun x =>
       ensure_free x;

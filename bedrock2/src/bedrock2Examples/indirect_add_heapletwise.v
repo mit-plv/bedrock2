@@ -20,6 +20,7 @@ Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.enable_frame_trick.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
+Require Import coqutil.Macros.WithBaseName.
 
 Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
@@ -75,11 +76,12 @@ Section WithParameters.
     { cbv [f]. ecancel_assumption. }
   Qed.
 
-  Example link_both : spec_of_indirect_add_twice (("indirect_add_twice",indirect_add_twice)::("indirect_add",indirect_add)::nil).
+  Example link_both : spec_of_indirect_add_twice
+                        (map.of_list &[,indirect_add_twice; indirect_add]).
   Proof. auto using indirect_add_twice_ok, indirect_add_ok. Qed.
 
   (*
-  Require Import bedrock2.ToCString bedrock2.PrintString coqutil.Macros.WithBaseName.
+  Require Import bedrock2.ToCString bedrock2.PrintString.
   Goal True. print_string (c_module &[,indirect_add_twice; indirect_add]). Abort.
   *)
 

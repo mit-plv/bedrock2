@@ -7,7 +7,6 @@ Require Import Coq.Classes.Morphisms.
 Section WeakestPrecondition.
   Context {width} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
   Context {ext_spec: Semantics.ExtSpec}.
 
   Ltac ind_on X :=
@@ -23,7 +22,6 @@ Section WeakestPrecondition.
        we'd get a typechecking failure at Qed time. *)
     repeat match goal with x : ?T |- _ => first
        [ constr_eq T X; move x before ext_spec
-       | constr_eq T X; move x before env
        | constr_eq T X; move x before locals
        | constr_eq T X; move x at top
        | revert x ] end;
@@ -69,7 +67,6 @@ Section WeakestPrecondition.
 
   Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
   Context {locals_ok : map.ok locals}.
-  Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Global Instance Proper_cmd :
@@ -81,7 +78,7 @@ Section WeakestPrecondition.
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
      Basics.impl))))))) WeakestPrecondition.cmd.
-  Proof using env_ok ext_spec_ok locals_ok mem_ok word_ok.
+  Proof using ext_spec_ok locals_ok mem_ok word_ok.
   Admitted. (*
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl]; ind_on Syntax.cmd.cmd;
       cbn in *; cbv [dlet.dlet] in *; intuition (try typeclasses eauto with core).
@@ -148,7 +145,7 @@ Section WeakestPrecondition.
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
      Basics.impl))))))) WeakestPrecondition.func.
-  Proof using word_ok mem_ok locals_ok ext_spec_ok env_ok.
+  Proof using word_ok mem_ok locals_ok ext_spec_ok.
   Admitted. (*
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  WeakestPrecondition.func]; intros.
     destruct a. destruct p.
@@ -178,7 +175,7 @@ Section WeakestPrecondition.
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
      Basics.impl)))))))) WeakestPrecondition.call.
-  Proof using word_ok mem_ok locals_ok ext_spec_ok env_ok.
+  Proof using word_ok mem_ok locals_ok ext_spec_ok.
   Admitted. (*
     cbv [Proper respectful pointwise_relation Basics.impl]; ind_on (list (String.string * (list String.string * list String.string * Syntax.cmd.cmd)));
       cbn in *; intuition (try typeclasses eauto with core).
