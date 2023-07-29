@@ -17,7 +17,7 @@ Definition rpmul := func! (x, e) ~> ret {
 }.
 
 From bedrock2 Require Import Semantics BasicC32Semantics WeakestPrecondition ProgramLogic.
-From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
+From coqutil Require Import Word.Properties Word.Interface.
 
 #[export] Instance spec_of_rpmul : spec_of "rpmul" := fnspec! "rpmul" x e ~> v,
   { requires t m := True;

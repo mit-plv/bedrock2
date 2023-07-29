@@ -23,7 +23,7 @@ Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 Require Import coqutil.Macros.WithBaseName.
 
 Require bedrock2.WeakestPreconditionProperties.
-From coqutil.Tactics Require Import letexists eabstract.
+From coqutil.Tactics Require Import eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars bedrock2.Array.
 
 Section WithParameters.

@@ -44,7 +44,7 @@ Section WithParameters.
     {env : map.map string (list string * list string * Syntax.cmd)} {env_ok : map.ok env}
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
-  Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
+  Import coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
   Import coqutil.Word.Properties coqutil.Map.Properties.
 
   Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.

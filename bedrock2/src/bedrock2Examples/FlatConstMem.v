@@ -18,7 +18,6 @@ Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import Coq.Lists.List coqutil.Map.OfListWord.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Tactics.Tactics.
-Require Import coqutil.Tactics.letexists.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Word.Bitwidth32.
 Import Map.Interface Interface.map OfFunc.map OfListWord.map.

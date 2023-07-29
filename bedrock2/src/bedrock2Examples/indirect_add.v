@@ -17,7 +17,7 @@ Require Import coqutil.Word.Interface coqutil.Map.Interface bedrock2.Map.Separat
 Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 
 Require bedrock2.WeakestPreconditionProperties.
-From coqutil.Tactics Require Import letexists eabstract.
+From coqutil.Tactics Require Import eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 
 Section WithParameters.

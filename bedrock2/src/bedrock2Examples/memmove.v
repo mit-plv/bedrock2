@@ -56,7 +56,7 @@ Section WithParameters.
     {env : map.map string (list string * list string * Syntax.cmd)} {env_ok : map.ok env}
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
-  Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
+  Import coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
   Import coqutil.Word.Properties coqutil.Map.Properties.
 
   Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.
@@ -76,7 +76,7 @@ Section WithParameters.
     repeat straightline.
 
     set (x := word.sub src dst) in *.
-    unfold1_cmd_goal; cbv beta match delta [cmd_body].
+    unfold1_cmd_goal.
     eapply WeakestPreconditionProperties.dexpr_expr.
     letexists; split.
     { subst l0; rewrite ?Properties.map.get_put_dec; exact eq_refl. }
@@ -85,6 +85,7 @@ Section WithParameters.
     (* x = 0 *)
     split; intros Hx; cycle 1.
     { replace src with dst in * by ZnWords.
+      unfold1_cmd_goal.
       cbn; ssplit; eauto.
       eexists _, _; ssplit; eauto.
       eapply map.split_same_footprint; eauto.
@@ -92,7 +93,7 @@ Section WithParameters.
       rewrite 2map.get_of_list_word_at, 2List.nth_error_None.
       Morphisms.f_equiv. ZnWords. }
 
-    unfold1_cmd_goal; cbv beta match delta [cmd_body].
+    unfold1_cmd_goal.
     eapply WeakestPreconditionProperties.dexpr_expr.
     letexists; split.
     { subst l0; rewrite ?Properties.map.get_put_dec; exact eq_refl. }
@@ -161,6 +162,21 @@ Section WithParameters.
           repeat straightline.
 
           cbv [WeakestPrecondition.load load load_Z]; cbn.
+
+          assert (forall (T: Type) (A B B': T -> Prop),
+                     (forall x, B x -> B' x) ->
+                     (exists x, A x /\ B x) ->
+                     (exists x, A x /\ B' x)) as Helper.
+          { clear. firstorder idtac. }
+          eapply Helper; clear Helper.
+          { intros w Hw.
+            eapply WeakestPreconditionProperties.Proper_store.
+            { cbv [Morphisms.pointwise_relation Basics.impl].
+              intros mm Hmm.
+              apply_rules_until_propositional.
+              exact Hmm. }
+            exact Hw. }
+
           destruct s0 as [|b s0], d0 as [|B d0]; try (cbn in *; congruence); [].
           exists (word.of_Z (byte.unsigned b)).
           pose proof map.get_split src0 _ _ _ H6.
@@ -177,6 +193,7 @@ Section WithParameters.
           eexists. rewrite H16. split.
           { rewrite word.unsigned_of_Z, Scalars.wrap_byte_unsigned.
             rewrite byte.of_Z_unsigned; trivial. }
+          apply_rules_until_propositional.
 
           eapply map.split_remove_put in H6; [|eapply H14].
           eapply map.split_remove_put in H8; [|eapply H16].

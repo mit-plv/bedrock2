@@ -41,7 +41,7 @@ Section WithParameters.
     {env : map.map string (list string * list string * Syntax.cmd)} {env_ok : map.ok env}
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
-  Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
+  Import coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
   Import coqutil.Word.Properties coqutil.Map.Properties.
 
   Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.
@@ -160,6 +160,7 @@ Section WithParameters.
         eapply byte.unsigned_inj in HH; trivial. }
 
       intuition idtac. case H6 as (?&?&?). subst. subst r.
+      WeakestPrecondition.unfold1_cmd_goal.
       eapply WeakestPreconditionProperties.dexpr_expr.
       letexists; split; cbn.
       { rewrite ?Properties.map.get_put_dec; cbn; exact eq_refl. }
