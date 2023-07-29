@@ -276,7 +276,7 @@ Section WeakestPrecondition.
   Lemma sound_cmd fs c t m l mc post
     (H : WeakestPrecondition.cmd fs c t m l post)
     : Semantics.exec fs c t m l mc (fun t' m' l' mc' => post t' m' l').
-  Proof. eapply WeakestPrecondition.invert_cmd. exact H. Qed.
+  Proof. eapply WeakestPrecondition.cmd.invert. exact H. Qed.
 
   (** Ad-hoc lemmas here? *)
 
