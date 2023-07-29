@@ -8,7 +8,7 @@ Require coqutil.Map.SortedListString.
 #[export] Instance env: map.map String.string Syntax.func := SortedListString.map _.
 #[export] Instance env_ok: map.ok env := SortedListString.ok _.
 
-Section WeakestPrecondition.
+Section WeakestPreconditionExprs.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
@@ -105,18 +105,62 @@ Section WeakestPrecondition.
 
   Definition dexpr m l e v := expr m l e (eq v).
   Definition dexprs m l es vs := list_map (expr m l) es (eq vs).
+End WeakestPreconditionExprs.
 
-  Section WithFunctionEnv.
-    Context (e: env).
+(* We need to make `cmd` opaque to `hnf` (unfolds any definition, so a plain
+   definition doesn't work) and to `repeat split` (applies constructors of all
+   1-constructor inductives, so a 1-constructor inductive wrapping exec doesn't
+   work). *)
+Module Type cmd_SIG.
+  Section WithParams.
+    Context {width: Z} {BW: Bitwidth width} {word: word.word width}
+      {mem: map.map word Byte.byte}
+      {locals: map.map String.string word}.
 
-    Inductive cmd (c : Syntax.cmd) (t : trace) (m : mem) (l : locals)
+    Parameter cmd : forall {ext_spec: ExtSpec} (e: env),
+        Syntax.cmd -> trace -> mem -> locals ->
+        (trace -> mem -> locals -> Prop) -> Prop.
+    Parameter mk : forall {ext_spec: ExtSpec} (e: env) c t m l post,
+        (forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l')) ->
+        cmd e c t m l post.
+    Parameter invert: forall {ext_spec: ExtSpec} [e c t m l post],
+        cmd e c t m l post ->
+        forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l').
+  End WithParams.
+End cmd_SIG.
+
+Module cmd : cmd_SIG.
+  Section WithParams.
+    Context {width: Z} {BW: Bitwidth width} {word: word.word width}
+      {mem: map.map word Byte.byte}
+      {locals: map.map String.string word}
+      {ext_spec: ExtSpec}
+      (e: env).
+
+    Definition cmd (c : Syntax.cmd) (t : trace) (m : mem) (l : locals)
       (post : (trace -> mem -> locals -> Prop)) : Prop :=
-    | mk_cmd (_ : forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l')).
+      (forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l')).
 
-    Lemma invert_cmd: forall c t m l post,
+    Lemma mk c t m l post:
+      (forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l')) ->
+      cmd c t m l post.
+    Proof. exact id. Qed.
+
+    Lemma invert c t m l post:
         cmd c t m l post ->
         forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l').
-    Proof. intros. inversion H. apply H0. Qed.
+    Proof. exact id. Qed.
+  End WithParams.
+End cmd.
+Notation cmd := cmd.cmd.
+
+Section WeakestPrecondition.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {ext_spec: ExtSpec}.
+
+  Section WithFunctionEnv.
+    Context (e: env). Notation cmd := (cmd e).
 
     Definition func '(innames, outnames, c) (t : trace) (m : mem) (args : list word)
       (post : trace -> mem -> list word -> Prop) :=
@@ -138,7 +182,8 @@ Section WeakestPrecondition.
       | H: _ /\ _ |- _ => destruct H
       | H: exists x, _ |- _ => let n := fresh x in destruct H as [n H]
       | |- _ => progress unfold dlet, dexpr, store in *
-      | H: cmd _ _ _ _ _ |- _ => pose proof (invert_cmd _ _ _ _ _ H); clear H
+      | H: cmd _ _ _ _ _ |- _ => pose proof (cmd.invert H); clear H
+      | |- cmd _ _ _ _ _ => apply cmd.mk
       | |- _ => constructor
       | |- _ => assumption
       | H: forall _: MetricLogging.MetricLog, _ |- _ => apply H
@@ -220,14 +265,14 @@ Section WeakestPrecondition.
     Proof.
       intros. destruct H as (measure & lt & inv & Hwf & HInit & Hbody).
       destruct HInit as (v0 & HInit).
-      econstructor. intros.
+      apply cmd.mk. intros.
       revert t m l mc HInit. pattern v0. revert v0.
       eapply (well_founded_ind Hwf). intros.
       specialize Hbody with (1 := HInit). destruct Hbody as (b & Hb & Ht & Hf).
       eapply expr_sound in Hb. destruct Hb as (b' & mc' & Hb & ?). subst b'.
       destr.destr (Z.eqb (word.unsigned b) 0).
       - specialize Hf with (1 := E). eapply exec.while_false; eassumption.
-      - specialize Ht with (1 := E). inversion Ht. clear Ht.
+      - specialize Ht with (1 := E). eapply cmd.invert in Ht.
         eapply exec.while_true; eauto.
         cbv beta. intros * (v' & HInv & HLt). eauto.
     Qed.
@@ -247,7 +292,7 @@ Section WeakestPrecondition.
       unfold func in *.
       destruct f as ((argnames & retnames) & fbody).
       destruct H0 as (l1 & Hl1 & Hbody).
-      inversion Hbody. clear Hbody. rename H into Hbody.
+      eapply cmd.invert in Hbody.
       eapply exec.call; eauto.
       cbv beta. intros. eapply getmany_sound. assumption.
     Qed.
