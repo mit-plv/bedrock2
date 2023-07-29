@@ -42,7 +42,7 @@ Import HList List.
       ((*sorted*)False -> True)
       ).
 
-From coqutil.Tactics Require Import eabstract letexists rdelta.
+From coqutil.Tactics Require Import eabstract rdelta.
 From coqutil.Macros Require Import symmetry.
 Import PrimitivePair.
 Require Import bedrock2.ZnWords.

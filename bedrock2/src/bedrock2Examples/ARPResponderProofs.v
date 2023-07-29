@@ -10,7 +10,7 @@ Import Datatypes List ListNotations.
 Local Open Scope string_scope. Local Open Scope list_scope. Local Open Scope Z_scope.
 
 From bedrock2 Require Import Array Scalars Separation.
-From coqutil.Tactics Require Import letexists rdelta.
+From coqutil.Tactics Require Import rdelta.
 Local Notation bytes := (array scalar8 (word.of_Z 1)).
 
 Ltac seplog_use_array_load1 H i :=
@@ -29,8 +29,8 @@ Local Instance spec_of_arp : spec_of "arp" := fun functions =>
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
 Goal program_logic_goal_for_function! arp.
-  eexists; split; repeat straightline.
-  1: exact eq_refl.
+  repeat straightline.
+  WeakestPrecondition.unfold1_cmd_goal.
   letexists; split; [solve[repeat straightline]|]; split; [|solve[repeat straightline]]; repeat straightline.
   eapply Properties.word.if_nonzero in H1.
   rewrite word.unsigned_ltu, word.unsigned_of_Z in H1. cbv [word.wrap] in H1.

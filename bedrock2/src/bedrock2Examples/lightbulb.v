@@ -8,7 +8,7 @@ Require Import bedrock2Examples.SPI.
 Require Import bedrock2Examples.LAN9250.
 From coqutil Require Import Z.div_mod_to_equations.
 From coqutil Require Import Word.Interface Map.Interface.
-From coqutil.Tactics Require Import letexists eabstract.
+From coqutil.Tactics Require Import eabstract.
 From bedrock2 Require Import FE310CSemantics Semantics WeakestPrecondition ProgramLogic Array Scalars.
 From bedrock2.Map Require Import Separation SeparationLogic.
 Require bedrock2.SepAutoArray bedrock2.SepCalls.

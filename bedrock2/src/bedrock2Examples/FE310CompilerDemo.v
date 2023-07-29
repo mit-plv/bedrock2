@@ -126,7 +126,8 @@ From coqutil Require Import Z.div_mod_to_equations.
 
 Ltac t :=
   match goal with
-  | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ => eexists; split; [solve[repeat straightline]|]
+  | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ =>
+      WeakestPrecondition.unfold1_cmd_goal; eexists; split; [solve[repeat straightline]|]
   | |- map.split _ _ _ => eapply Properties.map.split_empty_r; reflexivity
   | H: map.of_list_zip ?ks ?vs = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
   | H: map.putmany_of_list_zip ?ks ?vs ?m0 = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
@@ -162,9 +163,13 @@ Lemma swap_chars_over_uart_correct m :
   (fun t m l => True).
 Proof.
   repeat t.
+  WeakestPrecondition.unfold1_cmd_goal.
   eexists _, _, (fun v t _ l => exists p, map.of_list_zip ["running"; "prev"; "one"; "dot"]%string [v; p; word.of_Z(1); word.of_Z(46)] = Some l ); repeat t.
+  WeakestPrecondition.unfold1_cmd_goal.
   eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip ["polling"; "rx"]%string [v; rxv] l0 = Some l); repeat t.
+  WeakestPrecondition.unfold1_cmd_goal.
   eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list_zip ["polling"; "tx"]%string [v; txv] l0 = Some l); repeat t.
+  WeakestPrecondition.unfold1_cmd_goal.
   eexists; split; repeat t.
 Defined.
 
@@ -246,8 +251,10 @@ Lemma echo_server_correct m :
   (fun t m l => echo_server_spec t None).
 Proof.
   repeat t.
+  WeakestPrecondition.unfold1_cmd_goal.
   eexists _, _, (fun v t _ l => map.of_list_zip ["running"; "one"]%string [v; word.of_Z(1)] = Some l /\ echo_server_spec t None ); repeat t.
   { repeat split. admit. (* hfrosccfg*) }
+  WeakestPrecondition.unfold1_cmd_goal.
   eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip ["polling"; "rx"]%string [v; rxv] l0 = Some l /\
                                             if Z.eq_dec (word.unsigned (word.and rxv (word.of_Z (2^31)))) 0
                                             then echo_server_spec t (Some rxv)

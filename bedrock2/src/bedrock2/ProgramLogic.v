@@ -347,6 +347,15 @@ Ltac straightline_call :=
       [ .. | intros ? ? ? ?]
   end.
 
+(* not as eager as it might look, because each rule only has one premise,
+   and it is of the form (_ /\ _) or (exists _, _),
+   except wp_seq, which has another cmd as its premise, but there, we
+   indeed want to unfold the head cmd again *)
+Ltac apply_rules_until_propositional := repeat unfold1_cmd_goal.
+
+Export coqutil.Tactics.letexists.
+Ltac expose_exists_for_letexists ::= hnf; apply_rules_until_propositional.
+
 Ltac current_trace_mem_locals :=
   lazymatch goal with
   | |- WeakestPrecondition.cmd _  _ ?t ?m ?l _ => constr:((t, m, l))
