@@ -33,20 +33,21 @@ Section WithParameters.
       ensures t' m := m =* bs$@p * R /\ t=t' }.
 
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok : map.ok locals}
-    {env : map.map string (list string * list string * Syntax.cmd)} {env_ok : map.ok env}
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
   Import coqutil.Word.Properties coqutil.Map.Properties.
 
+  Local Ltac normalize_body_of_function f ::= f.
+
   Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.
   Lemma memconst_ok ident bs functions :
-    spec_of_memconst ident bs ((ident, memconst bs) :: functions).
+    program_logic_goal_for
+      (memconst bs)
+      (map.get functions ident = Some (memconst bs) ->
+       spec_of_memconst ident bs functions).
   Proof.
     cbv [spec_of_memconst memconst]; repeat straightline.
-    unfold1_call_goal; cbv beta match delta [call_body]; rewrite String.eqb_refl.
-    cbv beta match delta [func].
-    repeat straightline.
     refine ((Loops.tailrec
       (HList.polymorphic_list.cons _
       (HList.polymorphic_list.cons _

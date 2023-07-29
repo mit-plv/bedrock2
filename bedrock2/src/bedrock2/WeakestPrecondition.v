@@ -5,7 +5,7 @@ Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 Require Import coqutil.Map.Interface.
 Require coqutil.Map.SortedListString.
 
-#[export] Instance env: map.map String.string (list String.string * list String.string * Syntax.cmd.cmd) := SortedListString.map _.
+#[export] Instance env: map.map String.string Syntax.func := SortedListString.map _.
 #[export] Instance env_ok: map.ok env := SortedListString.ok _.
 
 Section WeakestPrecondition.
@@ -56,13 +56,13 @@ Section WeakestPrecondition.
       | _ => progress cbn in *
       end; eauto.
 
-  Lemma expr_sound: forall m l e mc post (H : WeakestPrecondition.expr m l e post),
+  Lemma expr_sound: forall m l e mc post (H : expr m l e post),
     exists v mc', Semantics.eval_expr m l e mc = Some (v, mc') /\ post v.
   Proof.
     induction e; t.
     { destruct H. destruct H. eexists. eexists. rewrite H. eauto. }
-    { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
-    { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
+    { eapply IHe in H; t. cbv [load] in H0; t. rewrite H. rewrite H0. eauto. }
+    { eapply IHe in H; t. cbv [load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe1 in H; t. eapply IHe2 in H0; t. rewrite H, H0; eauto. }
     { eapply IHe1 in H; t. rewrite H. Tactics.destruct_one_match.
       { eapply IHe3 in H0; t. }
@@ -98,7 +98,7 @@ Section WeakestPrecondition.
   Proof.
     cbv [map.getmany_of_list].
     induction a; cbn; repeat (subst; t).
-    cbv [WeakestPrecondition.get] in H; t.
+    cbv [get] in H; t.
     epose proof (IHa _ _ H0); clear IHa; t.
     rewrite H. erewrite H1. eexists; split; eauto.
   Qed.
@@ -245,7 +245,7 @@ Section WeakestPrecondition.
       unfold call in *.
       Tactics.destruct_one_match_hyp. 2: contradiction.
       unfold func in *.
-      destruct p as ((argnames & retnames) & fbody).
+      destruct f as ((argnames & retnames) & fbody).
       destruct H0 as (l1 & Hl1 & Hbody).
       inversion Hbody. clear Hbody. rename H into Hbody.
       eapply exec.call; eauto.
@@ -280,6 +280,11 @@ Ltac apply_rule_for_command c :=
   | cmd.while ?e ?c => eapply wp_while
   | cmd.call ?binds ?fname ?arges => eapply wp_call
   | cmd.interact ?binds ?action ?arges => eapply wp_interact
+  end.
+
+Ltac unfold1_cmd_goal :=
+  lazymatch goal with
+  | |- cmd _ ?c _ _ _ ?post => let c := eval hnf in c in apply_rule_for_command c
   end.
 
 Ltac unfold1_expr e :=
