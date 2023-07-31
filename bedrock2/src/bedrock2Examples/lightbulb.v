@@ -610,24 +610,26 @@ Section WithParameters.
 
   Import SPI.
 
-  Definition function_impls :=
+  Definition function_impls := map.of_list
     &[,lightbulb_init; lan9250_init; lan9250_wait_for_boot; lan9250_mac_write;
     lightbulb_loop; lightbulb_handle; recvEthernet;  lan9250_writeword; lan9250_readword;
     spi_xchg; spi_write; spi_read].
 
+  Local Ltac specapply s := eapply s; [reflexivity|..].
+
   Lemma link_lightbulb_loop : spec_of_lightbulb_loop function_impls.
   Proof.
-    eapply lightbulb_loop_ok;
-    (eapply recvEthernet_ok || eapply lightbulb_handle_ok);
-        eapply lan9250_readword_ok; eapply spi_xchg_ok;
-        (eapply spi_write_ok || eapply spi_read_ok).
+    specapply lightbulb_loop_ok;
+    (specapply recvEthernet_ok || specapply lightbulb_handle_ok);
+        specapply lan9250_readword_ok; specapply spi_xchg_ok;
+        (specapply spi_write_ok || specapply spi_read_ok).
   Qed.
   Lemma link_lightbulb_init : spec_of_lightbulb_init function_impls.
   Proof.
-    eapply lightbulb_init_ok; eapply lan9250_init_ok;
-    try (eapply lan9250_wait_for_boot_ok || eapply lan9250_mac_write_ok);
-    (eapply lan9250_readword_ok || eapply lan9250_writeword_ok);
-        eapply spi_xchg_ok;
-        (eapply spi_write_ok || eapply spi_read_ok).
+    specapply lightbulb_init_ok; specapply lan9250_init_ok;
+    try (specapply lan9250_wait_for_boot_ok || specapply lan9250_mac_write_ok);
+    (specapply lan9250_readword_ok || specapply lan9250_writeword_ok);
+        specapply spi_xchg_ok;
+        (specapply spi_write_ok || specapply spi_read_ok).
   Qed.
 End WithParameters.

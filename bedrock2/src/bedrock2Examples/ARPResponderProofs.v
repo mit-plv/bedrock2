@@ -11,6 +11,7 @@ Local Open Scope string_scope. Local Open Scope list_scope. Local Open Scope Z_s
 
 From bedrock2 Require Import Array Scalars Separation.
 From coqutil.Tactics Require Import letexists rdelta.
+Require Import bedrock2.WeakestPrecondition.
 Local Notation bytes := (array scalar8 (word.of_Z 1)).
 
 Ltac seplog_use_array_load1 H i :=
@@ -20,17 +21,16 @@ Ltac seplog_use_array_load1 H i :=
   change ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in *.
 
 
-Local Instance spec_of_arp : spec_of "arp" := fun functions =>
-  forall t m packet ethbuf len R,
-    (sep (array scalar8 (word.of_Z 1) ethbuf packet) R) m ->
-    word.unsigned len = Z.of_nat (length packet) ->
-  WeakestPrecondition.call functions "arp" t m [ethbuf; len] (fun T M rets => True).
+Local Instance spec_of_arp : spec_of "arp" :=
+  fnspec! "arp" ethbuf len / packet R,
+  { requires t m := (sep (array scalar8 (word.of_Z 1) ethbuf packet) R) m /\
+                    word.unsigned len = Z.of_nat (length packet);
+    ensures T M := True }.
 
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
 Goal program_logic_goal_for_function! arp.
-  eexists; split; repeat straightline.
-  1: exact eq_refl.
+  repeat straightline.
   letexists; split; [solve[repeat straightline]|]; split; [|solve[repeat straightline]]; repeat straightline.
   eapply Properties.word.if_nonzero in H1.
   rewrite word.unsigned_ltu, word.unsigned_of_Z in H1. cbv [word.wrap] in H1.

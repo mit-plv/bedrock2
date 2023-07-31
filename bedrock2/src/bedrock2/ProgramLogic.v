@@ -1,6 +1,7 @@
 From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
 Require Import coqutil.Map.Interface.
 Require Import bedrock2.Syntax.
+Require Import bedrock2.WP.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.Loops.
@@ -229,16 +230,14 @@ Ltac straightline :=
   match goal with
   | _ => straightline_cleanup
   | |- program_logic_goal_for ?f _ =>
-    enter f;
-    cbv beta delta [call];
-    lazymatch goal with
-    | H: map.get ?functions ?fname = Some _ |- context[map.get ?functions ?fname] =>
-        rewrite H; clear H
+    enter f; intros;
+    match goal with
+    | H: map.get ?functions ?fname = Some _ |- _ =>
+        eapply start_func; [exact H | clear H]
     end;
-    intros;
     cbv match beta delta [WeakestPrecondition.func]
   | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
-    unfold1_cmd_goal;
+    unfold1_cmd_goal; cbv beta match delta [cmd_body];
     let __ := match s with String.String _ _ => idtac | String.EmptyString => idtac end in
     ident_of_constr_string_cps s ltac:(fun x =>
       ensure_free x;
@@ -250,7 +249,7 @@ Ltac straightline :=
     | cmd.while _ _ => fail
     | cmd.cond _ _ _ => fail
     | cmd.interact _ _ _ => fail
-    | _ => apply_rule_for_command c
+    | _ => unfold1_cmd_goal; cbv beta match delta [cmd_body]
     end
   | |- @list_map _ _ (get _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
   | |- @list_map _ _ (expr _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]

@@ -50,6 +50,32 @@ Definition uart0_rxdata := 0x10013004. Definition uart0_txdata  := 0x10013000.
       False
     end%list%bool.
 
+Ltac u :=
+  repeat match goal with
+    | H: exists _, _ |- _ => destruct H
+    | H: _ /\ _ |- _ => destruct H
+    | H: False |- _ => destruct H
+    end.
+
+#[global] Instance ext_spec_ok : ext_spec.ok ext_spec.
+Proof.
+  split; cbv [ext_spec Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl]; intros.
+    all : repeat u; subst; eauto 8 using Properties.map.same_domain_refl.
+    { destr.destr (String.eqb act "MMInput");
+      try destr.destr (String.eqb act "MMOutput").
+      3: {
+        exfalso.
+        repeat (Tactics.destruct_one_match_hyp; try (assumption || congruence)). }
+      { repeat ((Tactics.destruct_one_match_hyp; repeat u; eauto)). }
+      { repeat ((Tactics.destruct_one_match_hyp; repeat u; eauto)). } }
+    { destr.destr (String.eqb a "MMInput");
+      try destr.destr (String.eqb a "MMOutput").
+      3: {
+        exfalso.
+        repeat (Tactics.destruct_one_match_hyp; try (assumption || congruence)). }
+      { repeat ((Tactics.destruct_one_match_hyp; repeat u; eauto)). }
+      { repeat ((Tactics.destruct_one_match_hyp; repeat u; eauto)). } }
+Qed.
 
 Require Import bedrock2.NotationsCustomEntry.
 
@@ -157,13 +183,18 @@ Local Instance mapok: map.ok mem := SortedListWord.ok Naive.word32 _.
 
 Local Instance wordok: word.ok word := Naive.word32_ok.
 
+Local Instance localsok: map.ok locals := SortedListString.ok _.
+
 Lemma swap_chars_over_uart_correct m :
   WeakestPrecondition.cmd map.empty swap_chars_over_uart nil m map.empty
   (fun t m l => True).
 Proof.
   repeat t.
+  eapply Loops.wp_while.
   eexists _, _, (fun v t _ l => exists p, map.of_list_zip ["running"; "prev"; "one"; "dot"]%string [v; p; word.of_Z(1); word.of_Z(46)] = Some l ); repeat t.
+  eapply Loops.wp_while.
   eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip ["polling"; "rx"]%string [v; rxv] l0 = Some l); repeat t.
+  eapply Loops.wp_while.
   eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list_zip ["polling"; "tx"]%string [v; txv] l0 = Some l); repeat t.
   eexists; split; repeat t.
 Defined.
@@ -246,8 +277,10 @@ Lemma echo_server_correct m :
   (fun t m l => echo_server_spec t None).
 Proof.
   repeat t.
+  eapply Loops.wp_while.
   eexists _, _, (fun v t _ l => map.of_list_zip ["running"; "one"]%string [v; word.of_Z(1)] = Some l /\ echo_server_spec t None ); repeat t.
   { repeat split. admit. (* hfrosccfg*) }
+  eapply Loops.wp_while.
   eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip ["polling"; "rx"]%string [v; rxv] l0 = Some l /\
                                             if Z.eq_dec (word.unsigned (word.and rxv (word.of_Z (2^31)))) 0
                                             then echo_server_spec t (Some rxv)
