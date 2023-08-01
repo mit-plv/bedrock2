@@ -122,6 +122,12 @@ Section WeakestPrecondition.
         list_map (get l) outnames (fun rets =>
         post t m rets)).
 
+  Definition execfunc e '(innames, outnames, c) (t : trace) (m : mem) (args : list word) (post : trace -> mem -> list word -> Prop) :=
+    exists lf, map.of_list_zip innames args = Some lf /\
+    forall mc, exec e c t m lf mc (fun t m l _ =>
+      exists retvs, map.getmany_of_list l outnames = Some retvs /\
+      post t m retvs).
+
   Definition call_body rec (functions : list (String.string * (list String.string * list String.string * cmd.cmd)))
                 (fname : String.string) (t : trace) (m : mem) (args : list word)
                 (post : trace -> mem -> list word -> Prop) : Prop :=
@@ -130,6 +136,7 @@ Section WeakestPrecondition.
     | cons (f, decl) functions =>
       if String.eqb f fname
       then func (rec functions) decl t m args post
+        \/ execfunc (map.of_list functions) decl t m args post
       else rec functions fname t m args post
     end.
   Fixpoint call functions := call_body call functions.
@@ -173,10 +180,10 @@ Ltac unfold1_list_map_goal :=
 
 Ltac unfold1_call e :=
   lazymatch e with
-    @call ?width ?BW ?word ?mem ?locals ?ext_spec ?fs ?fname ?t ?m ?l ?post =>
+    @call ?width ?BW ?word ?mem ?locals ?env ?ext_spec ?fs ?fname ?t ?m ?l ?post =>
     let fs := eval hnf in fs in
-    constr:(@call_body width BW word mem locals ext_spec
-                       (@call width BW word mem locals ext_spec) fs fname t m l post)
+    constr:(@call_body width BW word mem locals env ext_spec
+                       (@call width BW word mem locals env ext_spec) fs fname t m l post)
   end.
 Ltac unfold1_call_goal :=
   let G := lazymatch goal with |- ?G => G end in

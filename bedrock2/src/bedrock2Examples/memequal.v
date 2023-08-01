@@ -27,6 +27,7 @@ Local Notation "xs $@ a" := (Array.array ptsto (word.of_Z 1) a xs) (at level 10,
 Section WithParameters.
   Context {width} {BW: Bitwidth width}.
   Context {word: word.word width} {mem: map.map word byte} {locals: map.map string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
   Context {ext_spec: ExtSpec}.
   Import ProgramLogic.Coercions.
 
@@ -38,8 +39,7 @@ Section WithParameters.
                        (r  = 1 :>Z <-> xs  = ys) }.
 
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok : map.ok locals}
-    {env : map.map string (list string * list string * Syntax.cmd)} {env_ok : map.ok env}
-    {ext_spec_ok : ext_spec.ok ext_spec}.
+    {env_ok : map.ok env} {ext_spec_ok : ext_spec.ok ext_spec}.
 
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
   Import coqutil.Word.Properties coqutil.Map.Properties.
