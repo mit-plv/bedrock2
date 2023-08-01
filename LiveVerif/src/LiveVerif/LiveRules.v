@@ -356,31 +356,18 @@ Section WithParams.
     - assumption.
   Qed.
 
-  Ltac pose_env :=
-    let env := fresh "env" in
-    unshelve epose (env := _ : map.map string (list string * list string * cmd));
-    [ eapply SortedListString.map
-    | assert (env_ok: map.ok env) by apply SortedListString.ok; clearbody env ].
-
   Lemma WP_weaken_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
-      WeakestPrecondition.cmd (call fs) c t m l post1 ->
+      WeakestPrecondition.cmd fs c t m l post1 ->
       (forall t m l, post1 t m l -> post2 t m l) ->
-      WeakestPrecondition.cmd (call fs) c t m l post2.
-  Proof.
-    pose_env. intros.
-    eapply WeakestPreconditionProperties.Proper_cmd. 3: eassumption.
-    1: eapply WeakestPreconditionProperties.Proper_call.
-    cbv [RelationClasses.Reflexive Morphisms.pointwise_relation
-         Morphisms.respectful Basics.impl].
-    assumption.
-  Qed.
+      WeakestPrecondition.cmd fs c t m l post2.
+  Proof. eapply WeakestPreconditionProperties.weaken_cmd. Qed.
 
-  Inductive wp_cmd(fs: list (string * (list string * list string * cmd)))
+  Inductive wp_cmd(fs: Semantics.env)
             (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop):
-    Prop := mk_wp_cmd(_: WeakestPrecondition.cmd (call fs) c t m l post).
+    Prop := mk_wp_cmd(_: WeakestPrecondition.cmd fs c t m l post).
 
   Lemma invert_wp_cmd: forall fs c t m l post,
-      wp_cmd fs c t m l post -> WeakestPrecondition.cmd (call fs) c t m l post.
+      wp_cmd fs c t m l post -> WeakestPrecondition.cmd fs c t m l post.
   Proof. intros. inversion H; assumption. Qed.
 
   Lemma weaken_wp_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
@@ -568,7 +555,7 @@ Section WithParams.
     all: eauto using weaken_wp_cmd.
   Qed.
 
-  Definition after_loop: list (string * (list string * list string * cmd)) ->
+  Definition after_loop: Semantics.env ->
     cmd -> trace -> mem -> locals -> (trace -> mem -> locals -> Prop) -> Prop := wp_cmd.
 
   Lemma wp_set: forall fs x e v t m l rest post,
@@ -762,7 +749,7 @@ Section WithParams.
                   True)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t m l post.
   Proof.
-    econstructor. cbn. exists measure, lt, invariant.
+    econstructor. cbn. eapply wp_while. exists measure, lt, invariant.
     split. 1: assumption.
     split. 1: eauto.
     clear Hpre v0 t m l.
@@ -805,7 +792,6 @@ Section WithParams.
   Proof.
     eapply wp_seq.
     econstructor. cbn.
-    pose_env.
     eapply tailrec_localsmap_1ghost with
       (P := fun v g t m l => pre (g, v, t, m, l))
       (Q := fun v g t m l => post (g, v, t, m, l)).
@@ -1000,9 +986,6 @@ Section WithParams.
     specialize (H Pre). clear Pre.
     eapply wp_seq.
     eapply wp_call0. 1: eassumption.
-    unshelve epose (env := _ : map.map string func).
-    1: eapply SortedListString.map.
-    assert (env_ok: map.ok env) by apply SortedListString.ok. clearbody env.
     eapply WeakestPreconditionProperties.Proper_call. 2: eassumption. exact Impl.
   Qed.
 
@@ -1017,20 +1000,18 @@ Section WithParams.
       eapply IHretnames; eassumption.
   Qed.
 
-  Lemma prove_func: forall fs argnames retnames body t m argvals l post,
+  Lemma prove_func: forall fs f argnames retnames body t m argvals l post,
+      map.get fs f = Some (argnames, retnames, body) ->
       map.of_list_zip argnames argvals = Some l ->
       wp_cmd fs body t m l (fun t' m' l' => exists retvals,
                                 map.getmany_of_list l' retnames = Some retvals /\
                                   post t' m' retvals) ->
-      WeakestPrecondition.func (call fs) (argnames, retnames, body) t m argvals post.
+      WeakestPrecondition.call fs f t m argvals post.
   Proof.
     intros.
-    unfold func.
-    eexists. split. 1: eassumption.
-    eapply invert_wp_cmd.
-    eapply weaken_wp_cmd. 1: eassumption.
-    cbv beta. intros. fwd.
-    eapply cpsify_getmany_of_list; eassumption.
+    eapply WP.WP_Impl.mk_wp_call. 1,2: eassumption. eapply WP.WP_Impl.mk_wp_cmd.
+    intros. eapply invert_wp_cmd in H1. eapply WeakestPreconditionProperties.sound_cmd.
+    assumption.
   Qed.
 
   (* applied at beginning of void functions *)

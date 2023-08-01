@@ -140,10 +140,11 @@ Section WithWordAndMem.
       andb (Z.leb (-2048) x) (Z.ltb x 2048).
 
     Definition locals_based_call_spec{Var Cmd: Type}{locals: map.map Var word}
-               (Exec: string_keyed_map (list Var * list Var * Cmd) ->
+               {string_keyed_map: forall T: Type, map.map string T}
+               (Exec: string_keyed_map (list Var * list Var * Cmd)%type ->
                       Cmd -> trace -> mem -> locals -> MetricLog ->
                       (trace -> mem -> locals -> MetricLog -> Prop) -> Prop)
-               (e: string_keyed_map (list Var * list Var * Cmd))(f: string)
+               (e: string_keyed_map (list Var * list Var * Cmd)%type)(f: string)
                (t: trace)(m: mem)(argvals: list word)
                (post: trace -> mem -> list word -> Prop): Prop :=
       exists argnames retnames fbody l,
@@ -157,7 +158,7 @@ Section WithWordAndMem.
       fun '(argnames, retnames, body) => NoDup argnames /\ NoDup retnames.
 
     Definition SrcLang: Lang := {|
-      Program := string_keyed_map (list string * list string * Syntax.cmd);
+      Program := Semantics.env;
       Valid := map.forall_values ExprImp.valid_fun;
       Call := locals_based_call_spec Semantics.exec;
     |}.
@@ -220,7 +221,7 @@ Section WithWordAndMem.
     Lemma flattening_correct: phase_correct SrcLang FlatWithStrVars flatten_functions.
     Proof.
       unfold SrcLang, FlatWithStrVars.
-      split; cbn.
+      split; cbn -[flatten_functions].
       { unfold map.forall_values, ParamsNoDup.
         intros. destruct v as ((argnames & retnames) & body).
         eapply flatten_functions_NoDup; try eassumption.
@@ -434,7 +435,7 @@ Section WithWordAndMem.
     Qed.
 
     Definition composed_compile:
-      string_keyed_map (list string * list string * cmd) ->
+      Semantics.env ->
       result (list Instruction * string_keyed_map Z * Z) :=
       (compose_phases flatten_functions
       (compose_phases (useimmediate_functions is5BitImmediate is12BitImmediate)
@@ -481,8 +482,8 @@ Section WithWordAndMem.
         ExprImp.valid_funs (map.of_list fs).
     Proof.
       unfold valid_funs. induction fs; intros.
-      - simpl in H0. rewrite map.get_empty in H0. discriminate.
-      - destruct a as (name & body). simpl in H0. rewrite map.get_put_dec in H0. fwd.
+      - cbn [map.of_list] in H0. rewrite map.get_empty in H0. discriminate.
+      - destruct a as (name & body). cbn [map.of_list] in H0. rewrite map.get_put_dec in H0. fwd.
         destruct_one_match_hyp.
         + fwd. eapply valid_src_fun_correct. eassumption.
         + eapply IHfs; eassumption.
@@ -501,7 +502,8 @@ Section WithWordAndMem.
         valid_src_funs functions = true ->
         compile functions = Success (instrs, finfo, req_stack_size) ->
         (exists (argnames retnames: list string) (fbody: cmd) l,
-            map.get (map.of_list functions) fname = Some (argnames, retnames, fbody) /\
+            map.get (map.of_list (map := Semantics.env) functions) fname =
+              Some (argnames, retnames, fbody) /\
             map.of_list_zip argnames argvals = Some l /\
             forall mc,
               Semantics.exec (map.of_list functions) fbody t mH l mc
@@ -573,7 +575,7 @@ Section WithWordAndMem.
         valid_src_funs fs = true ->
         NoDup (map fst fs) ->
         compile fs = Success (instrs, finfo, req_stack_size) ->
-        WeakestPrecondition.call fs fname t mH argvals post ->
+        WeakestPrecondition.call (map.of_list fs) fname t mH argvals post ->
         map.get (map.of_list finfo) fname = Some f_rel_pos ->
         req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
         word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
@@ -594,7 +596,6 @@ Section WithWordAndMem.
       intros.
       let H := hyp WeakestPrecondition.call in rename H into WP.
       eapply WeakestPreconditionProperties.sound_call' in WP.
-      2: { eapply map.all_gets_from_map_of_NoDup_list; assumption. }
       fwd.
       edestruct compiler_correct with (argvals := argvals) (post := post) as (f_rel_pos' & G & C);
         try eassumption.

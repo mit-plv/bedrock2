@@ -2,6 +2,7 @@ Require Import Coq.ZArith.ZArith.
 Require Coq.Strings.String.
 Require Import coqutil.Map.Interface coqutil.Word.Interface.
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.Semantics.
 Require Import compiler.SeparationLogic.
 Require Import compiler.LowerPipeline.
 Require Import compiler.Pipeline.
@@ -9,7 +10,6 @@ Require Import compiler.Pipeline.
 Section Params1.
   Context {width} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
   Context {ext_spec: Semantics.ExtSpec}.
 
   Set Implicit Arguments.

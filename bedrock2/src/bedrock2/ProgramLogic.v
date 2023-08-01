@@ -7,7 +7,7 @@ Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.Loops.
 Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
 
-Definition spec_of (procname:String.string) := env -> Prop.
+Definition spec_of (procname:String.string) := Semantics.env -> Prop.
 Existing Class spec_of.
 
 Module Import Coercions.
@@ -57,7 +57,7 @@ Ltac program_logic_goal_for_function proc :=
   let __ := constr:(proc : Syntax.func) in
   constr_string_basename_of_constr_reference_cps ltac:(Tactics.head proc) ltac:(fun fname =>
   let spec := lazymatch constr:(_:spec_of fname) with ?s => s end in
-  exact (forall (functions : @map.rep _ _ env) (EnvContains : map.get functions fname = Some proc), ltac:(
+  exact (forall (functions : @map.rep _ _ Semantics.env) (EnvContains : map.get functions fname = Some proc), ltac:(
     let callees := eval cbv in (callees (snd proc)) in
     let s := assuming_correctness_of_in callees functions (spec functions) in
     exact s))).

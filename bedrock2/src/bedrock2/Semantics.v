@@ -3,6 +3,7 @@ Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import coqutil.Decidable.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.
+Require coqutil.Map.SortedListString.
 Require Import bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import bedrock2.MetricLogging.
@@ -78,10 +79,12 @@ Section binops.
     end.
 End binops.
 
+#[export] Instance env: map.map String.string Syntax.func := SortedListString.map _.
+#[export] Instance env_ok: map.ok env := SortedListString.ok _.
+
 Section semantics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
   Context {ext_spec: ExtSpec}.
 
   Local Notation metrics := MetricLog.
@@ -157,11 +160,11 @@ Section semantics.
   End WithMemAndLocals.
 End semantics.
 
-Module exec. Section WithEnv.
+Module exec. Section WithParams.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
   Context {ext_spec: ExtSpec}.
+  Section WithEnv.
   Context (e: env).
 
   Local Notation metrics := MetricLog.
@@ -369,4 +372,13 @@ Module exec. Section WithEnv.
   Qed.
 
   End WithEnv.
+
+  Lemma extend_env: forall e1 e2,
+      map.extends e2 e1 ->
+      forall c t m l mc post,
+      exec e1 c t m l mc post ->
+      exec e2 c t m l mc post.
+  Proof. induction 2; try solve [econstructor; eauto]. Qed.
+
+  End WithParams.
 End exec. Notation exec := exec.exec.

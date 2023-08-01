@@ -139,7 +139,6 @@ Module SpiEth.
         write_byte b (((m, MMInput, [word.of_Z spi_tx_fifo]), (m, [x])) :: rest).
 
     Context {locals: map.map String.string word}.
-    Context {funname_env: forall T, map.map String.string T}.
 
     Instance ext_spec: ExtSpec :=
       fun t mGive action (argvals: list word) (post: (mem -> list word -> Prop)) =>
@@ -238,7 +237,6 @@ Module Syscalls.
                        (m, [ret1; ret2; err]))].
 
     Context {locals: map.map String.string word}.
-    Context {funname_env: forall T, map.map String.string T}.
 
     Instance ext_spec: ExtSpec :=
       fun t m action (argvals: list word) (post: (mem -> list word -> Prop)) =>
@@ -298,7 +296,6 @@ Module MMIOUsage.
     Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
     Context {word_ok: word.ok word}.
     Context {locals: map.map String.string word}.
-    Context {funname_env: forall T, map.map String.string T}.
 
     Definition squarer_correct := @squarer_correct SpiEth.MMIOMacros.
     (*Check squarer_correct.*)
@@ -311,7 +308,6 @@ Module SyscallsUsage.
     Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
     Context {word_ok: word.ok word}.
     Context {locals: map.map String.string word}.
-    Context {funname_env: forall T, map.map String.string T}.
 
     Definition squarer_correct := @squarer_correct Syscalls.SyscallIOMacros.
     (*Check squarer_correct.*)

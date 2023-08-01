@@ -1,11 +1,7 @@
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Map.Interface.
-Require coqutil.Map.SortedListString.
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import bedrock2.Syntax bedrock2.Semantics.
-
-#[export] Instance env: map.map String.string Syntax.func := SortedListString.map _.
-#[export] Instance env_ok: map.ok env := SortedListString.ok _.
 
 (* We want to make the definitions opaque to `hnf` (unfolds any definition, so a plain
    definition doesn't work) and to `repeat split` (applies constructors of all
@@ -99,10 +95,9 @@ Section WithParams.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}
     {mem: map.map word Byte.byte}
     {locals: map.map String.string word}
-    {ext_spec: ExtSpec}
-    (e: env).
+    {ext_spec: ExtSpec}.
 
-  Lemma weaken_wp_cmd: forall c t m l (post1 post2: trace -> mem -> locals -> Prop),
+  Lemma weaken_wp_cmd: forall e c t m l (post1 post2: trace -> mem -> locals -> Prop),
       (forall t' m' l', post1 t' m' l' -> post2 t' m' l') ->
       wp_cmd e t m l c post1 -> wp_cmd e t m l c post2.
   Proof.
@@ -110,7 +105,7 @@ Section WithParams.
     eapply exec.weaken. 1: eassumption. eauto.
   Qed.
 
-  Lemma weaken_wp_call: forall f t m args (post1 post2: trace -> mem -> list word -> Prop),
+  Lemma weaken_wp_call: forall e f t m args (post1 post2: trace -> mem -> list word -> Prop),
       (forall t' m' rets, post1 t' m' rets -> post2 t' m' rets) ->
       wp_call e f t m args post1 -> wp_call e f t m args post2.
   Proof.
@@ -119,4 +114,24 @@ Section WithParams.
     eapply weaken_wp_cmd. 2: eassumption. firstorder eauto.
   Qed.
 
+  Lemma extend_env_wp_cmd: forall e1 e2,
+      map.extends e2 e1 ->
+      forall c t m l post,
+      wp_cmd e1 t m l c post ->
+      wp_cmd e2 t m l c post.
+  Proof.
+    intros. eapply mk_wp_cmd. intros. eapply invert_wp_cmd in H0.
+    eapply exec.extend_env; eassumption.
+  Qed.
+
+  Lemma extend_env_wp_call: forall e1 e2,
+      map.extends e2 e1 ->
+      forall f t m args post,
+      wp_call e1 f t m args post ->
+      wp_call e2 f t m args post.
+  Proof.
+    intros. eapply invert_wp_call in H0. destruct H0 as (? & ? & ? & ? & ? & ? & ?).
+    eapply mk_wp_call; eauto.
+    eapply extend_env_wp_cmd; eauto.
+  Qed.
 End WithParams.

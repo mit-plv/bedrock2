@@ -20,7 +20,6 @@ Open Scope Z_scope.
 Section ExprImp1.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
   Context {ext_spec: ExtSpec}.
 
   Notation var := String.string (only parsing).
@@ -377,7 +376,6 @@ Ltac invert_eval_cmd :=
 Section ExprImp2.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
   Context {ext_spec: ExtSpec}.
 
   Notation var := String.string (only parsing).
