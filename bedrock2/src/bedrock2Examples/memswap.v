@@ -140,10 +140,12 @@ Section WithParameters.
         letexists; split.
         { subst l l0 l1 l2. rewrite ?Properties.map.get_put_dec; cbn. exact eq_refl. }
 
+        repeat straightline.
         eexists _, _, _.
         split.
         { cbv [Loops.enforce l l0 l1 l2]; cbn.
-          repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec; cbn); split.
+          subst l5 l4 l3 l2 l1 l0 l.
+          repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec; cbn || apply conj).
           { exact eq_refl. }
           { eapply map.map_ext; intros k.
             repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec, ?map.get_empty; cbn -[String.eqb]).

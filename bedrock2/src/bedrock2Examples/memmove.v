@@ -193,18 +193,12 @@ Section WithParameters.
           eexists.
           eexists.
           { eauto. }
-          eexists.
-          repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec; cbn).
-          eexists.
-          { eauto. }
-          eexists.
-          eexists.
-          { eauto. }
-          eexists _, _, _, _.
-          split.
+          repeat (straightline || rewrite map.get_put_dec || rewrite map.get_remove_dec || eexists (_ : word) || apply conj || cbn).
+          { subst l.
+            repeat (straightline || rewrite map.get_put_dec || rewrite map.get_remove_dec || eexists (_ : word) || apply conj || cbn). }
           { cbv [Loops.enforce]; cbn.
-            repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec; cbn); split.
-            { exact eq_refl. }
+            subst l0 l.
+            repeat (straightline || rewrite map.get_put_dec || rewrite map.get_remove_dec || eexists (_ : word) || apply conj || cbn).
             { eapply map.map_ext; intros k.
               repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec, ?map.get_empty; cbn -[String.eqb]).
               repeat (destruct String.eqb; trivial). } }
@@ -224,8 +218,8 @@ Section WithParameters.
         { cbn. intuition idtac. eexists _, _; ssplit; eauto. } }
 
     { assert (n <= x) by ZnWords.
+      repeat straightline.
 
-      unfold1_cmd_goal; cbv beta match delta [cmd_body].
       eapply WeakestPreconditionProperties.dexpr_expr.
       repeat straightline.
       letexists; split.
@@ -331,21 +325,14 @@ Section WithParameters.
 
           cbv [get literal dlet.dlet].
           repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec; cbn).
-          eexists.
-          eexists.
-          { eauto. }
-          eexists.
-          repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec; cbn).
-          eexists.
-          { eauto. }
-          eexists.
-          eexists.
-          { eauto. }
-          eexists _, _, _, _.
-          split.
+          repeat (straightline || rewrite map.get_put_dec || rewrite map.get_remove_dec || eexists (_ : word) || apply conj || cbn).
+          { subst l.
+            repeat (straightline || rewrite map.get_put_dec || rewrite map.get_remove_dec || eexists (_ : word) || apply conj || cbn). }
+          { subst l l0.
+            repeat (straightline || rewrite map.get_put_dec || rewrite map.get_remove_dec || eexists (_ : word) || apply conj || cbn). }
           { cbv [Loops.enforce]; cbn.
-            repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec; cbn); split.
-            { exact eq_refl. }
+            subst l1 l0 l.
+            repeat (straightline || rewrite map.get_put_dec || rewrite map.get_remove_dec || eexists (_ : word) || apply conj || cbn).
             { eapply map.map_ext; intros k.
               repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec, ?map.get_empty; cbn -[String.eqb]).
               repeat (destruct String.eqb; trivial). } }
@@ -384,7 +371,7 @@ Section WithParameters.
     cbv [program_logic_goal_for spec_of_memmove_array]; intros.
     eapply WeakestPreconditionProperties.Proper_call; cycle 1; [eapply memmove_ok|];
         cbv [sepclause_of_map] in *.
-    { eassumption. }
+    { trivial. }
     { intuition idtac.
       - seprewrite_in_by @ptsto_bytes.array1_iff_eq_of_list_word_at H0 ZnWords; eassumption.
       - seprewrite_in_by @ptsto_bytes.array1_iff_eq_of_list_word_at H ZnWords; eassumption.
