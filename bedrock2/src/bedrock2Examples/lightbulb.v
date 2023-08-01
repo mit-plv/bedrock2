@@ -615,14 +615,14 @@ Section WithParameters.
     lightbulb_loop; lightbulb_handle; recvEthernet;  lan9250_writeword; lan9250_readword;
     spi_xchg; spi_write; spi_read].
 
-  Lemma link_lightbulb_loop : spec_of_lightbulb_loop function_impls.
+  Lemma link_lightbulb_loop : spec_of_lightbulb_loop (map.of_list function_impls).
   Proof.
     eapply lightbulb_loop_ok;
     (eapply recvEthernet_ok || eapply lightbulb_handle_ok);
         eapply lan9250_readword_ok; eapply spi_xchg_ok;
         (eapply spi_write_ok || eapply spi_read_ok).
   Qed.
-  Lemma link_lightbulb_init : spec_of_lightbulb_init function_impls.
+  Lemma link_lightbulb_init : spec_of_lightbulb_init (map.of_list function_impls).
   Proof.
     eapply lightbulb_init_ok; eapply lan9250_init_ok;
     try (eapply lan9250_wait_for_boot_ok || eapply lan9250_mac_write_ok);
