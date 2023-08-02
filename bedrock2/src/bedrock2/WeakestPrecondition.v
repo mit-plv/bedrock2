@@ -116,6 +116,8 @@ Section WeakestPrecondition.
       cmd call c t m l (fun t m l =>
         list_map (get l) outnames (fun rets =>
         post t m rets)).
+
+  Definition program := cmd.
 End WeakestPrecondition.
 Notation call := wp_call.
 

@@ -137,6 +137,22 @@ Section WeakestPrecondition.
     intros. eapply weaken_wp_call; eassumption.
   Qed.
 
+  Global Instance Proper_program :
+    Proper (
+     pointwise_relation _ (
+     pointwise_relation _ (
+     pointwise_relation _ (
+     pointwise_relation _ (
+     pointwise_relation _ (
+     (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
+     Basics.impl)))))) WeakestPrecondition.program.
+  Proof using word_ok mem_ok locals_ok ext_spec_ok.
+    cbv [Proper respectful pointwise_relation Basics.impl  WeakestPrecondition.program]; intros.
+    eapply Proper_cmd;
+    cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  WeakestPrecondition.func];
+    try solve [typeclasses eauto with core].
+  Qed.
+
   Ltac t :=
       repeat match goal with
              | |- forall _, _ => progress intros
