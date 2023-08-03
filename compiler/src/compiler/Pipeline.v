@@ -160,7 +160,7 @@ Section WithWordAndMem.
     Definition SrcLang: Lang := {|
       Program := Semantics.env;
       Valid := map.forall_values ExprImp.valid_fun;
-      Call := locals_based_call_spec Semantics.exec;
+      Call := locals_based_call_spec MetricSemantics.exec;
     |}.
     (* |                 *)
     (* | FlattenExpr     *)
@@ -506,7 +506,7 @@ Section WithWordAndMem.
               Some (argnames, retnames, fbody) /\
             map.of_list_zip argnames argvals = Some l /\
             forall mc,
-              Semantics.exec (map.of_list functions) fbody t mH l mc
+              MetricSemantics.exec (map.of_list functions) fbody t mH l mc
                 (fun t' m' l' mc' => exists retvals: list word,
                      map.getmany_of_list l' retnames = Some retvals /\
                      post t' m' retvals)) ->
@@ -596,12 +596,13 @@ Section WithWordAndMem.
       intros.
       let H := hyp WeakestPrecondition.call in rename H into WP.
       eapply WeakestPreconditionProperties.sound_call' in WP.
-      fwd.
-      edestruct compiler_correct with (argvals := argvals) (post := post) as (f_rel_pos' & G & C);
+      edestruct compiler_correct with (fname := fname) (argvals := argvals) (post := post) as (f_rel_pos' & G & C);
         try eassumption.
-      - intros.
-        unfold map.of_list_zip in *. eauto 10.
-      - eapply C; clear C; try assumption; try congruence.
+      2: { eapply C; clear C; try assumption; try congruence; try eassumption. }
+      intros.
+      unfold Semantics.call in WP. fwd.
+      do 5 eexists. 1: eassumption. split. 1: eassumption.
+      intros. eapply MetricSemantics.of_metrics_free. assumption.
     Qed.
 
   End WithMoreParams.

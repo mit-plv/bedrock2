@@ -177,12 +177,12 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
       (calleePre: Prop)
       (calleePost callerPost: trace -> mem -> list word -> Prop),
       (* definition-site format: *)
-      (calleePre -> call funs f t m args calleePost) ->
+      (calleePre -> WeakestPrecondition.call funs f t m args calleePost) ->
       (* use-site format: *)
       (calleePre /\ enable_frame_trick
                       (forall t' m' rets, calleePost t' m' rets -> callerPost t' m' rets)) ->
       (* conclusion: *)
-      call funs f t m args callerPost.
+      WeakestPrecondition.call funs f t m args callerPost.
   Proof.
     intros. destruct H0. eapply WeakestPreconditionProperties.Proper_call; eauto.
   Qed.

@@ -164,11 +164,10 @@ Section WeakestPrecondition.
              | _ => progress cbv [dlet.dlet WeakestPrecondition.dexpr WeakestPrecondition.dexprs WeakestPrecondition.store] in *
              end; eauto.
 
-  Lemma expr_sound: forall m l e mc post (H : WeakestPrecondition.expr m l e post),
-    exists v mc', Semantics.eval_expr m l e mc = Some (v, mc') /\ post v.
+  Lemma expr_sound: forall m l e post (H : WeakestPrecondition.expr m l e post),
+    exists v, Semantics.eval_expr m l e = Some v /\ post v.
   Proof using word_ok.
     induction e; t.
-    { destruct H. destruct H. eexists. eexists. rewrite H. eauto. }
     { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe1 in H; t. eapply IHe2 in H0; t. rewrite H, H0; eauto. }
@@ -179,56 +178,43 @@ Section WeakestPrecondition.
 
   Import ZArith coqutil.Tactics.Tactics.
 
-  Lemma expr_complete: forall m l e mc v mc',
-    Semantics.eval_expr m l e mc = Some (v, mc') ->
+  Lemma expr_complete: forall m l e v,
+    Semantics.eval_expr m l e = Some v ->
     WeakestPrecondition.dexpr m l e v.
   Proof using word_ok.
     induction e; cbn; intros.
     - inversion_clear H. reflexivity.
-    - destruct_one_match_hyp. 2: discriminate. inversion H. subst r.
-      eexists. eauto.
+    - eexists. eauto.
     - repeat (destruct_one_match_hyp; try discriminate; []).
-      inversion H. subst r0 mc'. clear H.
       eapply Proper_expr.
-      2: { eapply IHe. eassumption. }
+      2: { eapply IHe. reflexivity. }
       intros addr ?. subst r. unfold WeakestPrecondition.load. eauto.
     - repeat (destruct_one_match_hyp; try discriminate; []).
-      inversion H. subst r0 mc'. clear H.
       eapply Proper_expr.
-      2: { eapply IHe. eassumption. }
+      2: { eapply IHe. reflexivity. }
       intros addr ?. subst r. unfold WeakestPrecondition.load. eauto.
     - repeat (destruct_one_match_hyp; try discriminate; []).
-      inversion H. subst v mc'. clear H.
       eapply Proper_expr.
-      2: { eapply IHe1. eassumption. }
+      2: { eapply IHe1. reflexivity. }
       intros v1 ?. subst r.
       eapply Proper_expr.
-      2: { eapply IHe2. eassumption. }
+      2: { eapply IHe2. reflexivity. }
       intros v2 ?. subst r0.
-      reflexivity.
+      congruence.
     - repeat (destruct_one_match_hyp; try discriminate; []).
       eapply Proper_expr.
-      2: { eapply IHe1. eassumption. }
+      2: { eapply IHe1. reflexivity. }
       intros vc ?. subst r.
       destr (word.eqb vc (word.of_Z 0)).
       + eapply IHe3. eassumption.
       + eapply IHe2. eassumption.
   Qed.
 
-  Lemma eval_expr_change_start_metrics: forall m l e mc1 mc1' v,
-      Semantics.eval_expr m l e mc1 = Some (v, mc1') ->
-      forall mc2, exists mc2', Semantics.eval_expr m l e mc2 = Some (v, mc2').
-  Proof.
-    intros. eapply expr_complete in H. eapply expr_sound in H.
-    destruct H as (? & mc2' & H & ?). subst v. exists mc2'. exact H.
-  Qed.
-
-  Lemma sound_args : forall m l args mc P,
+  Lemma sound_args : forall m l args P,
       WeakestPrecondition.list_map (WeakestPrecondition.expr m l) args P ->
-      exists x mc', Semantics.evaluate_call_args_log m l args mc = Some (x, mc') /\ P x.
+      exists x, Semantics.eval_call_args m l args = Some x /\ P x.
   Proof using word_ok.
     induction args; cbn; repeat (subst; t).
-    unfold Semantics.eval_expr in *.
     eapply expr_sound in H; t; rewrite H.
     eapply IHargs in H0; t; rewrite H0.
     eauto.
@@ -248,17 +234,9 @@ Section WeakestPrecondition.
     all : cbv [respectful pointwise_relation Basics.impl WeakestPrecondition.get]; intros; cbv beta; t.
   Qed.
 
-  Local Notation semantics_call := (fun e n t m args post =>
-    exists params rets fbody, map.get e n = Some (params, rets, fbody) /\
-    exists lf, map.putmany_of_list_zip params args map.empty = Some lf /\
-    forall mc', Semantics.exec e fbody t m lf mc' (fun t' m' st1 mc'' =>
-      exists retvs, map.getmany_of_list st1 rets = Some retvs /\
-      post t' m' retvs)).
-
   Local Hint Constructors Semantics.exec : core.
-  Lemma sound_cmd e c t m l mc post
-        (H:WeakestPrecondition.cmd e c t m l post)
-    : Semantics.exec e c t m l mc (fun t' m' l' mc' => post t' m' l').
+  Lemma sound_cmd e c t m l post (H: WeakestPrecondition.cmd e c t m l post)
+    : Semantics.exec e c t m l post.
   Proof.
     ind_on Syntax.cmd; repeat (t; try match reverse goal with H : WeakestPrecondition.expr _ _ _ _ |- _ => eapply expr_sound in H end).
     { destruct (BinInt.Z.eq_dec (Interface.word.unsigned x) (BinNums.Z0)) as [Hb|Hb]; cycle 1.
@@ -275,7 +253,7 @@ Section WeakestPrecondition.
   Proof. intros. eapply mk_wp_cmd. intros. eapply sound_cmd. assumption. Qed.
 
   Lemma sound_call' fs n t m args post (H : WeakestPrecondition.call fs n t m args post)
-    : semantics_call fs n t m args post.
+    : Semantics.call fs n t m args post.
   Proof.
     cbv beta. eapply invert_wp_call in H.
     destruct H as (? & ? & ? & ? & ? & ? & ?).
@@ -296,33 +274,31 @@ Section WeakestPrecondition.
     assumption.
   Qed.
 
-  Lemma complete_args : forall m l args mc mc' vs,
-      Semantics.evaluate_call_args_log m l args mc = Some (vs, mc') ->
+  Lemma complete_args : forall m l args vs,
+      Semantics.eval_call_args m l args = Some vs ->
       WeakestPrecondition.dexprs m l args vs.
   Proof using word_ok.
     induction args; cbn; repeat (subst; t).
     1: inversion H; reflexivity.
     destruct_one_match_hyp. 2: discriminate.
-    destruct p as (v, mc'').
     destruct_one_match_hyp. 2: discriminate.
-    destruct p as (tail, mc''').
-    inversion H. subst mc''' vs. clear H.
+    inversion H. subst vs. clear H.
     eapply Proper_expr. 2: eapply expr_complete. 2: eassumption.
     intros x ?. subst x.
-    eapply Proper_list_map. 3: eapply IHargs; eassumption.
+    eapply Proper_list_map. 3: eapply IHargs; reflexivity.
     { eapply Proper_expr. }
     { intros ? ?. subst. reflexivity. }
   Qed.
 
-  Lemma complete_cmd: forall e c t m l mc post,
-      Semantics.exec e c t m l mc post ->
-      WeakestPrecondition.cmd e c t m l (fun t' m' l' => exists mc', post t' m' l' mc').
+  Lemma complete_cmd: forall e c t m l post,
+      Semantics.exec e c t m l post ->
+      WeakestPrecondition.cmd e c t m l post.
   Proof.
     induction 1.
-    { eexists. eassumption. }
+    { eassumption. }
     { eapply expr_complete in H. eexists. split. 1: exact H.
-      eexists. eassumption. }
-    { eexists. eauto. }
+      eassumption. }
+    { eauto. }
     { eapply expr_complete in H.
       eapply expr_complete in H0.
       eexists. split. 1: eassumption.
@@ -331,35 +307,26 @@ Section WeakestPrecondition.
     { split. 1: assumption.
       intros * HA HSp. specialize H1 with (1 := HA) (2 := HSp).
       unfold dlet.dlet. eapply weaken_cmd. 1: eapply H1. cbv beta.
-      clear. intros * (? & ? & ? & ? & ? & ?). eauto 8. }
+      clear. intros * (? & ? & ? & ? & ?). eauto 8. }
     { eexists. ssplit; intros; eauto using expr_complete; congruence. }
     { eexists. ssplit; intros; eauto using expr_complete; congruence. }
     { cbn. eapply weaken_cmd.
       { eapply IHexec. }
-      cbv beta. intros *. intros (mc' & Hmid).
+      cbv beta. intros.
       eapply H1. eassumption. }
     { cbn. eapply mk_wp_cmd. intros.
-      eapply eval_expr_change_start_metrics in H.
-      destruct H as (mc2' & H).
       eapply Semantics.exec.while_false; eauto. }
     { rename IHexec into IH1, H3 into IH2.
       cbn. eapply mk_wp_cmd. intros.
-      eapply eval_expr_change_start_metrics in H.
-      destruct H as (mc2' & H).
-      eapply Semantics.exec.while_true.
-      1: eassumption.
-      1: eassumption.
-      { eapply sound_cmd. eapply IH1. (* round-trip just to change metrics *) }
-      cbv beta. intros * (? & ?).
-      eapply sound_cmd. eapply IH2. (* round-trip just to change metrics *) eassumption. }
+      eapply Semantics.exec.while_true; eassumption. }
     { cbn. eexists. split.
       { eapply complete_args. eassumption. }
       eapply mk_wp_call. 1,2: eassumption.
       eapply mk_wp_cmd. intros.
       eapply Semantics.exec.weaken.
-      { eapply sound_cmd in IHexec. eapply IHexec. (* round-trip just to change metrics *) }
-      cbv beta. intros * ? (? & Hmid).
-      specialize H3 with (1 := Hmid). destruct H3 as (retvs & G & ? & ? & ?). eauto 8. }
+      { eassumption. }
+      cbv beta. intros.
+      specialize H3 with (1 := H4). destruct H3 as (retvs & G & ? & ? & ?). eauto 8. }
     { cbn. eexists. split.
       { eapply complete_args. eassumption. }
       eexists _, _. split. 1: eassumption.
@@ -373,8 +340,7 @@ Section WeakestPrecondition.
   Proof.
     intros. eapply invert_wp_cmd in H. eapply complete_cmd in H.
     eapply weaken_cmd. 1: exact H.
-    cbv beta. intros * (_ & ?). assumption.
-    Unshelve. repeat constructor.
+    cbv beta. intros. assumption.
   Qed.
 
   Lemma start_func: forall e fname fimpl t m args post,

@@ -727,7 +727,7 @@ Section Riscv.
                                     initial.(pc);
           getLog := []
         |};
-        getMetrics := MetricLogging.EmptyMetricLog
+        getMetrics := riscv.Platform.MetricLogging.EmptyMetricLog
       |}).
       2: reflexivity.
       2: {

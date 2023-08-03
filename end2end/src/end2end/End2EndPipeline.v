@@ -369,12 +369,14 @@ Section Connect.
                rewrite heap_start_agree in H;
                rewrite heap_pastend_agree in H
              end.
-             refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _); eauto.
+             eapply MetricSemantics.of_metrics_free.
+             eapply WeakestPreconditionProperties.sound_cmd; eauto.
           -- simpl. clear. intros. unfold bedrock2Inv in *. eauto.
         * exact GetLoop.
         * intros. unfold bedrock2Inv in *.
           eapply ExprImp.weaken_exec.
-          -- refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _); eauto.
+          -- eapply MetricSemantics.of_metrics_free.
+             eapply WeakestPreconditionProperties.sound_cmd; eauto.
           -- simpl. clear. intros. eauto.
       + assumption.
       + assumption.

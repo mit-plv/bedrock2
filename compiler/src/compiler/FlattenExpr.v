@@ -7,7 +7,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Word.Bitwidth.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.MetricLogging.
-Require Import bedrock2.Semantics.
+Require Import bedrock2.Semantics bedrock2.MetricSemantics.
 Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
@@ -521,7 +521,7 @@ Section FlattenExpr1.
     map.extends lL lH ->
     map.undef_on lH (allFreshVars ngs1) ->
     disjoint (ExprImp.allVars_exprs es) (allFreshVars ngs1) ->
-    evaluate_call_args_log m lH es initialMcH = Some (resVals, finalMcH) ->
+    eval_call_args m lH es initialMcH = Some (resVals, finalMcH) ->
     (* List.option_all (List.map (eval_expr m lH) es) = Some resVals -> *)
     FlatImp.exec fenv s t m lL initialMcL (fun t' m' lL' finalMcL =>
       t' = t /\ m' = m /\
@@ -683,7 +683,7 @@ Section FlattenExpr1.
   Lemma flattenStmt_correct_aux: forall eH eL,
       flatten_functions eH = Success eL ->
       forall eH0 sH t m mcH lH post,
-      Semantics.exec eH0 sH t m lH mcH post ->
+      MetricSemantics.exec eH0 sH t m lH mcH post ->
       eH0 = eH ->
       forall ngs ngs' sL lL mcL,
       flattenStmt ngs sH = (sL, ngs') ->
@@ -929,7 +929,7 @@ Section FlattenExpr1.
   Lemma flattenStmt_correct: forall eH eL sH sL lL t m mc post,
       flatten_functions eH = Success eL ->
       ExprImp2FlatImp sH = sL ->
-      Semantics.exec eH sH t m map.empty mc post ->
+      MetricSemantics.exec eH sH t m map.empty mc post ->
       FlatImp.exec eL sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
         post t' m' lH' mcH' /\
         map.extends lL' lH' /\

@@ -33,10 +33,10 @@ Section Loops.
     intros. destruct H as (measure & lt & inv & Hwf & HInit & Hbody).
     destruct HInit as (v0 & HInit).
     apply mk_wp_cmd. intros.
-    revert t m l mc HInit. pattern v0. revert v0.
+    revert t m l HInit. pattern v0. revert v0.
     eapply (well_founded_ind Hwf). intros.
     specialize Hbody with (1 := HInit). destruct Hbody as (b & Hb & Ht & Hf).
-    eapply expr_sound in Hb. destruct Hb as (b' & mc' & Hb & ?). subst b'.
+    eapply expr_sound in Hb. destruct Hb as (b' & Hb & ?). subst b'.
     destr.destr (Z.eqb (word.unsigned b) 0).
     - specialize Hf with (1 := E). eapply exec.while_false; eassumption.
     - specialize Ht with (1 := E). eapply sound_cmd in Ht.

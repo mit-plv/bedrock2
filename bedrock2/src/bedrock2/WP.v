@@ -1,6 +1,7 @@
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Tactics.fwd.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 
 (* We want to make the definitions opaque to `hnf` (unfolds any definition, so a plain
@@ -17,11 +18,11 @@ Module Type WP_Sig.
         Syntax.cmd -> trace -> mem -> locals ->
         (trace -> mem -> locals -> Prop) -> Prop.
     Parameter mk_wp_cmd : forall {ext_spec: ExtSpec} (e: env) c t m l post,
-        (forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l')) ->
+        exec e c t m l post ->
         wp_cmd e c t m l post.
     Parameter invert_wp_cmd: forall {ext_spec: ExtSpec} [e c t m l post],
         wp_cmd e c t m l post ->
-        forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l').
+        exec e c t m l post.
 
     Parameter wp_call : forall {locals: map.map String.string word} {ext_spec: ExtSpec},
         env -> String.string -> trace -> mem -> list word ->
@@ -48,46 +49,34 @@ Module Export WP_Impl : WP_Sig.
     Context {width: Z} {BW: Bitwidth width} {word: word.word width}
       {mem: map.map word Byte.byte}
       {locals: map.map String.string word}
-      {ext_spec: ExtSpec}
-      (e: env).
+      {ext_spec: ExtSpec}.
 
-    Definition wp_cmd (c : Syntax.cmd) (t : trace) (m : mem) (l : locals)
-      (post : (trace -> mem -> locals -> Prop)) : Prop :=
-      (forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l')).
+    Definition wp_cmd := exec.
 
-    Lemma mk_wp_cmd c t m l post:
-      (forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l')) ->
-      wp_cmd c t m l post.
+    Lemma mk_wp_cmd e c t m l post: exec e c t m l post -> wp_cmd e c t m l post.
     Proof. exact id. Qed.
 
-    Lemma invert_wp_cmd c t m l post:
-        wp_cmd c t m l post ->
-        forall mc, exec e c t m l mc (fun t' m' l' mc' => post t' m' l').
+    Lemma invert_wp_cmd e c t m l post: wp_cmd e c t m l post -> exec e c t m l post.
     Proof. exact id. Qed.
 
-    Definition wp_call fname t m args post :=
-        exists argnames retnames body l,
-          map.get e fname = Some (argnames, retnames, body) /\
-          map.of_list_zip argnames args = Some l /\
-          wp_cmd body t m l (fun t' m' l' => exists rets,
-            map.getmany_of_list l' retnames = Some rets /\ post t' m' rets).
+    Definition wp_call := call.
 
-    Lemma mk_wp_call: forall fname argnames retnames body t m l args post,
+    Lemma mk_wp_call: forall e fname argnames retnames body t m l args post,
         map.get e fname = Some (argnames, retnames, body) ->
         map.of_list_zip argnames args = Some l ->
-        wp_cmd body t m l (fun t' m' l' => exists rets,
+        wp_cmd e body t m l (fun t' m' l' => exists rets,
           map.getmany_of_list l' retnames = Some rets /\ post t' m' rets) ->
-        wp_call fname t m args post.
-    Proof. intros. unfold wp_call. eauto 8. Qed.
+        wp_call e fname t m args post.
+    Proof. unfold wp_call, call, wp_cmd. intros. eauto 10. Qed.
 
-    Lemma invert_wp_call fname t m args post:
-        wp_call fname t m args post ->
+    Lemma invert_wp_call e fname t m args post:
+        wp_call e fname t m args post ->
         exists argnames retnames body l,
           map.get e fname = Some (argnames, retnames, body) /\
           map.of_list_zip argnames args = Some l /\
-          wp_cmd body t m l (fun t' m' l' => exists rets,
+          wp_cmd e body t m l (fun t' m' l' => exists rets,
             map.getmany_of_list l' retnames = Some rets /\ post t' m' rets).
-    Proof. exact id. Qed.
+    Proof. unfold wp_call, call, wp_cmd. intros. fwd. eauto 10. Qed.
   End WithParams.
 End WP_Impl.
 

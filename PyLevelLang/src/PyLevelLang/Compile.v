@@ -136,8 +136,8 @@ Section WithMap.
 
   Lemma eval_map_extends_locals : forall e (m : mem) (l l' : locals') w,
     map.extends l' l ->
-    eval_expr_old m l e = Some w ->
-    eval_expr_old m l' e = Some w.
+    eval_expr m l e = Some w ->
+    eval_expr m l' e = Some w.
   Proof.
     induction e; intros m l l' w H Hl.
     - (* Syntax.expr.literal *)
@@ -148,47 +148,47 @@ Section WithMap.
     - (* Syntax.expr.inlinetable *)
       simpl in Hl. simpl.
       specialize IHe with (m := m) (1 := H).
-      destruct (eval_expr_old m l e); try easy.
+      destruct (eval_expr m l e); try easy.
       specialize IHe with (w := r) (1 := eq_refl).
       now rewrite IHe.
     - (* Syntax.expr.load *)
       simpl in Hl. simpl.
       specialize IHe with (m := m) (1 := H).
-      destruct (eval_expr_old m l e); try easy.
+      destruct (eval_expr m l e); try easy.
       specialize IHe with (w := r) (1 := eq_refl).
       now rewrite IHe.
     - (* Syntax.expr.op *)
       simpl in Hl. simpl.
-      destruct (eval_expr_old m l e1) as [r1 |] eqn:H1; try easy.
-      destruct (eval_expr_old m l e2) as [r2 |] eqn:H2; try easy.
+      destruct (eval_expr m l e1) as [r1 |] eqn:H1; try easy.
+      destruct (eval_expr m l e2) as [r2 |] eqn:H2; try easy.
       specialize IHe1 with (m := m) (w := r1) (1 := H) (2 := H1).
       specialize IHe2 with (m := m) (w := r2) (1 := H) (2 := H2).
       now rewrite IHe1, IHe2.
     - (* Syntax.expr.ite *)
       simpl in Hl. simpl.
-      destruct (eval_expr_old m l e1) as [r1 |] eqn:H1; try easy.
+      destruct (eval_expr m l e1) as [r1 |] eqn:H1; try easy.
       specialize IHe1 with (m := m) (w := r1) (1 := H) (2 := H1).
       rewrite IHe1.
       destruct word.eqb.
-      + destruct (eval_expr_old m l e3) as [r3 |] eqn:H3; try easy.
+      + destruct (eval_expr m l e3) as [r3 |] eqn:H3; try easy.
         apply IHe3 with (l' := l') in H3; try assumption.
         now rewrite H3.
-      + destruct (eval_expr_old m l e2) as [r2 |] eqn:H2; try easy.
+      + destruct (eval_expr m l e2) as [r2 |] eqn:H2; try easy.
         apply IHe2 with (l' := l') in H2; try assumption.
         now rewrite H2.
   Qed.
 
   Lemma compile_correct : forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr),
     wf map.empty e ->
-    compile_expr e = Success (c, e') -> forall tr m l mc,
-    exec map.empty c tr m l mc (fun tr' m' l' mc' => exists (w : word),
-      eval_expr_old m' l' e' = Some w /\
+    compile_expr e = Success (c, e') -> forall tr m l,
+    exec map.empty c tr m l (fun tr' m' l' => exists (w : word),
+      eval_expr m' l' e' = Some w /\
       value_relation (interp_expr map.empty e) w /\
       m' = m /\
       map.extends l' l
     ).
   Proof.
-    intros t. induction e; intros c e' He He' tr m l mc; try easy.
+    intros t. induction e; intros c e' He He' tr m l; try easy.
     - (* EAtom a *)
       unfold compile_expr in He'.
       fwd.
@@ -218,7 +218,7 @@ Section WithMap.
         specialize IHe with (2 := eq_refl);
         eapply exec.weaken; [ now apply IHe |];
         cbv beta;
-        intros tr' m' l' mc' Hw;
+        intros tr' m' l' Hw;
         fwd;
         eexists;
         ssplit;
@@ -253,11 +253,11 @@ Section WithMap.
         specialize IHe2 with (2 := eq_refl);
         eapply exec.seq; [ now apply IHe1 |];
         cbv beta;
-        intros tr' m' l' mc' Hw;
+        intros tr' m' l' Hw;
         fwd;
         eapply exec.weaken; [ now apply IHe2 |];
         cbv beta;
-        intros tr'' m'' l'' mc'' Hw';
+        intros tr'' m'' l'' Hw';
         fwd;
         eexists;
         ssplit;
@@ -265,7 +265,7 @@ Section WithMap.
           apply eval_map_extends_locals with (l' := l'') in Hwp0;
           [| assumption];
           now rewrite Hwp0
-        | 
+        |
         | reflexivity
         | now apply extends_trans with l' ].
       1-9:

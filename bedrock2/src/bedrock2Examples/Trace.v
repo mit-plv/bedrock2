@@ -6,7 +6,7 @@ Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics.
 Require Import Coq.Strings.String.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
-Require Import bedrock2.Semantics.
+Require Import bedrock2.Semantics bedrock2.MetricSemantics.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.NotationsCustomEntry.
 

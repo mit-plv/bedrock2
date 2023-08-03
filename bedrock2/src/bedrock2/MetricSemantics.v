@@ -1,86 +1,14 @@
-Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil.Byte.
-Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
-Require Import coqutil.Decidable.
+Require Import coqutil.sanity coqutil.Byte.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.
 Require coqutil.Map.SortedListString.
 Require Import bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
-Require Import bedrock2.MetricLogging.
 Require Export bedrock2.Memory.
-
 Require Import Coq.Lists.List.
-
-(* BW is not needed on the rhs, but helps infer width *)
-Definition trace{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
-  list ((mem * String.string * list word) * (mem * list word)).
-
-Definition ExtSpec{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
-  (* Given a trace of what happened so far,
-     the given-away memory, an action label and a list of function call arguments, *)
-  trace -> mem -> String.string -> list word ->
-  (* and a postcondition on the received memory and function call results, *)
-  (mem -> list word -> Prop) ->
-  (* tells if this postcondition will hold *)
-  Prop.
-
-Existing Class ExtSpec.
-
-Module ext_spec.
-  Class ok{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte}
-          {ext_spec: ExtSpec}: Prop :=
-  {
-    (* The action name and arguments uniquely determine the footprint of the given-away memory. *)
-    unique_mGive_footprint: forall t1 t2 mGive1 mGive2 a args
-                                            (post1 post2: mem -> list word -> Prop),
-        ext_spec t1 mGive1 a args post1 ->
-        ext_spec t2 mGive2 a args post2 ->
-        map.same_domain mGive1 mGive2;
-
-    weaken :> forall t mGive act args,
-        Morphisms.Proper
-          (Morphisms.respectful
-             (Morphisms.pointwise_relation Interface.map.rep
-               (Morphisms.pointwise_relation (list word) Basics.impl)) Basics.impl)
-          (ext_spec t mGive act args);
-
-    intersect: forall t mGive a args
-                      (post1 post2: mem -> list word -> Prop),
-        ext_spec t mGive a args post1 ->
-        ext_spec t mGive a args post2 ->
-        ext_spec t mGive a args (fun mReceive resvals =>
-                                   post1 mReceive resvals /\ post2 mReceive resvals);
-  }.
-End ext_spec.
-Arguments ext_spec.ok {_ _ _ _} _.
-
-Section binops.
-  Context {width : Z} {word : Word.Interface.word width}.
-  Definition interp_binop (bop : bopname) : word -> word -> word :=
-    match bop with
-    | bopname.add => word.add
-    | bopname.sub => word.sub
-    | bopname.mul => word.mul
-    | bopname.mulhuu => word.mulhuu
-    | bopname.divu => word.divu
-    | bopname.remu => word.modu
-    | bopname.and => word.and
-    | bopname.or => word.or
-    | bopname.xor => word.xor
-    | bopname.sru => word.sru
-    | bopname.slu => word.slu
-    | bopname.srs => word.srs
-    | bopname.lts => fun a b =>
-      if word.lts a b then word.of_Z 1 else word.of_Z 0
-    | bopname.ltu => fun a b =>
-      if word.ltu a b then word.of_Z 1 else word.of_Z 0
-    | bopname.eq => fun a b =>
-      if word.eqb a b then word.of_Z 1 else word.of_Z 0
-    end.
-End binops.
-
-#[export] Instance env: map.map String.string Syntax.func := SortedListString.map _.
-#[export] Instance env_ok: map.ok env := SortedListString.ok _.
+Require Import bedrock2.MetricLogging.
+Require Import bedrock2.Semantics.
+Require Import Coq.Lists.List.
 
 Section semantics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
@@ -89,7 +17,6 @@ Section semantics.
 
   Local Notation metrics := MetricLog.
 
-  (* this is the expr evaluator that is used to verify execution time, the just-correctness-oriented version is below *)
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
 
@@ -129,30 +56,11 @@ Section semantics.
                        (addMetricJumps 1 mc')))
       end.
 
-    Fixpoint eval_expr_old (e : expr) : option word :=
-      match e with
-      | expr.literal v => Some (word.of_Z v)
-      | expr.var x => map.get l x
-      | expr.inlinetable aSize t index =>
-          'Some index' <- eval_expr_old index | None;
-          load aSize (map.of_list_word t) index'
-      | expr.load aSize a =>
-          'Some a' <- eval_expr_old a | None;
-          load aSize m a'
-      | expr.op op e1 e2 =>
-          'Some v1 <- eval_expr_old e1 | None;
-          'Some v2 <- eval_expr_old e2 | None;
-          Some (interp_binop op v1 v2)
-      | expr.ite c e1 e2 =>
-          'Some vc <- eval_expr_old c | None;
-          eval_expr_old (if word.eqb vc (word.of_Z 0) then e2 else e1)
-      end.
-
-    Fixpoint evaluate_call_args_log (arges : list expr) (mc : metrics) :=
+    Fixpoint eval_call_args (arges : list expr) (mc : metrics) :=
       match arges with
       | e :: tl =>
         'Some (v, mc') <- eval_expr e mc | None;
-        'Some (args, mc'') <- evaluate_call_args_log tl mc' | None;
+        'Some (args, mc'') <- eval_call_args tl mc' | None;
         Some (v :: args, mc'')
       | _ => Some (nil, mc)
       end.
@@ -169,7 +77,7 @@ Module exec. Section WithParams.
 
   Local Notation metrics := MetricLog.
 
-  Implicit Types post : trace -> mem -> locals -> metrics -> Prop. (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
+  Implicit Types post : trace -> mem -> locals -> metrics -> Prop. (* COQBUG: unification finds Type instead of Prop and fails to downgrade *)
   Inductive exec :
     cmd -> trace -> mem -> locals -> metrics ->
     (trace -> mem -> locals -> metrics -> Prop) -> Prop :=
@@ -250,7 +158,7 @@ Module exec. Section WithParams.
   | call binds fname arges
       t m l mc post
       params rets fbody (_ : map.get e fname = Some (params, rets, fbody))
-      args mc' (_ : evaluate_call_args_log m l arges mc = Some (args, mc'))
+      args mc' (_ : eval_call_args m l arges mc = Some (args, mc'))
       lf (_ : map.of_list_zip params args = Some lf)
       mid (_ : exec fbody t m lf (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc')))) mid)
       (_ : forall t' m' st1 mc'', mid t' m' st1 mc'' ->
@@ -261,7 +169,7 @@ Module exec. Section WithParams.
   | interact binds action arges
       t m l mc post
       mKeep mGive (_: map.split m mKeep mGive)
-      args mc' (_ :  evaluate_call_args_log m l arges mc = Some (args, mc'))
+      args mc' (_ :  eval_call_args m l arges mc = Some (args, mc'))
       mid (_ : ext_spec t mGive action args mid)
       (_ : forall mReceive resvals, mid mReceive resvals ->
           exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
@@ -382,3 +290,135 @@ Module exec. Section WithParams.
 
   End WithParams.
 End exec. Notation exec := exec.exec.
+
+Section WithParams.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {locals: map.map String.string word}.
+  Context {ext_spec: ExtSpec}.
+
+  Implicit Types (l: locals) (m: mem).
+
+  Definition call e fname t m args mc post :=
+    exists argnames retnames body,
+      map.get e fname = Some (argnames, retnames, body) /\
+      exists l, map.of_list_zip argnames args = Some l /\
+        exec e body t m l mc (fun t' m' l' mc' => exists rets,
+          map.getmany_of_list l' retnames = Some rets /\ post t' m' rets mc').
+
+  Lemma of_metrics_free_eval_expr: forall m l e v,
+      Semantics.eval_expr m l e = Some v ->
+      forall mc, exists mc', MetricSemantics.eval_expr m l e mc = Some (v, mc').
+  Proof.
+    induction e; cbn; intros;
+      repeat match goal with
+        | H: Some _ = Some _ |- _ => eapply Option.eq_of_eq_Some in H; subst
+        | H: _ = Some _ |- _ => rewrite H
+        | IH: forall _, Some _ = Some _ -> _ |- _ => specialize IH with (1 := eq_refl)
+        | IH: forall _: MetricLog, exists _: MetricLog, eval_expr ?m ?l ?e _ = Some _
+          |- context[eval_expr ?m ?l ?e ?mc] => specialize (IH mc)
+        | |- _ => progress fwd
+        | |- _ => Tactics.destruct_one_match
+        end;
+      eauto.
+  Qed.
+
+  Lemma to_metrics_free_eval_expr: forall m l e mc v mc',
+      MetricSemantics.eval_expr m l e mc = Some (v, mc') ->
+      Semantics.eval_expr m l e = Some v.
+  Proof.
+    induction e; cbn; intros; fwd;
+      repeat match goal with
+        | IH: forall _ _ _, eval_expr _ _ _ _ = _ -> _, H: eval_expr _ _ _ _ = _ |- _ =>
+          specialize IH with (1 := H)
+        | H: _ = Some _ |- _ => rewrite H
+        | |- _ => Tactics.destruct_one_match
+        end;
+    try congruence.
+  Qed.
+
+  Lemma of_metrics_free_eval_call_args: forall m l arges args,
+      Semantics.eval_call_args m l arges = Some args ->
+      forall mc, exists mc', MetricSemantics.eval_call_args m l arges mc = Some (args, mc').
+  Proof.
+    induction arges; cbn; intros.
+    - eapply Option.eq_of_eq_Some in H. subst. eauto.
+    - fwd.
+      eapply of_metrics_free_eval_expr in E. destruct E as (mc' & E). rewrite E.
+      specialize IHarges with (1 := eq_refl). specialize (IHarges mc').
+      destruct IHarges as (mc'' & IH). rewrite IH. eauto.
+  Qed.
+
+  Lemma to_metrics_free_eval_call_args: forall m l arges mc args mc',
+      MetricSemantics.eval_call_args m l arges mc = Some (args, mc') ->
+      Semantics.eval_call_args m l arges = Some args.
+  Proof.
+    induction arges; cbn; intros.
+    - congruence.
+    - fwd.
+      eapply to_metrics_free_eval_expr in E. rewrite E.
+      specialize IHarges with (1 := E0). rewrite IHarges. reflexivity.
+  Qed.
+
+  Context (e: env).
+
+  Lemma of_metrics_free: forall c t m l post,
+      Semantics.exec e c t m l post ->
+      forall mc, MetricSemantics.exec e c t m l mc (fun t' m' l' _ => post t' m' l').
+  Proof.
+    induction 1; intros;
+      repeat match reverse goal with
+        | H: Semantics.eval_expr _ _ _ = Some _ |- _ =>
+            eapply of_metrics_free_eval_expr in H; destruct H as (? & H)
+        | H: Semantics.eval_call_args _ _ _ = Some _ |- _ =>
+            eapply of_metrics_free_eval_call_args in H; destruct H as (? & H)
+        end;
+      try solve [econstructor; eauto].
+  Qed.
+
+  Lemma to_metrics_free: forall c t m l mc post,
+      MetricSemantics.exec e c t m l mc post ->
+      Semantics.exec e c t m l (fun t' m' l' => exists mc', post t' m' l' mc').
+  Proof.
+    induction 1; intros;
+      repeat match reverse goal with
+        | H: eval_expr _ _ _ _ = Some _ |- _ =>
+            eapply to_metrics_free_eval_expr in H
+        | H: eval_call_args _ _ _ _ = Some _ |- _ =>
+            eapply to_metrics_free_eval_call_args in H
+        end;
+      try solve [econstructor; eauto].
+    { econstructor. 1: eauto.
+      intros.
+      eapply Semantics.exec.weaken. 1: eapply H1. all: eauto.
+      cbv beta.
+      clear. firstorder idtac. }
+    { econstructor.
+      1: eapply IHexec.
+      cbv beta. intros.
+      fwd.
+      eapply H1. eassumption. }
+    { econstructor; [ eassumption .. | ].
+      cbv beta. intros. fwd. eapply H3. eassumption. }
+    { econstructor. 1-4: eassumption.
+      cbv beta. intros. fwd. specialize H3 with (1 := H4). fwd. eauto 10. }
+    { econstructor. 1-3: eassumption.
+      intros. specialize H2 with (1 := H3). fwd. eauto. }
+  Qed.
+
+  Lemma of_metrics_free_call: forall f t m args post,
+      Semantics.call e f t m args post ->
+      forall mc, call e f t m args mc (fun t' m' rets _ => post t' m' rets).
+  Proof.
+    unfold call, Semantics.call. intros. fwd. eauto 10 using of_metrics_free.
+  Qed.
+
+  Lemma to_metrics_free_call: forall f t m args mc post,
+      call e f t m args mc post ->
+      Semantics.call e f t m args (fun t' m' rets => exists mc', post t' m' rets mc').
+  Proof.
+    unfold call, Semantics.call. intros. fwd.
+    do 4 eexists. 1: eassumption. do 2 eexists. 1: eassumption.
+    eapply Semantics.exec.weaken. 1: eapply to_metrics_free. 1: eassumption.
+    cbv beta. clear. firstorder idtac.
+  Qed.
+End WithParams.
