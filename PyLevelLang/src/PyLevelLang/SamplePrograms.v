@@ -573,7 +573,7 @@ Section WithMap.
     intros.
     inversion H; subst.
     rewrite H2; try easy.
-    firstorder idtac.
+    eapply IHl; eauto.
   Qed.
 
   Lemma fold_left_no_ans (l : list Z) m :
