@@ -14,7 +14,7 @@ Definition ipow := func! (x, e) ~> ret {
 }.
 
 From bedrock2 Require Import Semantics BasicC64Semantics WeakestPrecondition ProgramLogic.
-From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
+From coqutil Require Import Word.Properties Word.Interface.
 Import Interface.word.
 
 #[export] Instance spec_of_ipow : spec_of "ipow" :=

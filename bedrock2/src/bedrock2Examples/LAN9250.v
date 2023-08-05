@@ -2,7 +2,6 @@ Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry.
 Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import bedrock2Examples.SPI.
 
-From coqutil Require Import letexists.
 Require Import bedrock2.AbsintWordToZ.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Z.div_mod_to_equations.
@@ -780,6 +779,13 @@ Section WithParameters.
         (word.unsigned err = 0 /\ lightbulb_spec.lan9250_send _ bs ioh) }.
 
   Import symmetry autoforward.
+
+  Local Ltac original_esplit := esplit.
+  Local Ltac esplit := hnf; apply_rules_until_propositional; original_esplit.
+
+  Local Ltac original_eexists := eexists.
+  Local Tactic Notation "eexists" :=
+    hnf; apply_rules_until_propositional; original_eexists.
 
   Lemma lan9250_tx_ok : program_logic_goal_for_function! lan9250_tx.
   Proof.

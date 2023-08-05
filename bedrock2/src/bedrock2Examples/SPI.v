@@ -84,7 +84,6 @@ Section WithParameters.
          morphism (Properties.word.ring_morph (word := word)),
          constants [Properties.word_cst]).
 
-  Import coqutil.Tactics.letexists.
   Import Loops.
   Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
   Proof.

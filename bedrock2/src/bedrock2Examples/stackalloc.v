@@ -23,7 +23,7 @@ Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 
 Require bedrock2.WeakestPreconditionProperties.
-From coqutil.Tactics Require Import letexists eabstract.
+From coqutil.Tactics Require Import eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 Require Import coqutil.Word.Interface.
 From coqutil.Tactics Require Import reference_to_string .

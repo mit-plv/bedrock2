@@ -19,7 +19,7 @@ Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 
 Require bedrock2.WeakestPreconditionProperties.
-From coqutil.Tactics Require Import Tactics letexists eabstract.
+From coqutil.Tactics Require Import Tactics eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Naive.
 Require Import coqutil.Tactics.eplace Coq.setoid_ring.Ring_tac.
@@ -56,7 +56,7 @@ Section WithParameters.
     repeat (straightline || straightline_call); eauto.
   Qed.
 
-  Lemma link_swap_swap_swap_swap : spec_of_swap_swap &[,swap_swap; swap].
+  Lemma link_swap_swap_swap_swap : spec_of_swap_swap (map.of_list &[,swap_swap; swap]).
   Proof. eauto using swap_swap_ok, swap_ok. Qed.
 
   (* Print Assumptions link_swap_swap_swap_swap. *)

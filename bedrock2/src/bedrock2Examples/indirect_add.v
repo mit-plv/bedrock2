@@ -17,7 +17,7 @@ Require Import coqutil.Word.Interface coqutil.Map.Interface bedrock2.Map.Separat
 Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 
 Require bedrock2.WeakestPreconditionProperties.
-From coqutil.Tactics Require Import letexists eabstract.
+From coqutil.Tactics Require Import eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 
 Section WithParameters.
@@ -50,7 +50,7 @@ Section WithParameters.
     cbv [f]. ecancel_assumption.
   Qed.
 
-  Example link_both : spec_of_indirect_add_twice (("indirect_add_twice",indirect_add_twice)::("indirect_add",indirect_add)::nil).
+  Example link_both : spec_of_indirect_add_twice (map.of_list (("indirect_add_twice",indirect_add_twice)::("indirect_add",indirect_add)::nil)).
   Proof. auto using indirect_add_twice_ok, indirect_add_ok. Qed.
 
   (*
