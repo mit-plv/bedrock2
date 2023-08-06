@@ -199,8 +199,6 @@ Section Connect.
 
   Definition bedrock2Inv := (fun t m l => forall mc, hl_inv spec t m l mc).
 
-  Let funspecs := WeakestPrecondition.call funimplsList.
-
   Hypothesis goodTrace_implies_related_to_Events: forall (t: list LogItem),
       spec.(goodTrace) t -> exists t': list Event, traces_related t' t.
 
@@ -298,10 +296,10 @@ Section Connect.
     forall init_code loop_body,
     map.get (map.of_list funimplsList) "init"%string = Some ([], [], init_code) ->
     (forall m, LowerPipeline.mem_available ml.(heap_start) ml.(heap_pastend) m ->
-               WeakestPrecondition.cmd funspecs init_code [] m map.empty bedrock2Inv) ->
+               WeakestPrecondition.cmd (map.of_list funimplsList) init_code [] m map.empty bedrock2Inv) ->
     map.get (map.of_list funimplsList) "loop"%string = Some ([], [], loop_body) ->
     (forall t m l, bedrock2Inv t m l ->
-                   WeakestPrecondition.cmd funspecs loop_body t m l bedrock2Inv) ->
+                   WeakestPrecondition.cmd (map.of_list funimplsList) loop_body t m l bedrock2Inv) ->
     (* Assumptions on the compiler level: *)
     forall (instrs: list Instruction) positions (required_stack_space: Z),
     compile_prog compile_ext_call ml funimplsList = Success (instrs, positions, required_stack_space) ->
@@ -371,12 +369,14 @@ Section Connect.
                rewrite heap_start_agree in H;
                rewrite heap_pastend_agree in H
              end.
-             refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _); eauto.
+             eapply MetricSemantics.of_metrics_free.
+             eapply WeakestPreconditionProperties.sound_cmd; eauto.
           -- simpl. clear. intros. unfold bedrock2Inv in *. eauto.
         * exact GetLoop.
         * intros. unfold bedrock2Inv in *.
           eapply ExprImp.weaken_exec.
-          -- refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _); eauto.
+          -- eapply MetricSemantics.of_metrics_free.
+             eapply WeakestPreconditionProperties.sound_cmd; eauto.
           -- simpl. clear. intros. eauto.
       + assumption.
       + assumption.

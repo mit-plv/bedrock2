@@ -221,6 +221,8 @@ Section Pipeline1.
     apply Zmod_0_l.
   Qed.
 
+  Local Arguments map.get : simpl never.
+
   Lemma establish_ll_inv: forall (initial: MetricRiscvMachine),
       initial_conditions initial ->
       ll_inv initial.

@@ -58,6 +58,8 @@ Ltac t :=
   repeat match goal with H: absint_eq ?x ?x |- _ => clear H end;
   cbv [absint_eq] in *.
 
+Ltac expose_exists_for_letexists ::= hnf; apply_rules_until_propositional.
+
 Lemma ipow_ok : program_logic_goal_for_function! ipow.
 Proof.
   repeat straightline.

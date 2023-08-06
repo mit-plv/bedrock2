@@ -76,13 +76,13 @@ Definition loop :=
   ("loop", ([]: list string, []: list string,
            (cmd.call ["err"] "lightbulb_loop" [expr.literal buffer_addr]))).
 
-Definition prog := init :: loop :: lightbulb.function_impls.
+Definition prog := map.putmany_of_list (init :: loop :: nil) lightbulb.function_impls.
 
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
    and to check if there are any axioms which could block the computation. *)
 Definition lightbulb_compiled: list Decode.Instruction * list (string * Z) * Z.
-  let r := eval cbv in (ToplevelLoop.compile_prog MMIO.compile_ext_call ml prog) in
+  let r := eval cbv in (ToplevelLoop.compile_prog MMIO.compile_ext_call ml (map.tuples prog)) in
   lazymatch r with
   | Success ?x => exact x
   end.
@@ -110,7 +110,7 @@ Definition required_stack_space: Z.
 Defined.
 
 Definition compilation_result:
-  ToplevelLoop.compile_prog MMIO.compile_ext_call ml prog =
+  ToplevelLoop.compile_prog MMIO.compile_ext_call ml (map.tuples prog) =
   Success (lightbulb_insts, function_positions, required_stack_space).
 Proof. reflexivity. Qed.
 
@@ -182,7 +182,7 @@ Proof.
   intros *. intro KB.
   specialize Q with (stack_size_in_bytes := stack_size_in_bytes).
   specialize_first Q mem0.
-  specialize_first Q prog.
+  specialize_first Q (map.tuples prog).
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
@@ -190,7 +190,7 @@ Proof.
   specialize_first Q (Zkeyed_map (KamiWord.word 32)).
   specialize_first Q (Zkeyed_map_ok (KamiWord.word 32)).
   specialize_first Q mem_ok.
-  specialize Q with (13 := KB). (* TODO add bigger numbers to coqutil.Tactics.forward.specialize_first *)
+  specialize Q with (12 := KB). (* TODO add bigger numbers to coqutil.Tactics.forward.specialize_first *)
   (* specialize_first Q KB. *)
   specialize_first Q compilation_result.
 
@@ -216,8 +216,6 @@ Proof.
   }
   eapply Q; clear Q.
   - cbv. intuition discriminate.
-  - clear. cbv.
-    repeat econstructor; intro; repeat match goal with H: In _ _|-_=> destruct H end; discriminate.
   - intros. clear KB mem0. simp.
     unfold SPI.mmio_trace_abstraction_relation in *.
     unfold id in *.
@@ -225,9 +223,14 @@ Proof.
   - reflexivity.
   - (* establish invariant *)
     repeat ProgramLogic.straightline.
-    refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _);
-      [|exact (link_lightbulb_init m nil)].
-
+    refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _).
+    2: {
+      unfold prog. eapply Semantics.extend_env_call. 2: exact (link_lightbulb_init m nil).
+      rewrite map.of_list_tuples.
+      intros k f G. unfold map.putmany_of_list, init, loop.
+      rewrite ?map.get_put_dec.
+      repeat destruct_one_match; subst; try discriminate G. assumption.
+    }
     intros ? ? ? ?.
     repeat ProgramLogic.straightline.
     unfold LowerPipeline.mem_available, hl_inv, isReady, goodTrace, goodHlTrace, buffer_addr, ml, End2EndPipeline.ml, code_start, heap_start, heap_pastend, Lift1Prop.ex1 in *; Simp.simp.
@@ -266,9 +269,14 @@ Proof.
     specialize_first P Hp0p0.
     specialize_first P t0.
     specialize_first P Hp0p1.
-    refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _);
-      [|exact P]; clear P.
-
+    refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _).
+    2: {
+      unfold prog. eapply Semantics.extend_env_call. 2: exact P.
+      rewrite map.of_list_tuples.
+      intros k f G. unfold map.putmany_of_list, init, loop.
+      rewrite ?map.get_put_dec.
+      repeat destruct_one_match; subst; try discriminate G. assumption.
+    }
     intros ? ? ? ?.
     Simp.simp.
     repeat ProgramLogic.straightline.

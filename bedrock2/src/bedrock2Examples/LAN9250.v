@@ -196,6 +196,8 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ lan9250_boot_timeout _ ioh))
         (word.unsigned err = 0 /\ lan9250_init_trace _ ioh)).
 
+  Ltac expose_exists_for_letexists ::= hnf; apply_rules_until_propositional.
+
   Local Ltac split_if :=
     lazymatch goal with
       |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
@@ -780,6 +782,15 @@ Section WithParameters.
         (word.unsigned err = 0 /\ lightbulb_spec.lan9250_send _ bs ioh) }.
 
   Import symmetry autoforward.
+
+  Local Ltac no_call :=
+    lazymatch goal with
+    | |- Semantics.call _ _ _ _ _ _ => fail
+    | |- _ => idtac
+    end.
+
+  Local Ltac original_esplit := esplit.
+  Local Ltac esplit := no_call; apply_rules_until_propositional; original_esplit.
 
   Lemma lan9250_tx_ok : program_logic_goal_for_function! lan9250_tx.
   Proof.

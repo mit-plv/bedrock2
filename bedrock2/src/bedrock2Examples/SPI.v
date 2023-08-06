@@ -85,6 +85,9 @@ Section WithParameters.
          constants [Properties.word_cst]).
 
   Import coqutil.Tactics.letexists.
+
+  Ltac expose_exists_for_letexists ::= hnf; apply_rules_until_propositional.
+
   Import Loops.
   Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
   Proof.
@@ -130,6 +133,17 @@ Section WithParameters.
       cbv [isMMIOAddr addr].
       ZnWords. }
     repeat straightline.
+    (* The hnf inside this letexists used to substitute
+
+         c := cmd.cond (expr.op bopname.sru "busy" 31) cmd.skip
+                (cmd.set "i" (expr.op bopname.xor "i" "i")) : cmd.cmd
+
+       and also unfolded WeakestPrecondition.cmd of c into
+
+         WeakestPrecondition.dexpr m l0 cond letboundEvar /\
+         ThenCorrectness /\
+         ElseCorrectness
+    *)
     letexists. split.
     { repeat straightline. }
     split; intros.

@@ -42,22 +42,24 @@ Require Import bedrock2.LogSidecond.
 
 Definition functions_correct
   (* universally quantified abstract function list containing all functions: *)
-  (qfs: list (string * func)):
+  (qfs: Semantics.env):
   (* specs of a subset of functions for which to assert correctness *)
-  list (list (string * func) -> Prop (* spec_of mentioning function name *)) -> Prop :=
+  list (Semantics.env -> Prop (* spec_of mentioning function name *)) -> Prop :=
   List.Forall (fun spec => spec qfs).
 
 Definition function_with_callees: Type :=
-  func * list (list (string * func) -> Prop (* spec_of mentioning function name *)).
+  func * list (Semantics.env -> Prop (* spec_of mentioning function name *)).
 
 Definition program_logic_goal_for(name: string)(f: function_with_callees)
   {spec: bedrock2.ProgramLogic.spec_of name}: Prop :=
   match f with
   | (impl, callees) => forall functions,
-      functions_correct functions callees -> spec (cons (name, impl) functions)
+      map.get functions name = Some impl ->
+      functions_correct functions callees ->
+      spec functions
   end.
 
-Definition nth_spec(specs: list (list (string * func) -> Prop))(n: nat) :=
+Definition nth_spec(specs: list (Semantics.env -> Prop))(n: nat) :=
   Eval unfold List.nth in (List.nth n specs (fun _ => True)).
 
 Lemma nth_function_correct: forall fs n specs spec,
@@ -143,22 +145,18 @@ Ltac start :=
       subst evar;
       unfold program_logic_goal_for, spec;
       let fs := fresh "fs" in
+      let G := fresh "EnvContains" in
       let fs_ok := fresh "fs_ok" in
-      intros fs fs_ok;
+      intros fs G fs_ok;
       let nP := fresh "Scope0" in pose proof (mk_scope_marker FunctionParams) as nP;
       intros_until_trace;
       let nB := fresh "Scope0" in pose proof (mk_scope_marker FunctionBody) as nB;
       lazymatch goal with
       | |- forall (t : trace) (m : @map.rep (@word.rep _ _) Init.Byte.byte _), _ => intros
       end;
-      WeakestPrecondition.unfold1_call_goal;
-      cbv match beta delta [WeakestPrecondition.call_body];
-      lazymatch goal with
-      | |- if ?test then ?T else _ =>
-        replace test with true by reflexivity; change T
-      end;
       eapply prove_func;
-      [ lazymatch goal with
+      [ exact G
+      | lazymatch goal with
         | |- map.of_list_zip ?argnames_evar ?argvalues = Some ?locals_evar =>
              let argnames := map_with_ltac varconstr_to_string argvalues in
              unify argnames_evar argnames;
@@ -166,7 +164,7 @@ Ltac start :=
              unify locals_evar (map.of_list kvs);
              reflexivity
         end
-      | ];
+      | clear G ];
       first [eapply simplify_no_return_post | eapply simplify_1retval_post];
       pose_state stepping
   | |- _ => fail "goal needs to be of shape (@program_logic_goal_for ?fname ?evar ?spec)"

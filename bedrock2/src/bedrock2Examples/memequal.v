@@ -38,7 +38,6 @@ Section WithParameters.
                        (r  = 1 :>Z <-> xs  = ys) }.
 
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok : map.ok locals}
-    {env : map.map string (list string * list string * Syntax.cmd)} {env_ok : map.ok env}
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
