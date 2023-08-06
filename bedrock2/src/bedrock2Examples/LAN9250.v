@@ -790,7 +790,7 @@ Section WithParameters.
     end.
 
   Local Ltac original_esplit := esplit.
-  Local Ltac esplit := no_call; original_esplit.
+  Local Ltac esplit := no_call; apply_rules_until_propositional; original_esplit.
 
   Lemma lan9250_tx_ok : program_logic_goal_for_function! lan9250_tx.
   Proof.

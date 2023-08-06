@@ -75,7 +75,7 @@ Section WithParameters.
     repeat straightline.
 
     set (x := word.sub src dst) in *.
-    unfold1_cmd_goal; cbv beta match delta [cmd_body].
+    unfold1_cmd_goal.
     eapply WeakestPreconditionProperties.dexpr_expr.
     letexists; split.
     { subst l0; rewrite ?Properties.map.get_put_dec; exact eq_refl. }
