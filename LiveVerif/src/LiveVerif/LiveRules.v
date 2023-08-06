@@ -1009,8 +1009,9 @@ Section WithParams.
       WeakestPrecondition.call fs f t m argvals post.
   Proof.
     intros.
-    eapply WP.WP_Impl.mk_wp_call. 1,2: eassumption. eapply WP.WP_Impl.mk_wp_cmd.
-    intros. eapply invert_wp_cmd in H1. eapply WeakestPreconditionProperties.sound_cmd.
+    do 4 eexists. 1: eassumption. do 2 eexists. 1: eassumption.
+    eapply invert_wp_cmd in H1.
+    eapply WeakestPreconditionProperties.sound_cmd.
     assumption.
   Qed.
 

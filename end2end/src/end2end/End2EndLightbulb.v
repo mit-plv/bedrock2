@@ -225,7 +225,7 @@ Proof.
     repeat ProgramLogic.straightline.
     refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _).
     2: {
-      unfold prog. eapply WP.extend_env_wp_call. 2: exact (link_lightbulb_init m nil).
+      unfold prog. eapply Semantics.extend_env_call. 2: exact (link_lightbulb_init m nil).
       rewrite map.of_list_tuples.
       intros k f G. unfold map.putmany_of_list, init, loop.
       rewrite ?map.get_put_dec.
@@ -271,7 +271,7 @@ Proof.
     specialize_first P Hp0p1.
     refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _).
     2: {
-      unfold prog. eapply WP.extend_env_wp_call. 2: exact P.
+      unfold prog. eapply Semantics.extend_env_call. 2: exact P.
       rewrite map.of_list_tuples.
       intros k f G. unfold map.putmany_of_list, init, loop.
       rewrite ?map.get_put_dec.

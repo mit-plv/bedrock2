@@ -1,7 +1,6 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import Coq.ZArith.BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
-Require Import bedrock2.WP.
 
 Section WeakestPrecondition.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
@@ -94,10 +93,10 @@ Section WeakestPrecondition.
         (word.unsigned v = 0%Z -> rec cf t m l post)
       | cmd.seq c1 c2 =>
         rec c1 t m l (fun t m l => rec c2 t m l post)
-      | cmd.while _ _ => wp_cmd e c t m l post
+      | cmd.while _ _ => Semantics.exec e c t m l post
       | cmd.call binds fname arges =>
         exists args, dexprs m l arges args /\
-        wp_call e fname t m args (fun t m rets =>
+        Semantics.call e fname t m args (fun t m rets =>
           exists l', map.putmany_of_list_zip binds rets l = Some l' /\
           post t m l')
       | cmd.interact binds action arges =>
@@ -119,7 +118,7 @@ Section WeakestPrecondition.
 
   Definition program := cmd.
 End WeakestPrecondition.
-Notation call := wp_call.
+Notation call := Semantics.call (only parsing).
 
 Ltac unfold1_cmd e :=
   lazymatch e with

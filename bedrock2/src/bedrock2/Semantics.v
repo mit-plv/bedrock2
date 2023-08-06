@@ -318,7 +318,7 @@ Section WithParams.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
 
-  Implicit Types (l: locals) (m: mem).
+  Implicit Types (l: locals) (m: mem) (post: trace -> mem -> list word -> Prop).
 
   Definition call e fname t m args post :=
     exists argnames retnames body,
@@ -326,4 +326,28 @@ Section WithParams.
       exists l, map.of_list_zip argnames args = Some l /\
         exec e body t m l (fun t' m' l' => exists rets,
           map.getmany_of_list l' retnames = Some rets /\ post t' m' rets).
+
+  Lemma weaken_call: forall e fname t m args post1,
+      call e fname t m args post1 ->
+      forall post2, (forall t' m' rets, post1 t' m' rets -> post2 t' m' rets) ->
+      call e fname t m args post2.
+  Proof.
+    unfold call. intros. fwd.
+    do 4 eexists. 1: eassumption.
+    do 2 eexists. 1: eassumption.
+    eapply exec.weaken. 1: eassumption.
+    cbv beta. clear -H0. intros. fwd. eauto.
+  Qed.
+
+  Lemma extend_env_call: forall e1 e2,
+      map.extends e2 e1 ->
+      forall f t m rets post,
+      call e1 f t m rets post ->
+      call e2 f t m rets post.
+  Proof.
+    unfold call. intros. fwd. repeat eexists.
+    - eapply H. eassumption.
+    - eassumption.
+    - eapply exec.extend_env; eassumption.
+  Qed.
 End WithParams.

@@ -305,6 +305,31 @@ Section WithParams.
         exec e body t m l mc (fun t' m' l' mc' => exists rets,
           map.getmany_of_list l' retnames = Some rets /\ post t' m' rets mc').
 
+  Lemma weaken_call: forall e fname t m args mc post1,
+      call e fname t m args mc post1 ->
+      forall (post2: trace -> mem -> list word -> MetricLog -> Prop),
+      (forall t' m' rets mc', post1 t' m' rets mc' -> post2 t' m' rets mc') ->
+      call e fname t m args mc post2.
+  Proof.
+    unfold call. intros. fwd.
+    do 4 eexists. 1: eassumption.
+    do 2 eexists. 1: eassumption.
+    eapply exec.weaken. 1: eassumption.
+    cbv beta. clear -H0. intros. fwd. eauto.
+  Qed.
+
+  Lemma extend_env_call: forall e1 e2,
+      map.extends e2 e1 ->
+      forall f t m rets mc post,
+      call e1 f t m rets mc post ->
+      call e2 f t m rets mc post.
+  Proof.
+    unfold call. intros. fwd. repeat eexists.
+    - eapply H. eassumption.
+    - eassumption.
+    - eapply exec.extend_env; eassumption.
+  Qed.
+
   Lemma of_metrics_free_eval_expr: forall m l e v,
       Semantics.eval_expr m l e = Some v ->
       forall mc, exists mc', MetricSemantics.eval_expr m l e mc = Some (v, mc').

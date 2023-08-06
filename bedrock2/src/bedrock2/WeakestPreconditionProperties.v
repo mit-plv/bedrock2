@@ -1,7 +1,6 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Properties.
 Require Import coqutil.Word.Bitwidth.
 Require bedrock2.WeakestPrecondition.
-Require Import bedrock2.WP.
 
 Require Import Coq.Classes.Morphisms.
 
@@ -103,11 +102,11 @@ Section WeakestPrecondition.
         { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
         { eauto. } }
       { intuition eauto 6. } }
-    { eapply weaken_wp_cmd; eassumption. }
+    { eapply Semantics.exec.weaken; eassumption. }
     { destruct H1 as (?&?&?). eexists. split.
       { eapply Proper_list_map; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl]; intuition eauto 2.
         eapply Proper_expr; eauto. }
-      { eapply weaken_wp_call. 2: eassumption. cbv beta.
+      { eapply Semantics.weaken_call. 1: eassumption. cbv beta.
         (* COQBUG (performance), measured in Coq 8.9:
            "firstorder eauto" works, but takes ~100s and increases memory usage by 1.8GB.
            On the other hand, the line below takes just 5ms *)
@@ -134,7 +133,7 @@ Section WeakestPrecondition.
      Basics.impl)))))))) WeakestPrecondition.call.
   Proof using word_ok mem_ok locals_ok ext_spec_ok.
     cbv [Proper respectful pointwise_relation Basics.impl].
-    intros. eapply weaken_wp_call; eassumption.
+    intros. eapply Semantics.weaken_call; eassumption.
   Qed.
 
   Global Instance Proper_program :
@@ -242,24 +241,8 @@ Section WeakestPrecondition.
     { destruct (BinInt.Z.eq_dec (Interface.word.unsigned x) (BinNums.Z0)) as [Hb|Hb]; cycle 1.
       { econstructor; t. }
       { eapply Semantics.exec.if_false; t. } }
-    { eapply invert_wp_cmd. assumption. }
-    { eapply invert_wp_call in H0. t. eapply sound_args in H; t.
-      eapply invert_wp_cmd in H2. t. }
+    { inversion H0. t. eapply sound_args in H; t. }
     { eapply sound_args in H; t. }
-  Qed.
-
-  Lemma cmd_sound: forall e c t m l post,
-      WeakestPrecondition.cmd e c t m l post -> wp_cmd e c t m l post.
-  Proof. intros. eapply mk_wp_cmd. intros. eapply sound_cmd. assumption. Qed.
-
-  Lemma sound_call' fs n t m args post (H : WeakestPrecondition.call fs n t m args post)
-    : Semantics.call fs n t m args post.
-  Proof.
-    cbv beta. eapply invert_wp_call in H.
-    destruct H as (? & ? & ? & ? & ? & ? & ?).
-    do 4 eexists. 1: eassumption.
-    do 2 eexists. 1: eassumption.
-    eapply invert_wp_cmd. eassumption.
   Qed.
 
   Lemma weaken_cmd: forall e c t m l (post1 post2: _->_->_->Prop),
@@ -314,15 +297,12 @@ Section WeakestPrecondition.
       { eapply IHexec. }
       cbv beta. intros.
       eapply H1. eassumption. }
-    { cbn. eapply mk_wp_cmd. intros.
-      eapply Semantics.exec.while_false; eauto. }
+    { cbn. eapply Semantics.exec.while_false; eauto. }
     { rename IHexec into IH1, H3 into IH2.
-      cbn. eapply mk_wp_cmd. intros.
-      eapply Semantics.exec.while_true; eassumption. }
+      cbn. eapply Semantics.exec.while_true; eassumption. }
     { cbn. eexists. split.
       { eapply complete_args. eassumption. }
-      eapply mk_wp_call. 1,2: eassumption.
-      eapply mk_wp_cmd. intros.
+      unfold Semantics.call. do 4 eexists. 1: eassumption. do 2 eexists. 1: eassumption.
       eapply Semantics.exec.weaken.
       { eassumption. }
       cbv beta. intros.
@@ -335,21 +315,13 @@ Section WeakestPrecondition.
       eauto 8. }
   Qed.
 
-  Lemma cmd_complete: forall e c t m l post,
-      wp_cmd e c t m l post -> WeakestPrecondition.cmd e c t m l post.
-  Proof.
-    intros. eapply invert_wp_cmd in H. eapply complete_cmd in H.
-    eapply weaken_cmd. 1: exact H.
-    cbv beta. intros. assumption.
-  Qed.
-
   Lemma start_func: forall e fname fimpl t m args post,
       map.get e fname = Some fimpl ->
       WeakestPrecondition.func e fimpl t m args post ->
-      wp_call e fname t m args post.
+      WeakestPrecondition.call e fname t m args post.
   Proof.
     intros * G. destruct fimpl as [[argnames retnames] body]. intros (? & ? & ?).
-    eapply mk_wp_call. 1,2: eassumption. eapply cmd_sound.
+    do 4 eexists. 1: eassumption. do 2 eexists. 1: eassumption. eapply sound_cmd.
     eapply weaken_cmd. 1: eassumption. cbv beta. intros. eapply sound_getmany. assumption.
   Qed.
 

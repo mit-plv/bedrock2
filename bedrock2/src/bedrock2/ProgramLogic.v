@@ -1,7 +1,6 @@
 From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
 Require Import coqutil.Map.Interface.
 Require Import bedrock2.Syntax.
-Require Import bedrock2.WP.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.Loops.

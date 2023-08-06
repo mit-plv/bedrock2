@@ -595,7 +595,6 @@ Section WithWordAndMem.
     Proof.
       intros.
       let H := hyp WeakestPrecondition.call in rename H into WP.
-      eapply WeakestPreconditionProperties.sound_call' in WP.
       edestruct compiler_correct with (fname := fname) (argvals := argvals) (post := post) as (f_rel_pos' & G & C);
         try eassumption.
       2: { eapply C; clear C; try assumption; try congruence; try eassumption. }

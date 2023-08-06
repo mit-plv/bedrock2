@@ -6,7 +6,7 @@ Require Import coqutil.Map.Properties.
 Require Import coqutil.Tactics.destr.
 From bedrock2 Require Import Map.Separation Map.SeparationLogic.
 From bedrock2 Require Import Syntax Semantics Markers.
-From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties WP.
+From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
 
 Section Loops.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
@@ -28,11 +28,10 @@ Section Loops.
         (word.unsigned b <> 0%Z -> cmd call c t m l (fun t' m l =>
           exists v', inv v' t' m l /\ lt v' v)) /\
         (word.unsigned b = 0%Z -> post t m l))) ->
-     wp_cmd call (cmd.while e c) t m l post.
+     cmd call (cmd.while e c) t m l post.
   Proof.
     intros. destruct H as (measure & lt & inv & Hwf & HInit & Hbody).
     destruct HInit as (v0 & HInit).
-    apply mk_wp_cmd. intros.
     revert t m l HInit. pattern v0. revert v0.
     eapply (well_founded_ind Hwf). intros.
     specialize Hbody with (1 := HInit). destruct Hbody as (b & Hb & Ht & Hf).
@@ -41,7 +40,7 @@ Section Loops.
     - specialize Hf with (1 := E). eapply exec.while_false; eassumption.
     - specialize Ht with (1 := E). eapply sound_cmd in Ht.
       eapply exec.while_true; eauto.
-      cbv beta. intros * (v' & HInv & HLt). eauto.
+      cbv beta. intros * (v' & HInv & HLt). eapply sound_cmd. eauto.
   Qed.
 
   Lemma tailrec_localsmap_1ghost
