@@ -152,7 +152,7 @@ From coqutil Require Import Z.div_mod_to_equations.
 
 Ltac t :=
   match goal with
-  | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ => eexists; split; [solve[repeat straightline]|]
+  | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ => eapply WeakestPrecondition.wp_interact; eexists; split; [solve[repeat straightline]|]
   | |- map.split _ _ _ => eapply Properties.map.split_empty_r; reflexivity
   | H: map.of_list_zip ?ks ?vs = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
   | H: map.putmany_of_list_zip ?ks ?vs ?m0 = Some ?m |- _ => cbn in H; injection H; clear H; intro H; symmetry in H
@@ -196,6 +196,7 @@ Proof.
   eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip ["polling"; "rx"]%string [v; rxv] l0 = Some l); repeat t.
   eapply Loops.wp_while.
   eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list_zip ["polling"; "tx"]%string [v; txv] l0 = Some l); repeat t.
+  apply_rules_until_propositional.
   eexists; split; repeat t.
 Defined.
 

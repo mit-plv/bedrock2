@@ -38,6 +38,8 @@ Section WithParameters.
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
   Import coqutil.Word.Properties coqutil.Map.Properties.
 
+  Ltac expose_exists_for_letexists ::= hnf; apply_rules_until_propositional.
+
   Local Ltac normalize_body_of_function f ::= f.
 
   Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.

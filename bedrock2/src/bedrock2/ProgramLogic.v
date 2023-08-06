@@ -236,7 +236,7 @@ Ltac straightline :=
     end;
     cbv match beta delta [WeakestPrecondition.func]
   | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
-    unfold1_cmd_goal; cbv beta match delta [cmd_body];
+    unfold1_cmd_goal;
     let __ := match s with String.String _ _ => idtac | String.EmptyString => idtac end in
     ident_of_constr_string_cps s ltac:(fun x =>
       ensure_free x;
@@ -248,7 +248,7 @@ Ltac straightline :=
     | cmd.while _ _ => fail
     | cmd.cond _ _ _ => fail
     | cmd.interact _ _ _ => fail
-    | _ => unfold1_cmd_goal; cbv beta match delta [cmd_body]
+    | _ => apply_rule_for_command c
     end
   | |- @list_map _ _ (get _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
   | |- @list_map _ _ (expr _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
@@ -344,6 +344,12 @@ Ltac straightline_call :=
       [ eapply Hcall | try eabstract (solve [Morphisms.solve_proper]) .. ];
       [ .. | intros ? ? ? ?]
   end.
+
+(* not as eager as it might look, because each rule only has one premise,
+   and it is of the form (_ /\ _) or (exists _, _),
+   except wp_seq, which has another cmd as its premise, but there, we
+   indeed want to unfold the head cmd again *)
+Ltac apply_rules_until_propositional := repeat unfold1_cmd_goal.
 
 Ltac current_trace_mem_locals :=
   lazymatch goal with

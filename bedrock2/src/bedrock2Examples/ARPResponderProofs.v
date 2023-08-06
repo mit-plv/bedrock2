@@ -29,6 +29,8 @@ Local Instance spec_of_arp : spec_of "arp" :=
 
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
+Ltac expose_exists_for_letexists ::= hnf; apply_rules_until_propositional.
+
 Goal program_logic_goal_for_function! arp.
   repeat straightline.
   letexists; split; [solve[repeat straightline]|]; split; [|solve[repeat straightline]]; repeat straightline.

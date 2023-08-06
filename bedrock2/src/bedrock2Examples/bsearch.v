@@ -47,6 +47,8 @@ From coqutil.Macros Require Import symmetry.
 Import PrimitivePair.
 Require Import bedrock2.ZnWords.
 
+Ltac expose_exists_for_letexists ::= hnf; apply_rules_until_propositional.
+
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
 Proof.
   repeat straightline.

@@ -38,9 +38,9 @@ Section Loops.
     eapply expr_sound in Hb. destruct Hb as (b' & Hb & ?). subst b'.
     destr.destr (Z.eqb (word.unsigned b) 0).
     - specialize Hf with (1 := E). eapply exec.while_false; eassumption.
-    - specialize Ht with (1 := E). eapply sound_cmd in Ht.
+    - specialize Ht with (1 := E).
       eapply exec.while_true; eauto.
-      cbv beta. intros * (v' & HInv & HLt). eapply sound_cmd. eauto.
+      cbv beta. intros * (v' & HInv & HLt). eauto.
   Qed.
 
   Lemma tailrec_localsmap_1ghost
@@ -97,7 +97,7 @@ Section Loops.
       (word.unsigned br = 0%Z -> cmd call rest t m l (Q v g)))
     : cmd call (cmd.seq (cmd.while e c) rest) t m l (Q v0 g0).
   Proof.
-    cbn. eapply tailrec_localsmap_1ghost with
+    eapply wp_seq. eapply tailrec_localsmap_1ghost with
       (Q := fun v g t m l => cmd call rest t m l (Q v g)).
     1: eassumption.
     1: exact Hpre.

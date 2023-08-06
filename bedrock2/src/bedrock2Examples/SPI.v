@@ -85,6 +85,9 @@ Section WithParameters.
          constants [Properties.word_cst]).
 
   Import coqutil.Tactics.letexists.
+
+  Ltac expose_exists_for_letexists ::= hnf; apply_rules_until_propositional.
+
   Import Loops.
   Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
   Proof.

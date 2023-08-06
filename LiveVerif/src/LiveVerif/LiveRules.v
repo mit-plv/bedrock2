@@ -756,7 +756,7 @@ Section WithParams.
     inversion Hbody. subst. clear Hbody. inversion H. clear H.
     eexists. split. 1: eassumption.
     unfold bool_expr_branches in *. apply proj1 in H1. split.
-    - intro NE. eapply WeakestPreconditionProperties.complete_cmd.
+    - intro NE.
       rewrite word.eqb_ne in H1. 1: eapply H1. intro C. subst v0.
       apply NE. apply word.unsigned_of_Z_0.
     - intro E. rewrite word.eqb_eq in H1. 1: eapply H1.
@@ -788,7 +788,7 @@ Section WithParams.
     (Hrest: forall t m l, post (g0, v0, t, m, l) -> wp_cmd fs rest t m l finalpost)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 finalpost.
   Proof.
-    eapply wp_seq. eapply WeakestPreconditionProperties.sound_cmd.
+    eapply wp_seq.
     eapply tailrec_localsmap_1ghost with
       (P := fun v g t m l => pre (g, v, t, m, l))
       (Q := fun v g t m l => post (g, v, t, m, l)).
@@ -804,7 +804,7 @@ Section WithParams.
     eexists. split. 1: eassumption.
     unfold loop_body_marker in *.
     split; intro Hv; destruct_one_match_hyp.
-    - apply proj1 in HAgain. eapply WeakestPreconditionProperties.complete_cmd. assumption.
+    - apply proj1 in HAgain. assumption.
     - exfalso. apply Hv. apply word.unsigned_of_Z_0.
     - exfalso. apply E. eapply word.unsigned_inj. rewrite Hv. symmetry.
       apply word.unsigned_of_Z_0.

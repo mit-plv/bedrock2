@@ -196,6 +196,8 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ lan9250_boot_timeout _ ioh))
         (word.unsigned err = 0 /\ lan9250_init_trace _ ioh)).
 
+  Ltac expose_exists_for_letexists ::= hnf; apply_rules_until_propositional.
+
   Local Ltac split_if :=
     lazymatch goal with
       |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>

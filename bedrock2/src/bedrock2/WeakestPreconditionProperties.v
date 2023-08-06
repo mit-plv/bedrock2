@@ -79,47 +79,8 @@ Section WeakestPrecondition.
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl))) ==>
      Basics.impl))))))) WeakestPrecondition.cmd.
   Proof using ext_spec_ok locals_ok mem_ok word_ok.
-    pose proof I. (* to keep naming *)
-    cbv [Proper respectful pointwise_relation Basics.flip Basics.impl]; ind_on Syntax.cmd.cmd;
-      cbn in *; cbv [dlet.dlet] in *; intuition (try typeclasses eauto with core).
-    { destruct H1 as (?&?&?). eexists. split.
-      1: eapply Proper_expr.
-      1: cbv [pointwise_relation Basics.impl]; intuition eauto 2.
-      all: eauto. }
-    { destruct H1 as (?&?&?). eexists. split.
-      { eapply Proper_expr.
-        { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
-        { eauto. } }
-      { destruct H2 as (?&?&?). eexists. split.
-        { eapply Proper_expr.
-          { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
-          { eauto. } }
-        { eapply Proper_store; eauto; cbv [pointwise_relation Basics.impl]; eauto. } } }
-    { eapply H1. 2: eapply H3; eassumption.
-      intros ? ? ? (?&?&?&?&?). eauto 7. }
-    { destruct H1 as (?&?&?). eexists. split.
-      { eapply Proper_expr.
-        { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
-        { eauto. } }
-      { intuition eauto 6. } }
-    { eapply Semantics.exec.weaken; eassumption. }
-    { destruct H1 as (?&?&?). eexists. split.
-      { eapply Proper_list_map; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl]; intuition eauto 2.
-        eapply Proper_expr; eauto. }
-      { eapply Semantics.weaken_call. 1: eassumption. cbv beta.
-        (* COQBUG (performance), measured in Coq 8.9:
-           "firstorder eauto" works, but takes ~100s and increases memory usage by 1.8GB.
-           On the other hand, the line below takes just 5ms *)
-        cbv beta; intros ? ? ? (?&?&?); eauto. } }
-    { destruct H1 as (?&?&?). eexists. split.
-      { eapply Proper_list_map; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl].
-        { eapply Proper_expr; eauto. }
-        { eauto. } }
-      { destruct H2 as (mKeep & mGive & ? & ?).
-        exists mKeep. exists mGive.
-        split; [assumption|].
-        eapply Semantics.ext_spec.weaken; [|solve[eassumption]].
-        intros ? ? (?&?&?); eauto 10. } }
+    cbv [Proper respectful pointwise_relation Basics.flip Basics.impl].
+    intros. eapply Semantics.exec.weaken; eauto.
   Qed.
 
   Global Instance Proper_call :
@@ -233,18 +194,6 @@ Section WeakestPrecondition.
     all : cbv [respectful pointwise_relation Basics.impl WeakestPrecondition.get]; intros; cbv beta; t.
   Qed.
 
-  Local Hint Constructors Semantics.exec : core.
-  Lemma sound_cmd e c t m l post (H: WeakestPrecondition.cmd e c t m l post)
-    : Semantics.exec e c t m l post.
-  Proof.
-    ind_on Syntax.cmd; repeat (t; try match reverse goal with H : WeakestPrecondition.expr _ _ _ _ |- _ => eapply expr_sound in H end).
-    { destruct (BinInt.Z.eq_dec (Interface.word.unsigned x) (BinNums.Z0)) as [Hb|Hb]; cycle 1.
-      { econstructor; t. }
-      { eapply Semantics.exec.if_false; t. } }
-    { inversion H0. t. eapply sound_args in H; t. }
-    { eapply sound_args in H; t. }
-  Qed.
-
   Lemma weaken_cmd: forall e c t m l (post1 post2: _->_->_->Prop),
       WeakestPrecondition.cmd e c t m l post1 ->
       (forall t m l, post1 t m l -> post2 t m l) ->
@@ -273,55 +222,13 @@ Section WeakestPrecondition.
     { intros ? ?. subst. reflexivity. }
   Qed.
 
-  Lemma complete_cmd: forall e c t m l post,
-      Semantics.exec e c t m l post ->
-      WeakestPrecondition.cmd e c t m l post.
-  Proof.
-    induction 1.
-    { eassumption. }
-    { eapply expr_complete in H. eexists. split. 1: exact H.
-      eassumption. }
-    { eauto. }
-    { eapply expr_complete in H.
-      eapply expr_complete in H0.
-      eexists. split. 1: eassumption.
-      eexists. split. 1: eassumption.
-      eexists. eauto. }
-    { split. 1: assumption.
-      intros * HA HSp. specialize H1 with (1 := HA) (2 := HSp).
-      unfold dlet.dlet. eapply weaken_cmd. 1: eapply H1. cbv beta.
-      clear. intros * (? & ? & ? & ? & ?). eauto 8. }
-    { eexists. ssplit; intros; eauto using expr_complete; congruence. }
-    { eexists. ssplit; intros; eauto using expr_complete; congruence. }
-    { cbn. eapply weaken_cmd.
-      { eapply IHexec. }
-      cbv beta. intros.
-      eapply H1. eassumption. }
-    { cbn. eapply Semantics.exec.while_false; eauto. }
-    { rename IHexec into IH1, H3 into IH2.
-      cbn. eapply Semantics.exec.while_true; eassumption. }
-    { cbn. eexists. split.
-      { eapply complete_args. eassumption. }
-      unfold Semantics.call. do 4 eexists. 1: eassumption. do 2 eexists. 1: eassumption.
-      eapply Semantics.exec.weaken.
-      { eassumption. }
-      cbv beta. intros.
-      specialize H3 with (1 := H4). destruct H3 as (retvs & G & ? & ? & ?). eauto 8. }
-    { cbn. eexists. split.
-      { eapply complete_args. eassumption. }
-      eexists _, _. split. 1: eassumption.
-      eapply Semantics.ext_spec.weaken. 2: eassumption.
-      intros m0 args0 Hmid. specialize H2 with (1 := Hmid). destruct H2 as (? & ? & ?).
-      eauto 8. }
-  Qed.
-
   Lemma start_func: forall e fname fimpl t m args post,
       map.get e fname = Some fimpl ->
       WeakestPrecondition.func e fimpl t m args post ->
       WeakestPrecondition.call e fname t m args post.
   Proof.
     intros * G. destruct fimpl as [[argnames retnames] body]. intros (? & ? & ?).
-    do 4 eexists. 1: eassumption. do 2 eexists. 1: eassumption. eapply sound_cmd.
+    do 4 eexists. 1: eassumption. do 2 eexists. 1: eassumption.
     eapply weaken_cmd. 1: eassumption. cbv beta. intros. eapply sound_getmany. assumption.
   Qed.
 
@@ -336,6 +243,7 @@ Section WeakestPrecondition.
            post (cons (map.empty, binds, args, (map.empty, rets)) t) m l0))
     : WeakestPrecondition.cmd call (cmd.interact action binds arges) t m l post.
   Proof using word_ok mem_ok ext_spec_ok.
+    eapply wp_interact.
     exists args; split; [exact Hargs|].
     exists m.
     exists map.empty.
