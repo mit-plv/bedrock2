@@ -15,6 +15,8 @@ Require Import bedrock2.ZnWords.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.enable_frame_trick.
 
+Notation wp_cmd := Semantics.exec (only parsing).
+
 (* A let-binding using an equality instead of :=, living in Prop.
    Equivalent to (exists x, x = rhs /\ body x).
    We don't use regular exists to make the intention recognizable by tactics.
@@ -356,26 +358,6 @@ Section WithParams.
     - assumption.
   Qed.
 
-  Lemma WP_weaken_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
-      WeakestPrecondition.cmd fs c t m l post1 ->
-      (forall t m l, post1 t m l -> post2 t m l) ->
-      WeakestPrecondition.cmd fs c t m l post2.
-  Proof. eapply WeakestPreconditionProperties.weaken_cmd. Qed.
-
-  Inductive wp_cmd(fs: Semantics.env)
-            (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop):
-    Prop := mk_wp_cmd(_: WeakestPrecondition.cmd fs c t m l post).
-
-  Lemma invert_wp_cmd: forall fs c t m l post,
-      wp_cmd fs c t m l post -> WeakestPrecondition.cmd fs c t m l post.
-  Proof. intros. inversion H; assumption. Qed.
-
-  Lemma weaken_wp_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
-      wp_cmd fs c t m l post1 ->
-      (forall t m l, post1 t m l -> post2 t m l) ->
-      wp_cmd fs c t m l post2.
-  Proof. intros. constructor. inversion H. eapply WP_weaken_cmd; eassumption. Qed.
-
   Lemma wp_skip: forall fs t m l (post: trace -> mem -> locals -> Prop),
       post t m l ->
       wp_cmd fs cmd.skip t m l post.
@@ -384,11 +366,7 @@ Section WithParams.
   Lemma wp_seq: forall fs c1 c2 t m l post,
       wp_cmd fs c1 t m l (fun t' m' l' => wp_cmd fs c2 t' m' l' post) ->
       wp_cmd fs (cmd.seq c1 c2) t m l post.
-  Proof.
-    intros. constructor. cbn. inversion H. clear H.
-    eapply WP_weaken_cmd. 1: eassumption. cbv beta. intros.
-    inversion H. assumption.
-  Qed.
+  Proof. intros. econstructor; eauto. Qed.
 
   Fixpoint update_locals(keys: list string)(vals: list word)
     (l: locals)(post: locals -> Prop) :=
@@ -416,8 +394,9 @@ Section WithParams.
       post t m (map.put l x v) ->
       wp_cmd fs (cmd.set x e) t m l post.
   Proof.
-    intros. inversion H; clear H. econstructor.
-    cbn -[map.put]. eexists. split. 1: eassumption. unfold dlet.dlet. assumption.
+    intros. inversion H; clear H.
+    eapply WeakestPreconditionProperties.expr_sound in H1. fwd.
+    econstructor; eassumption.
   Qed.
 
   Lemma wp_set0: forall fs x e v t m l rest post,
@@ -436,14 +415,20 @@ Section WithParams.
       wp_cmd fs (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion H0; clear H0.
-    constructor. hnf.
-    eexists. split. 1: eassumption.
+    eapply WeakestPreconditionProperties.expr_sound in H3. fwd.
+    eapply WeakestPreconditionProperties.expr_sound in H. fwd.
+    eapply exec.seq with (mid := fun t' m' l' => t' = t /\ l' = l /\ _).
+    2: {
+      intros * (? & ? & HM). subst. eapply H2. exact HM.
+    }
     unfold anyval in H1. eapply sep_ex1_l in H1. destruct H1 as (v_old & H1).
-    eexists. split. 1: eassumption.
-    unfold store.
     unfold uintptr, Scalars.scalar in *.
-    eapply Scalars.store_of_sep. 1: eassumption.
-    intros. eapply H2. assumption.
+    eapply Scalars.store_of_sep in H1.
+    { destruct H1 as (m' & ? & HP).
+      econstructor; try eassumption.
+      ssplit. 1,2: reflexivity.
+      exact HP. }
+    intros ?. exact id.
   Qed.
 
   Lemma wp_store_uint0: forall fs sz ea ev a v R t m l rest (post: _->_->_->Prop),
@@ -456,26 +441,39 @@ Section WithParams.
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion H0; clear H0.
-    constructor. hnf.
-    eexists. split. 1: eassumption.
+    eapply WeakestPreconditionProperties.expr_sound in H4. fwd.
+    eapply WeakestPreconditionProperties.expr_sound in H. fwd.
+    eapply exec.seq with (mid := fun t' m' l' => t' = t /\ l' = l /\ _).
+    2: {
+      intros * (? & ? & HM). subst. eapply H3. exact HM.
+    }
     unfold anyval in H2. eapply sep_ex1_l in H2. destruct H2 as (v_old & H2).
-    eexists. split. 1: eassumption.
-    unfold store.
     unfold uint in H2. eapply sep_assoc in H2. eapply sep_emp_l in H2.
     destruct H2 as (B & M).
-    eapply Scalars.store_of_sep.
-    - unfold Scalars.truncated_word, Scalars.truncated_scalar.
-      destruct sz; cbn in *;
-      rewrite <- (word.unsigned_of_Z_nowrap v_old) in M
-        by (destruct width_cases as [W|W]; rewrite W in *; lia);
-      try exact M.
-      eqapply M. f_equal.
-      destruct width_cases as [W|W]; rewrite W in *; reflexivity.
-    - intros. eapply H3. unfold uint. eapply sep_assoc. eapply sep_emp_l.
+    pose proof Scalars.store_of_sep as P.
+    unfold Scalars.truncated_word, Scalars.truncated_scalar in P.
+    specialize (P sz v0 (word.of_Z v_old)).
+    replace (Z.to_nat (nbits_to_nbytes (access_size_to_nbits sz))) with
+      (bytes_per (width := width) sz) in M.
+    2: {
+      destruct sz; cbn; try reflexivity.
+      destruct width_cases as [W | W]; rewrite W; reflexivity.
+    }
+    rewrite word.unsigned_of_Z_nowrap in P.
+    2: {
+      destruct width_cases as [W|W]; rewrite W in *; destruct sz; lia.
+    }
+    eapply P in M.
+    { destruct M as (m' & ? & HP).
+      econstructor; try eassumption.
+      ssplit. 1,2: reflexivity.
+      exact HP. }
+    { clear P.
+      intros. unfold uint. eapply sep_assoc. eapply sep_emp_l.
       split. 1: assumption. unfold Scalars.truncated_word, Scalars.truncated_scalar in *.
       destruct sz; try assumption.
-      eqapply H0. clear -BW word_ok.
-      destruct width_cases as [W|W]; subst width; reflexivity.
+      eqapply H. clear -BW word_ok.
+      destruct width_cases as [W|W]; subst width; reflexivity. }
   Qed.
 
   Definition merge_locals(c: bool):
@@ -531,12 +529,11 @@ Section WithParams.
       (word.unsigned b =  0 -> wp_cmd fs els t m l post) ->
       wp_cmd fs (cmd.cond c thn els) t m l post.
   Proof.
-    intros. inversion H; clear H. constructor. hnf.
-    eexists. split. 1: eassumption.
-    split; intro A;
-      match goal with
-      | H: _ -> _ |- _ => specialize (H A); inversion H; clear H; assumption
-      end.
+    intros. inversion H; clear H.
+    eapply WeakestPreconditionProperties.expr_sound in H2. fwd.
+    destr (word.unsigned v =? 0).
+    - eapply exec.if_false; eauto.
+    - eapply exec.if_true; eauto.
   Qed.
 
   Lemma wp_if0: forall fs c thn els rest b Q1 Q2 t m l post,
@@ -552,7 +549,7 @@ Section WithParams.
     all: intro A; match goal with
       | H: _ -> _ |- _ => specialize (H A)
       end.
-    all: eauto using weaken_wp_cmd.
+    all: eauto using exec.weaken.
   Qed.
 
   Definition after_loop: Semantics.env ->
@@ -582,7 +579,7 @@ Section WithParams.
       wp_cmd fs rest t m l (fun t' m' l' => post t' m' (map.remove l' x)) ->
       wp_cmd fs (cmd.seq rest (cmd.unset x)) t m l post.
   Proof.
-    intros. eapply wp_seq. eapply weaken_wp_cmd. 1: eassumption.
+    intros. eapply wp_seq. eapply exec.weaken. 1: eassumption.
     cbv beta. intros. eapply wp_unset00. assumption.
   Qed.
 
@@ -749,7 +746,7 @@ Section WithParams.
                   True)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t m l post.
   Proof.
-    econstructor. cbn. eapply wp_while. exists measure, lt, invariant.
+    eapply wp_seq. eapply wp_while. exists measure, lt, invariant.
     split. 1: assumption.
     split. 1: eauto.
     clear Hpre v0 t m l.
@@ -759,9 +756,10 @@ Section WithParams.
     inversion Hbody. subst. clear Hbody. inversion H. clear H.
     eexists. split. 1: eassumption.
     unfold bool_expr_branches in *. apply proj1 in H1. split.
-    - intro NE. rewrite word.eqb_ne in H1. 1: eapply H1. intro C. subst v0.
+    - intro NE. eapply WeakestPreconditionProperties.complete_cmd.
+      rewrite word.eqb_ne in H1. 1: eapply H1. intro C. subst v0.
       apply NE. apply word.unsigned_of_Z_0.
-    - intro E. rewrite word.eqb_eq in H1. 1: eapply invert_wp_cmd; eapply H1.
+    - intro E. rewrite word.eqb_eq in H1. 1: eapply H1.
       eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
   Qed.
 
@@ -790,8 +788,7 @@ Section WithParams.
     (Hrest: forall t m l, post (g0, v0, t, m, l) -> wp_cmd fs rest t m l finalpost)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 finalpost.
   Proof.
-    eapply wp_seq.
-    econstructor. cbn.
+    eapply wp_seq. eapply WeakestPreconditionProperties.sound_cmd.
     eapply tailrec_localsmap_1ghost with
       (P := fun v g t m l => pre (g, v, t, m, l))
       (Q := fun v g t m l => post (g, v, t, m, l)).
@@ -807,8 +804,7 @@ Section WithParams.
     eexists. split. 1: eassumption.
     unfold loop_body_marker in *.
     split; intro Hv; destruct_one_match_hyp.
-    - apply proj1 in HAgain. inversion HAgain. eapply WP_weaken_cmd. 1: eassumption.
-      cbv beta. intros *. exact id.
+    - apply proj1 in HAgain. eapply WeakestPreconditionProperties.complete_cmd. assumption.
     - exfalso. apply Hv. apply word.unsigned_of_Z_0.
     - exfalso. apply E. eapply word.unsigned_inj. rewrite Hv. symmetry.
       apply word.unsigned_of_Z_0.
@@ -904,7 +900,7 @@ Section WithParams.
         1: assumption.
         split. 1: constructor. apply proj2 in H3. unfold loop_body_marker in *.
         apply proj1 in H3. split. 2: constructor.
-        eapply weaken_wp_cmd. 1: eassumption.
+        eapply Semantics.exec.weaken. 1: eassumption.
         cbv beta. clear H3. intros. fwd. inversion H2. subst. clear H2.
         unfold bool_expr_branches in *. apply proj1 in H5.
         destr (word.eqb v2 (word.of_Z 0)); simpl in *.
@@ -925,9 +921,6 @@ Section WithParams.
       { assumption. }
   Qed.
 
-  Definition dexprs(m: mem)(l: locals): list expr -> list word -> Prop :=
-    List.Forall2 (dexpr m l).
-
   Inductive dexprs1(m: mem)(l: locals)(es: list expr)(vs: list word)(P: Prop): Prop :=
   | mk_dexprs1(Hde: dexprs m l es vs)(Hp: P).
 
@@ -940,19 +933,12 @@ Section WithParams.
   Proof.
     intros.
     inversion H; clear H. inversion Hp. clear Hp.
-    constructor. 2: assumption. constructor. 1: assumption. assumption.
-  Qed.
-
-  Lemma cpsify_dexprs: forall m l es vs (post: list word -> Prop),
-      dexprs m l es vs ->
-      post vs ->
-      list_map (WeakestPrecondition.expr m l) es post.
-  Proof.
-    induction es; intros.
-    - cbn in *. inversion H. subst. assumption.
-    - cbn in *. inversion H. subst. clear H.
-      inversion H3. clear H3. unfold WeakestPrecondition.dexpr in H.
-      eapply weaken_expr. 1: eassumption. intros. subst. eapply IHes; eassumption.
+    constructor. 2: assumption. inversion Hde. unfold WeakestPrecondition.dexpr in *.
+    cbn. eapply weaken_expr. 1: eassumption. intros. subst.
+    unfold dexprs in Hde0. eapply WeakestPreconditionProperties.Proper_list_map.
+    3: eassumption.
+    { intros ? ? ? ? ? . eapply weaken_expr. 1: eassumption. assumption. }
+    { intros ? ?. subst. reflexivity. }
   Qed.
 
   Lemma wp_call0 fs t m l fname resnames es vs (post: trace -> mem -> locals -> Prop):
@@ -961,9 +947,11 @@ Section WithParams.
         exists l', map.putmany_of_list_zip resnames rets l = Some l' /\ post t' m' l') ->
       wp_cmd fs (cmd.call resnames fname es) t m l post.
   Proof.
-    intros.
-    constructor. cbn. exists vs. split. 2: assumption.
-    unfold WeakestPrecondition.dexprs. eapply cpsify_dexprs. 1: eassumption. reflexivity.
+    intros. unfold call in *. fwd.
+    unfold dexprs, WeakestPrecondition.dexprs in *.
+    eapply WeakestPreconditionProperties.sound_args in H. fwd.
+    econstructor; try eassumption.
+    cbv beta. intros *. exact id.
   Qed.
 
   Lemma wp_call: forall fs fname t m resnames arges argvs l rest
@@ -1010,8 +998,6 @@ Section WithParams.
   Proof.
     intros.
     do 4 eexists. 1: eassumption. do 2 eexists. 1: eassumption.
-    eapply invert_wp_cmd in H1.
-    eapply WeakestPreconditionProperties.sound_cmd.
     assumption.
   Qed.
 
@@ -1023,7 +1009,7 @@ Section WithParams.
         map.getmany_of_list l' nil = Some retvals /\
         (retvals = nil /\ P t' m')).
   Proof.
-    intros. eapply weaken_wp_cmd. 1: eassumption.
+    intros. eapply Semantics.exec.weaken. 1: eassumption.
     cbv beta. intros. fwd. eexists.
     split. 1: reflexivity. auto.
   Qed.
@@ -1042,7 +1028,7 @@ Section WithParams.
         map.getmany_of_list l' (cons RETNAME nil) = Some retvals /\
         (exists retv, retvals = cons retv nil /\ P t' m' retv)).
   Proof.
-    intros. eapply weaken_wp_cmd. 1: eassumption.
+    intros. eapply Semantics.exec.weaken. 1: eassumption.
     intros. inversion H0. subst. clear H0. eexists.
     split. {
       simpl. unfold map.getmany_of_list. simpl. rewrite G. reflexivity.
