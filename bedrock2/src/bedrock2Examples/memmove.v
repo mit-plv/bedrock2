@@ -53,7 +53,6 @@ Section WithParameters.
 
 
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok : map.ok locals}
-    {env : map.map string (list string * list string * Syntax.cmd)} {env_ok : map.ok env}
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
@@ -385,6 +384,7 @@ Section WithParameters.
     cbv [program_logic_goal_for spec_of_memmove_array]; intros.
     eapply WeakestPreconditionProperties.Proper_call; cycle 1; [eapply memmove_ok|];
         cbv [sepclause_of_map] in *.
+    { eassumption. }
     { intuition idtac.
       - seprewrite_in_by @ptsto_bytes.array1_iff_eq_of_list_word_at H0 ZnWords; eassumption.
       - seprewrite_in_by @ptsto_bytes.array1_iff_eq_of_list_word_at H ZnWords; eassumption.

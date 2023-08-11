@@ -1,13 +1,10 @@
-Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil.Byte.
-Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
-Require Import coqutil.Decidable.
+Require Import coqutil.sanity coqutil.Byte.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.
+Require coqutil.Map.SortedListString.
 Require Import bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
-Require Import bedrock2.MetricLogging.
 Require Export bedrock2.Memory.
-
 Require Import Coq.Lists.List.
 
 (* BW is not needed on the rhs, but helps infer width *)
@@ -78,205 +75,142 @@ Section binops.
     end.
 End binops.
 
+Definition env: map.map String.string Syntax.func := SortedListString.map _.
+#[export] Instance env_ok: map.ok env := SortedListString.ok _.
+
 Section semantics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
   Context {ext_spec: ExtSpec}.
-
-  Local Notation metrics := MetricLog.
 
   (* this is the expr evaluator that is used to verify execution time, the just-correctness-oriented version is below *)
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
 
-    Local Notation "' x <- a | y ; f" := (match a with x => f | _ => y end)
-      (right associativity, at level 70, x pattern).
+    Local Notation "x <- a ; f" := (match a with Some x => f | None => None end)
+      (right associativity, at level 70).
 
-    Fixpoint eval_expr (e : expr) (mc : metrics) : option (word * metrics) :=
-      match e with
-      | expr.literal v => Some (word.of_Z v, addMetricInstructions 8
-                                             (addMetricLoads 8 mc))
-      | expr.var x => match map.get l x with
-                      | Some v => Some (v, addMetricInstructions 1
-                                           (addMetricLoads 2 mc))
-                      | None => None
-                      end
-      | expr.inlinetable aSize t index =>
-          'Some (index', mc') <- eval_expr index mc | None;
-          'Some v <- load aSize (map.of_list_word t) index' | None;
-          Some (v, (addMetricInstructions 3
-                   (addMetricLoads 4
-                   (addMetricJumps 1 mc'))))
-      | expr.load aSize a =>
-          'Some (a', mc') <- eval_expr a mc | None;
-          'Some v <- load aSize m a' | None;
-          Some (v, addMetricInstructions 1
-                   (addMetricLoads 2 mc'))
-      | expr.op op e1 e2 =>
-          'Some (v1, mc') <- eval_expr e1 mc | None;
-          'Some (v2, mc'') <- eval_expr e2 mc' | None;
-          Some (interp_binop op v1 v2, addMetricInstructions 2
-                                       (addMetricLoads 2 mc''))
-      | expr.ite c e1 e2 =>
-          'Some (vc, mc') <- eval_expr c mc | None;
-          eval_expr (if word.eqb vc (word.of_Z 0) then e2 else e1)
-                    (addMetricInstructions 2
-                       (addMetricLoads 2
-                       (addMetricJumps 1 mc')))
-      end.
-
-    Fixpoint eval_expr_old (e : expr) : option word :=
+    Fixpoint eval_expr (e : expr) : option word :=
       match e with
       | expr.literal v => Some (word.of_Z v)
       | expr.var x => map.get l x
       | expr.inlinetable aSize t index =>
-          'Some index' <- eval_expr_old index | None;
+          index' <- eval_expr index;
           load aSize (map.of_list_word t) index'
       | expr.load aSize a =>
-          'Some a' <- eval_expr_old a | None;
+          a' <- eval_expr a;
           load aSize m a'
       | expr.op op e1 e2 =>
-          'Some v1 <- eval_expr_old e1 | None;
-          'Some v2 <- eval_expr_old e2 | None;
+          v1 <- eval_expr e1;
+          v2 <- eval_expr e2;
           Some (interp_binop op v1 v2)
       | expr.ite c e1 e2 =>
-          'Some vc <- eval_expr_old c | None;
-          eval_expr_old (if word.eqb vc (word.of_Z 0) then e2 else e1)
+          vc <- eval_expr c;
+          eval_expr (if word.eqb vc (word.of_Z 0) then e2 else e1)
       end.
 
-    Fixpoint evaluate_call_args_log (arges : list expr) (mc : metrics) :=
+    Fixpoint eval_call_args (arges : list expr) :=
       match arges with
       | e :: tl =>
-        'Some (v, mc') <- eval_expr e mc | None;
-        'Some (args, mc'') <- evaluate_call_args_log tl mc' | None;
-        Some (v :: args, mc'')
-      | _ => Some (nil, mc)
+        v <- eval_expr e;
+        args <- eval_call_args tl;
+        Some (v :: args)
+      | _ => Some nil
       end.
 
   End WithMemAndLocals.
 End semantics.
 
-Module exec. Section WithEnv.
+Module exec. Section WithParams.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
   Context {ext_spec: ExtSpec}.
+  Section WithEnv.
   Context (e: env).
 
-  Local Notation metrics := MetricLog.
-
-  Implicit Types post : trace -> mem -> locals -> metrics -> Prop. (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
-  Inductive exec :
-    cmd -> trace -> mem -> locals -> metrics ->
-    (trace -> mem -> locals -> metrics -> Prop) -> Prop :=
-  | skip
-    t m l mc post
-    (_ : post t m l mc)
-    : exec cmd.skip t m l mc post
-  | set x e
-    t m l mc post
-    v mc' (_ : eval_expr m l e mc = Some (v, mc'))
-    (_ : post t m (map.put l x v) (addMetricInstructions 1
-                                  (addMetricLoads 1 mc')))
-    : exec (cmd.set x e) t m l mc post
-  | unset x
-    t m l mc post
-    (_ : post t m (map.remove l x) mc)
-    : exec (cmd.unset x) t m l mc post
-  | store sz ea ev
-    t m l mc post
-    a mc' (_ : eval_expr m l ea mc = Some (a, mc'))
-    v mc'' (_ : eval_expr m l ev mc' = Some (v, mc''))
-    m' (_ : store sz m a v = Some m')
-    (_ : post t m' l (addMetricInstructions 1
-                     (addMetricLoads 1
-                     (addMetricStores 1 mc''))))
-    : exec (cmd.store sz ea ev) t m l mc post
-  | stackalloc x n body
-    t mSmall l mc post
-    (_ : Z.modulo n (bytes_per_word width) = 0)
-    (_ : forall a mStack mCombined,
+  Implicit Types post : trace -> mem -> locals -> Prop. (* COQBUG: unification finds Type instead of Prop and fails to downgrade *)
+  Inductive exec: cmd -> trace -> mem -> locals ->
+                  (trace -> mem -> locals -> Prop) -> Prop :=
+  | skip: forall t m l post,
+      post t m l ->
+      exec cmd.skip t m l post
+  | set: forall x e t m l post v,
+      eval_expr m l e = Some v ->
+      post t m (map.put l x v) ->
+      exec (cmd.set x e) t m l post
+  | unset: forall x t m l post,
+      post t m (map.remove l x) ->
+      exec (cmd.unset x) t m l post
+  | store: forall sz ea ev t m l post a v m',
+      eval_expr m l ea = Some a ->
+      eval_expr m l ev = Some v ->
+      store sz m a v = Some m' ->
+      post t m' l ->
+      exec (cmd.store sz ea ev) t m l post
+  | stackalloc: forall x n body t mSmall l post,
+      Z.modulo n (bytes_per_word width) = 0 ->
+      (forall a mStack mCombined,
         anybytes a n mStack ->
         map.split mCombined mSmall mStack ->
-        exec body t mCombined (map.put l x a) (addMetricInstructions 1 (addMetricLoads 1 mc))
-          (fun t' mCombined' l' mc' =>
+        exec body t mCombined (map.put l x a)
+          (fun t' mCombined' l' =>
             exists mSmall' mStack',
               anybytes a n mStack' /\
               map.split mCombined' mSmall' mStack' /\
-              post t' mSmall' l' mc'))
-     : exec (cmd.stackalloc x n body) t mSmall l mc post
-  | if_true t m l mc e c1 c2 post
-    v mc' (_ : eval_expr m l e mc = Some (v, mc'))
-    (_ : word.unsigned v <> 0)
-    (_ : exec c1 t m l (addMetricInstructions 2
-                       (addMetricLoads 2
-                       (addMetricJumps 1 mc'))) post)
-    : exec (cmd.cond e c1 c2) t m l mc post
-  | if_false e c1 c2
-    t m l mc post
-    v mc' (_ : eval_expr m l e mc = Some (v, mc'))
-    (_ : word.unsigned v = 0)
-    (_ : exec c2 t m l (addMetricInstructions 2
-                       (addMetricLoads 2
-                       (addMetricJumps 1 mc'))) post)
-    : exec (cmd.cond e c1 c2) t m l mc post
-  | seq c1 c2
-    t m l mc post
-    mid (_ : exec c1 t m l mc mid)
-    (_ : forall t' m' l' mc', mid t' m' l' mc' -> exec c2 t' m' l' mc' post)
-    : exec (cmd.seq c1 c2) t m l mc post
-  | while_false e c
-    t m l mc post
-    v mc' (_ : eval_expr m l e mc = Some (v, mc'))
-    (_ : word.unsigned v = 0)
-    (_ : post t m l (addMetricInstructions 1
-                    (addMetricLoads 1
-                    (addMetricJumps 1 mc'))))
-    : exec (cmd.while e c) t m l mc post
-  | while_true e c
-      t m l mc post
-      v mc' (_ : eval_expr m l e mc = Some (v, mc'))
-      (_ : word.unsigned v <> 0)
-      mid (_ : exec c t m l mc' mid)
-      (_ : forall t' m' l' mc'', mid t' m' l' mc'' ->
-                                 exec (cmd.while e c) t' m' l' (addMetricInstructions 2
-                                                               (addMetricLoads 2
-                                                               (addMetricJumps 1 mc''))) post)
-    : exec (cmd.while e c) t m l mc post
-  | call binds fname arges
-      t m l mc post
-      params rets fbody (_ : map.get e fname = Some (params, rets, fbody))
-      args mc' (_ : evaluate_call_args_log m l arges mc = Some (args, mc'))
-      lf (_ : map.of_list_zip params args = Some lf)
-      mid (_ : exec fbody t m lf (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc')))) mid)
-      (_ : forall t' m' st1 mc'', mid t' m' st1 mc'' ->
+              post t' mSmall' l')) ->
+      exec (cmd.stackalloc x n body) t mSmall l post
+  | if_true: forall t m l e c1 c2 post v,
+      eval_expr m l e = Some v ->
+      word.unsigned v <> 0 ->
+      exec c1 t m l post ->
+      exec (cmd.cond e c1 c2) t m l post
+  | if_false: forall e c1 c2 t m l post v,
+      eval_expr m l e = Some v ->
+      word.unsigned v = 0 ->
+      exec c2 t m l post ->
+      exec (cmd.cond e c1 c2) t m l post
+  | seq: forall c1 c2 t m l post mid,
+      exec c1 t m l mid ->
+      (forall t' m' l', mid t' m' l' -> exec c2 t' m' l' post) ->
+      exec (cmd.seq c1 c2) t m l post
+  | while_false: forall e c t m l post v,
+      eval_expr m l e = Some v ->
+      word.unsigned v = 0 ->
+      post t m l ->
+      exec (cmd.while e c) t m l post
+  | while_true: forall e c t m l post v mid,
+      eval_expr m l e = Some v ->
+      word.unsigned v <> 0 ->
+      exec c t m l mid ->
+      (forall t' m' l', mid t' m' l' -> exec (cmd.while e c) t' m' l' post) ->
+      exec (cmd.while e c) t m l post
+  | call: forall binds fname arges t m l post params rets fbody args lf mid,
+      map.get e fname = Some (params, rets, fbody) ->
+      eval_call_args m l arges = Some args ->
+      map.of_list_zip params args = Some lf ->
+      exec fbody t m lf mid ->
+      (forall t' m' st1, mid t' m' st1 ->
           exists retvs, map.getmany_of_list st1 rets = Some retvs /\
           exists l', map.putmany_of_list_zip binds retvs l = Some l' /\
-          post t' m' l'  (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc'')))))
-    : exec (cmd.call binds fname arges) t m l mc post
-  | interact binds action arges
-      t m l mc post
-      mKeep mGive (_: map.split m mKeep mGive)
-      args mc' (_ :  evaluate_call_args_log m l arges mc = Some (args, mc'))
-      mid (_ : ext_spec t mGive action args mid)
-      (_ : forall mReceive resvals, mid mReceive resvals ->
+          post t' m' l') ->
+      exec (cmd.call binds fname arges) t m l post
+  | interact: forall binds action arges args t m l post mKeep mGive mid,
+      map.split m mKeep mGive ->
+      eval_call_args m l arges = Some args ->
+      ext_spec t mGive action args mid ->
+      (forall mReceive resvals, mid mReceive resvals ->
           exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
           forall m', map.split m' mKeep mReceive ->
-          post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l'
-            (addMetricInstructions 1
-            (addMetricStores 1
-            (addMetricLoads 2 mc'))))
-    : exec (cmd.interact binds action arges) t m l mc post
-  .
+          post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l') ->
+      exec (cmd.interact binds action arges) t m l post.
 
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
 
-  Lemma weaken: forall t l m mc s post1,
-      exec s t m l mc post1 ->
-      forall post2: _ -> _ -> _ -> _ -> Prop,
-        (forall t' m' l' mc', post1 t' m' l' mc' -> post2 t' m' l' mc') ->
-        exec s t m l mc post2.
+  Lemma weaken: forall t l m s post1,
+      exec s t m l post1 ->
+      forall post2,
+        (forall t' m' l', post1 t' m' l' -> post2 t' m' l') ->
+        exec s t m l post2.
   Proof.
     induction 1; intros; try solve [econstructor; eauto].
     - eapply stackalloc. 1: assumption.
@@ -295,16 +229,16 @@ Module exec. Section WithEnv.
       eauto 10.
   Qed.
 
-  Lemma intersect: forall t l m mc s post1,
-      exec s t m l mc post1 ->
+  Lemma intersect: forall t l m s post1,
+      exec s t m l post1 ->
       forall post2,
-        exec s t m l mc post2 ->
-        exec s t m l mc (fun t' m' l' mc' => post1 t' m' l' mc' /\ post2 t' m' l' mc').
+        exec s t m l post2 ->
+        exec s t m l (fun t' m' l' => post1 t' m' l' /\ post2 t' m' l').
   Proof.
     induction 1;
       intros;
       match goal with
-      | H: exec _ _ _ _ _ _ |- _ => inversion H; subst; clear H
+      | H: exec _ _ _ _ _ |- _ => inversion H; subst; clear H
       end;
       try match goal with
       | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
@@ -314,9 +248,8 @@ Module exec. Section WithEnv.
           clear x2 y2 z2 H2
       end;
       repeat match goal with
-             | H1: ?e = Some (?v1, ?mc1), H2: ?e = Some (?v2, ?mc2) |- _ =>
-               replace v2 with v1 in * by congruence;
-               replace mc2 with mc1 in * by congruence; clear H2
+             | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+               replace v2 with v1 in * by congruence; clear H2
              end;
       repeat match goal with
              | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
@@ -326,7 +259,7 @@ Module exec. Section WithEnv.
 
     - econstructor. 1: eassumption.
       intros.
-      rename H0 into Ex1, H12 into Ex2.
+      rename H0 into Ex1, H11 into Ex2.
       eapply weaken. 1: eapply H1. 1,2: eassumption.
       1: eapply Ex2. 1,2: eassumption.
       cbv beta.
@@ -344,23 +277,23 @@ Module exec. Section WithEnv.
       + eapply IHexec. exact H9. (* not H1 *)
       + simpl. intros *. intros [? ?]. eauto.
     - eapply call. 1, 2, 3: eassumption.
-      + eapply IHexec. exact H16. (* not H2 *)
+      + eapply IHexec. exact H15. (* not H2 *)
       + simpl. intros *. intros [? ?].
         edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
-        edestruct H17 as (? & ? & ? & ? & ?); [eassumption|].
+        edestruct H16 as (? & ? & ? & ? & ?); [eassumption|].
         repeat match goal with
                | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
                  replace v2 with v1 in * by congruence; clear H2
                end.
         eauto 10.
     - pose proof ext_spec.unique_mGive_footprint as P.
-      specialize P with (1 := H1) (2 := H14).
+      specialize P with (1 := H1) (2 := H13).
       destruct (map.split_diff P H H7). subst mKeep0 mGive0. clear H7.
       eapply interact. 1,2: eassumption.
-      + eapply ext_spec.intersect; [ exact H1 | exact H14 ].
+      + eapply ext_spec.intersect; [ exact H1 | exact H13 ].
       + simpl. intros *. intros [? ?].
         edestruct H2 as (? & ? & ?); [eassumption|].
-        edestruct H15 as (? & ? & ?); [eassumption|].
+        edestruct H14 as (? & ? & ?); [eassumption|].
         repeat match goal with
                | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
                  replace v2 with v1 in * by congruence; clear H2
@@ -369,4 +302,52 @@ Module exec. Section WithEnv.
   Qed.
 
   End WithEnv.
+
+  Lemma extend_env: forall e1 e2,
+      map.extends e2 e1 ->
+      forall c t m l post,
+      exec e1 c t m l post ->
+      exec e2 c t m l post.
+  Proof. induction 2; try solve [econstructor; eauto]. Qed.
+
+  End WithParams.
 End exec. Notation exec := exec.exec.
+
+Section WithParams.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {locals: map.map String.string word}.
+  Context {ext_spec: ExtSpec}.
+
+  Implicit Types (l: locals) (m: mem) (post: trace -> mem -> list word -> Prop).
+
+  Definition call e fname t m args post :=
+    exists argnames retnames body,
+      map.get e fname = Some (argnames, retnames, body) /\
+      exists l, map.of_list_zip argnames args = Some l /\
+        exec e body t m l (fun t' m' l' => exists rets,
+          map.getmany_of_list l' retnames = Some rets /\ post t' m' rets).
+
+  Lemma weaken_call: forall e fname t m args post1,
+      call e fname t m args post1 ->
+      forall post2, (forall t' m' rets, post1 t' m' rets -> post2 t' m' rets) ->
+      call e fname t m args post2.
+  Proof.
+    unfold call. intros. fwd.
+    do 4 eexists. 1: eassumption.
+    do 2 eexists. 1: eassumption.
+    eapply exec.weaken. 1: eassumption.
+    cbv beta. clear -H0. intros. fwd. eauto.
+  Qed.
+
+  Lemma extend_env_call: forall e1 e2,
+      map.extends e2 e1 ->
+      forall f t m rets post,
+      call e1 f t m rets post ->
+      call e2 f t m rets post.
+  Proof.
+    unfold call. intros. fwd. repeat eexists.
+    - eapply H. eassumption.
+    - eassumption.
+    - eapply exec.extend_env; eassumption.
+  Qed.
+End WithParams.

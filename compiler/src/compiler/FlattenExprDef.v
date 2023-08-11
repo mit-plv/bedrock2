@@ -21,7 +21,6 @@ Section FlattenExpr1.
           {word_ok: word.ok word}
           {locals: map.map String.string word}
           {mem: map.map word byte}
-          {ExprImp_env: map.map string (list string * list string * cmd)}
           {FlatImp_env: map.map string (list string * list string * FlatImp.stmt string)}
           {ext_spec: ExtSpec}
           {NGstate: Type}
@@ -159,7 +158,7 @@ Section FlattenExpr1.
       let body' := fst (flattenStmt (freshNameGenState avoid) body) in
       Success (argnames, retnames, body').
 
-  Definition flatten_functions: ExprImp_env -> result FlatImp_env :=
+  Definition flatten_functions: Semantics.env -> result FlatImp_env :=
     map.try_map_values flatten_function.
 
 End FlattenExpr1.

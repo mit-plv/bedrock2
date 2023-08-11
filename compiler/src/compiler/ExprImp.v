@@ -11,7 +11,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Platform.MetricLogging.
 Require Import coqutil.Tactics.Simp.
-Import Semantics.
+Require Import bedrock2.Semantics bedrock2.MetricSemantics.
 
 (*Local Set Ltac Profiling.*)
 
@@ -20,7 +20,6 @@ Open Scope Z_scope.
 Section ExprImp1.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
   Context {ext_spec: ExtSpec}.
 
   Notation var := String.string (only parsing).
@@ -42,7 +41,7 @@ Section ExprImp1.
     Context (e: env).
 
     Definition eval_expr(m: mem)(st: locals)(e: expr): result word :=
-      match eval_expr_old m st e with
+      match Semantics.eval_expr m st e with
       | Some v => Success v
       | None => error:("evaluation of expression" e "failed")
       end.
@@ -156,8 +155,8 @@ Section ExprImp1.
 
     Lemma invert_eval_store: forall fuel initialSt initialM a v final aSize,
       eval_cmd (S fuel) initialSt initialM (cmd.store aSize a v) = Success final ->
-      exists av vv finalM, eval_expr_old initialM initialSt a = Some av /\
-                           eval_expr_old initialM initialSt v = Some vv /\
+      exists av vv finalM, Semantics.eval_expr initialM initialSt a = Some av /\
+                           Semantics.eval_expr initialM initialSt v = Some vv /\
                            store aSize initialM av vv = Some finalM /\
                            final = (initialSt, finalM).
     Proof. inversion_lemma. Qed.
@@ -169,7 +168,7 @@ Section ExprImp1.
 
     Lemma invert_eval_set: forall f st1 m1 p2 x e,
       eval_cmd (S f) st1 m1 (cmd.set x e) = Success p2 ->
-      exists v, eval_expr_old m1 st1 e = Some v /\ p2 = (map.put st1 x v, m1).
+      exists v, Semantics.eval_expr m1 st1 e = Some v /\ p2 = (map.put st1 x v, m1).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_unset: forall f st1 m1 p2 x,
@@ -180,7 +179,7 @@ Section ExprImp1.
     Lemma invert_eval_cond: forall f st1 m1 p2 cond bThen bElse,
       eval_cmd (S f) st1 m1 (cmd.cond cond bThen bElse) = Success p2 ->
       exists cv,
-        eval_expr_old m1 st1 cond = Some cv /\
+        Semantics.eval_expr m1 st1 cond = Some cv /\
         (cv <> word.of_Z 0 /\ eval_cmd f st1 m1 bThen = Success p2 \/
          cv = word.of_Z 0  /\ eval_cmd f st1 m1 bElse = Success p2).
     Proof. inversion_lemma. Qed.
@@ -188,7 +187,7 @@ Section ExprImp1.
     Lemma invert_eval_while: forall st1 m1 p3 f cond body,
       eval_cmd (S f) st1 m1 (cmd.while cond body) = Success p3 ->
       exists cv,
-        eval_expr_old m1 st1 cond = Some cv /\
+        Semantics.eval_expr m1 st1 cond = Some cv /\
         (cv <> word.of_Z 0 /\ (exists st2 m2, eval_cmd f st1 m1 body = Success (st2, m2) /\
                                      eval_cmd f st2 m2 (cmd.while cond body) = Success p3) \/
          cv = word.of_Z 0 /\ p3 = (st1, m1)).
@@ -377,7 +376,6 @@ Ltac invert_eval_cmd :=
 Section ExprImp2.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
   Context {ext_spec: ExtSpec}.
 
   Notation var := String.string (only parsing).

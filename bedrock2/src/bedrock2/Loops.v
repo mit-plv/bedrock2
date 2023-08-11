@@ -11,15 +11,37 @@ From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
 Section Loops.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
   Context {ext_spec: ExtSpec}.
   Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
   Context {locals_ok : map.ok locals}.
-  Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Context {functions : list (String.string * (list String.string * list String.string * Syntax.cmd))}.
-  Let call := WeakestPrecondition.call functions.
+  Context {fs : env}.
+  Let call := fs.
+
+  Lemma wp_while: forall e c t m l (post: _ -> _ -> _ -> Prop),
+     (exists measure (lt:measure->measure->Prop) (inv:measure->trace->mem->locals->Prop),
+      Coq.Init.Wf.well_founded lt /\
+      (exists v, inv v t m l) /\
+      (forall v t m l, inv v t m l ->
+        exists b, dexpr m l e b /\
+        (word.unsigned b <> 0%Z -> cmd call c t m l (fun t' m l =>
+          exists v', inv v' t' m l /\ lt v' v)) /\
+        (word.unsigned b = 0%Z -> post t m l))) ->
+     cmd call (cmd.while e c) t m l post.
+  Proof.
+    intros. destruct H as (measure & lt & inv & Hwf & HInit & Hbody).
+    destruct HInit as (v0 & HInit).
+    revert t m l HInit. pattern v0. revert v0.
+    eapply (well_founded_ind Hwf). intros.
+    specialize Hbody with (1 := HInit). destruct Hbody as (b & Hb & Ht & Hf).
+    eapply expr_sound in Hb. destruct Hb as (b' & Hb & ?). subst b'.
+    destr.destr (Z.eqb (word.unsigned b) 0).
+    - specialize Hf with (1 := E). eapply exec.while_false; eassumption.
+    - specialize Ht with (1 := E). eapply sound_cmd in Ht.
+      eapply exec.while_true; eauto.
+      cbv beta. intros * (v' & HInv & HLt). eapply sound_cmd. eauto.
+  Qed.
 
   Lemma tailrec_localsmap_1ghost
     {e c t} {m: mem} {l} {post : trace -> mem -> locals -> Prop}
@@ -41,6 +63,7 @@ Section Loops.
     (Hpost: forall t m l, Q v0 g0 t m l -> post t m l)
     : cmd call (cmd.while e c) t m l post.
   Proof.
+    eapply wp_while.
     eexists measure, lt, (fun v t m l =>
       exists g, P v g t m l /\ forall t'' m'' l'', Q v g t'' m'' l'' -> Q v0 g0 t'' m'' l'').
     split; [assumption|].
@@ -50,8 +73,7 @@ Section Loops.
     destruct Hbody as (br & ? & Hbody). exists br; split; [assumption|].
     destruct Hbody as (Htrue & Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
-    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
-      { eapply Proper_call; firstorder idtac. }
+    { eapply Proper_cmd; [ |eapply Hpc].
       intros tj mj lj (vj& gj & HPj & Hlt & Qji); eauto 9. }
     { eauto. }
   Qed.
@@ -85,14 +107,12 @@ Section Loops.
     destruct Hbody as (br & ? & Hbody). exists br; split; [assumption|].
     destruct Hbody as (Htrue & Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
-    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
-      { eapply Proper_call; firstorder idtac. }
+    { eapply Proper_cmd; [ |eapply Hpc].
       intros tj mj lj (vj& gj & HPj & Hlt & Qji). do 2 eexists.
       split. 1: eassumption. split. 1: assumption.
       intros.
-      eapply Proper_cmd; [reflexivity..| | | ].
-      3: eassumption.
-      { eapply Proper_call; firstorder idtac. }
+      eapply Proper_cmd.
+      2: eassumption.
       intros tk mk lk HH. eapply Qji. assumption. }
     eapply Hpc.
   Qed.
@@ -166,10 +186,11 @@ Section Loops.
       invariant v t m l ->
       exists br, expr m l e (eq br) /\
          (word.unsigned br <> 0 ->
-          cmd call c t m l (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
+          cmd fs c t m l (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
          (word.unsigned br = 0 -> post t m l))
-    : cmd call (cmd.while e c) t m l post.
+    : cmd fs (cmd.while e c) t m l post.
   Proof.
+    eapply wp_while.
     eexists measure, lt, invariant.
     split. 1: exact Hwf.
     split. 1: eauto.
@@ -210,7 +231,7 @@ Section Loops.
     destruct Hbody as (br & Cond & Again & Done).
     exists br. split; [exact Cond|]. split; [|exact Done].
     intro NE. specialize (Again NE).
-    eapply Proper_cmd; [eapply Proper_call| |eapply Again].
+    eapply Proper_cmd; [ |eapply Again].
     cbv [Morphisms.pointwise_relation Basics.impl Markers.right Markers.unique Markers.left] in *.
     intros t' m' l' Ex.
     eapply hlist.existss_exists in Ex. cbv beta in Ex. destruct Ex as (ls & E & v' & Inv' & LT).
@@ -247,6 +268,7 @@ Section Loops.
     , cmd call (cmd.while e c) t m localsmap post ).
   Proof.
     eapply hlist_forall_foralls; intros g0 **.
+    eapply wp_while.
     eexists measure, lt, (fun vi ti mi localsmapi =>
       exists gi li, localsmapi = reconstruct variables li /\
       match tuple.apply (hlist.apply (spec vi) gi ti mi) li with S_ =>
@@ -259,8 +281,7 @@ Section Loops.
     destruct (hlist.foralls_forall (hlist.foralls_forall (Hbody vi) gi ti mi) _ ltac:(eassumption)) as (br&?&X).
     exists br; split; [assumption|]. destruct X as (Htrue&Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
-    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
-      { eapply Proper_call; firstorder idtac. }
+    { eapply Proper_cmd; [ |eapply Hpc].
       intros tj mj lmapj Hlj; eapply hlist.existss_exists in Hlj.
       destruct Hlj as (lj&Elj&HE); eapply reconstruct_enforce in Elj; subst lmapj.
       eapply hlist.existss_exists in HE. destruct HE as (l&?&?&?&HR).
@@ -289,6 +310,7 @@ Section Loops.
     (Hpost : forall t m l, Q0 t m l -> post t m l)
     : cmd call (cmd.while e c) t m l post.
   Proof.
+    eapply wp_while.
     eexists measure, lt, (fun v t m l =>
       let S := spec v t m l in let '(P, Q) := S in
       P /\ forall T M L, Q T M L -> Q0 T M L).
@@ -299,8 +321,7 @@ Section Loops.
     destruct (Hbody _ _ _ _ ltac:(eassumption)) as (br&?&X); exists br; split; [assumption|].
     destruct X as (Htrue&Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
-    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
-      { eapply Proper_call; firstorder idtac. }
+    { eapply Proper_cmd; [ |eapply Hpc].
       intros tj mj lj (vj&dP&?&dQ); eauto 9. }
     { eauto. }
   Qed.
@@ -334,6 +355,7 @@ Section Loops.
          (word.unsigned br =  0 -> post t m l)))
     : cmd call (cmd.while e c) t m l post.
   Proof.
+    eapply wp_while.
     eexists (option measure), (with_bottom lt), (fun ov t m l =>
       exists br, expr m l e (eq br) /\
       ((word.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v t m l) /\
@@ -349,7 +371,7 @@ Section Loops.
     intros vi ti mi li (br&Ebr&Hcontinue&Hexit).
     eexists; split; [eassumption|]; split.
     { intros Hc; destruct (Hcontinue Hc) as (v&?&Hinv); subst.
-      eapply Proper_cmd; [| |eapply Hbody; eassumption]; [eapply Proper_call|].
+      eapply Proper_cmd; [ |eapply Hbody; eassumption].
       intros t' m' l' (br'&Ebr'&Hinv'&Hpost').
       destruct (BinInt.Z.eq_dec (word.unsigned br') 0).
       { exists None; split; try constructor.
@@ -385,6 +407,7 @@ Section Loops.
     (Hpost : forall t m l, Q0 t m l -> post t m l)
     : cmd call (cmd.while e c) t m l post.
   Proof.
+    eapply wp_while.
     eexists (option measure), (with_bottom lt), (fun v t m l =>
       match v with
       | None => exists br, expr m l e (eq br) /\ word.unsigned br = 0 /\ Q0 t m l
@@ -399,8 +422,7 @@ Section Loops.
     { destruct (Hbody _ _ _ _ ltac:(eassumption)) as (br&?&X); exists br; split; [assumption|].
       destruct X as (Htrue&Hfalse). split; intros Hbr;
         [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; eauto.
-      eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
-      { eapply Proper_call; firstorder idtac. }
+      eapply Proper_cmd; [ |eapply Hpc].
       intros tj mj lj [(br'&Hbr'&Hz&HQ)|(vj&dP&?&dQ)];
           [exists None | exists (Some vj)]; cbn [with_bottom]; eauto 9. }
     repeat esplit || eauto || intros; contradiction.
@@ -437,6 +459,7 @@ Section Loops.
     , cmd call (cmd.while e c) t m localsmap post ).
   Proof.
     eapply hlist_forall_foralls; intros g0 **.
+    eapply wp_while.
     eexists (option measure), (with_bottom lt), (fun vi ti mi localsmapi =>
       exists li, localsmapi = reconstruct variables li /\
       match vi with None => exists br, expr mi localsmapi e (eq br) /\ word.unsigned br = 0 /\ tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) ti mi) li | Some vi =>
@@ -455,8 +478,7 @@ Section Loops.
     destruct (hlist.foralls_forall (hlist.foralls_forall (Hbody vi) gi ti mi) _ ltac:(eassumption)) as (br&?&X).
     exists br; split; [assumption|]. destruct X as (Htrue&Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
-    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
-      { eapply Proper_call; firstorder idtac. }
+    { eapply Proper_cmd; [ |eapply Hpc].
       intros tj mj lmapj Hlj; eapply hlist.existss_exists in Hlj.
       destruct Hlj as (lj&Elj&HE); eapply reconstruct_enforce in Elj; subst lmapj.
       destruct HE as [(br'&Hevalr'&Hz'&Hdone)|HE].
@@ -492,7 +514,7 @@ Section Loops.
     eapply hlist.foralls_forall in Hbody.
     specialize (Hbody Y).
     rewrite <-(reconstruct_enforce _ _ _ X) in Hbody.
-    eapply Proper_cmd; [eapply Proper_call| |eapply Hbody].
+    eapply Proper_cmd; [ |eapply Hbody].
     intros t' m' l' (?&?&HH&?).
     eexists; split; eauto.
     split; intros; eauto.
@@ -533,6 +555,7 @@ Section Loops.
     (Hpost : forall t m l, (Q v0 t l * R0) m -> post t m l)
     : cmd call (cmd.while e c) t m l post.
   Proof.
+    eapply wp_while.
     eexists measure, lt, (fun v t m l => exists R, (P v t l * R) m /\
                           forall T L, Q v T L * R ==> Q v0 T L * R0).
     split; [assumption|].
@@ -541,8 +564,7 @@ Section Loops.
     destruct (Hbody _ _ _ _ _ ltac:(eassumption)) as (br&?&X); exists br; split; [assumption|].
     destruct X as (Htrue&Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
-    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
-      { eapply Proper_call; firstorder idtac. }
+    { eapply Proper_cmd; [ |eapply Hpc].
       intros tj mj lj (vj&dR&dP&?&dQ).
       exists vj; split; [|assumption].
       exists (Ri * dR); split; [assumption|].

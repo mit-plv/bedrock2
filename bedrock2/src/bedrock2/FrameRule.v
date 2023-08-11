@@ -8,7 +8,7 @@ Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWo
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import bedrock2.MetricLogging.
 Require Import bedrock2.Memory bedrock2.ptsto_bytes bedrock2.Map.Separation.
-Require Import bedrock2.Semantics.
+Require Import bedrock2.Semantics bedrock2.MetricSemantics.
 Require Import bedrock2.Map.DisjointUnion bedrock2.Map.split_alt.
 
 Require Import Coq.Lists.List.
@@ -16,7 +16,6 @@ Require Import Coq.Lists.List.
 Section semantics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
   Context {ext_spec: ExtSpec}.
   Context {mem_ok: map.ok mem} {word_ok: word.ok word}.
 
@@ -127,8 +126,8 @@ Section semantics.
   Lemma frame_evaluate_call_args_log: forall l mSmall mBig mAdd arges
                                              mc (args: list word) mc',
       mmap.split mBig mSmall mAdd ->
-      evaluate_call_args_log mSmall l arges mc = Some (args, mc') ->
-      evaluate_call_args_log mBig   l arges mc = Some (args, mc').
+      eval_call_args mSmall l arges mc = Some (args, mc') ->
+      eval_call_args mBig   l arges mc = Some (args, mc').
   Proof.
     induction arges; cbn; intros.
     - assumption.

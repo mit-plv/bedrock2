@@ -781,6 +781,15 @@ Section WithParameters.
 
   Import symmetry autoforward.
 
+  Local Ltac no_call :=
+    lazymatch goal with
+    | |- Semantics.call _ _ _ _ _ _ => fail
+    | |- _ => idtac
+    end.
+
+  Local Ltac original_esplit := esplit.
+  Local Ltac esplit := no_call; original_esplit.
+
   Lemma lan9250_tx_ok : program_logic_goal_for_function! lan9250_tx.
   Proof.
 

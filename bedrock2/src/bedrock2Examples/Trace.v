@@ -6,7 +6,7 @@ Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics.
 Require Import Coq.Strings.String.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
-Require Import bedrock2.Semantics.
+Require Import bedrock2.Semantics bedrock2.MetricSemantics.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.NotationsCustomEntry.
 
@@ -20,7 +20,6 @@ Module Import IOMacros.
     word :> Word.Interface.word width;
     mem :> map.map word Byte.byte;
     locals :> map.map String.string word;
-    env :> map.map String.string (list String.string * list String.string * cmd);
     ext_spec :> ExtSpec;
 
     (* macros to be inlined to read or write a word
@@ -139,7 +138,6 @@ Module SpiEth.
         write_byte b (((m, MMInput, [word.of_Z spi_tx_fifo]), (m, [x])) :: rest).
 
     Context {locals: map.map String.string word}.
-    Context {funname_env: forall T, map.map String.string T}.
 
     Instance ext_spec: ExtSpec :=
       fun t mGive action (argvals: list word) (post: (mem -> list word -> Prop)) =>
@@ -238,7 +236,6 @@ Module Syscalls.
                        (m, [ret1; ret2; err]))].
 
     Context {locals: map.map String.string word}.
-    Context {funname_env: forall T, map.map String.string T}.
 
     Instance ext_spec: ExtSpec :=
       fun t m action (argvals: list word) (post: (mem -> list word -> Prop)) =>
@@ -298,7 +295,6 @@ Module MMIOUsage.
     Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
     Context {word_ok: word.ok word}.
     Context {locals: map.map String.string word}.
-    Context {funname_env: forall T, map.map String.string T}.
 
     Definition squarer_correct := @squarer_correct SpiEth.MMIOMacros.
     (*Check squarer_correct.*)
@@ -311,7 +307,6 @@ Module SyscallsUsage.
     Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
     Context {word_ok: word.ok word}.
     Context {locals: map.map String.string word}.
-    Context {funname_env: forall T, map.map String.string T}.
 
     Definition squarer_correct := @squarer_correct Syscalls.SyscallIOMacros.
     (*Check squarer_correct.*)

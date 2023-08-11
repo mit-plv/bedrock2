@@ -56,7 +56,7 @@ Section WithParameters.
     repeat (straightline || straightline_call); eauto.
   Qed.
 
-  Lemma link_swap_swap_swap_swap : spec_of_swap_swap &[,swap_swap; swap].
+  Lemma link_swap_swap_swap_swap : spec_of_swap_swap (map.of_list &[,swap_swap; swap]).
   Proof. eauto using swap_swap_ok, swap_ok. Qed.
 
   (* Print Assumptions link_swap_swap_swap_swap. *)

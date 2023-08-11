@@ -649,9 +649,9 @@ Section Riscv.
       unfold isXAddr4, isXAddr1. ssplit; eapply In_word_seq; try ZnWords.
   Qed.
 
-  Lemma link_softmul_bedrock2: spec_of_softmul funimplsList.
+  Lemma link_softmul_bedrock2: spec_of_softmul (map.of_list funimplsList).
   Proof.
-    eapply softmul_ok. eapply rpmul.rpmul_ok.
+    eapply softmul_ok. 1: reflexivity. eapply rpmul.rpmul_ok. reflexivity.
   Qed.
 
   Import FunctionalExtensionality PropExtensionality.
@@ -727,7 +727,7 @@ Section Riscv.
                                     initial.(pc);
           getLog := []
         |};
-        getMetrics := MetricLogging.EmptyMetricLog
+        getMetrics := riscv.Platform.MetricLogging.EmptyMetricLog
       |}).
       2: reflexivity.
       2: {

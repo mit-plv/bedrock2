@@ -5,7 +5,6 @@ Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 Section WeakestPrecondition.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
   Context {ext_spec: ExtSpec}.
   Implicit Types (t : trace) (m : mem) (l : locals).
 
@@ -56,9 +55,12 @@ Section WeakestPrecondition.
   End WithF.
 
   Section WithFunctions.
-    Context (call : String.string -> trace -> mem -> list word -> (trace -> mem -> list word -> Prop) -> Prop).
+    Context (e: env).
     Definition dexpr m l e v := expr m l e (eq v).
     Definition dexprs m l es vs := list_map (expr m l) es (eq vs).
+    (* All cases except cmd.while and cmd.call can be denoted by structural recursion
+       over the syntax.
+       For cmd.while and cmd.call, we fall back to the operational semantics *)
     Definition cmd_body (rec:_->_->_->_->_->Prop) (c : cmd) (t : trace) (m : mem) (l : locals)
              (post : trace -> mem -> locals -> Prop) : Prop :=
       (* give value of each pure expression when stating its subproof *)
@@ -91,18 +93,10 @@ Section WeakestPrecondition.
         (word.unsigned v = 0%Z -> rec cf t m l post)
       | cmd.seq c1 c2 =>
         rec c1 t m l (fun t m l => rec c2 t m l post)
-      | cmd.while e c =>
-        exists measure (lt:measure->measure->Prop) (inv:measure->trace->mem->locals->Prop),
-        Coq.Init.Wf.well_founded lt /\
-        (exists v, inv v t m l) /\
-        (forall v t m l, inv v t m l ->
-          exists b, dexpr m l e b /\
-          (word.unsigned b <> 0%Z -> rec c t m l (fun t' m l =>
-            exists v', inv v' t' m l /\ lt v' v)) /\
-          (word.unsigned b = 0%Z -> post t m l))
+      | cmd.while _ _ => Semantics.exec e c t m l post
       | cmd.call binds fname arges =>
         exists args, dexprs m l arges args /\
-        call fname t m args (fun t m rets =>
+        Semantics.call e fname t m args (fun t m rets =>
           exists l', map.putmany_of_list_zip binds rets l = Some l' /\
           post t m l')
       | cmd.interact binds action arges =>
@@ -122,20 +116,9 @@ Section WeakestPrecondition.
         list_map (get l) outnames (fun rets =>
         post t m rets)).
 
-  Definition call_body rec (functions : list (String.string * (list String.string * list String.string * cmd.cmd)))
-                (fname : String.string) (t : trace) (m : mem) (args : list word)
-                (post : trace -> mem -> list word -> Prop) : Prop :=
-    match functions with
-    | nil => False
-    | cons (f, decl) functions =>
-      if String.eqb f fname
-      then func (rec functions) decl t m args post
-      else rec functions fname t m args post
-    end.
-  Fixpoint call functions := call_body call functions.
-
-  Definition program funcs main t m l post : Prop := cmd (call funcs) main t m l post.
+  Definition program := cmd.
 End WeakestPrecondition.
+Notation call := Semantics.call (only parsing).
 
 Ltac unfold1_cmd e :=
   lazymatch e with
@@ -169,18 +152,6 @@ Ltac unfold1_list_map e :=
 Ltac unfold1_list_map_goal :=
   let G := lazymatch goal with |- ?G => G end in
   let G := unfold1_list_map G in
-  change G.
-
-Ltac unfold1_call e :=
-  lazymatch e with
-    @call ?width ?BW ?word ?mem ?locals ?ext_spec ?fs ?fname ?t ?m ?l ?post =>
-    let fs := eval hnf in fs in
-    constr:(@call_body width BW word mem locals ext_spec
-                       (@call width BW word mem locals ext_spec) fs fname t m l post)
-  end.
-Ltac unfold1_call_goal :=
-  let G := lazymatch goal with |- ?G => G end in
-  let G := unfold1_call G in
   change G.
 
 Import Coq.ZArith.ZArith.
