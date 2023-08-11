@@ -242,6 +242,11 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
   uintptr_t a = load(p);                                                   /**.
 
   let h := constr:(#bst') in loop pre above h.
+  (* TODO this step is needed because `m2 |= uintptr a p` will get pulled into
+     the loop pre/post even though it could remain outside (because we currently
+     mention the whole memory in the loop). Better: Use/integrate frame rule in
+     loop rule so that unneeded mem hyps can stay outside *)
+  let h := constr:(#(uintptr a p)) in remember a as root in h.
 
   unfold ready.
   let cond := constr:(live_expr:(!res && a != 0)) in
@@ -257,7 +262,7 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
       instantiate (1 := fun '(s, olda, F, sk, ti, mi, li) =>
                         exists newa res,
                         li = map.of_list [|("a", newa); ("p", p); ("res", res); ("v", v)|] /\
-                          <{ * uintptr olda p
+                          <{ * uintptr a p
                              * freeable 4 p
                              * bst' sk s olda
                              * F }> mi /\
@@ -265,6 +270,7 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
                         ti = t).
       cbv beta iota.
       cbn [bst']. (* <-- TODO step_hook invoked too late *)
+      step. step. step. step.
       steps.
     }
     (* loop body: *)
@@ -272,10 +278,7 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
     uintptr_t here = load32(a+4);                                          /**. .**/
     if (v < here) /* split */ {                                            /**. .**/
       a = load(a);                                                         /**. .**/
-    }                                                                      /**.
-Abort. (*
-{
-.**/
+    }                                                                      /**. .**/
     else {                                                                 /**. .**/
       if (here < v) /* split */ {                                          /**. .**/
         a = load(a+8);                                                     /**. .**/
@@ -295,7 +298,6 @@ Abort. (*
   return res;                                                              /**. .**/
 }                                                                          /**.
 Qed.
-*)
 
 (* note: inability to break out of loop is cumbersome, because it complicates pre:
    it has to incorporate almost all of post for the res=true case,
