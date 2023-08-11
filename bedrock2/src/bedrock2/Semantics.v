@@ -75,7 +75,7 @@ Section binops.
     end.
 End binops.
 
-#[export] Instance env: map.map String.string Syntax.func := SortedListString.map _.
+Definition env: map.map String.string Syntax.func := SortedListString.map _.
 #[export] Instance env_ok: map.ok env := SortedListString.ok _.
 
 Section semantics.

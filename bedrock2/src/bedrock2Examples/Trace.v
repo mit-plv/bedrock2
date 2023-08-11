@@ -20,7 +20,6 @@ Module Import IOMacros.
     word :> Word.Interface.word width;
     mem :> map.map word Byte.byte;
     locals :> map.map String.string word;
-    env :> map.map String.string (list String.string * list String.string * cmd);
     ext_spec :> ExtSpec;
 
     (* macros to be inlined to read or write a word
