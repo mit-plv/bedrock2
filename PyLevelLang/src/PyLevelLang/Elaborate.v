@@ -395,8 +395,11 @@ Section WithMap.
       end.
   End ElaborateRecord.
 
-  Definition tenv_fresh (G : tenv) : string :=
-    fst (genFresh (freshNameGenState (map.keys G))).
+  Definition tenv_fresh (G : tenv) (x : string) : string :=
+    match map.get G x with
+    | Some _ => fst (genFresh (freshNameGenState (map.keys G)))
+    | None => x
+    end.
 
   (* Type checks a `pexpr` and possibly emits a well-formed typed expression.
      Checks scoping for variables/locations, and renames variables to avoid
@@ -432,7 +435,7 @@ Section WithMap.
         '(existT _ t1 e1) <- elaborate nm G p1;;
         match t1 as t' return expr t' -> _ with
         | TList t1 => fun e1 =>
-            let x' := tenv_fresh G in
+            let x' := tenv_fresh G x in
             let nm' := map.put nm x x' in
             let G' := map.put G x' (t1, false) in
             '(existT _ t2 e2) <- elaborate nm' G' p2;;
@@ -447,10 +450,10 @@ Section WithMap.
         match t1 as t' return expr t' -> _ with
         | TList t1 => fun e1 => 
             '(existT _ t2 e2) <- elaborate nm G p2;;
-            let x' := tenv_fresh G in
+            let x' := tenv_fresh G x in
             let nm' := map.put nm x x' in
             let G' := map.put G x' (t1, false) in
-            let y' := tenv_fresh G' in
+            let y' := tenv_fresh G' y in
             let nm'' := map.put nm' y y' in
             let G'' := map.put G' y' (t2, false) in
             '(existT _ t3 e3) <- elaborate nm'' G'' p3;;
@@ -467,7 +470,7 @@ Section WithMap.
         Success (existT _ _ (EIf e1' e2 e3'))
     | PELet x p1 p2 =>
         '(existT _ t1 e1) <- elaborate nm G p1;;
-        let x' := tenv_fresh G in
+        let x' := tenv_fresh G x in
         let nm' := map.put nm x x' in
         let G' := map.put G x' (t1, false) in
         '(existT _ t2 e2) <- elaborate nm' G' p2;;
@@ -520,7 +523,7 @@ Section WithMap.
     - (* PEFlatmap p1 x p2 *)
       destruct (elaborate nm G p1) as [[t1 e1] |] eqn:H1; try easy.
       destruct t1; try easy.
-      remember (tenv_fresh G) as x'.
+      remember (tenv_fresh G x) as x'.
       remember (map.put nm x x') as nm'.
       remember (map.put G x' (t1, false)) as G'.
       destruct (elaborate nm' G' p2) as [[t2 e2] |] eqn:H2;
@@ -535,10 +538,10 @@ Section WithMap.
       destruct (elaborate nm G p1) as [[t1 e1] |] eqn:H1; try easy.
       destruct t1; try easy.
       destruct (elaborate nm G p2) as [[t2 e2] |] eqn:H2; try easy.
-      remember (tenv_fresh G) as x'.
+      remember (tenv_fresh G x) as x'.
       remember (map.put nm x x') as nm'.
       remember (map.put G x' (t1, false)) as G'.
-      remember (tenv_fresh G') as y'.
+      remember (tenv_fresh G' y) as y'.
       remember (map.put nm' y y') as nm''.
       remember (map.put G' y' (t2, false)) as G''.
       destruct (elaborate nm'' G'' p3) as [[t3 e3] |] eqn:H3; try easy.
@@ -578,7 +581,7 @@ Section WithMap.
         exact H3'.
     - (* PELet x p1 p2 *)
       destruct (elaborate nm G p1) as [[t1 e1] |] eqn:H1; try easy.
-      remember (tenv_fresh G) as x'.
+      remember (tenv_fresh G x) as x'.
       remember (map.put nm x x') as nm'.
       remember (map.put G x' (t1, false)) as G'.
       destruct (elaborate nm' G' p2) as [[t2 e2] |] eqn:H2;
@@ -637,14 +640,14 @@ Section WithMap.
         Success (CSeq c1 c2)
     | PCLet x p pc =>
         '(existT _ t e) <- elaborate nm G p;;
-        let x' := tenv_fresh G in
+        let x' := tenv_fresh G x in
         let nm' := map.put nm x x' in
         let G' := map.put G x' (t, false) in
         c <- elaborate_command nm' G' pc;;
         Success (CLet x' e c)
     | PCLetMut x p pc =>
         '(existT _ t e) <- elaborate nm G p;;
-        let x' := tenv_fresh G in
+        let x' := tenv_fresh G x in
         let nm' := map.put nm x x' in
         let G' := map.put G x' (t, true) in
         c <- elaborate_command nm' G' pc;;
@@ -672,7 +675,7 @@ Section WithMap.
         '(existT _ t e) <- elaborate nm G p;;
         match t as t' return expr t' -> _ with
         | TList t => fun e =>
-            let x' := tenv_fresh G in
+            let x' := tenv_fresh G x in
             let nm' := map.put nm x x' in
             let G' := map.put G x' (t, false) in
             c <- elaborate_command nm' G' pc;;
@@ -696,7 +699,7 @@ Section WithMap.
       now apply wf_CSeq; [eapply IHpc1 | eapply IHpc2]; eassumption.
     - (* PCLet x p pc *)
       destruct (elaborate nm G p) as [[t e] |] eqn:He; try easy.
-      remember (tenv_fresh G) as x'.
+      remember (tenv_fresh G x) as x'.
       remember (map.put nm x x') as nm'.
       remember (map.put G x' (t, false)) as G'.
       destruct (elaborate_command _ _ pc) as [c' |] eqn:H'; try easy.
@@ -706,7 +709,7 @@ Section WithMap.
       + admit.
     - (* PCLetMut x p pc *)
       destruct (elaborate nm G p) as [[t e] |] eqn:He; try easy.
-      remember (tenv_fresh G) as x'.
+      remember (tenv_fresh G x) as x'.
       remember (map.put nm x x') as nm'.
       remember (map.put G x' (t, true)) as G'.
       destruct (elaborate_command _ _ pc) as [c' |] eqn:H'; try easy.
@@ -738,7 +741,7 @@ Section WithMap.
     - (* PCForeach x p pc *)
       destruct (elaborate nm G p) as [[t e] |] eqn:He; try easy.
       destruct t; try easy.
-      remember (tenv_fresh G) as x'.
+      remember (tenv_fresh G x) as x'.
       remember (map.put nm x x') as nm'.
       remember (map.put G x' (t, false)) as G'.
       destruct (elaborate_command _ _ pc) as [c' |] eqn:H'; try easy.

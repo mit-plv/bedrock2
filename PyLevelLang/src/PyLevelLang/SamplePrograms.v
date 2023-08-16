@@ -889,8 +889,6 @@ Section WithMap.
       interp_command map.empty (isSquare_elaborated (Z.of_nat n))
       = (map.put map.empty "ans" (existT interp_type Bool true)).
    Proof.
-   Admitted.
-   (*
       intros n [x xSq].
 
       simpl.
@@ -991,7 +989,6 @@ Section WithMap.
            rewrite map.remove_empty.
            reflexivity.
    Qed.
-   *)
 End WithMap.
 
 End WithWord.
