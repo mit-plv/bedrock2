@@ -134,7 +134,7 @@ install_LiveVerif_noex:
 install_LiveVerif_ex:
 	$(MAKE) -C $(ABS_ROOT_DIR)/LiveVerif install_ex
 
-PyLevelLang: bedrock2_noex
+PyLevelLang: bedrock2_noex compiler_noex
 	$(MAKE) -C $(ABS_ROOT_DIR)/PyLevelLang
 
 clean_PyLevelLang:

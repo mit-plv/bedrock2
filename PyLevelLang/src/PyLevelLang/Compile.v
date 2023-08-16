@@ -77,11 +77,6 @@ Definition compile_binop {t1 t2 t3 : type} (o : binop t1 t2 t3) :
       error:("unimplemented")
   end.
 
-Section Map.
-  Context {key value : Type} {map : map.map key value} {map_ok : map.ok map}.
-  Definition map_values (m : map) : list value := map.fold (fun acc k v => cons v acc) nil m.
-End Map.
-
 Section NameGen.
   Context {NGstate : Type}
           {NG : NameGen string NGstate}
@@ -96,7 +91,7 @@ Section NameGen.
         | Some x' =>
             Success (Syntax.cmd.skip, Syntax.expr.var x', nm, st)
         | None =>
-            error:("variable x not mapped in target language (unreachable)")
+            error:("variable" x "not mapped in target language (unreachable)")
         end
     | EAtom a =>
         e' <- compile_atom a;;
