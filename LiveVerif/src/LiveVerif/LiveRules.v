@@ -10,7 +10,8 @@ Require Import coqutil.Datatypes.ListSet.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
-Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic bedrock2.Loops.
+Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic.
+Require bedrock2.Loops.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.enable_frame_trick.
@@ -50,6 +51,9 @@ Section WithParams.
   (* "sealed" behind an Inductive, only the defining lemmas below unfold this definition *)
   Inductive dexpr{BW: Bitwidth width}(m: mem)(l: locals)(e: expr)(w: word): Prop :=
     mk_dexpr(_: WeakestPrecondition.dexpr m l e w).
+
+  Lemma invert_dexpr: forall m l e w, dexpr m l e w -> WeakestPrecondition.dexpr m l e w.
+  Proof. intros. inversion H. assumption. Qed.
 
   Lemma dexpr_literal: forall (m: mem) (l: locals) z,
       dexpr m l (expr.literal z) (word.of_Z z).
@@ -730,6 +734,33 @@ Section WithParams.
     destruct H; eauto.
   Qed.
 
+  Lemma wp_while0: forall fs e c t m l (post: _ -> _ -> _ -> Prop) {measure: Type}
+                          (lt: measure -> measure -> Prop)
+                          (inv: measure -> trace -> mem -> locals -> Prop)
+                          (v0: measure),
+      well_founded lt ->
+      inv v0 t m l ->
+      (forall v t m l,
+          inv v t m l ->
+          exists b, dexpr m l e b /\
+                    (word.unsigned b <> 0%Z -> wp_cmd fs c t m l (fun t' m l =>
+                       exists v', inv v' t' m l /\ lt v' v)) /\
+                    (word.unsigned b = 0%Z -> post t m l)) ->
+     wp_cmd fs (cmd.while e c) t m l post.
+  Proof.
+    intros * Hwf HInit Hbody.
+    revert t m l HInit. pattern v0. revert v0.
+    eapply (well_founded_ind Hwf). intros.
+    specialize Hbody with (1 := HInit). destruct Hbody as (b & Hb & Ht & Hf).
+    eapply invert_dexpr in Hb.
+    eapply WeakestPreconditionProperties.expr_sound in Hb.
+    destruct Hb as (b' & Hb & ?). subst b'.
+    destr.destr (Z.eqb (word.unsigned b) 0).
+    - specialize Hf with (1 := E). eapply exec.while_false; eassumption.
+    - specialize Ht with (1 := E). eapply exec.while_true; eauto.
+      cbv beta. intros * (v' & HInv & HLt). eauto.
+  Qed.
+
   Definition loop_body_marker(P: Prop) := P.
 
   Lemma wp_while {measure : Type} (v0 : measure) (e: expr) (c: cmd) t (m: mem) l fs rest
@@ -746,18 +777,14 @@ Section WithParams.
                   True)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t m l post.
   Proof.
-    eapply wp_seq. eapply wp_while. exists measure, lt, invariant.
-    split. 1: assumption.
-    split. 1: eauto.
-    clear Hpre v0 t m l.
-    intros v t m l Hinv.
-    specialize (Hbody v t m l Hinv).
-    fwd.
-    inversion Hbody. subst. clear Hbody. inversion H. clear H.
+    eapply wp_seq. eapply wp_while0. 1,2: eassumption.
+    intros * Hinv. specialize Hbody with (1 := Hinv).
+    destruct Hbody as (b & Hbody).
+    inversion Hbody. subst. clear Hbody.
     eexists. split. 1: eassumption.
     unfold bool_expr_branches in *. apply proj1 in H1. split.
-    - intro NE. eapply WeakestPreconditionProperties.complete_cmd.
-      rewrite word.eqb_ne in H1. 1: eapply H1. intro C. subst v0.
+    - intro NE.
+      rewrite word.eqb_ne in H1. 1: eapply H1. intro C. subst v1.
       apply NE. apply word.unsigned_of_Z_0.
     - intro E. rewrite word.eqb_eq in H1. 1: eapply H1.
       eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
@@ -789,7 +816,7 @@ Section WithParams.
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 finalpost.
   Proof.
     eapply wp_seq. eapply WeakestPreconditionProperties.sound_cmd.
-    eapply tailrec_localsmap_1ghost with
+    eapply Loops.tailrec_localsmap_1ghost with
       (P := fun v g t m l => pre (g, v, t, m, l))
       (Q := fun v g t m l => post (g, v, t, m, l)).
     1: eapply Hwf.
@@ -809,6 +836,49 @@ Section WithParams.
     - exfalso. apply E. eapply word.unsigned_inj. rewrite Hv. symmetry.
       apply word.unsigned_of_Z_0.
     - exact HDone.
+  Qed.
+
+  Lemma wp_while_tailrec_use_functionpost{measure: Type}{Ghost: Type}(v0: measure)(g0: Ghost)
+    (e: expr) (c: cmd) t0 (m0: mem) l0 fs rest
+    (pre: Ghost * measure * trace * mem * locals -> Prop) {lt}
+    {functionpost: Ghost -> measure -> trace -> mem -> locals -> Prop}
+    (Hwf: well_founded lt)
+    (* packaging generalized context at entry of loop determines pre: *)
+    (Hpre: pre (g0, v0, t0, m0, l0))
+    (Hbody: forall v g t m l,
+      pre (g, v, t, m, l) ->
+      exists b, dexpr_bool3 m l e b
+                  (loop_body_marker (wp_cmd fs c t m l
+                      (fun t' m' l' => exists v' g',
+                           pre (g', v', t', m', l') /\
+                           lt v' v /\
+                           (forall t'' m'' l'', functionpost g' v' t'' m'' l'' ->
+                                                functionpost g  v  t'' m'' l''))))
+                  (wp_cmd fs rest t m l (functionpost g v))
+                  True)
+    : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 (functionpost g0 v0).
+  Proof.
+    eapply wp_seq.
+    eapply wp_while0 with (inv := fun v t m l =>
+      exists g, pre (g, v, t, m, l) /\
+                (forall t' m' l', functionpost g v t' m' l' -> functionpost g0 v0 t' m' l')).
+    1: exact Hwf.
+    { eexists. split. 1: eassumption. intros *. exact id. }
+    intros * (g & HPre & HPostImpl).
+    specialize Hbody with (1 := HPre).
+    destruct Hbody as (b & Hbody).
+    inversion Hbody. subst. clear Hbody.
+    unfold bool_expr_branches, loop_body_marker in *. apply proj1 in H1.
+    eexists. split. 1: eassumption. split.
+    - intro NE.
+      rewrite word.eqb_ne in H1.
+      { simpl in H1. eapply exec.weaken. 1: eapply H1.
+        cbv beta. clear -HPostImpl. intros. fwd. eauto 10. }
+      intro C. subst v1.
+      apply NE. apply word.unsigned_of_Z_0.
+    - intro E. eapply exec.weaken. 2: eapply HPostImpl.
+      rewrite word.eqb_eq in H1. 1: eapply H1.
+      eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
   Qed.
 
   Definition with_again_flag{T: Type}(R: T -> T -> Prop): bool * T -> bool * T -> Prop :=
