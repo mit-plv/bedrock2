@@ -13,13 +13,6 @@ Local Open Scope string_scope.
 Local Open Scope Z_scope.
 Local Open Scope list_scope.
 
-Local Notation "x += e" :=
-  (cmd.set
-     (ident_to_string! x)
-     (expr.op bopname.add (ident_to_string! x) e))
-    (in custom bedrock_cmd at
-          level 0, x ident, e custom bedrock_expr, only parsing).
-
 (* Return the high word of the integer multiplication a * b. *)
 Definition full_mul :=
   func! (a, b) ~> (low, high) {
