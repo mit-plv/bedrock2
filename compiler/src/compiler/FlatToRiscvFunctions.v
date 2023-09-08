@@ -521,7 +521,7 @@ Section Proofs.
                argnames = List.firstn arg_count (reg_class.all reg_class.arg)) as AC. {
       exists (List.length argnames). ssplit. 2: congruence.
       replace argnames with
-          (List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg)) by assumption.
+          (List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg)) by (symmetry;assumption).
       rewrite List.firstn_length.
       change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
       clear. blia.
@@ -840,7 +840,7 @@ Section Proofs.
         blia.
       }
       replace retnames with
-          (List.firstn (Datatypes.length retnames) (reg_class.all reg_class.arg)) by assumption.
+          (List.firstn (Datatypes.length retnames) (reg_class.all reg_class.arg)) by (symmetry;assumption).
       rewrite List.firstn_length.
       change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
       clear. blia.
