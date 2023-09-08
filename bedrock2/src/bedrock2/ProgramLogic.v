@@ -122,7 +122,7 @@ Ltac straightline_cleanup :=
   | |- let _ := _ in _ => intros
   | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
   | _ => progress (cbn [Semantics.interp_binop] in * )
-  | H: exists _, _ |- _ => destruct H
+  | H: exists _, _ |- _ => assert_succeeds progress destruct H as (_&_); destruct H
   | H: _ /\ _ |- _ => destruct H
   | x := ?y |- ?G => is_var y; subst x
   | H: ?x = ?y |- _ => constr_eq x y; clear H
