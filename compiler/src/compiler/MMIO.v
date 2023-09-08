@@ -228,7 +228,7 @@ Section MMIO1.
     1: replace x with (word.sub y (word.of_Z 3)) in * by (subst y; solve_word_eq word_ok).
     2: replace x with (word.sub y (word.of_Z 2)) in * by (subst y; solve_word_eq word_ok).
     3: replace x with (word.sub y (word.of_Z 1)) in * by (subst y; solve_word_eq word_ok).
-    4: replace x with y in * by assumption.
+    4: replace x with y in * by (symmetry;assumption).
     all: clear C;
       rewrite ?word.unsigned_sub, ?word.unsigned_of_Z in H, H1;
       unfold word.wrap in *;

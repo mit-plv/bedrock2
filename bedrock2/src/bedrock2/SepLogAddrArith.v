@@ -99,7 +99,7 @@ Ltac sepclause_eq OK :=
                       let addrR := addr rhs in
                       assert_fails (has_evar addrL);
                       assert_fails (has_evar addrR);
-                      replace addrL with addrR by solve_word_eq OK;
+                      replace addrL with addrR by first[assumption | symmetry;assumption | solve_word_eq OK];
                       (reflexivity || fail 10000 lhs "and" rhs "have the same address"
                       "according to addr, but can't be matched")
   end.
