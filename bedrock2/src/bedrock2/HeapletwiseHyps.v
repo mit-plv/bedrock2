@@ -841,10 +841,19 @@ Ltac split_sep_step :=
       end
   end.
 
+Ltac destruct_ex1_as H name :=
+  let x := fresh name in destruct H as [x H];
+  lazymatch type of H with
+  | ?P ?m => lazymatch should_unpack P with
+             | true => idtac
+             | false => change (with_mem m P) in H
+             end
+  end.
+
 Ltac destruct_ex1_step :=
   lazymatch goal with
-  | H: with_mem ?m (ex1 (fun name => _)) |- _ => let x := fresh name in destruct H as [x H]
-  | H: ex1 (fun name => _) ?m            |- _ => let x := fresh name in destruct H as [x H]
+  | H: with_mem ?m (ex1 (fun name => _)) |- _ => destruct_ex1_as H name
+  | H: ex1 (fun name => _) ?m            |- _ => destruct_ex1_as H name
   end.
 
 Ltac destruct_emp_step0 H m P :=

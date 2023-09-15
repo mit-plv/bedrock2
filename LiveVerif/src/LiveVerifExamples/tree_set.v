@@ -221,7 +221,50 @@ uintptr_t bst_add(uintptr_t p, uintptr_t v) /**#
                            * bst (fun x => x = \[v] \/ s x) q
                            * R }> m') #**/                                 /**.
 Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   .**/
-{                                                                          /**.
+{                                                                          /**. .**/
+  uintptr_t a = load(p);                                                   /**.
+  (* invariant: *p = a *)                                                       .**/
+  uintptr_t found = 0;                                                     /**.
+
+  prove (found = /[1] -> s \[v]).
+  delete #(found = /[0]).
+  move sk after a.
+  move p after a.
+  loop invariant above a.
+  unfold ready.
+  lazymatch goal with
+  | |- exec ?fs ?body ?t ?m ?l ?P =>
+      lazymatch eval pattern R in P with
+      | ?f R =>
+          change (exec fs body t m l ((fun (g: set Z * (mem -> Prop)) (_: tree_skeleton) =>
+            let (_, F) := g in f F) (s, R) sk))
+      end
+  end.
+  let e := constr:(live_expr:(a != NULL && !found)) in
+  eapply (wp_while_tailrec_use_functionpost _ _ e).
+  { eauto with wf_of_type. }
+  { (* Ltac log_packaged_context P ::= idtac P. *)
+    package_heapletwise_context. }
+  start_loop_body.
+  steps.
+                                                                                .**/
+    uintptr_t x = load32(a + 4);                                           /**. .**/
+    if (x == v) {                                                          /**. .**/
+      found = 1;                                                           /**. .**/
+    } else {                                                               /**. .**/
+      if (v < x) {                                                         /**. .**/
+        p = a;                                                             /**. .**/
+      } else {                                                             /**. .**/
+        p = a + 8;                                                         /**. .**/
+        a = load(p);                                                       /**.
+rewrite Def1.
+step. step. step. step. step. step. step.
+(* TODO make more congruence-robust *)
+
+(* TODO can we pull this out of the branches?
+        a = load(p);                         *)
+
+
 Abort.
 
 #[export] Instance spec_of_bst_contains: fnspec :=                              .**/
@@ -235,9 +278,7 @@ uintptr_t bst_contains(uintptr_t p, uintptr_t v) /**#
                      <{ * bst s p
                         * R }> m' #**/                                     /**.
 Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    .**/
-{                                                                          /**.
-  change (bst' sk s ?p ?m) with (m |= bst' sk s p) in *.
-  (* TODO ex1 destruct should leave |= intact *)                                .**/
+{                                                                          /**. .**/
   uintptr_t res = 0;                                                       /**. .**/
   uintptr_t a = load(p);                                                   /**.
 
