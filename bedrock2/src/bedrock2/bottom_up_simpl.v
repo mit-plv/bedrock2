@@ -213,7 +213,7 @@ Ltac2 lift_res_if(original: constr)(r0: res)(r1: res)(r2: res): res :=
   else
     res_nothing_to_simpl original.
 
-Lemma impl_cong[P P' Q Q']:
+Lemma impl_cong[P P' Q Q': Prop]:
   P = P' ->
   Q = Q' ->
   (P -> Q) = (P' -> Q').
@@ -1207,7 +1207,10 @@ Ltac2 rec bottom_up_simpl(parent_kind: expr_kind)(e: constr): res :=
    Therefore, pushing down len could be integrated into bottom_up_simpl, whereas
    pushing down word.unsigned runs *after* it in local_simpl_hook *)
 
-Lemma rew_Prop_hyp: forall (P1 P2: Prop) (pf: P1 = P2), P1 -> P2.
+Definition protect_conclusion(P: Prop) := P.
+(* protect_conclusion is needed because if P2 is an implication,
+   `apply ... in ...` creates subgoals for everything on the left of a -> in P2 *)
+Lemma rew_Prop_hyp: forall (P1 P2: Prop) (pf: P1 = P2), P1 -> protect_conclusion P2.
 Proof. intros. subst. assumption. Qed.
 
 Lemma rew_Prop_goal: forall (P1 P2: Prop) (pf: P1 = P2), P2 -> P1.
@@ -1254,7 +1257,8 @@ Ltac2 bottom_up_simpl_in_hyp_of_type(no_progress: unit -> unit)(h: ident)(t: con
         let pf := eq_proof r in
         let t' := new_term r in
         log_simpl t t';
-        eapply (rew_Prop_hyp $t $t' $pf) in $h
+        eapply (rew_Prop_hyp $t $t' $pf) in $h;
+        change $t' in $h
       else no_progress ()
   | _ => no_progress ()
   end.
@@ -1425,6 +1429,22 @@ Section Tests.
   Proof.
     intros. bottom_up_simpl_in_hyp @H. exact H.
   Qed.
+
+  Goal forall (P: Prop) (found: word),
+      found = /[0] ->
+      found = /[1] -> P.
+  Proof.
+    intros * H. bottom_up_simpl_in_goal ().
+    lazy_match! goal with
+    | [ |- /[0] = /[1] -> P0 ] => ()
+    end.
+  Abort.
+
+  Goal forall (P: Prop) (found: word),
+      (found = /[1] -> P) ->
+      found = /[0] ->
+      /[0] = /[1] -> P.
+  Proof. intros p found A B. bottom_up_simpl_in_hyps (). assumption. Succeed Qed. Abort.
 
   Goal forall (b: bool) (a e: word),
       (if b then /[\[a]] else e) = (if b then /[\[a]] else e).
