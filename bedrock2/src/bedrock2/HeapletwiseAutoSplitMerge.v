@@ -15,7 +15,7 @@ Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.DisjointU
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.sepapp.
-Require Import bedrock2.ZnWords.
+Require bedrock2.ZnWords.
 Require Import bedrock2.to_from_anybytes.
 Require Import bedrock2.SuppressibleWarnings.
 Require Import bedrock2.TacticError.
@@ -31,6 +31,7 @@ Section SepLog.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
+  Import ZnWords.
   (* Different kinds of splitting/merging back:
      a) single array element
      b) subarray
@@ -287,30 +288,29 @@ Section SepLog.
     simpl. rewrite IHl. reflexivity.
   Qed.
 
-  Lemma split_off_field_from_sepapps: forall a a' sz ofs n,
-      word.unsigned (word.sub a' a) = ofs -> (* <- simplify lhs, then reflexivity
-                                                determines ofs *)
-      (forall l P m,
-          sepapps_offset n l = ofs -> (* <- determines n *)
-          List.nth_error l n = Some (mk_sized_predicate P sz) ->
-          sepapps l a m ->
-          sep (sepapps (sepapps_replace l n (mk_sized_predicate (hole sz) sz)) a)
+  Lemma split_off_field_from_sepapps: forall a a' sz ofs ofs_simpl l_old n,
+      word.unsigned (word.sub a' a) = ofs -> (* <- reflexivity determines ofs *)
+      sepapps_offset n l_old = ofs_simpl /\ ofs_simpl = ofs -> (* <- determines n, ofs_simpl *)
+      (forall P m,
+          List.nth_error l_old n = Some (mk_sized_predicate P sz) ->
+          sepapps l_old a m ->
+          sep (sepapps (sepapps_replace l_old n (mk_sized_predicate (hole sz) sz)) a)
               (P a') m) /\
       (forall l P m,
-          sepapps_offset n l = ofs -> (* <- should be eq_refl *)
+          sepapps_offset n l = ofs_simpl -> (* <- should be eq_refl *)
           List.nth_error l n = Some (mk_sized_predicate (hole sz) sz) ->
           sep (sepapps l a) (P a') m ->
           sepapps (sepapps_replace l n (mk_sized_predicate P sz)) a m).
   Proof.
-    intros. split; intros; subst;
-      rewrite sepapps_offset_spec in H0;
+    intros * ? [? ->]. split; intros; subst;
+      rewrite sepapps_offset_spec in *;
       rewrite sepapps_replace_spec.
-    - rewrite (expose_nth_sepapp l n a P sz H1) in H2.
+    - rewrite (expose_nth_sepapp l_old n a P sz H1) in H2.
       eapply SeparationLogic.sep_comm. eqapply H2. f_equal.
       rewrite H0. rewrite word.of_Z_unsigned, word.add_sub_r_same_r; trivial.
-    - rewrite <- (merge_back_nth_sepapp l n a P sz H1).
-      eapply SeparationLogic.sep_comm. eqapply H2. f_equal.
-      rewrite H0. rewrite word.of_Z_unsigned, word.add_sub_r_same_r; trivial.
+    - rewrite <- (merge_back_nth_sepapp l n a P sz H2).
+      eapply SeparationLogic.sep_comm. eqapply H3. f_equal.
+      rewrite H1. rewrite word.of_Z_unsigned, word.add_sub_r_same_r; trivial.
   Qed.
 
 (* alternative way of expressing "1 past a'":
@@ -391,14 +391,26 @@ Ltac pick_nat n :=
   | S ?m => pick_nat m
   end.
 
+Ltac word_lia_hook_for_split_merge :=
+  fail 1000 "unimplemented split_merge_word_lia_hook,"
+            "do eg Ltac word_lia_hook_for_split_merge ::= ZnWords".
+
+(* instantiates i_ev based on ofs, and instantiates ofs_simpl to a simplified ofs *)
 Ltac find_field_index_from_offset :=
   lazymatch goal with
-  | |- sepapps_offset ?i_ev ?l = ?ofs =>
+  | |- sepapps_offset ?i_ev ?l = ?ofs_simpl_ev /\ ?ofs_simpl_ev = ?ofs =>
       tryif is_evar i_ev then
-        lazymatch list_length_option l with
-        | Some ?n => once (let i := pick_nat n in unify i_ev i; reflexivity)
-        | None => fail 1000 l "is not a concrete list"
-        end
+        tryif is_evar ofs_simpl_ev then
+          lazymatch list_length_option l with
+          | Some ?n => once (let i := pick_nat n in
+                             unify i_ev i;
+                             split;
+                             [ cbn [sepapps_offset]; reflexivity
+                             | word_lia_hook_for_split_merge ])
+          | None => fail 1000 l "is not a concrete list"
+          end
+        else
+          fail 1000 ofs_simpl_ev "is not an evar"
       else
         fail 1000 i_ev "is not an evar"
   end.
@@ -431,8 +443,8 @@ Ltac split_range_from_hyp_default :=
           unshelve epose proof
             (split_off_elem_from_array start' start elem n _ _ _) as pf;
           [ (* i *)
-          | bottom_up_simpl_in_goal; reflexivity
-          | ZnWords
+          | reflexivity
+          | word_lia_hook_for_split_merge
           | eapply (proj1 pf) in H;
             turn_split_merge_lemma_into_merge_step pf ]
       | with_mem _ (@array _ _ _ _ _ ?elem ?elemSize ?n ?vs ?start') =>
@@ -440,30 +452,27 @@ Ltac split_range_from_hyp_default :=
             (split_off_subarray_from_array start' start elem n size _ _ _ _ _) as pf;
           [ (* index of first element *)
           | (* number of elements to split off *)
-          | bottom_up_simpl_in_goal; reflexivity
-          | bottom_up_simpl_in_goal; reflexivity
-          | ZnWords
+          | reflexivity
+          | bottom_up_simpl_in_goal_nop_ok; reflexivity
+          | word_lia_hook_for_split_merge
           | eapply (proj1 pf) in H;
             turn_split_merge_lemma_into_merge_step pf ]
       | with_mem _ (array (uint 8) ?nAll ? ?start') =>
           unshelve epose proof
             (split_anybytes_from_anybytes start' start nAll size _ _ _) as pf;
           [ (* offset of first element *)
-          | bottom_up_simpl_in_goal; reflexivity
-          | ZnWords
+          | reflexivity
+          | word_lia_hook_for_split_merge
           | eapply (proj1 pf) in H;
             turn_split_merge_lemma_into_merge_step pf ]
-      | with_mem _ (sepapps _ ?start') =>
+      | with_mem _ (sepapps ?l_old ?start') =>
           unshelve epose proof
-            (split_off_field_from_sepapps start' start size _ _ _) as pf;
-          [ (* offset: dependent evar will be determined by second subgoal *)
-          | (* n (index of field): determined later below *)
-          | (* address difference equals offset *)
-            bottom_up_simpl_in_goal; reflexivity
+            (split_off_field_from_sepapps start' start size _ _ l_old _ eq_refl _) as pf;
+          [ (* ofs_simpl to be determined below *)
+          | (* index to be determined below *)
+          | find_field_index_from_offset
           | eapply (proj1 pf) in H;
-            [ idtac
-            | find_field_index_from_offset
-            | reflexivity ];
+            [ idtac | reflexivity ];
             cbn [sepapps_replace] in H;
             turn_split_merge_lemma_into_merge_step pf ]
       end
@@ -503,7 +512,7 @@ Definition subrange{width: Z}{word: word.word width}(start: word)(size: Z)
 
 Ltac is_subrange start size start' size' :=
   assert_succeeds (idtac; assert (subrange start size start' size') by
-                     (unfold subrange; ZnWords)).
+                     (unfold subrange; word_lia_hook_for_split_merge)).
 
 Inductive PredicateSize_not_found{PredTp: Type}(pred: PredTp): Set :=
   mk_PredicateSize_not_found.
@@ -567,7 +576,8 @@ Ltac split_step :=
       | H: with_mem ?mH (?P' ?start') |- _ =>
           with_PredicateSize_of P' (fun size' =>
               is_subrange start size start' size';
-              tryif assert_succeeds (idtac; assert (size = size') by ZnWords);
+              tryif assert_succeeds (idtac; assert (size = size') by
+                                       word_lia_hook_for_split_merge);
                     (* TODO: below check should be more general and see if one of the
                        records is a sub-record of the other, potentially unfolding
                        several singleton-field records *)

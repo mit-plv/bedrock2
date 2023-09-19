@@ -254,16 +254,15 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
     } else {                                                               /**. .**/
       if (v < x) {                                                         /**. .**/
         p = a;                                                             /**. .**/
+        a = load(p);                                                       /**. .**/
       } else {                                                             /**. .**/
         p = a + 8;                                                         /**. .**/
-        a = load(p);                                                       /**.
-rewrite Def1.
-step. step. step. step. step. step. step.
-(* TODO make more congruence-robust *)
-
-(* TODO can we pull this out of the branches?
-        a = load(p);                         *)
-
+        a = load(p);                                                       /**. .**/
+      }                                                                    /**.
+      (* TODO can we pull this out of the branches?
+        a = load(p);                         *)                                 .**/
+    }                                                                      /**. .**/
+  }                                                                        /**.
 
 Abort.
 

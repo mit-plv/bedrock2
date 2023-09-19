@@ -102,6 +102,8 @@ Ltac hwlia := zify_hyps; puri_simpli_zify_hyps accept_always; zify_goal; xlia zc
 
 Ltac2 Set bottom_up_simpl_sidecond_hook := fun _ => ltac1:(zify_goal; xlia zchecker).
 
+Ltac word_lia_hook_for_split_merge ::= zify_goal; xlia zchecker.
+
 Ltac intros_until_trace :=
   repeat lazymatch goal with
     | |- forall (_: trace), _ => fail (* done *)
@@ -971,6 +973,13 @@ Ltac one_step :=
   end.
 
 Ltac steps := can_continue; grepeat0 ltac:(fun _ => one_step).
+
+(* find the first step that makes predicate succeed, ie run steps just until
+   but without the first step that makes predicate succeed, so that this
+   interesting step can then be debugged in isolation *)
+Ltac _find_step predicate :=
+  repeat (step; assert_fails (idtac; predicate tt)).
+Tactic Notation "find_step" tactic0(predicate) := _find_step predicate.
 
 Goal True = True /\ True.
   steps. (* test stats: should print 3 lines if stats are enabled *)
