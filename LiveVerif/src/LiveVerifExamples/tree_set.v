@@ -76,6 +76,18 @@ Local Hint Extern 1 (PredicateSize (bst' ?sk)) =>
 
 #[local] Hint Unfold bst : heapletwise_always_unfold.
 
+Lemma bst'_impl_at_same_address: forall a sk1 sk2 s1 s2,
+    safe_implication (sk1 = sk2 /\ s1 = s2) (impl1 (bst' sk1 s1 a) (bst' sk2 s2 a)).
+Proof. unfold safe_implication. intros * [? ?]. subst. reflexivity. Qed.
+
+Hint Resolve bst'_impl_at_same_address : safe_implication.
+
+Lemma my_test_safe_impl: forall (a b c d: Z),
+    safe_implication (a = c /\ b = d) (a * b = c * d).
+Proof. unfold safe_implication. intros * [? ?]. subst. reflexivity. Qed.
+
+Hint Resolve my_test_safe_impl : safe_implication.
+
 Lemma invert_bst'_null{sk s p m}:
     p = /[0] ->
     m |= bst' sk s p ->
@@ -131,6 +143,9 @@ Ltac step_hook ::=
       assert_fails (has_evar H); eapply (invert_bst'_null E) in H
   | H: _ |= bst' _ _ ?p, N: ?p <> /[0] |- _ =>
       assert_fails (has_evar H); eapply (invert_bst'_nonnull N) in H
+  | H: ?addr <> /[0] |- context[bst' ?sk_evar _ ?addr] =>
+      is_evar sk_evar;
+      let n := open_constr:(Node _ _) in unify sk_evar n
   | s: set Z, H: forall x: Z, ~ _ |- _ =>
       lazymatch goal with
       | |- context[s ?v] =>
@@ -249,9 +264,73 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
   steps.
                                                                                 .**/
     uintptr_t x = load32(a + 4);                                           /**. .**/
-    if (x == v) {                                                          /**. .**/
+    if (x == v) /* split */ {                                              /**. .**/
       found = 1;                                                           /**. .**/
-    } else {                                                               /**. .**/
+    }                                                                      /*?.
+
+step. step. step. step. step. step. step. step. step. step. step.
+step. step.
+step. step. step. step.
+
+step_hook.
+step_hook.
+
+step. step. step. step. step. step. step.
+step.
+2: {
+  step. step. step. step.
+
+step.
+instantiate (6 := skL).
+
+ step.
+ step.
+
+lazymatch goal with
+| h: with_mem _ (bst' skL ?s2 pL) |- context[bst' skL ?s1 pL] =>
+assert (impl1 (bst' skL s2 pL) (bst' skL s1 pL))
+
+end.
+
+clear Error.
+
+  match goal with
+  | |- ?Q =>
+      let H := fresh in
+      eassert (safe_implication _ Q) as H
+end.
+  {
+
+(*
+    Set Typeclasses Debug.
+    Set Typeclasses Debug Verbosity 4.
+    Set Printing Implicit.
+*)
+
+    eauto with safe_implication.
+    try typeclasses eauto with safe_implication. (* WHY does this not solve the goal??*)
+
+
+Print HintDb safe_implication.
+
+simple apply bst'_impl_at_same_address.
+}
+
+(*
+step.
+(* H9 unfolded bst' would be good *)
+
+
+ step.
+
+
+  lazymatch goal with
+  | H: ?addr <> /[0] |- context[bst' ?sk_evar _ ?addr] =>
+      let n := open_constr:(Node _ _) in unify sk_evar n
+  end.
+
+
+ else {                                                               /**. .**/
       if (v < x) {                                                         /**. .**/
         p = a;                                                             /**. .**/
         a = load(p);                                                       /**. .**/
@@ -263,6 +342,13 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
         a = load(p);                         *)                                 .**/
     }                                                                      /**. .**/
   }                                                                        /**.
+
+{
+
+  (* different clause is picked for cancellation based on which of the 3 branches was
+     taken, need to do case split... *)
+  subst p''''. p''.
+*)
 
 Abort.
 

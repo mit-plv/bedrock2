@@ -825,19 +825,8 @@ Ltac evar_tuple t :=
 
 Ltac step_hook := fail.
 
-Ltac final_program_logic_step logger :=
-  (* Note: Here, the logger has to be invoked *after* the tactic, because we only
-     find out whether it's the right one by running it.
-     To make sure that the logger is run exactly once, the thunk should only contain
-     and idtac taking a string. *)
-  first
-      [ cleanup_step;
-        logger ltac:(fun _ => idtac "cleanup_step")
-      | (* Note: only invoked here because we first need to destruct /\ (done by
-           cleanup_step) in hyps so that (retvs = [| ... |]) gets exposed *)
-        put_into_current_locals;
-        logger ltac:(fun _ => idtac "put_into_current_locals")
-      | lazymatch goal with
+Ltac sidecond_step logger := first
+      [ lazymatch goal with
         | |- exists x: ?t, _ => let e := evar_tuple t in exists e
         | |- ex1 _ _ => eexists
         | |- elet _ _ => refine (mk_elet _ _ _ eq_refl _)
@@ -887,7 +876,21 @@ Ltac final_program_logic_step logger :=
       | solve [intuition idtac];
         logger ltac:(fun _ => idtac "intuition idtac")
       | step_hook;
-        logger ltac:(fun _ => idtac "step_hook")
+        logger ltac:(fun _ => idtac "step_hook") ].
+
+Ltac final_program_logic_step logger :=
+  (* Note: Here, the logger has to be invoked *after* the tactic, because we only
+     find out whether it's the right one by running it.
+     To make sure that the logger is run exactly once, the thunk should only contain
+     and idtac taking a string. *)
+  first
+      [ cleanup_step;
+        logger ltac:(fun _ => idtac "cleanup_step")
+      | (* Note: only invoked here because we first need to destruct /\ (done by
+           cleanup_step) in hyps so that (retvs = [| ... |]) gets exposed *)
+        put_into_current_locals;
+        logger ltac:(fun _ => idtac "put_into_current_locals")
+      | sidecond_step logger
       | lazymatch goal with
         | |- if _ then _ else _ =>
             logger ltac:(fun _ => idtac "split if");
@@ -915,7 +918,7 @@ Ltac heapletwise_step' logger :=
   heapletwise_step;
   logger ltac:(fun _ => idtac "heapletwise_step").
 
-Ltac sepclause_impl_step_hook ::= default_careful_reflexivity_step.
+Ltac sepclause_impl_step_hook ::= sidecond_step ignore_logger_thunk.
 
 Ltac split_step' logger :=
   split_step;
