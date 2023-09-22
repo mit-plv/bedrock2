@@ -76,18 +76,6 @@ Local Hint Extern 1 (PredicateSize (bst' ?sk)) =>
 
 #[local] Hint Unfold bst : heapletwise_always_unfold.
 
-Lemma bst'_impl_at_same_address: forall a sk1 sk2 s1 s2,
-    safe_implication (sk1 = sk2 /\ s1 = s2) (impl1 (bst' sk1 s1 a) (bst' sk2 s2 a)).
-Proof. unfold safe_implication. intros * [? ?]. subst. reflexivity. Qed.
-
-Hint Resolve bst'_impl_at_same_address : safe_implication.
-
-Lemma my_test_safe_impl: forall (a b c d: Z),
-    safe_implication (a = c /\ b = d) (a * b = c * d).
-Proof. unfold safe_implication. intros * [? ?]. subst. reflexivity. Qed.
-
-Hint Resolve my_test_safe_impl : safe_implication.
-
 Lemma invert_bst'_null{sk s p m}:
     p = /[0] ->
     m |= bst' sk s p ->
@@ -160,6 +148,9 @@ Ltac step_hook ::=
       then left else fail
   | H1: ?x <= ?y, H2: ?y <= ?x, C: ?s ?x |- ?s ?y =>
       (replace y with x by xlia zchecker); exact C
+  | |- impl1 (bst' _ _ ?a) (bst' _ _ ?a) =>
+      reflexivity (* might instantiate evars and that's ok here, as long as the
+                     address is the same on both sides *)
   | |- _ => solve [auto 3]
   end.
 
@@ -281,55 +272,26 @@ step.
   step. step. step. step.
 
 step.
+
 instantiate (6 := skL).
 
  step.
  step.
 
-lazymatch goal with
-| h: with_mem _ (bst' skL ?s2 pL) |- context[bst' skL ?s1 pL] =>
-assert (impl1 (bst' skL s2 pL) (bst' skL s1 pL))
+step. step. step. step. step.
 
-end.
+subst v. bottom_up_simpl_in_goal. assumption.
 
-clear Error.
-
-  match goal with
-  | |- ?Q =>
-      let H := fresh in
-      eassert (safe_implication _ Q) as H
-end.
-  {
-
-(*
-    Set Typeclasses Debug.
-    Set Typeclasses Debug Verbosity 4.
-    Set Printing Implicit.
-*)
-
-    eauto with safe_implication.
-    try typeclasses eauto with safe_implication. (* WHY does this not solve the goal??*)
-
-
-Print HintDb safe_implication.
-
-simple apply bst'_impl_at_same_address.
+step.
 }
 
+step. step.
+(*   tree_skeleton_lt (Node skL skR) (Node skL skR)    *)
+
+(* --> need to change loop lemma or invariant so that the measure doesn't need
+   to decrease if found=true and we'll exit *)
+
 (*
-step.
-(* H9 unfolded bst' would be good *)
-
-
- step.
-
-
-  lazymatch goal with
-  | H: ?addr <> /[0] |- context[bst' ?sk_evar _ ?addr] =>
-      let n := open_constr:(Node _ _) in unify sk_evar n
-  end.
-
-
  else {                                                               /**. .**/
       if (v < x) {                                                         /**. .**/
         p = a;                                                             /**. .**/
@@ -395,8 +357,6 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
                         (\[res] = 1 /\ s \[v] \/ \[res] = 0 /\ ~ s \[v]) /\
                         ti = t).
       cbv beta iota.
-      cbn [bst']. (* <-- TODO step_hook invoked too late *)
-      step. step. step. step.
       steps.
     }
     (* loop body: *)
@@ -404,7 +364,20 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
     uintptr_t here = load32(a+4);                                          /**. .**/
     if (v < here) /* split */ {                                            /**. .**/
       a = load(a);                                                         /**. .**/
-    }                                                                      /**. .**/
+    }                                                                      /*?.
+
+step. step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step.
+step. step.
+
+step. (* change: applies invert_bst'_nonnull in H3, earlier than before! *)
+
+step. step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step.
+
+(*
+.**/
     else {                                                                 /**. .**/
       if (here < v) /* split */ {                                          /**. .**/
         a = load(a+8);                                                     /**. .**/
@@ -424,6 +397,8 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
   return res;                                                              /**. .**/
 }                                                                          /**.
 Qed.
+*)
+Abort.
 
 (* note: inability to break out of loop is cumbersome, because it complicates pre:
    it has to incorporate almost all of post for the res=true case,

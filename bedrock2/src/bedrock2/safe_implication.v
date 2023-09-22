@@ -4,7 +4,10 @@ Definition safe_implication(P: Prop)(Q: Prop): Prop := P -> Q.
 
 Create HintDb safe_implication.
 
+(* Don't use Hint Mode + because it prevents typeclass search from running in
+   situations where it should run: https://github.com/coq/coq/issues/18078
 #[global] Hint Mode safe_implication - + : safe_implication.
+*)
 
 Lemma f_equal_app[A B: Type][f g: A -> B][x y: A]: f = g -> x = y -> f x = g y.
 Proof. intros. subst. reflexivity. Qed.
@@ -15,6 +18,19 @@ Ltac head_of_app t :=
   | _ => t
   end.
 
+Ltac typeclasses_eauto_with_safe_implication :=
+  (* fail fast before we start setting all evars *)
+  assert_succeeds (idtac; typeclasses eauto with safe_implication);
+  (* hide all evars in q. This is our homemade `Hint Mode +` which hopefully
+     does what we want... https://github.com/coq/coq/issues/18078 *)
+  repeat lazymatch goal with
+    | |- safe_implication _ ?q =>
+        match q with
+        | context[?x] => is_evar x; set x
+        end
+    end;
+  typeclasses eauto with safe_implication.
+
 Ltac safe_implication_step :=
   match goal with
   | |- ?l _ = ?r _ =>
@@ -24,7 +40,7 @@ Ltac safe_implication_step :=
       eapply f_equal_app
   | |- ?Q =>
       let H := fresh in
-      eassert (safe_implication _ Q) as H by (typeclasses eauto with safe_implication);
+      eassert (safe_implication _ Q) as H by typeclasses_eauto_with_safe_implication;
       unfold safe_implication in H;
       apply H;
       clear H

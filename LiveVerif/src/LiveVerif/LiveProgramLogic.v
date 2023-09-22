@@ -874,9 +874,7 @@ Ltac sidecond_step logger := first
                       specialized intros that rename and move new hyps *)
         end
       | solve [intuition idtac];
-        logger ltac:(fun _ => idtac "intuition idtac")
-      | step_hook;
-        logger ltac:(fun _ => idtac "step_hook") ].
+        logger ltac:(fun _ => idtac "intuition idtac") ].
 
 Ltac final_program_logic_step logger :=
   (* Note: Here, the logger has to be invoked *after* the tactic, because we only
@@ -918,7 +916,7 @@ Ltac heapletwise_step' logger :=
   heapletwise_step;
   logger ltac:(fun _ => idtac "heapletwise_step").
 
-Ltac sepclause_impl_step_hook ::= sidecond_step ignore_logger_thunk.
+Ltac sepclause_impl_step_hook ::= first [ step_hook | sidecond_step ignore_logger_thunk ].
 
 Ltac split_step' logger :=
   split_step;
@@ -932,6 +930,10 @@ Ltac merge_step' logger :=
       merge_step;
       logger ltac:(fun _ => idtac "merge_step")
   end.
+
+Ltac step_hook' logger :=
+  step_hook;
+  logger ltac:(fun _ => idtac "step_hook").
 
 Ltac undisplay logger :=
   lazymatch reverse goal with
@@ -950,6 +952,7 @@ Ltac step0 logger0 :=
   first [ heapletwise_step' logger
         | conclusion_shape_based_step logger
         | undisplay logger
+        | step_hook' logger
         | split_step' logger
         | merge_step' logger
         | final_program_logic_step logger ].
