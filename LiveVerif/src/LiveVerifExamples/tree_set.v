@@ -154,20 +154,6 @@ Ltac step_hook ::=
   | |- _ => solve [auto 3]
   end.
 
-(* TODO move *)
-Local Hint Extern 1 (cannot_purify (freeable _ _))
-      => constructor : suppressed_warnings.
-Local Hint Extern 1 (PredicateSize_not_found (freeable _))
-      => constructor : suppressed_warnings.
-Local Hint Extern 1 (PredicateSize_not_found allocator_failed_below)
-      => constructor : suppressed_warnings.
-Local Hint Extern 1 (PredicateSize_not_found (@allocator _ _))
-      => constructor : suppressed_warnings.
-Local Hint Extern 1 (cannot_purify allocator)
-      => constructor : suppressed_warnings.
-Local Hint Extern 1 (cannot_purify (if _ then _ else _))
-      => constructor : suppressed_warnings.
-
 #[export] Instance spec_of_bst_init: fnspec :=                              .**/
 
 uintptr_t bst_init( ) /**#

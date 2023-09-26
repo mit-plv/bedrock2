@@ -770,7 +770,6 @@ Ltac prove_emp_in h p :=
   eapply (use_is_emp p) in h; [ | solve [ eauto with is_emp ] ].
 
 Ltac new_mem_hyp h :=
-  autounfold with heapletwise_always_unfold in h;
   let t := type of h in
   let p := lazymatch t with
            | with_mem ?m ?p => p
@@ -800,7 +799,10 @@ Ltac split_sep_step :=
       | |- _ => idtac
       end;
       unfold with_mem in H; subst m1
-  | H: @sep _ _ ?mem ?P ?Q ?parent_m |- _ =>
+  | H: sep _ _ _ |- _ =>
+    autounfold with heapletwise_always_unfold in H;
+    lazymatch type of H with
+    | @sep _ _ ?mem ?P ?Q ?parent_m =>
       let unpackP := should_unpack P in
       let unpackQ := should_unpack Q in
       lazymatch constr:((unpackP, unpackQ)) with
@@ -839,6 +841,7 @@ Ltac split_sep_step :=
           end
       | unit => idtac
       end
+    end
   end.
 
 Ltac destruct_ex1_as H name :=

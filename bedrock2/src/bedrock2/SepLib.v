@@ -127,6 +127,9 @@ Proof. unfold purify. intros. constructor. Qed.
 #[export] Hint Extern 1 (cannot_purify (uintptr ? _))
 => constructor : suppressed_warnings.
 
+#[export] Hint Extern 1 (cannot_purify (if _ then _ else _))
+=> constructor : suppressed_warnings.
+
 Lemma anyval_is_emp{word: Type}{mem: map.map word Coq.Init.Byte.byte}{T: Type}
   (p: T -> word -> mem -> Prop)(q: T -> Prop)(a: word):
   (forall x: T, is_emp (p x a) (q x)) -> is_emp (anyval p a) (exists x: T, q x).
