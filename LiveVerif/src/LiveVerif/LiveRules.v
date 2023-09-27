@@ -16,6 +16,39 @@ Require Import bedrock2.ZnWords.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.enable_frame_trick.
 
+(* TODO move and avoid duplication in generated code *)
+Module Import Syntax.
+  Module cmd.
+    Definition dowhile(body: Syntax.cmd)(cond: Syntax.expr): Syntax.cmd :=
+      cmd.seq body (cmd.while cond body).
+  End cmd.
+End Syntax.
+
+Module Import Semantics.
+  Module exec.
+    Section WithParams.
+      Context {width: Z} {BW: Bitwidth width} {word: word.word width}
+        {mem: map.map word byte} {locals: map.map String.string word}.
+      Context {ext_spec: ExtSpec}.
+
+      Lemma dowhile: forall e body cond t m l post,
+          exec e body t m l (fun t' m' l' => exists v,
+            eval_expr m' l' cond = Some v /\
+            (word.unsigned v <> 0 -> exec e (cmd.dowhile body cond) t' m' l' post) /\
+            (word.unsigned v =  0 -> post t' m' l')) ->
+          exec e (cmd.dowhile body cond) t m l post.
+      Proof.
+        unfold cmd.dowhile. intros. eapply exec.seq. 1: eassumption.
+        cbv beta. clear H. intros. fwd. destr (Z.eqb (word.unsigned v) 0).
+        - specialize (Hp2 E).
+          eapply exec.while_false; eassumption.
+        - specialize (Hp1 E). inversion Hp1. subst.
+          eapply exec.while_true; eassumption.
+      Qed.
+    End WithParams.
+  End exec.
+End Semantics.
+
 Notation wp_cmd := Semantics.exec (only parsing).
 
 (* A let-binding using an equality instead of :=, living in Prop.
@@ -743,8 +776,8 @@ Section WithParams.
       (forall v t m l,
           inv v t m l ->
           exists b, dexpr m l e b /\
-                    (word.unsigned b <> 0%Z -> wp_cmd fs c t m l (fun t' m l =>
-                       exists v', inv v' t' m l /\ lt v' v)) /\
+                    (word.unsigned b <> 0%Z -> wp_cmd fs c t m l (fun t' m' l' =>
+                       exists v', inv v' t' m' l' /\ lt v' v)) /\
                     (word.unsigned b = 0%Z -> post t m l)) ->
      wp_cmd fs (cmd.while e c) t m l post.
   Proof.
@@ -759,6 +792,34 @@ Section WithParams.
     - specialize Hf with (1 := E). eapply exec.while_false; eassumption.
     - specialize Ht with (1 := E). eapply exec.while_true; eauto.
       cbv beta. intros * (v' & HInv & HLt). eauto.
+  Qed.
+
+  Lemma wp_dowhile0: forall fs e c t m l (post: _ -> _ -> _ -> Prop) {measure: Type}
+                          (lt: measure -> measure -> Prop)
+                          (inv: measure -> trace -> mem -> locals -> Prop)
+                          (v0: measure),
+      well_founded lt ->
+      inv v0 t m l ->
+      (forall v t m l,
+          inv v t m l ->
+          wp_cmd fs c t m l (fun t' m' l' =>
+            exists b, dexpr m' l' e b /\
+                      (word.unsigned b <> 0 -> exists v', inv v' t' m' l' /\ lt v' v) /\
+                      (word.unsigned b = 0 -> post t' m' l'))) ->
+     wp_cmd fs (cmd.dowhile c e) t m l post.
+  Proof.
+    intros * Hwf HInit Hbody.
+    revert t m l HInit. pattern v0. revert v0.
+    eapply (well_founded_ind Hwf). intros.
+    specialize Hbody with (1 := HInit).
+    eapply exec.dowhile.
+    eapply exec.weaken. 1: exact Hbody.
+    cbv beta. clear Hbody HInit. intros. fwd.
+    eapply invert_dexpr in H0p0.
+    eapply WeakestPreconditionProperties.expr_sound in H0p0. fwd.
+    eexists. ssplit. 1: eassumption.
+    - intro E. specialize (H0p1 E). fwd. eauto.
+    - intro E. specialize (H0p2 E). assumption.
   Qed.
 
   Definition loop_body_marker(P: Prop) := P.
@@ -878,6 +939,50 @@ Section WithParams.
       apply NE. apply word.unsigned_of_Z_0.
     - intro E. eapply exec.weaken. 2: eapply HPostImpl.
       rewrite word.eqb_eq in H1. 1: eapply H1.
+      eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
+  Qed.
+
+  Lemma wp_dowhile_tailrec_use_functionpost{measure: Type}{Ghost: Type}(v0: measure)(g0: Ghost)
+    (e: expr) (c: cmd) t0 (m0: mem) l0 fs rest
+    (pre: Ghost * measure * trace * mem * locals -> Prop) {lt}
+    {functionpost: Ghost -> measure -> trace -> mem -> locals -> Prop}
+    (Hwf: well_founded lt)
+    (* packaging generalized context at entry of loop determines pre: *)
+    (Hpre: pre (g0, v0, t0, m0, l0))
+    (Hbody: forall v g t m l,
+      pre (g, v, t, m, l) ->
+      loop_body_marker (wp_cmd fs c t m l (fun t' m' l' =>
+        exists b, dexpr_bool3 m' l' e b
+                    (exists v' g',
+                        pre (g', v', t', m', l') /\
+                        lt v' v /\
+                        (forall t'' m'' l'', functionpost g' v' t'' m'' l'' ->
+                                             functionpost g  v  t'' m'' l''))
+                    (wp_cmd fs rest t' m' l' (functionpost g v))
+                    True)))
+    : wp_cmd fs (cmd.seq (cmd.dowhile c e) rest) t0 m0 l0 (functionpost g0 v0).
+  Proof.
+    eapply wp_seq.
+    eapply wp_dowhile0 with (inv := fun v t m l =>
+      exists g, pre (g, v, t, m, l) /\
+          (forall t' m' l', functionpost g v t' m' l' -> functionpost g0 v0 t' m' l')).
+    1: exact Hwf.
+    { eexists. split. 1: eassumption. intros *. exact id. }
+    intros * (g & HPre & HPostImpl).
+    specialize Hbody with (1 := HPre).
+    unfold loop_body_marker in *.
+    eapply exec.weaken. 1: eassumption.
+    clear Hbody. cbv beta. intros. fwd. inversion H. subst. clear H.
+    unfold bool_expr_branches in *. apply proj1 in H2.
+    eexists. split. 1: eassumption. split.
+    - intro NE.
+      rewrite word.eqb_ne in H2.
+      { simpl in H2. fwd. eauto 10. }
+      intro C. subst v1.
+      apply NE. apply word.unsigned_of_Z_0.
+    - intro E.
+      rewrite word.eqb_eq in H2.
+      { eapply exec.weaken. 1: exact H2. exact HPostImpl. }
       eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
   Qed.
 

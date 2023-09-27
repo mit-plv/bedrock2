@@ -479,7 +479,9 @@ Ltac start_loop_body :=
   | |- exists b, dexpr_bool3 _ (map.of_list ?ksvs) _ b _ _ _ =>
       fix_local_names ksvs;
       eexists
-  | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
+  | |- loop_body_marker (exec _ _ _ _ (map.of_list ?ksvs) _) =>
+      fix_local_names ksvs
+  | |- _ => fail "assertion failure: hypothesis of loop lemma has unexpected shape"
   end.
 
 Ltac while cond measure0 :=

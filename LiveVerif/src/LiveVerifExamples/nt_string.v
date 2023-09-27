@@ -55,7 +55,26 @@ uintptr_t strcmp(uintptr_t p1, uintptr_t p2) /**#
                           * R }> m' #**/                                   /**.
 Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      .**/
 {                                                                          /**. .**/
-  uintptr_t diff = 0;                                                      /**.
+  uintptr_t c1 = 0;                                                        /**. .**/
+  uintptr_t c2 = 0;                                                        /**.
+
+  delete #(c1 = ??).
+  delete #(c2 = ??).
+  let h := constr:(#(len s1)) in loop invariant above h.
+  unfold ready.
+  lazymatch goal with
+  | |- exec ?fs ?body ?t ?m ?l ?P =>
+      lazymatch eval pattern s1, s2, p1, p2, R in P with
+      | ?f s1 s2 p1 p2 R =>
+          change (exec fs body t m l ((fun (g: list byte * list byte * word * word * (mem -> Prop)) (_: Z) =>
+          let '(s1, s2, p1, p2, R) := g in f s1 s2 p1 p2 R) (s1, s2, p1, p2, R) (len s1)))
+      end
+  end.
+  eapply wp_dowhile_tailrec_use_functionpost.
+  { eauto with wf_of_type. }
+  { (* Ltac log_packaged_context P ::= idtac P. *)
+    package_heapletwise_context. }
+  start_loop_body.
 
 Abort.
 
