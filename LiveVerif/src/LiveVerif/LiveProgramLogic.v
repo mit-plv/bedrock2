@@ -73,13 +73,13 @@ Proof.
 Qed.
 
 (* State container, defined in such a way that updating the state doesn't affect or grow
-   the proof term: *)
-
-Definition currently(contents: Type) := unit.
+   the proof term.
+   Lives in Prop because some tactics might clear all non-Props. *)
+Definition currently(contents: Type) := True.
 
 Ltac pose_state s :=
   let n := fresh "state" in
-  pose proof (tt : currently s) as n;
+  pose proof (I : currently s) as n;
   move n at top.
 
 Ltac get_state :=
@@ -442,15 +442,6 @@ Ltac LoopInvOrPreOrPost_above i :=
 Tactic Notation "loop" "invariant" "above" ident(i) := LoopInvOrPreOrPost_above i.
 Tactic Notation "loop" "pre" "above" ident(i) := LoopInvOrPreOrPost_above i.
 
-Ltac pair_destructuring_intros_step :=
-  lazymatch goal with
-  | |- forall (_: _ * _), _ =>
-      (* doesn't really do any intro, but does one step of splitting, leaving
-         both sides of the * up for further splitting *)
-      let x := fresh in intro x; case x; clear x
-  | |- forall _, _ => intro
-  end.
-
 Ltac fix_local_names ksvs :=
   lazymatch ksvs with
   | cons (?s, ?v) ?rest =>
@@ -463,6 +454,17 @@ Ltac fix_local_names ksvs :=
   | nil => idtac
   end.
 
+Ltac clear_non_Props :=
+  repeat match goal with
+    | x: ?T |- _ =>
+        lazymatch T with
+        | _ => lazymatch type of T with
+               | Prop => fail
+               | _ => clear x
+               end
+        end
+    end.
+
 Ltac start_loop_body :=
   repeat match goal with
     | H: sep _ _ ?M |- _ => clear M H
@@ -472,8 +474,16 @@ Ltac start_loop_body :=
      but we have to pose it here because the foralls are shared between
      loop body and after the loop *)
   (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
-  cbv beta;
-  repeat pair_destructuring_intros_step;
+  cbv beta zeta iota;
+  intros *;
+  clear_non_Props;
+  repeat lazymatch goal with
+  | |- (match ?p with (x, y) => _ end) -> _ =>
+      let n1 := fresh x in
+      let n2 := fresh y in
+      destruct p as [n1 n2]
+  end;
+  intros;
   unpackage_context;
   lazymatch goal with
   | |- exists b, dexpr_bool3 _ (map.of_list ?ksvs) _ b _ _ _ =>

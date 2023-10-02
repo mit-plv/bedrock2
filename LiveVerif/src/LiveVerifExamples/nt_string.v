@@ -79,32 +79,7 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
   { eauto with wf_of_type. }
   { (* Ltac log_packaged_context P ::= idtac P. *)
     package_heapletwise_context. }
-
-  repeat match goal with
-    | H: sep _ _ ?M |- _ => clear M H
-    end;
-  clear_until_LoopInvOrPreOrPost_marker;
-  (* Note: will also appear after loop, where we'll have to clear it,
-     but we have to pose it here because the foralls are shared between
-     loop body and after the loop *)
-  (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
-  cbv beta.
-
-  repeat pair_destructuring_intros_step. (* <-- TODO preserve names here *)
-
-
-  unpackage_context;
-  lazymatch goal with
-  | |- exists b, dexpr_bool3 _ (map.of_list ?ksvs) _ b _ _ _ =>
-      fix_local_names ksvs;
-      eexists
-  | |- loop_body_marker (exec _ _ _ _ (map.of_list ?ksvs) _) =>
-      fix_local_names ksvs
-  | |- _ => fail "assertion failure: hypothesis of loop lemma has unexpected shape"
-  end.
-
-  (* start_loop_body. *)
-
+  start_loop_body.
   steps.
 
 Abort.
