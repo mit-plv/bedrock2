@@ -75,24 +75,8 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
   steps.
 
   .**/
-  c1 = load8(p1);                                                          /**.
-  (* TODO: how to simplify (l[0] :: l[1:]) back into l?
-     Or more also/more generally: (l[i:] ++ l[:i]) back into l?
-
-     OR could say
-     * on operations that don't modify memory: use m'=m -> no merging back is needed
-     * on opeartions taht modify memory, typically the list will change, so no
-       opportunity for this kind of simplifications *)
-  .**/
-  c2 = load8(p2);                                                          /**.
-
-  replace ((s2 ++ [|0|])[0] :: (s2 ++ [|0|])[1:]) with (s2 ++ [|0|]) in *.
-  2: {
-    destruct s2.
-    - bottom_up_simpl_in_goal. reflexivity.
-    - try bottom_up_simpl_in_goal. (* TODO this should simplify but doesn't *) admit.
-  }
-  replace ((s1 ++ [|0|])[0] :: (s1 ++ [|0|])[1:]) with (s1 ++ [|0|]) in * by admit.
+  c1 = deref8(p1);                                                         /**. .**/
+  c2 = deref8(p2);                                                         /**.
 
   unfold ready.
 

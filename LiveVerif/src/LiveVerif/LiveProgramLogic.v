@@ -684,6 +684,8 @@ Ltac eval_dexpr1_step e :=
   | expr.op _ _ _ => eapply dexpr1_binop_unf
   | expr.load access_size.word _ => eapply dexpr1_load_uintptr
   | expr.load _ _ => eapply dexpr1_load_uint
+  | LiveExpr.deref access_size.word _ => eapply dexpr1_deref_uintptr
+  | LiveExpr.deref _ _ => eapply dexpr1_deref_uint
   end.
 
 Lemma eq_if_same{A: Type}(c: bool)(lhs rhs: A)(H: lhs = if c then rhs else rhs): lhs = rhs.

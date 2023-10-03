@@ -15,6 +15,7 @@ Require bedrock2.Loops.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.enable_frame_trick.
+Require Import LiveVerif.LiveExpr.
 
 (* TODO move and avoid duplication in generated code *)
 Module Import Syntax.
@@ -225,6 +226,26 @@ Section WithParams.
       dexpr1 m l e addr
         (sep (uint (access_size_to_nbits sz) v addr) (fun _ => True) m /\ P) ->
       dexpr1 m l (expr.load sz e) (word.of_Z v) P.
+  Proof.
+    intros. inversion H; clear H. fwd. constructor. 2: assumption.
+    eapply dexpr_load_uint; eassumption.
+  Qed.
+
+  Lemma dexpr1_deref_uintptr: forall m l e addr v (P: Prop),
+      dexpr1 m l e addr True ->
+      sep (uintptr v addr) (fun _ => True) m ->
+      P ->
+      dexpr1 m l (deref access_size.word e) v P.
+  Proof.
+    intros. inversion H; clear H. fwd. constructor. 2: assumption.
+    eapply dexpr_load_uintptr; eassumption.
+  Qed.
+
+  Lemma dexpr1_deref_uint: forall m l e addr sz v (P: Prop),
+      dexpr1 m l e addr True ->
+      sep (uint (access_size_to_nbits sz) v addr) (fun _ => True) m ->
+      P ->
+      dexpr1 m l (deref sz e) (word.of_Z v) P.
   Proof.
     intros. inversion H; clear H. fwd. constructor. 2: assumption.
     eapply dexpr_load_uint; eassumption.

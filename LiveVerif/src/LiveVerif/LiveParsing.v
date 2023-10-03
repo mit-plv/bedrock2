@@ -2,6 +2,7 @@ Require Import Coq.setoid_ring.InitialRing. (* for isZcst *)
 Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import bedrock2.Syntax.
+Require Import LiveVerif.LiveExpr.
 Require Import LiveVerif.LiveSnippet.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.reference_to_string.
@@ -130,7 +131,16 @@ Notation "load16( a )" := (expr.load access_size.two a)
   (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
 Notation "load32( a )" := (expr.load access_size.four a)
   (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
-Notation  "load( a )" := (expr.load access_size.word a)
+Notation "load( a )" := (expr.load access_size.word a)
+  (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
+
+Notation "deref8( a )" := (deref access_size.one a)
+  (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
+Notation "deref16( a )" := (deref access_size.two a)
+  (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
+Notation "deref32( a )" := (deref access_size.four a)
+  (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
+Notation "deref( a )" := (deref access_size.word a)
   (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
 
 Notation NULL := 0.
