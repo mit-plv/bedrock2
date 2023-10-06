@@ -245,21 +245,16 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
       found = 1;                                                           /**. .**/
     }                                                                      /*?.
 
-step. step. step. step. step. step. step. step. step. step. step.
-step. step.
-step. step. step. step.
+step. step. step. step. step. step. step. step. step. step.
+(*   ?Goal3 = Node skL skR : can't use reflexivity because that wouldn't decrease measure *)
+admit.
+step. step. step. step. 
 
-step_hook.
-step_hook.
-
-step. step. step. step. step. step. step.
-step.
+step. step. step. step. step. step. step. step. step. step. step. step.
 2: {
   step. step. step. step.
 
 step.
-
-instantiate (6 := skL).
 
  step.
  step.

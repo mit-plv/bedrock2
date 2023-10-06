@@ -193,7 +193,8 @@ Ltac add_equalities_to_post Post :=
                                trace, so only keep that *)
       | _ => add_equality_to_post T Post (* no assertion about trace, so let's add a default
                                             assertion saying it doesn't change *)
-      end
+      end;
+      add_equality_to_post Measure Post
   (* loop invariant *)
   | |- ?E ?Measure ?T ?M ?L =>
       add_equality_to_post L Post;
