@@ -500,6 +500,8 @@ Ltac while cond measure0 :=
   | eauto with wf_of_type
   | start_loop_body ].
 
+Tactic Notation "new_ghosts" open_constr(g) := eexists g.
+
 Ltac is_local_var name :=
   lazymatch goal with
   | |- wp_cmd _ _ _ _ (map.of_list ?l) _ =>
@@ -988,6 +990,7 @@ Ltac one_step :=
   | |- after_if _ _ _ _ _ _ => fail
   | |- needs_opening_else_and_lbrace _ => fail
   | |- expect_1expr_return _ _ _ _ => fail
+  | |- provide_new_ghosts _ => fail
   | _: tactic_error _ |- _ => fail
   | |- _ => step_silent
   end.

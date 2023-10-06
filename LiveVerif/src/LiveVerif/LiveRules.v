@@ -872,6 +872,10 @@ Section WithParams.
       eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
   Qed.
 
+  (* alias of "exists" to mark ghost vars of tailrecursive loop body calls that need
+     to be provided (at least partially) manually *)
+  Definition provide_new_ghosts{Ghosts: Type}: (Ghosts -> Prop) -> Prop := @ex Ghosts.
+
   Lemma wp_while_tailrec {measure: Type} {Ghost: Type} (v0: measure) (g0: Ghost)
     (e: expr) (c: cmd) t0 (m0: mem) l0 fs rest
     (pre post: Ghost * measure * trace * mem * locals -> Prop) {lt}
@@ -889,14 +893,15 @@ Section WithParams.
                      measure) determines post: *)
                   (post (g, v, t, m, l))
                   (loop_body_marker (bool_expr_branches b (wp_cmd fs c t m l
-                      (fun t' m' l' => exists v' g',
+                      (fun t' m' l' => exists v', provide_new_ghosts (fun g' =>
                            pre (g', v', t', m', l') /\
                            lt v' v /\
                            (forall t'' m'' l'', post (g', v', t'', m'', l'') ->
-                                                post (g , v , t'', m'', l'')))) True True)))
+                                                post (g , v , t'', m'', l''))))) True True)))
     (Hrest: forall t m l, post (g0, v0, t, m, l) -> wp_cmd fs rest t m l finalpost)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 finalpost.
   Proof.
+    unfold provide_new_ghosts in *.
     eapply wp_seq. eapply WeakestPreconditionProperties.sound_cmd.
     eapply Loops.tailrec_localsmap_1ghost with
       (P := fun v g t m l => pre (g, v, t, m, l))
@@ -931,15 +936,16 @@ Section WithParams.
       pre (g, v, t, m, l) ->
       exists b, dexpr_bool3 m l e b
                   (loop_body_marker (wp_cmd fs c t m l
-                      (fun t' m' l' => exists v' g',
+                      (fun t' m' l' => exists v', provide_new_ghosts (fun g' =>
                            pre (g', v', t', m', l') /\
                            lt v' v /\
                            (forall t'' m'' l'', functionpost g' v' t'' m'' l'' ->
-                                                functionpost g  v  t'' m'' l''))))
+                                                functionpost g  v  t'' m'' l'')))))
                   (wp_cmd fs rest t m l (functionpost g v))
                   True)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 (functionpost g0 v0).
   Proof.
+    unfold provide_new_ghosts in *.
     eapply wp_seq.
     eapply wp_while0 with (inv := fun v t m l =>
       exists g, pre (g, v, t, m, l) /\
@@ -974,15 +980,16 @@ Section WithParams.
       pre (g, v, t, m, l) ->
       loop_body_marker (wp_cmd fs c t m l (fun t' m' l' =>
         exists b, dexpr_bool3 m' l' e b
-                    (exists v' g',
+                    (exists v', provide_new_ghosts (fun g' =>
                         pre (g', v', t', m', l') /\
                         lt v' v /\
                         (forall t'' m'' l'', functionpost g' v' t'' m'' l'' ->
-                                             functionpost g  v  t'' m'' l''))
+                                             functionpost g  v  t'' m'' l'')))
                     (wp_cmd fs rest t' m' l' (functionpost g v))
                     True)))
     : wp_cmd fs (cmd.seq (cmd.dowhile c e) rest) t0 m0 l0 (functionpost g0 v0).
   Proof.
+    unfold provide_new_ghosts in *.
     eapply wp_seq.
     eapply wp_dowhile0 with (inv := fun v t m l =>
       exists g, pre (g, v, t, m, l) /\
@@ -1059,16 +1066,17 @@ Section WithParams.
                       (fun t' m' l' => exists b',
                          (* evaluating condition e again!! *)
                          dexpr_bool3 m' l' e b'
-                           (exists v' g',
+                           (exists v', provide_new_ghosts (fun g' =>
                                pre (g', v', t', m', l') /\
                                lt v' v /\
                                (forall t'' m'' l'', post (g', v', t'', m'', l'') ->
-                                                    post (g , v , t'', m'', l'')))
+                                                    post (g , v , t'', m'', l''))))
                            (post (g, v, t', m', l'))
                            True)) True True)))
     (Hrest: forall t m l, post (g0, v0, t, m, l) -> wp_cmd fs rest t m l finalpost)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 finalpost.
   Proof.
+    unfold provide_new_ghosts in *.
     pose proof Hbody as Hinit.
     specialize Hinit with (1 := Hpre). destruct Hinit as (b & Hinit).
     inversion Hinit. subst. clear Hinit. unfold bool_expr_branches in H1.

@@ -243,12 +243,12 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
     uintptr_t x = load32(a + 4);                                           /**. .**/
     if (x == v) /* split */ {                                              /**. .**/
       found = 1;                                                           /**. .**/
-    }                                                                      /*?.
+    } /**. new_ghosts(_, _).
 
-step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step.
 (*   ?Goal3 = Node skL skR : can't use reflexivity because that wouldn't decrease measure *)
 admit.
-step. step. step. step. 
+step. step. step. step.
 
 step. step. step. step. step. step. step. step. step. step. step. step.
 2: {
@@ -353,7 +353,7 @@ step. step.
 
 step. (* change: applies invert_bst'_nonnull in H3, earlier than before! *)
 
-step. step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step. new_ghosts(_, _, _). step. step. step.
 step. step. step. step. step. step. step. step. step. step. step. step. step. step.
 step. step. step. step.
 

@@ -205,14 +205,12 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
       .**/ store(p, val + 1); /**.
       .**/ p = load(p + 4); /**.
 
-      .**/ } /*?.
-    eexists _, (_, _, _).
+      .**/ } /**. new_ghosts(l', _, _).
     rewrite ->?and_assoc. (* to make sure frame evar appears in Rest of canceling, so
                              that canceling_step doesn't instantiate frame with anymem *)
 
     (* symbolic state at end of loop body implies smaller loop precondition: *)
-    step. step. step. step. step.
-    instantiate (2 := l').
+    step. step. step. step.
     assert (and_flip: forall A B C: Prop, B /\ A /\ C -> A /\ B /\ C). {
       clear. intuition idtac.
     }
@@ -223,7 +221,7 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
     eapply and_flip. split.
     { (* TODO this is an example where seeing through equalities matters: *)
       subst v l1. erewrite push_down_len_cons. 2: reflexivity. step. }
-    step. step. step.
+    step. step. step. step. step.
 
     (* small post implies bigger post: *)
     step. step.

@@ -53,24 +53,22 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
   delete #(c1 = ??).
   delete #(c2 = ??).
   loop invariant above c1.
+  move p1 before c1. move p2 before c1.
   unfold ready.
   (* pattern out ghost vars from functionpost to get post of do-while lemma: *)
   lazymatch goal with
   | |- exec ?fs ?body ?t ?m ?l ?P =>
-      lazymatch eval pattern s1, s2, p1, p2, R, (len s1) in P with
-      | ?f s1 s2 p1 p2 R (len s1) =>
-          change (exec fs body t m l ((fun (g: list Z * list Z * word * word * (mem -> Prop)) (v: Z) =>
-     (*let '(s1, s2, p1, p2, R) := g in f s1 s2 p1 p2 R) (s1, s2, p1, p2, R) (len s1)))*)
+      lazymatch eval pattern s1, s2, R, (len s1) in P with
+      | ?f s1 s2 R (len s1) =>
+          change (exec fs body t m l ((fun (g: list Z * list Z * (mem -> Prop)) (v: Z) =>
           let (g, R) := g in
-          let (g, p2) := g in
-          let (g, p1) := g in
           let (s1, s2) := g in
-          f s1 s2 p1 p2 R v) (s1, s2, p1, p2, R) (len s1)))
+          f s1 s2 R v) (s1, s2, R) (len s1)))
       end
   end.
   eapply wp_dowhile_tailrec_use_functionpost.
   { eauto with wf_of_type. }
-  { (* Ltac log_packaged_context P ::= idtac P. *)
+  {  Ltac log_packaged_context P ::= idtac P.
     package_heapletwise_context. }
   start_loop_body.
   steps.
@@ -91,20 +89,10 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
   end.
   step. step.
 
-  .**/
-  }                                                                        /*?.
+  .**/ } /**. new_ghosts(s1[1:], s2[1:], _).
 
-step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step. step. step. step. step.
-
-(* how to infer new decreased loop measure as uniquely as possible?
-   - from sep log cancellation?
-     but need to give length of array to be cancelled, which depends on measure
-   - "just one smaller": but in tree set?
-   - somewhere there's an equation saying measure=?
---> always add measure= equation?
-step. step. step. step. step. step. step. step. step. step.
-*)
+step. step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+(* subrange proof fails *)
 
 Abort.
 
