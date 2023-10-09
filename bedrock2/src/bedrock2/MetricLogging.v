@@ -29,6 +29,8 @@ Section Riscv.
   Definition subMetricLoads n log := withLoads (loads log - n) log.
   Definition subMetricJumps n log := withJumps (jumps log - n) log.
 
+  Definition metricAdd(metric: MetricLog -> Z) finalM initialM : Z :=
+    Z.add (metric finalM) (metric initialM).
   Definition metricSub(metric: MetricLog -> Z) finalM initialM : Z :=
     Z.sub (metric finalM) (metric initialM).
 
@@ -40,7 +42,15 @@ Section Riscv.
         (op loads initialM finalM)
         (op jumps initialM finalM).
 
+  Definition metricsAdd := metricsOp metricAdd.
   Definition metricsSub := metricsOp metricSub.
+
+  Definition metricsMul (n : Z) (m : MetricLog) :=
+    mkMetricLog
+      (n * instructions m)
+      (n * stores m)
+      (n * loads m)
+      (n * jumps m).
 
   Definition metricLeq(metric: MetricLog -> Z) m1 m2: Prop :=
     (metric m1) <= (metric m2).
@@ -51,20 +61,17 @@ Section Riscv.
     metricLeq loads m1 m2 /\
     metricLeq jumps m1 m2.
 
-  Definition metricMax(metric: MetricLog -> Z) m1 m2: Z :=
-    Z.max (metric m1) (metric m2).
-
-  Definition metricsMax := metricsOp metricMax.
 End Riscv.
 
-Declare Scope MetricH_scope.
 Bind Scope MetricH_scope with MetricLog.
 Delimit Scope MetricH_scope with metricsH.
 
 Infix "<=" := metricsLeq : MetricH_scope.
+Infix "+" := metricsAdd : MetricH_scope.
 Infix "-" := metricsSub : MetricH_scope.
+Infix "*" := metricsMul : MetricH_scope.
 
-#[export] Hint Unfold
+#[global] Hint Unfold
      withInstructions
      withLoads
      withStores
@@ -78,8 +85,11 @@ Infix "-" := metricsSub : MetricH_scope.
      subMetricStores
      subMetricJumps
      metricsOp
+     metricAdd
+     metricsAdd
      metricSub
      metricsSub
+     metricsMul
      metricLeq
      metricsLeq
   : unf_metric_log.
@@ -107,3 +117,48 @@ Ltac solve_MetricLog :=
   repeat unfold_MetricLog;
   repeat simpl_MetricLog;
   blia.
+
+Module MetricArith.
+
+  Open Scope MetricH_scope.
+
+  Lemma mul_sub_distr_r : forall n m p, (n - m) * p = n * p - m * p.
+  Proof. intros. unfold_MetricLog. f_equal; apply Z.mul_sub_distr_r. Qed.
+
+  Lemma add_sub_swap : forall n m p, n + m - p = n - p + m.
+  Proof. intros. unfold_MetricLog. f_equal; apply Z.add_sub_swap. Qed.
+
+  Lemma le_add_le_sub_r : forall n m p, n + p <= m <-> n <= m - p.
+  Proof. solve_MetricLog. Qed.
+
+  Lemma le_trans : forall n m p, n <= m -> m <= p -> n <= p.
+  Proof. solve_MetricLog. Qed.
+
+End MetricArith.
+
+Lemma applyAddInstructions n a b c d : addMetricInstructions n {| instructions := a; stores := b; loads := c; jumps := d |} = {| instructions := a+n; stores := b; loads := c; jumps := d |}. Proof. auto. Qed.
+Lemma applyAddStores n a b c d : addMetricStores n {| instructions := a; stores := b; loads := c; jumps := d |} = {| instructions := a; stores := b+n; loads := c; jumps := d |}. Proof. auto. Qed.
+Lemma applyAddLoads n a b c d : addMetricLoads n {| instructions := a; stores := b; loads := c; jumps := d |} = {| instructions := a; stores := b; loads := c+n; jumps := d |}. Proof. auto. Qed.
+Lemma applyAddJumps n a b c d : addMetricJumps n {| instructions := a; stores := b; loads := c; jumps := d |} = {| instructions := a; stores := b; loads := c; jumps := d+n |}. Proof. auto. Qed.
+
+Ltac applyAddMetricsGoal := (
+  repeat (
+    try rewrite applyAddInstructions;
+    try rewrite applyAddStores;
+    try rewrite applyAddLoads;
+    try rewrite applyAddJumps
+  );
+  repeat rewrite <- Z.add_assoc;
+  cbn [Z.add Pos.add Pos.succ]
+                         ).
+
+Ltac applyAddMetrics H := (
+  repeat (
+    try rewrite applyAddInstructions in H;
+    try rewrite applyAddStores in H;
+    try rewrite applyAddLoads in H;
+    try rewrite applyAddJumps in H
+  );
+  repeat rewrite <- Z.add_assoc in H;
+  cbn [Z.add Pos.add Pos.succ] in H
+).
