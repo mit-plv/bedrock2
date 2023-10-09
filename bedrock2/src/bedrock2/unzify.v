@@ -131,6 +131,22 @@ Section ListLen.
   Proof.
     intros. subst. unfold List.repeatz. rewrite List.repeat_length. lia.
   Qed.
+
+  Lemma list_len_from_cases: forall [i i': Z] [l: list A] [ll: Z],
+      i = i' ->
+      Z.of_nat (length l) = ll ->
+      i' < 0        /\ Z.of_nat (length (List.from i l)) = ll      \/
+      0 <= i' <= ll /\ Z.of_nat (length (List.from i l)) = ll - i' \/
+      ll <= i'      /\ Z.of_nat (length (List.from i l)) = 0.
+  Proof. intros. unfold List.from. rewrite List.length_skipn. lia. Qed.
+
+  Lemma list_len_upto_cases: forall [i i': Z] [l: list A] [ll: Z],
+      i = i' ->
+      Z.of_nat (length l) = ll ->
+      i' < 0        /\ Z.of_nat (length (List.upto i l)) = 0  \/
+      0 <= i' <= ll /\ Z.of_nat (length (List.upto i l)) = i' \/
+      ll <= i'      /\ Z.of_nat (length (List.upto i l)) = ll.
+  Proof. intros. unfold List.upto. rewrite List.firstn_length. lia. Qed.
 End ListLen.
 
 Section ZOps.
@@ -492,6 +508,18 @@ with zify_len wok l :=
               let pa0 := zify_term wok a0 in
               let n := fresh "__Zcases_0" in
               let __ := unique_pose_proof_name n (list_len_repeatz_cases a1 pa0) in
+              zify_len_nop l
+          | @List.from _ =>
+              let pi := zify_term wok a1 in
+              let pl := zify_len wok a0 in
+              let n := fresh "__Zcases_0" in
+              let __ := unique_pose_proof_name n (list_len_from_cases pi pl) in
+              zify_len_nop l
+          | @List.upto _ =>
+              let pi := zify_term wok a1 in
+              let pl := zify_len wok a0 in
+              let n := fresh "__Zcases_0" in
+              let __ := unique_pose_proof_name n (list_len_upto_cases pi pl) in
               zify_len_nop l
           | _ => zify_len_nop l
           end
@@ -926,6 +954,16 @@ Section Tests.
       /[in0] <> /[in2] ->
       /[in1] <> /[in2] ->
       (negb (word.eqb /[in0] /[in2]) && negb (word.eqb /[in1] /[in2]))%bool = true.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
+
+  Goal forall (A: Type) (s1: list A),
+      (Z.of_nat (List.length (List.from 1 s1)) + 1) * 1 <=
+      (Z.of_nat (List.length s1) + 1) * 1.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
+
+  Goal forall (A: Type) (i a: Z) (s1: list A),
+      Z.of_nat (List.length (List.upto i s1)) + a <=
+      Z.of_nat (List.length s1) + a.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   (* If we use equalities on bool for opaque conditions, lia doesn't recognize that

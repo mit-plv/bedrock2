@@ -91,8 +91,29 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
 
   .**/ } /**. new_ghosts(s1[1:], s2[1:], _).
 
-step. step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-(* subrange proof fails *)
+  assert (0 < len s1). {
+    assert (len s1 <> 0). {
+      intro C. destruct s1.
+      - bottom_up_simpl_in_hyps. congruence.
+      - discriminate C.
+    }
+    lia.
+  }
+
+  assert (0 < len s2). {
+    assert (len s2 <> 0). {
+      intro C. destruct s2.
+      - bottom_up_simpl_in_hyps. congruence.
+      - discriminate C.
+    }
+    lia.
+  }
+
+step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step.
+
+(*  ~ List.In 0 s1[1:] *)
 
 Abort.
 
