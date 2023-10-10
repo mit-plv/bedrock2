@@ -118,6 +118,15 @@ End EmbedNatInZ.
 
 Section ListLen.
   Context [A: Type].
+
+  Lemma list_len_nil: Z.of_nat (length (@nil A)) = 0.
+  Proof. reflexivity. Qed.
+
+  Lemma list_len_cons: forall (x: A) [l: list A] [ll: Z],
+      Z.of_nat (length l) = ll ->
+      Z.of_nat (length (cons x l)) = 1 + ll.
+  Proof. intros. subst. rewrite List.length_cons. lia. Qed.
+
   Lemma list_len_app_eq: forall [x y: list A] [lx ly: Z],
       Z.of_nat (length x) = lx ->
       Z.of_nat (length y) = ly ->
@@ -148,6 +157,10 @@ Section ListLen.
       ll <= i'      /\ Z.of_nat (length (List.upto i l)) = ll.
   Proof. intros. unfold List.upto. rewrite List.firstn_length. lia. Qed.
 End ListLen.
+
+(* Section does not reject trailing non-maximally-inserted implicit argument,
+   while it would be rejected outside section, so we fix the Arguments manually: *)
+Arguments list_len_nil : clear implicits.
 
 Section ZOps.
   Lemma Z_min_spec_eq: forall [x y x' y': Z],
@@ -504,6 +517,9 @@ with zify_len wok l :=
               let pa0 := zify_len wok a0 in
               let pa1 := zify_len wok a1 in
               constr:(list_len_app_eq pa1 pa0)
+          | @List.cons _ =>
+              let pl := zify_len wok a0 in
+              constr:(list_len_cons a1 pl)
           | @List.repeatz _ =>
               let pa0 := zify_term wok a0 in
               let n := fresh "__Zcases_0" in
@@ -523,6 +539,8 @@ with zify_len wok l :=
               zify_len_nop l
           | _ => zify_len_nop l
           end
+      | @List.nil => constr:(list_len_nil a0)
+
       | _ => zify_len_nop l
       end
   | _ => zify_len_nop l
@@ -964,6 +982,12 @@ Section Tests.
   Goal forall (A: Type) (i a: Z) (s1: list A),
       Z.of_nat (List.length (List.upto i s1)) + a <=
       Z.of_nat (List.length s1) + a.
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
+
+  Goal forall (A: Type) (x y z: A) (l: list A),
+      Z.of_nat (List.length (l ++ l)) + Z.of_nat (List.length (x :: y :: l)) +
+        Z.of_nat (List.length (x :: y :: z :: nil)) =
+      3 * Z.of_nat (List.length l) + 5.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   (* If we use equalities on bool for opaque conditions, lia doesn't recognize that

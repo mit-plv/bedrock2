@@ -439,18 +439,6 @@ Module List.
   Section WithA.
     Context [A: Type].
 
-    (* TODO begin move *)
-    Lemma upto_app: forall (i: Z) (l1 l2 : list A),
-        List.upto i (l1 ++ l2) = List.upto i l1 ++ List.upto (i - len l1) l2.
-    Proof. unfold List.upto. intros. rewrite List.firstn_app. f_equal. f_equal. lia. Qed.
-
-    (* Note: the symmetric version of this lemma, ie
-         forall (i j: Z) (l: list A), i <= j -> l[:i][:j] = l[:i]
-       is a special case of List.upto_pastend *)
-    Lemma upto_upto_subsume: forall (i j: Z) (l: list A), j <= i -> l[:i][:j] = l[:j].
-    Proof. unfold List.upto. intros. rewrite List.firstn_firstn. f_equal. lia. Qed.
-    (* TODO end move *)
-
     (* Same as List.concat, but does not result in a trailing `++ nil` when unfolded *)
     Fixpoint apps(xss: list (list A)): list A :=
       match xss with
@@ -511,7 +499,7 @@ Module List.
       - rewrite 2List.upto_beginning; trivial.
       - destruct xss. 1: reflexivity.
         simpl in *.
-        rewrite 2upto_app. f_equal. apply IHn. lia.
+        rewrite 2List.upto_app. f_equal. apply IHn. lia.
     Qed.
 
     Lemma upto_apps: forall n i (xs: list A) (xss: list (list A))
@@ -689,12 +677,8 @@ Ltac2 local_zlist_simpl(e: constr): res :=
           res_rewrite '(List.reassoc_app $xss $yss $xs $ys $zs eq_refl eq_refl eq_refl)
       | _ => anomaly "List.reify_apps returned result of unexpected shape %t" xss
       end
-  (* TODO Doesn't do anything for ((xs ++ ys) ++ zs)[i:] if i points into ys,
-     and the subtraction created by from_app_discard_l should be simplified
-     immediately rather than only in the next outermost iteration *)
-  | List.from ?i (List.app ?l1 ?l2) =>
-      res_rewrite '(List.from_app_discard_l $l1 $l2 $i
-                            ltac2:(bottom_up_simpl_sidecond_hook ()))
+  (* TODO this should be a recursive push_down_from so that recursively created
+     occurrences of List.from are simplified/pushed down further *)
   | List.from ?i (List.upto ?j ?l) =>
       let r_diff := ring_simplify_res_or_nothing_to_simpl '(Z.sub $j $i) in
       let diff := new_term r_diff in
@@ -719,6 +703,18 @@ Ltac2 local_zlist_simpl(e: constr): res :=
           | _ => res_rewrite '(List.from_pastend $l $i
                                        ltac2:(bottom_up_simpl_sidecond_hook ()))
         end
+  (* TODO Doesn't do anything for ((xs ++ ys) ++ zs)[i:] if i points into ys,
+     and the subtraction created by from_app_discard_l should be simplified
+     immediately rather than only in the next outermost iteration *)
+  | List.from ?i (List.app ?l1 ?l2) =>
+      let ll1 := '(Z.of_nat (List.length $l1)) in
+      first_val
+        [ let sidecond := '(ltac2:(bottom_up_simpl_sidecond_hook ()): $ll1 = $i) in
+          res_rewrite '(List.from_app_eq_r $l1 $l2 $i $sidecond)
+        | let sidecond := '(ltac2:(bottom_up_simpl_sidecond_hook ()): $i <= $ll1) in
+          res_rewrite '(List.from_app_pushdown_l $l1 $l2 $i $sidecond)
+        | let sidecond := '(ltac2:(bottom_up_simpl_sidecond_hook ()): $ll1 <= $i) in
+          res_rewrite '(List.from_app_discard_l $l1 $l2 $i $sidecond) ]
   end.
 
 Ltac2 is_unary_Z_op(op: constr): bool :=
@@ -1570,7 +1566,20 @@ Section Tests.
   Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Ltac2 Set bottom_up_simpl_sidecond_hook := fun _ =>
-    rewrite ?List.len_app, ?List.len_upto, ?List.len_from by lia; lia (*debug_sidecond*).
+    rewrite ?List.len_app, ?List.len_upto, ?List.len_from,
+            ?List.length_cons, ?List.length_nil by lia;
+    lia.
+
+  Goal forall (s2: list Z),
+      0 < len s2 ->
+      (s2 ++ [|0|])[1 :][:len s2] = s2[1:] ++ [|0|].
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  Goal forall (s2: list Z) (p2'' p2: Z),
+      p2 = p2'' + 1 ->
+      0 < len s2 ->
+      (s2 ++ [|0|])[p2 - p2'' :][:len s2] = s2[1:] ++ [|0|].
+  Proof. intros. bottom_up_simpl_in_goal (). f_equal. f_equal. lia. Succeed Qed. Abort.
 
   Goal forall (A: Type) (xs1 xs2 xs3 xs4 xs5 xs6: list A) i j k s,
       0 <= j <= len xs3 ->

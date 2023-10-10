@@ -5,6 +5,26 @@ Require Import LiveVerifExamples.onesize_malloc.
 (* TODO move *)
 
 Module List.
+  Section WithA.
+    Context [A: Type].
+
+    Lemma notin_from: forall (a: A) (i: Z) (l: list A),
+        ~ List.In a l ->
+        ~ List.In a (List.from i l).
+    Proof.
+      unfold List.from. intros. rewrite <- (List.firstn_skipn (Z.to_nat i) l) in H.
+      intro C. apply H. apply List.in_or_app. right. assumption.
+    Qed.
+
+    Lemma notin_upto: forall (a: A) (i: Z) (l: list A),
+        ~ List.In a l ->
+        ~ List.In a (List.upto i l).
+    Proof.
+      unfold List.from. intros. rewrite <- (List.firstn_skipn (Z.to_nat i) l) in H.
+      intro C. apply H. apply List.in_or_app. left. assumption.
+    Qed.
+  End WithA.
+
   (* alternative: Coq.Structures.OrdersEx.String_as_OT.compare, but that's on strings,
      not on list of byte *)
   Section Lexicographic.
@@ -26,6 +46,8 @@ Module List.
 End List.
 
 Load LiveVerif.
+
+Local Ltac step_hook ::= solve [auto using List.notin_from].
 
 Definition nt_str(s: list Z)(a: word): mem -> Prop :=
   sep (array (uint 8) (len s + 1) (s ++ [| 0 |]) a)
@@ -111,9 +133,20 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
 
 step. step. step. step. step. step. step. step. step. step. step. step. step. step.
 step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step. step.
 
-(*  ~ List.In 0 s1[1:] *)
+intros t'' m'' l'' EE. inversion EE. clear EE. eapply mk_expect_1expr_return.
+1: eassumption.
+
+step. step. step. step. step. step. step. step. step. step. step. step. step.
+step. step. step.
+{
+  destruct s1. 1: discriminate.
+  destruct s2. 1: discriminate.
+  cbn.
+  bottom_up_simpl_in_hyps.
+
+(*  Def0 : c1 = /[((z :: s1) ++ [|0|])[0]] *)
 
 Abort.
 
