@@ -42,10 +42,26 @@ Module List.
           | Eq => compare a_tail b_tail
           end
       end.
+
+    Import ZList.List.ZIndexNotations.
+    Local Open Scope zlist_scope.
+
+    Lemma compare_cons_cons_same{inh: inhabited T}: forall (l1 l2: list T),
+        0 < len l1 ->
+        0 < len l2 ->
+        compare_elem l1[0] l2[0] = Eq ->
+        compare l1 l2 = compare l1[1:] l2[1:].
+    Proof.
+      intros. destruct l1. 1: discriminate. destruct l2. 1: discriminate.
+      cbn in H1. simpl (compare (_ :: _) _). rewrite H1. reflexivity.
+    Qed.
+
   End Lexicographic.
 End List.
 
 Load LiveVerif.
+
+Axiom TODO: False.
 
 Local Ltac step_hook ::= solve [auto using List.notin_from].
 
@@ -75,17 +91,19 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
   delete #(c1 = ??).
   delete #(c2 = ??).
   loop invariant above c1.
-  move p1 before c1. move p2 before c1.
   unfold ready.
   (* pattern out ghost vars from functionpost to get post of do-while lemma: *)
   lazymatch goal with
   | |- exec ?fs ?body ?t ?m ?l ?P =>
-      lazymatch eval pattern s1, s2, R, (len s1) in P with
-      | ?f s1 s2 R (len s1) =>
-          change (exec fs body t m l ((fun (g: list Z * list Z * (mem -> Prop)) (v: Z) =>
+      lazymatch eval pattern s1, s2, p1, p2, R, (len s1) in P with
+      | ?f s1 s2 p1 p2 R (len s1) =>
+          change (exec fs body t m l ((fun (g: list Z * list Z * word * word * (mem -> Prop)) (v: Z) =>
           let (g, R) := g in
+          let (g, p2_pre) := g in
+          let (g, p1_pre) := g in
           let (s1, s2) := g in
-          f s1 s2 R v) (s1, s2, R) (len s1)))
+          ltac:(let r := eval cbv beta in (f s1 s2 p1_pre p2_pre R v) in exact r))
+                (s1, s2, p1, p2, R) (len s1)))
       end
   end.
   eapply wp_dowhile_tailrec_use_functionpost.
@@ -111,7 +129,7 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
   end.
   step. step.
 
-  .**/ } /**. new_ghosts(s1[1:], s2[1:], _).
+  .**/ } /**. new_ghosts(s1[1:], s2[1:], _, _, _).
 
   assert (0 < len s1). {
     assert (len s1 <> 0). {
@@ -133,21 +151,32 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
 
 step. step. step. step. step. step. step. step. step. step. step. step. step. step.
 step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step.
+
+clear_heapletwise_hyps.
+clear_mem_split_eqs.
+clear_heaplets.
 
 intros t'' m'' l'' EE. inversion EE. clear EE. eapply mk_expect_1expr_return.
 1: eassumption.
 
 step. step. step. step. step. step. step. step. step. step. step. step. step.
 step. step. step.
+
 {
-  destruct s1. 1: discriminate.
-  destruct s2. 1: discriminate.
-  cbn.
-  bottom_up_simpl_in_hyps.
+  erewrite List.compare_cons_cons_same; try assumption.
+  eapply Z.compare_eq_iff.
+  (* TODO push down List.get and extract bounds of s1[0] from uint8 array
 
-(*  Def0 : c1 = /[((z :: s1) ++ [|0|])[0]] *)
+  Def0 : c1 = /[(s1 ++ [|0|])[0]]
+  H6 : 0 < len s1
+   *)
+  case TODO.
+}
 
+step. step. step.
+
+(* TODO right level of variation/flexibility for p1/p2 *)
 Abort.
 
 End LiveVerif. Comments .**/ //.
