@@ -539,6 +539,17 @@ Section HeapletwiseHyps.
       eapply H0. eapply SeparationLogic.Tree.flatten_iff1_to_sep. assumption.
   Qed.
 
+  Lemma canceling_sep_step_in_hyp: forall mAll om P1 P2 Ps Q,
+      canceling_in_hyp mAll om (cons (sep P1 P2) Ps) Q ->
+      canceling_in_hyp mAll om (cons P1 (cons P2 Ps)) Q.
+  Proof.
+    unfold canceling_in_hyp. intros. fwd. eexists. split. 1: eassumption.
+    intros * D H. eapply Hp1. 1: eassumption.
+    eapply seps'_iff1_seps. simpl.
+    eapply seps'_iff1_seps in H. simpl in H.
+    eapply sep_assoc. exact H.
+  Qed.
+
   Lemma canceling_step_in_hyp: forall (P: mem -> Prop) Ps Q mAll m path hs1 hs2,
       with_mem m P ->
       mem_tree_lookup hs1 path = Some m ->
@@ -1129,7 +1140,10 @@ Ltac canceling_step_in_hyp C :=
       [ | lazymatch goal with
           | H: P |- P => exact H
           | |- True => constructor
+          | _ => clear C (* leave open for manual proving *)
           end ]
+  | canceling_in_hyp ?mAll ?om (cons (sep ?P1 ?P2) ?Ps) ?Q =>
+      eapply canceling_sep_step_in_hyp in C
   | canceling_in_hyp ?mAll ?om (cons ?P ?Ps) ?Q =>
       let H := match goal with
                | H: with_mem _ ?P' |- _ =>
@@ -1143,7 +1157,7 @@ Ltac canceling_step_in_hyp C :=
       eapply (canceling_step_in_hyp P Ps Q mAll m p hs _ H) in C;
       [ | reflexivity | reflexivity];
       cbn [interp_mem_tree] in C;
-      clear H m
+      clear H; try clear m
   end.
 
 Ltac cancel_in_hyp H :=

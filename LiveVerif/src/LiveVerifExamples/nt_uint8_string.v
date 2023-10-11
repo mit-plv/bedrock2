@@ -92,18 +92,23 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
   delete #(c2 = ??).
   loop invariant above c1.
   unfold ready.
+  set (p1_pre := p1). change p1_pre with p1 at 1.
+  pose proof (eq_refl: p1_pre = p1). clearbody p1_pre. move p1_pre before t.
+  set (p2_pre := p2). change p2_pre with p2 at 1.
+  pose proof (eq_refl: p2_pre = p2). clearbody p2_pre. move p2_pre before p1_pre.
+  move p1 after c2. move p2 after p1.
   (* pattern out ghost vars from functionpost to get post of do-while lemma: *)
   lazymatch goal with
   | |- exec ?fs ?body ?t ?m ?l ?P =>
-      lazymatch eval pattern s1, s2, p1, p2, R, (len s1) in P with
-      | ?f s1 s2 p1 p2 R (len s1) =>
+      lazymatch eval pattern s1, s2, p1_pre, p2_pre, R, (len s1) in P with
+      | ?f s1 s2 p1_pre p2_pre R (len s1) =>
           change (exec fs body t m l ((fun (g: list Z * list Z * word * word * (mem -> Prop)) (v: Z) =>
           let (g, R) := g in
           let (g, p2_pre) := g in
           let (g, p1_pre) := g in
           let (s1, s2) := g in
           ltac:(let r := eval cbv beta in (f s1 s2 p1_pre p2_pre R v) in exact r))
-                (s1, s2, p1, p2, R) (len s1)))
+                (s1, s2, p1_pre, p2_pre, R) (len s1)))
       end
   end.
   eapply wp_dowhile_tailrec_use_functionpost.
@@ -129,7 +134,7 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
   end.
   step. step.
 
-  .**/ } /**. new_ghosts(s1[1:], s2[1:], _, _, _).
+  .**/ } /**. new_ghosts(s1[1:], s2[1:], p1, p2, _).
 
   assert (0 < len s1). {
     assert (len s1 <> 0). {
@@ -151,11 +156,13 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
 
 step. step. step. step. step. step. step. step. step. step. step. step. step. step.
 step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step. step.
 
 clear_heapletwise_hyps.
 clear_mem_split_eqs.
 clear_heaplets.
+
+(* function post with small ghosts implies function post with bigger ghosts: *)
 
 intros t'' m'' l'' EE. inversion EE. clear EE. eapply mk_expect_1expr_return.
 1: eassumption.
@@ -174,9 +181,69 @@ step. step. step.
   case TODO.
 }
 
-step. step. step.
+step.
 
-(* TODO right level of variation/flexibility for p1/p2 *)
-Abort.
+(* Need to join the char at p1' (coming from bigger frame of smaller post)
+   with its tail at p1 (coming from smaller post) in order to satisfy
+   bigger post.
+   Or could also split what we have in the goal. *)
+
+subst p1 p2. bottom_up_simpl_in_hyps.
+pose proof (split_off_subarray_from_array p1' p1' (uint 8) (len s1 + 1) 1 0 1) as M.
+do 3 lazymatch type of M with
+| ?p -> _ => specialize (M (ltac:(word_lia_hook_for_split_merge) : p))
+end.
+apply proj2 in M.
+specialize (M nil).
+start_canceling_in_hyp M. unfold array in M at 1. simpl Array.array in M.
+repeat canceling_step_in_hyp M.
+bottom_up_simpl_in_hyp M.
+repeat canceling_step_in_hyp M.
+eapply canceling_done_in_hyp in M.
+destruct M as (?m, (?D, ?M)).
+
+(* oops, heaplet m7 is gone... *)
+case TODO.
+reflexivity.
+clear Scope2. (* not in loop body any more *)
+
+.**/
+  uintptr_t res = c1 - c2;                                                 /**. .**/
+  return res;                                                              /**. .**/
+}                                                                          /**.
+unzify.
+unfold don't_know_how_to_prove.
+
+destruct s1; destruct s2; simpl; symmetry.
+- eapply Z.compare_eq_iff.
+  bottom_up_simpl_in_hyps. subst res.
+  apply word.signed_of_Z_nowrap. lia.
+- eapply Z.compare_lt_iff.
+  bottom_up_simpl_in_hyps. subst res.
+  (* c2 = /[z], and z is in a uint8 array, so: *)
+  assert (0 <= \[c2] < 2 ^ 8) by case TODO.
+  rewrite word.signed_opp.
+  case TODO.
+- eapply Z.compare_gt_iff.
+  bottom_up_simpl_in_hyps. subst res.
+  (* c1 = /[z], and z is in a uint8 array, so: *)
+  assert (0 <= \[c1] < 2 ^ 8) by case TODO.
+  case TODO.
+- assert (z = \[c1]) by case TODO.
+  assert (z0 = \[c2]) by case TODO.
+  subst z z0 res.
+  destruct_one_match.
+  + eapply Z.compare_eq_iff in E.
+    exfalso.
+    assert (c1 = /[0]) by (zify_hyps; zify_goal; xlia zchecker).
+    subst c1.
+    eapply H4. constructor. bottom_up_simpl_in_goal. reflexivity.
+  + eapply (proj1 (Z.compare_lt_iff _ _)) in E.
+    eapply Z.compare_lt_iff.
+    case TODO.
+  + eapply (proj1 (Z.compare_gt_iff _ _)) in E.
+    eapply Z.compare_gt_iff.
+    case TODO.
+Qed.
 
 End LiveVerif. Comments .**/ //.
