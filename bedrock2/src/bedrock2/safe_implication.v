@@ -4,6 +4,25 @@ Definition safe_implication(P: Prop)(Q: Prop): Prop := P -> Q.
 
 Create HintDb safe_implication.
 
+(* required to make the set evars workaround in typeclasses_eauto_with_safe_implication
+   work, otherwise, the let-bound evars can still be unfolded by typeclass search *)
+Global Hint Variables Opaque : safe_implication.
+
+(* It's tempting to also do this:
+
+Global Hint Constants Opaque : safe_implication.
+
+but then (PredicateSize mypred) isn't unfolded to Z anymore, and many hints about
+separation logic don't apply any more. We could create an exception for it:
+
+Global Hint Transparent PredicateSize : safe_implication.
+
+But we would have to be careful that it is always imported, and would need to
+remember to also exceptions for other type aliases, so we don't do Constants Opaque
+for now.
+This problem would be resolved by https://github.com/coq/coq/issues/11536 *)
+
+
 (* Don't use Hint Mode + because it prevents typeclass search from running in
    situations where it should run: https://github.com/coq/coq/issues/18078
 #[global] Hint Mode safe_implication - + : safe_implication.
@@ -97,6 +116,14 @@ Module Tests.
 
     Goal forall (l1 l2 l2': list nat), l2 = l2' -> l1 ++ l2 = l1 ++ l2'.
     Proof. intros. t. assumption. Succeed Qed. Abort.
+
+    Goal forall (T: Type), exists (vs1 vs2: list T), forall l, l = vs1 -> vs1 = vs2.
+    Proof.
+      intros. do 2 eexists. intros.
+      (* without `Hint Variables Opaque : safe_implication`, this
+         eapplies list_app_eq_r infinitely *)
+      repeat safe_implication_step.
+    Abort.
 
     (* eauto might unfold safe_implication, but typeclasses eauto won't: *)
     Goal forall (P Q: Prop), Q -> (P -> Q) -> Q.
