@@ -32,6 +32,28 @@ Section SepLog.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Import ZnWords.
+
+  Lemma split_array_at_bw{E: Type}{inh: inhabited E} elem {elemSize: PredicateSize elem}:
+    forall s n a i (vs vs1 vs2: list E),
+      word.unsigned (word.sub s a) / elemSize = i ->
+      word.unsigned (word.sub s a) mod elemSize = 0 ->
+      impl1 (sep (array elem i vs1 a)
+                 (sep (array elem (n-i) vs2 s)
+                      (emp (vs1 ++ vs2 = vs))))
+            (array elem n vs a).
+  Proof.
+    unfold impl1. intros.
+    purify.
+    destruct H1P as (L1 & L2 & ?). subst vs.
+    assert (0 <= i <= n) by lia.
+    replace n with (i + (n - i)) by lia.
+    eapply merge_array.
+    eapply sep_assoc in H1.
+    eapply sep_emp_r in H1. apply proj1 in H1.
+    eqapply H1. f_equal.
+    destruct width_cases; subst width; ZnWords.
+  Qed.
+
   (* Different kinds of splitting/merging back:
      a) single array element
      b) subarray
@@ -160,7 +182,6 @@ Section SepLog.
         rewrite List.merge_adjacent_slices.
         - rewrite <- List.from_canon.
           apply List.split_at_index.
-          ZnWords.
         - ZnWords.
       }
       rewrite Hsplit in H4; clear Hsplit.
@@ -336,9 +357,10 @@ Section SepLog.
 End SepLog.
 
 
-Definition find_superrange_hyp{word: Type}(start: word)(size: Z)(tGoal: Prop) := tGoal.
+Definition find_hyp_for_range{word: Type}(start: word)(size: Z)(tGoal: Prop) := tGoal.
 Definition split_range_from_hyp{word: Type}(start: word)(size: Z)(tHyp: Prop)
   (H: tHyp)(tGoal: Prop) := tGoal.
+Definition split_concl_at{word: Type}(addr: word)(g: Prop) := g.
 
 Definition merge_step(P: Prop) := P.
 
@@ -514,6 +536,16 @@ Ltac is_subrange start size start' size' :=
   assert_succeeds (idtac; assert (subrange start size start' size') by
                      (unfold subrange; word_lia_hook_for_split_merge)).
 
+Definition inrange{width: Z}{word: word.word width}(addr: word)(start: word)(size: Z) :=
+  word.unsigned (word.sub addr start) <= size.
+
+(* Check that addr is inside the range, and at least sometimes strictly so *)
+Ltac is_inside_range addr start size :=
+  assert_succeeds (idtac; assert (inrange addr start size) by
+                     (unfold inrange; word_lia_hook_for_split_merge));
+  assert_fails (idtac; assert (addr = start \/ word.unsigned (word.sub addr start) = size)
+                  by word_lia_hook_for_split_merge).
+
 Inductive PredicateSize_not_found{PredTp: Type}(pred: PredTp): Set :=
   mk_PredicateSize_not_found.
 
@@ -545,7 +577,8 @@ Ltac gather_is_subrange_claims_into_error start size :=
        | with_mem ?m (?P' ?start') =>
           match constr:(Set) with
           | _ => lazymatch constr:(_: PredicateSize P') with
-                 | ?size' => constr:(cons (subrange start size start' size') res)
+                 | ?size' => constr:(cons (subrange start size start' size')
+                                    (cons (inrange start' start size) res))
                  end
           | _ => res
           end
@@ -553,7 +586,7 @@ Ltac gather_is_subrange_claims_into_error start size :=
        end)
     (@nil Prop)
     (fun r => pose_err
-                Error:("Exactly one of the following subrange claims should hold:" r)).
+                Error:("Exactly one of the following claims should hold:" r)).
 
 Ltac is_singleton_record_predicate p :=
   let h := head p in
@@ -570,8 +603,8 @@ Ltac split_step :=
   | |- canceling (cons (?P ?start) _) ?m _ =>
       with_PredicateSize_of P (fun size =>
         let g := lazymatch goal with |- ?x => x end in
-        change (find_superrange_hyp start size g))
-  | |- find_superrange_hyp ?start ?size ?g =>
+        change (find_hyp_for_range start size g))
+  | |- find_hyp_for_range ?start ?size ?g =>
       match goal with
       | H: with_mem ?mH (?P' ?start') |- _ =>
           with_PredicateSize_of P' (fun size' =>
@@ -585,7 +618,8 @@ Ltac split_step :=
               then (
                 change g;
                 let P := lazymatch goal with | |- canceling (cons ?P _) _ _ => P end in
-                ((eapply (rew_with_mem (P' start') P mH) in H;
+                first
+                [ eapply (rew_with_mem (P' start') P mH) in H;
                   [ (* main goal *)
                   | (* sidecondition: (impl1 (P' start') P) *)
                     first [ solve [repeat sepclause_impl_step_hook]
@@ -600,10 +634,13 @@ Ltac split_step :=
                             is_fake_contiguous P';
                             lazymatch P with
                             | ?P0 ?start0 => is_fake_contiguous P0
-                            end ] ])
-                 || pose_err Error:("Cannot cancel" P "with" (P' start')
-                       "even though both span the same range:" size "bytes from" start))
+                            end ] ]
+                | pose_err Error:("Cannot cancel" P "with" (P' start')
+                       "even though both span the same range:" size "bytes from" start) ]
               ) else change (split_range_from_hyp start size _ H g))
+      | H: with_mem ?mH (?P' ?start') |- _ =>
+          is_inside_range start' start size;
+          change (split_concl_at start' g)
       | _ => gather_is_subrange_claims_into_error start size
       end
   | |- split_range_from_hyp ?start ?size ?tH ?H ?g => split_range_from_hyp_hook

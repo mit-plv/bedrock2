@@ -36,7 +36,7 @@ Derive test SuchThat (fun_correct! test) As test_ok.                            
   | _: warning_marker (PredicateSize_not_found my_pred2) |- _ => idtac
   end.
 
-  test_error Error:("Exactly one of the following subrange claims should hold:" nil).
+  test_error Error:("Exactly one of the following claims should hold:" nil).
 
   clear Error.
   unexplain.

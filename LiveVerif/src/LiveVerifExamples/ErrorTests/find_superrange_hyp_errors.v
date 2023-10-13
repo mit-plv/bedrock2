@@ -32,8 +32,9 @@ Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          
 {                                                                          /**. .**/
   uintptr_t tmp = load16(p-2);                                             /**.
 
-  test_error Error:("Exactly one of the following subrange claims should hold:"
-                      [|subrange (p ^- /[2]) 2 p (8 + n * 4)|]).
+  test_error Error:("Exactly one of the following claims should hold:"
+          [|subrange (p ^- /[2]) 2 p (8 + n * 4); inrange p (p ^- /[2]) 2|]).
+
 Abort.
 
 Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          .**/
@@ -46,7 +47,7 @@ Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          
   lazymatch goal with
   | _: warning_marker (PredicateSize_not_found (bar' _ b)) |- _ => idtac
   end.
-  test_error Error:("Exactly one of the following subrange claims should hold:" nil).
+  test_error Error:("Exactly one of the following claims should hold:" nil).
 Abort.
 
 End LiveVerif. Comments .**/ //.

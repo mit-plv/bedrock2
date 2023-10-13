@@ -190,7 +190,7 @@ Derive bst_init SuchThat (fun_correct! bst_init) As bst_init_ok.                
   }                                                                        /**.
     replace (\[res] =? 0) with false by steps.
     steps.
-    instantiate (2 := Leaf). clear Error. unfold find_superrange_hyp. cbn [bst'].
+    instantiate (2 := Leaf). clear Error. unfold find_hyp_for_range. cbn [bst'].
     steps.
                                                                                 .**/
 }                                                                          /**.

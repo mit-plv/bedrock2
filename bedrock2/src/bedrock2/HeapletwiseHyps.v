@@ -431,6 +431,20 @@ Section HeapletwiseHyps.
     eapply sep_assoc. eauto.
   Qed.
 
+  Lemma cancel_rew_head: forall {P Q: mem -> Prop} {Ps om Rest},
+      impl1 P Q ->
+      canceling (cons P Ps) om Rest ->
+      canceling (cons Q Ps) om Rest.
+  Proof.
+    unfold canceling. intros. destruct H0 as [H0 HR]. split; [intros | exact HR].
+    specialize (H0 _ H1). eapply seps'_iff1_seps. eapply seps'_iff1_seps in H0.
+    simpl in *. revert H0. clear H1. revert m.
+    lazymatch goal with
+    | |- forall _, ?A _ -> ?B _ => change (impl1 A B)
+    end.
+    rewrite H. reflexivity.
+  Qed.
+
   Lemma cancel_frame_evar_filling_step: forall hs path {P hs' m F Rest},
       with_mem m P ->
       mem_tree_lookup hs path = Some m ->
