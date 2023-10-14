@@ -1,10 +1,9 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
-(*
 Require Import LiveVerif.LiveVerifLib.
 Require Import LiveVerifExamples.onesize_malloc.
 Require Import coqutil.Datatypes.PropSet.
 
-(* THIS FILE MOSTLY CONTAINS OLD TREE CODE, NOT CRITBIT YET *)
+(* NOTE THAT THIS FILE STILL ALSO CONTAINS MANY THINGS RELATED TO BSTs *)
 
 Inductive tree_skeleton: Set :=
 | Leaf
@@ -23,6 +22,7 @@ Proof.
   - contradiction.
   - destruct Lt; subst; assumption.
 Qed.
+
 
 #[local] Hint Resolve tree_skeleton_lt_wf: wf_of_type.
 
@@ -43,14 +43,55 @@ Context {consts: malloc_constants}.
 Context {word_map: map.map word word}.
 Context {word_map_ok: map.ok word_map}.
 
-Fixpoint cbt (sk: tree_skeleton) (c: word_map) (a : word) : mem -> Prop :=
+Definition prefix_bits (n: Z) (w: word) := word.and (word.not (/[-1] ^<< /[n])) w.
+
+Record prefix: Type := {
+    length: Z;
+    bits: word
+  }.
+
+Definition is_prefix (p1 p2: prefix) :=
+  p1.(length) <= p2.(length) /\ prefix_bits p1.(length) p1.(bits) = prefix_bits p1.(length) p2.(bits).
+
+Definition canonic_bits (p: prefix) := prefix_bits p.(length) p.(bits).
+
+Definition is_canonic (p: prefix) := canonic_bits p = p.(bits).
+
+Definition bit_at (n: Z) := /[1] ^<< /[n].
+
+Definition append_0 (p: prefix) :=
+  {| length := p.(length) + 1;
+     bits := canonic_bits p |}.
+
+Definition append_1 (p: prefix) :=
+  {| length := p.(length) + 1;
+     bits := word.or (canonic_bits p) (bit_at p.(length)) |}.
+
+Fixpoint cbt (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word) : mem -> Prop :=
   match sk with
     | Leaf => ex1 (fun k: word => ex1 (fun v: word =>
         <{ * emp (c = map.singleton k v)
+           * emp (p.(bits) = k)
+           * emp (p.(length) = 32)
            * <{ + uintptr k
                 + uintptr v }> a }>))
-    | Node _ _ => emp True
+  | Node skL skR => ex1 (fun aL: word => ex1 (fun pL: prefix => ex1 (fun cL: word_map =>
+     ex1 (fun ix: Z => ex1 (fun aR: word => ex1 (fun pR: prefix => ex1 (fun cR: word_map
+          =>
+          <{ * emp (a <> /[0])
+             * <{ + uintptr aL
+                  + uint 32 p.(length)
+                  + uintptr aR }> a
+             * cbt skL pL cL aL
+             * cbt skR pR cR aR
+             * emp (0 <= p.(length) <= 31)
+             * emp (is_canonic p)
+             * emp (is_prefix (append_0 p) pL)
+             * emp (is_prefix (append_1 p) pR)
+             * emp (map.split c cL cR) }>)))))))
   end.
+
+(*
 
 Fixpoint bst'(sk: tree_skeleton)(s: set Z)(addr: word){struct sk}: mem -> Prop :=
   match sk with
@@ -358,5 +399,6 @@ Qed.
    it has to incorporate almost all of post for the res=true case,
    and even if we break, we still have to decrease the termination measure *)
 
-End LiveVerif. Comments .**/ //.
 *)
+
+End LiveVerif. Comments .**/ //.
