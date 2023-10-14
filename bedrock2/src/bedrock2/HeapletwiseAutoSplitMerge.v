@@ -502,6 +502,24 @@ Ltac split_range_from_hyp_default :=
 
 Ltac split_range_from_hyp_hook := split_range_from_hyp_default.
 
+Ltac split_concl_at_default :=
+  lazymatch goal with
+  | |- split_concl_at ?s ?g =>
+      change g;
+      lazymatch g with
+      | canceling (cons ?P ?Ps) ?om ?Rest =>
+          lazymatch P with
+          | array ?elem ?size ?vs ?start =>
+              eapply cancel_rew_head;
+              [ eapply (split_array_at_bw _ s);
+                [ reflexivity | word_lia_hook_for_split_merge ]
+              | ]
+          end
+      end
+  end.
+
+Ltac split_concl_at_hook := split_concl_at_default.
+
 Ltac merge_step_in_hyp H :=
   lazymatch type of H with
   (* Special case for records: Need to solve sideconditions SC1 and SC2 (using eq_refl).
@@ -644,6 +662,7 @@ Ltac split_step :=
       | _ => gather_is_subrange_claims_into_error start size
       end
   | |- split_range_from_hyp ?start ?size ?tH ?H ?g => split_range_from_hyp_hook
+  | |- split_concl_at ?s ?g => split_concl_at_hook
   end.
 
 Ltac merge_step :=

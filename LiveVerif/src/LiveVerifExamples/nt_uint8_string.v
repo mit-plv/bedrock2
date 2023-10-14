@@ -181,30 +181,23 @@ step. step. step.
   case TODO.
 }
 
-step.
-
 (* Need to join the char at p1' (coming from bigger frame of smaller post)
    with its tail at p1 (coming from smaller post) in order to satisfy
    bigger post.
-   Or could also split what we have in the goal. *)
+   Or split what we have in the goal: *)
 
-subst p1 p2. bottom_up_simpl_in_hyps.
-pose proof (split_off_subarray_from_array p1' p1' (uint 8) (len s1 + 1) 1 0 1) as M.
-do 3 lazymatch type of M with
-| ?p -> _ => specialize (M (ltac:(word_lia_hook_for_split_merge) : p))
-end.
-apply proj2 in M.
-specialize (M nil).
-start_canceling_in_hyp M. unfold array in M at 1. simpl Array.array in M.
-repeat canceling_step_in_hyp M.
-bottom_up_simpl_in_hyp M.
-repeat canceling_step_in_hyp M.
-eapply canceling_done_in_hyp in M.
-destruct M as (?m, (?D, ?M)).
+step. step. step. step. step. step. step. step. step. step. step.
 
-(* oops, heaplet m7 is gone... *)
-case TODO.
-reflexivity.
+step. rewrite List.app_assoc. step. subst p1. step.
+symmetry. apply List.split_at_index.
+
+step. step. step. step. step. step. step. step. step. step. step. step.
+
+step. rewrite List.app_assoc. step. subst p2. step.
+symmetry. apply List.split_at_index.
+
+step. step. step. step.
+
 clear Scope2. (* not in loop body any more *)
 
 .**/

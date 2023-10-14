@@ -654,6 +654,38 @@ Ltac default_careful_reflexivity_step :=
   | |- _ ?l ?r => subst l
   | |- _ ?l ?r => subst r
   | |- _ => turn_relation_into_eq; syntactic_f_equal_with_ZnWords
+  | |- ?rel (?pred1 ?val1 ?addr1) (?pred2 ?val2 ?addr2) =>
+      is_evar val2;
+      (* When is it safe to instantiate the evar val2 with val1?
+
+         Note: We assume a "unique value property": in (pred val addr), given pred
+         and addr and a heaplet on which this clause holds, only one val is possible.
+         This property holds as long as there is an abstraction function (rather than
+         relation) from memory to high-level values.
+
+         Note: The hyp_clause_matches_goal_clause in HeapletwiseHyps complements
+         the code here: Since it doesn't split the proof into several steps, it can
+         afford to instantiate evars a bit more aggressively: If everything matches
+         syntactically (up to instantiating evars in the conclusion), it goes ahead
+         and instantiates the evars.
+         On the other hand, here we proceed step by step, and don't want to risk
+         turning a provable "uint8 array implies uint32 array" goal into an unprovable
+         goal by instantiating the list in the conclusion with the list of the hyp,
+         and generating unprovable side conditions that uint8=uint32 and size1=size2. *)
+      lazymatch rel with
+      | @impl1 _ => idtac
+      | @iff1 _ => idtac
+      end;
+      lazymatch pred2 with
+      | pred1 => idtac
+      | array ?elem ?sz2 =>
+          lazymatch pred1 with
+          | array elem ?sz1 =>
+              assert_fails (idtac; has_evar sz1);
+              assert_fails (idtac; has_evar sz2)
+          end
+      end;
+      unify val2 val1
   | |- ?rel ?l ?r =>
       lazymatch rel with
       | @eq _ => idtac

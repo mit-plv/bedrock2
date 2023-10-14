@@ -95,37 +95,6 @@ void test(uintptr_t p1, uintptr_t p2, uintptr_t n1, uintptr_t n2) /**#
 Derive test SuchThat (fun_correct! test) As test_ok.                            .**/
 {                                                                          /**. .**/
 }                                                                          /**.
-  lazymatch goal with
-  | |- split_concl_at ?s ?g =>
-      change g;
-      lazymatch g with
-      | canceling (cons ?P ?Ps) ?om ?Rest =>
-          lazymatch P with
-          | array ?elem ?size ?vs ?start =>
-              eapply cancel_rew_head;
-              [ eapply (split_array_at_bw _ s);
-                [ reflexivity | word_lia_hook_for_split_merge ]
-              | ]
-          end
-      end
-  end.
-
-  step. step. step. step. step. step. step. step.
-
-  step. step. step. step.
-  (* TODO in the goal
-
-  impl1 (array (uint 32) \[n2] vs2 p2)
-        (array (uint 32) (\[n1] + \[n2] - \[p2 ^- p1] / 4) ?vs2 p2)
-
-   careful_reflexivity_step does not dare to instantiate ?vs2.
-   On the other hand, in HeapletwiseHyps, hyp_clause_matches_goal_clause does,
-   and that's why this problem hasn't appeared up to now. *)
-  {
-    replace (\[n1] + \[n2] - \[p2 ^- p1] / 4) with \[n2].
-    1: reflexivity.
-    word_lia_hook_for_split_merge.
-  }
-Abort.
+Qed.
 
 End LiveVerif. Comments .**/ //.
