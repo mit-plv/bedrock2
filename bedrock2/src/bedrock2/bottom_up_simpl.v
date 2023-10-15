@@ -3,6 +3,7 @@ Require Import coqutil.Ltac2Lib.Failf coqutil.Ltac2Lib.rdelta.
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.ltac_list_ops.
@@ -655,13 +656,194 @@ Ltac2 rec push_down_upto(force_progress: bool)(treat_app: bool)
          else res_nothing_to_simpl '(@List.upto $tp $i $l)
   end.
 
+Section PushDownGet.
+  Import List.ZIndexNotations. Local Open Scope zlist_scope.
+  Context [A: Type] {inh: inhabited A}.
+
+  Local Set Default Proof Mode "Classic".
+
+  Lemma push_down_get_from: forall (l: list A) n i r,
+      0 <= i < len l /\ 0 <= n < len l - i ->
+      l[i + n] = r ->
+      l[i:][n] = r.
+  Proof.
+    unfold List.get, List.from. intros.
+    rewrite List.nth_skipn.
+    destruct_one_match_hyp; destruct_one_match; try (exfalso; lia).
+    rewrite <- H0. f_equal. lia.
+  Qed.
+
+  Lemma push_down_get_upto: forall (l: list A) n i r,
+      0 <= n < i ->
+      l[n] = r ->
+      l[:i][n] = r.
+  Proof.
+    unfold List.get, List.upto. intros.
+    rewrite List.nth_firstn by lia. assumption.
+  Qed.
+
+  Lemma push_down_get_head: forall a (l: list A) n,
+      n = 0 ->
+      (cons a l)[n] = a.
+  Proof. intros. subst. reflexivity. Qed.
+
+  Lemma push_down_get_tail: forall a (l: list A) n r,
+      0 < n ->
+      l[n - 1] = r ->
+      (cons a l)[n] = r.
+  Proof.
+    unfold List.get. intros.
+    destruct_one_match; destruct_one_match_hyp; try (exfalso; lia).
+    replace (Z.to_nat n) with (S (Z.to_nat (n - 1))) by lia.
+    simpl. assumption.
+  Qed.
+
+  Lemma push_down_get_app_l: forall (l1 l2: list A) n r,
+      0 <= n < len l1 ->
+      l1[n] = r ->
+      (l1 ++ l2)[n] = r.
+  Proof.
+    unfold List.get. intros. rewrite List.app_nth1 by lia. assumption.
+  Qed.
+
+  Lemma push_down_get_app_r: forall (l1 l2: list A) n r,
+      len l1 <= n ->
+      l2[n - len l1] = r ->
+      (l1 ++ l2)[n] = r.
+  Proof.
+    unfold List.get. intros. rewrite List.app_nth2 by lia.
+    destruct_one_match; destruct_one_match_hyp; try (exfalso; lia).
+    rewrite <- H0. f_equal. lia.
+  Qed.
+
+  Lemma push_down_get_set_same: forall (l: list A) i n x,
+      0 <= i < len l ->
+      n = i ->
+      l[i := x][n] = x.
+  Proof.
+    intros. subst. unfold List.get, List.set, List.upto.
+    destruct_one_match. 1: exfalso; lia.
+    replace (Z.to_nat i) with (length (List.firstn (Z.to_nat i) l)) at 1.
+    1: apply List.nth_middle.
+    rewrite List.firstn_length. lia.
+  Qed.
+
+  Lemma push_down_get_set_diff: forall (l: list A) i n x r,
+      0 <= i < len l ->
+      n <> i ->
+      l[n] = r ->
+      l[i := x][n] = r.
+  Proof.
+    intros. subst. unfold List.get, List.set, List.upto.
+    destruct_one_match. 1: reflexivity.
+    assert (n < i \/ i < n) as C by lia.
+    destruct C as [C | C].
+    - rewrite List.app_nth1.
+      + apply List.nth_firstn. lia.
+      + rewrite List.firstn_length. lia.
+    - rewrite List.app_assoc. rewrite List.app_nth2.
+      + unfold List.from. rewrite List.nth_skipn. f_equal.
+        rewrite List.app_length. rewrite List.firstn_length. simpl. lia.
+      + rewrite List.app_length. rewrite List.firstn_length. simpl. lia.
+  Qed.
+
+  Lemma push_down_get_repeatz: forall (x: A) (c n: Z),
+      0 <= n < c ->
+      (List.repeatz x c)[n] = x.
+  Proof.
+    intros. unfold List.repeatz, List.get. rewrite List.nth_repeat by lia.
+    destruct_one_match. 1: exfalso; lia. reflexivity.
+  Qed.
+End PushDownGet.
+
+Ltac2 rec push_down_get(inh: constr)(l0: constr)(n: constr): res :=
+  let with_sidecond_pf := fun (c: constr) (k: constr -> res) =>
+    match Control.case (fun _ => '(ltac2:(bottom_up_simpl_sidecond_hook ()): $c)) with
+    | Val p => let (s, _) := p in k s
+    | Err _ => res_nothing_to_simpl '(@List.get _ $inh $l0 $n)
+    end in
+  let with_sidecond_pf2 := fun (c1: constr) (k1: constr -> res)
+                               (c2: constr) (k2: constr -> res) =>
+    match Control.case (fun _ => '(ltac2:(bottom_up_simpl_sidecond_hook ()): $c1)) with
+    | Val p => let (s, _) := p in k1 s
+    | Err _ =>
+        match Control.case (fun _ => '(ltac2:(bottom_up_simpl_sidecond_hook ()): $c2)) with
+        | Val p => let (s, _) := p in k2 s
+        | Err _ => res_nothing_to_simpl '(@List.get _ $inh $l0 $n)
+        end
+    end in
+  lazy_match! l0 with
+  | List.from ?i ?l => with_sidecond_pf
+      '(0 <= $i < Z.of_nat (List.length $l) /\ 0 <= $n < Z.of_nat (List.length $l) - $i)
+      (fun s =>
+         let res := push_down_get inh l '($i + $n) in
+         let rhs := new_term res in
+         let pf := eq_proof res in
+         res_rewrite '(@push_down_get_from _ $inh $l $n $i $rhs $s $pf))
+  | List.upto ?i ?l => with_sidecond_pf '(0 <= $n < $i) (fun s =>
+      let res := push_down_get inh l n in
+      let rhs := new_term res in
+      let pf := eq_proof res in
+      res_rewrite '(@push_down_get_upto _ $inh $l $n $i $rhs $s $pf))
+  | cons ?h ?t => with_sidecond_pf2
+      '($n = 0) (fun s => res_rewrite '(@push_down_get_head _ $inh $h $t $n $s))
+      '(0 < $n) (fun s => let res := push_down_get inh t '($n - 1) in
+                          let rhs := new_term res in
+                          let pf := eq_proof res in
+                          res_rewrite '(@push_down_get_tail _ $inh $h $t $n $rhs $s $pf))
+  | List.app ?l1 ?l2 => with_sidecond_pf2
+      '(0 <= $n < Z.of_nat (length $l1)) (fun s =>
+         let res := push_down_get inh l1 n in
+         let rhs := new_term res in
+         let pf := eq_proof res in
+         res_rewrite '(@push_down_get_app_l _ $inh $l1 $l2 $n $rhs $s $pf))
+      '(Z.of_nat (length $l1) <= $n) (fun s =>
+         let res := push_down_get inh l2 '($n - Z.of_nat (length $l1)) in
+         let rhs := new_term res in
+         let pf := eq_proof res in
+         res_rewrite '(@push_down_get_app_r _ $inh $l1 $l2 $n $rhs $s $pf))
+  | List.set ?l ?i ?x => with_sidecond_pf '(0 <= $i < Z.of_nat (length $l)) (fun b =>
+      with_sidecond_pf2
+        '($n = $i) (fun s => res_rewrite '(@push_down_get_set_same _ $inh $l $i $n $x $b $s))
+        '($n <> $i) (fun s =>
+            let res := push_down_get inh l n in
+            let rhs := new_term res in
+            let pf := eq_proof res in
+            res_rewrite '(@push_down_get_set_diff _ $inh $l $i $n $x $rhs $b $s $pf)))
+  | List.repeatz ?x ?c => with_sidecond_pf '(0 <= $n < $c) (fun s =>
+      res_rewrite '(@push_down_get_repeatz _ $inh $x $c $n $s))
+  | _ => res_nothing_to_simpl '(@List.get _ $inh $l0 $n)
+  end.
+
+Ltac2 panic_if_failure(f: unit -> 'a): 'a :=
+  match Control.case f with
+  | Val p => let (r, _) := p in r
+  | Err e => Control.throw e
+  end.
+
+(* We view the push_down_get procedure as computing a new index
+   At the end of the toplevel call, if the index changed, we ring_simplify it once. *)
+Ltac2 rec push_down_get_top(inh: constr)(l0: constr)(n: constr): res :=
+  panic_if_failure (fun _ =>
+  let res := push_down_get inh l0 n in
+  if did_something res then
+    let rhs := new_term res in
+    lazy_match! rhs with
+    | @List.get ?tp2 ?inh2 ?l2 ?i2 =>
+        let resi := ring_simplify_res_or_nothing_to_simpl i2 in
+        let resiLifted := lift_res1 rhs '(@List.get $tp2 $inh2 $l2) resi in
+        chain_res res resiLifted
+    | _ => res
+    end
+  else res).
+
 Ltac2 local_zlist_simpl(e: constr): res :=
   match! e with
   | @List.upto ?tp ?i ?l => push_down_upto true true tp i l
   | @List.get _ ?inh ?l ?i =>
-      if is_concrete_enough i l false then
-        res_convertible (convertible_list_get inh l i)
-      else gfail "try next branch"
+      if is_concrete_enough i l false
+      then res_convertible (convertible_list_get inh l i)
+      else push_down_get_top inh l i
   | @List.repeatz ?tp _ Z0 => res_convertible '(@nil $tp)
   | List.app ?xs nil => res_rewrite '(List.app_nil_r $xs)
   | List.app ?l1 ?l2 => res_convertible (prepend_concrete_list l1 l2)
@@ -1565,10 +1747,36 @@ Section Tests.
       (l1 ++ l2)[:i] = l1[:i].
   Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
+  Goal forall (s1: list Z),
+      0 < len s1 ->
+      s1[0] = (s1 ++ [|0|])[0].
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
   Ltac2 Set bottom_up_simpl_sidecond_hook := fun _ =>
-    rewrite ?List.len_app, ?List.len_upto, ?List.len_from,
-            ?List.length_cons, ?List.length_nil by lia;
-    lia.
+    (* Note/TODO: full-fledged bottom_up_simpl_in_goal for sideconditions is a bit overkill,
+       we only need push_down_len *)
+      bottom_up_simpl_in_goal_nop_ok ();
+      lia.
+
+  Goal forall (l1 l2 l3: list Z) (i j k: Z),
+      len l1 <= i < len l1 + j - k ->
+      0 <= j <= len l2 ->
+      0 <= k < j ->
+      0 <= i - len l1 < j - k ->
+      (l1 ++ l2[:j][k:] ++ l3[k:])[i] = l2[k + i - len l1].
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  (* if we only know enough index constraints to push down the get operation partially,
+     we still do that: *)
+  Goal forall (l: list Z) (i j k: Z),
+      k <= i ->
+      l[:j][k:][i] = l[:j][i - k].
+  Proof. intros. (* TODO bottom_up_simpl_in_goal (). refl. Succeed Qed.*) Abort.
+
+  Goal forall (l: list Z) (i j: Z),
+      0 <= i + j < len l ->
+      l[i + j:][j + i] = l[0].
+  Proof. intros. (* TODO bottom_up_simpl_in_goal (). refl. Succeed Qed. *) Abort.
 
   Goal forall (s2: list Z),
       0 < len s2 ->
