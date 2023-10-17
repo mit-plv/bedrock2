@@ -51,6 +51,7 @@ Proof.
 Qed.
 #[export] Hint Resolve purify_array | 10 : purify.
 
+(* for concrete lists: *)
 Lemma purify_array_and_elems{width}{BW: Bitwidth width}
   {word: word width}{word_ok: word.ok word}
   {mem: map.map word Byte.byte}{mem_ok: map.ok mem}{T: Type} elem
@@ -73,6 +74,29 @@ Ltac is_concrete_list l :=
   unfold bedrock2.Array.array;
   purify_rec
 : purify.
+
+(* for non-concrete lists.
+   Note: not registered as a hint because usually not needed *)
+Lemma purify_array_ith_elem{width}{BW: Bitwidth width}
+  {word: word width}{word_ok: word.ok word}
+  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}{T: Type} elem
+  {elemSize: PredicateSize elem}{P: T -> Prop}{inh: Inhabited.inhabited T}
+  (n: Z)(vs: list T)(addr: word):
+  (forall v a, purify (elem v a) (P v)) ->
+  purify (array elem n vs addr) (forall i, 0 <= i < len vs -> P (List.get vs i)).
+Proof.
+  unfold purify, array. intros. eapply sep_emp_l in H0. apply proj2 in H0.
+  eapply array_index_nat_inbounds
+    with (n := Z.to_nat i) (default := Inhabited.default) in H0. 2: lia.
+  destruct H0 as (_ & m2 & _ & _ & M).
+  destruct M as (m3 & _ & _ & M & _).
+  eapply H in M.
+  Tactics.eqapply M.
+  unfold List.get.
+  Tactics.destruct_one_match. 1: exfalso; lia.
+  rewrite <- List.hd_skipn_nth_default.
+  apply List.nth_default_eq.
+Qed.
 
 Definition nbits_to_nbytes(nbits: Z): Z := (Z.max 0 nbits + 7) / 8.
 
@@ -274,6 +298,15 @@ Section WithMem.
       subst n.
       eapply split_array in Hm. 2: eassumption.
       exact Hm.
+    Qed.
+
+    Lemma array1_to_elem{inh: Inhabited.inhabited T}: forall addr l,
+        impl1 (array elem 1 l addr) (elem l[0] addr).
+    Proof.
+      unfold impl1, array. intros. eapply sep_emp_l in H. destruct H as (? & ?).
+      destruct l. 1: discriminate.
+      destruct l. 2: { simpl in H. exfalso. lia. }
+      simpl in H0. eapply sep_emp_r in H0. apply (proj1 H0).
     Qed.
   End Array.
 

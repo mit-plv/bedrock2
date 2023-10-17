@@ -61,8 +61,6 @@ End List.
 
 Load LiveVerif.
 
-Axiom TODO: False.
-
 Local Ltac step_hook ::= solve [auto using List.notin_from].
 
 Definition nt_str(s: list Z)(a: word): mem -> Prop :=
@@ -173,16 +171,13 @@ step. step. step.
 {
   erewrite List.compare_cons_cons_same; try assumption.
   eapply Z.compare_eq_iff.
-  bottom_up_simpl_in_hyp Def0.
-  bottom_up_simpl_in_hyp Def1.
-  subst c1 c2.
-
-  (* TODO extract bounds of s1[0] from uint8 array
-
-  Def0 : c1 = /[(s1 ++ [|0|])[0]]
-  H6 : 0 < len s1
-   *)
-  case TODO.
+  subst p1 p2.
+  bottom_up_simpl_in_hyps.
+  let h := constr:(#(s1[:1])) in eapply array1_to_elem in h; purify_hyp h.
+  let h := constr:(#(s2[:1])) in eapply array1_to_elem in h; purify_hyp h.
+  bottom_up_simpl_in_hyps.
+  zify_hyps.
+  xlia zchecker.
 }
 
 (* Need to join the char at p1' (coming from bigger frame of smaller post)
@@ -217,17 +212,66 @@ destruct s1; destruct s2; simpl; symmetry.
   apply word.signed_of_Z_nowrap. lia.
 - eapply Z.compare_lt_iff.
   bottom_up_simpl_in_hyps. subst res.
-  (* c2 = /[z], and z is in a uint8 array, so: *)
-  assert (0 <= \[c2] < 2 ^ 8) by case TODO.
-  rewrite word.signed_opp.
-  case TODO.
+  assert (0 <= z < 2 ^ 8). {
+    let h := constr:(#((z :: s2) ++ [|0|])) in rename h into A.
+    eapply purify_array_ith_elem in A.
+    2: typeclasses eauto with purify.
+    specialize (A 0). cbv beta in A.
+    bottom_up_simpl_in_hyp A.
+    lia.
+  }
+  assert (z <> 0). {
+    intro C. subst z. let h := constr:(#(~List.In 0 (0 :: ??))) in apply h.
+    constructor. reflexivity.
+  }
+  rewrite word.signed_opp. rewrite word.signed_eq_swrap_unsigned.
+  rewrite word.unsigned_of_Z_nowrap by lia.
+  rewrite (word.swrap_inrange z) by lia.
+  unfold word.swrap. zify_goal. xlia zchecker.
 - eapply Z.compare_gt_iff.
   bottom_up_simpl_in_hyps. subst res.
-  (* c1 = /[z], and z is in a uint8 array, so: *)
-  assert (0 <= \[c1] < 2 ^ 8) by case TODO.
-  case TODO.
-- assert (z = \[c1]) by case TODO.
-  assert (z0 = \[c2]) by case TODO.
+  assert (0 <= z < 2 ^ 8). {
+    let h := constr:(#((z :: s1) ++ [|0|])) in rename h into A.
+    eapply purify_array_ith_elem in A.
+    2: typeclasses eauto with purify.
+    specialize (A 0). cbv beta in A.
+    bottom_up_simpl_in_hyp A.
+    lia.
+  }
+  assert (z <> 0). {
+    intro C. subst z. let h := constr:(#(~List.In 0 (0 :: ??))) in apply h.
+    constructor. reflexivity.
+  }
+  rewrite word.signed_eq_swrap_unsigned.
+  rewrite word.unsigned_of_Z_nowrap by lia.
+  rewrite (word.swrap_inrange z) by lia. lia.
+- bottom_up_simpl_in_hyps.
+  assert (0 <= z < 2 ^ 8). {
+    let h := constr:(#((z :: s1) ++ [|0|])) in rename h into A.
+    eapply purify_array_ith_elem in A.
+    2: typeclasses eauto with purify.
+    specialize (A 0). cbv beta in A.
+    bottom_up_simpl_in_hyp A.
+    lia.
+  }
+  assert (z <> 0). {
+    intro C. subst z. let h := constr:(#(~List.In 0 (0 :: ??))) in apply h.
+    constructor. reflexivity.
+  }
+  assert (0 <= z0 < 2 ^ 8). {
+    let h := constr:(#((z0 :: s2) ++ [|0|])) in rename h into A.
+    eapply purify_array_ith_elem in A.
+    2: typeclasses eauto with purify.
+    specialize (A 0). cbv beta in A.
+    bottom_up_simpl_in_hyp A.
+    lia.
+  }
+  assert (z0 <> 0). {
+    intro C. subst z0. let h := constr:(#(~List.In 0 (0 :: ??))) in apply h.
+    constructor. reflexivity.
+  }
+  assert (z = \[c1]) by (zify_hyps; zify_goal; xlia zchecker).
+  assert (z0 = \[c2]) by (zify_hyps; zify_goal; xlia zchecker).
   subst z z0 res.
   destruct_one_match.
   + eapply Z.compare_eq_iff in E.
@@ -237,10 +281,18 @@ destruct s1; destruct s2; simpl; symmetry.
     eapply H4. constructor. bottom_up_simpl_in_goal. reflexivity.
   + eapply (proj1 (Z.compare_lt_iff _ _)) in E.
     eapply Z.compare_lt_iff.
-    case TODO.
+    rewrite 2word.of_Z_unsigned.
+    rewrite word.signed_sub.
+    rewrite 2word.signed_eq_swrap_unsigned.
+    unfold word.swrap. zify_goal. xlia zchecker.
   + eapply (proj1 (Z.compare_gt_iff _ _)) in E.
     eapply Z.compare_gt_iff.
-    case TODO.
+    rewrite 2word.of_Z_unsigned.
+    rewrite word.signed_sub.
+    rewrite 2word.signed_eq_swrap_unsigned.
+    unfold word.swrap. zify_goal. xlia zchecker.
+Unshelve.
+all: typeclasses eauto.
 Qed.
 
 End LiveVerif. Comments .**/ //.
