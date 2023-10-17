@@ -1769,14 +1769,16 @@ Section Tests.
   (* if we only know enough index constraints to push down the get operation partially,
      we still do that: *)
   Goal forall (l: list Z) (i j k: Z),
-      k <= i ->
-      l[:j][k:][i] = l[:j][i - k].
-  Proof. intros. (* TODO bottom_up_simpl_in_goal (). refl. Succeed Qed.*) Abort.
+      0 <= i < j ->
+      l[k:][:j][i] = l[k:][i].
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
+  (* make sure ring_simplify is run on the newly computed index *)
   Goal forall (l: list Z) (i j: Z),
       0 <= i + j < len l ->
-      l[i + j:][j + i] = l[0].
-  Proof. intros. (* TODO bottom_up_simpl_in_goal (). refl. Succeed Qed. *) Abort.
+      0 <= i - j < len l - i - j ->
+      l[i + j:][i - j] = l[2 * i].
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall (s2: list Z),
       0 < len s2 ->

@@ -173,7 +173,11 @@ step. step. step.
 {
   erewrite List.compare_cons_cons_same; try assumption.
   eapply Z.compare_eq_iff.
-  (* TODO push down List.get and extract bounds of s1[0] from uint8 array
+  bottom_up_simpl_in_hyp Def0.
+  bottom_up_simpl_in_hyp Def1.
+  subst c1 c2.
+
+  (* TODO extract bounds of s1[0] from uint8 array
 
   Def0 : c1 = /[(s1 ++ [|0|])[0]]
   H6 : 0 < len s1
