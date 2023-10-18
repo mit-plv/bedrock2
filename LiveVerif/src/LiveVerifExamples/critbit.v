@@ -3,7 +3,6 @@ Require Import LiveVerif.LiveVerifLib.
 Require Import LiveVerifExamples.onesize_malloc.
 Require Import coqutil.Datatypes.PropSet.
 
-(* NOTE THAT THIS FILE STILL ALSO CONTAINS MANY THINGS RELATED TO BSTs *)
 (* some parts of this file are based on tree_set.v (binary search trees) *)
 
 Inductive tree_skeleton: Set :=
