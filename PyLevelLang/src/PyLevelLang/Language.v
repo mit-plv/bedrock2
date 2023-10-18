@@ -120,20 +120,6 @@ Inductive binop : type -> type -> type -> Type :=
   | ORange : binop TInt TInt (TList TInt)
   | OWRange : binop TWord TWord (TList TWord).
 
-(* "Pre-expression": untyped expressions from surface-level parsing. *)
-Inductive pexpr : Type :=
-  | PEVar (x : string)
-  | PEAtom (pa : patom)
-  | PESingleton (p : pexpr)
-  | PEUnop (po : punop) (p : pexpr)
-  | PEBinop (po : pbinop) (p1 p2 : pexpr)
-  | PEFlatmap (p1 : pexpr) (x : string) (p2 : pexpr)
-  | PEFold (p1 : pexpr) (p2 : pexpr) (x : string) (y : string) (p2 : pexpr)
-  | PEIf (p1 p2 p3 : pexpr)
-  | PELet (x : string) (p1 p2 : pexpr)
-  | PERecord (xs : list (string * pexpr))
-  | PEProj (p : pexpr) (s : string).
-
 (* Typed expressions. Most of the type checking is enforced in the GADT itself
    via Coq's type system, but some of it needs to be done in the `elaborate`
    function below *)
@@ -149,14 +135,20 @@ Inductive expr : type -> Type :=
   | EIf {t : type} (e1 : expr TBool) (e2 e3 : expr t) : expr t
   | ELet {t1 t2 : type} (x : string) (e1 : expr t1) (e2 : expr t2) : expr t2.
 
-Inductive pcommand : Type :=
-  | PCSkip
-  | PCSeq (pc1 pc2 : pcommand)
-  | PCLet (x : string) (p : pexpr) (pc : pcommand)
-  | PCLetMut (x : string) (p : pexpr) (pc : pcommand)
-  | PCGets (x : string) (p : pexpr)
-  | PCIf (p : pexpr) (pc1 pc2 : pcommand)
-  | PCForeach (x : string) (p : pexpr) (pc : pcommand).
+(* "Pre-expression": untyped expressions from surface-level parsing. *)
+Inductive pexpr : Type :=
+  | PEVar (x : string)
+  | PEAtom (pa : patom)
+  | PESingleton (p : pexpr)
+  | PEUnop (po : punop) (p : pexpr)
+  | PEBinop (po : pbinop) (p1 p2 : pexpr)
+  | PEFlatmap (p1 : pexpr) (x : string) (p2 : pexpr)
+  | PEFold (p1 : pexpr) (p2 : pexpr) (x : string) (y : string) (p2 : pexpr)
+  | PEIf (p1 p2 p3 : pexpr)
+  | PELet (x : string) (p1 p2 : pexpr)
+  | PERecord (xs : list (string * pexpr))
+  | PEProj (p : pexpr) (s : string)
+  | PEElaborated (t' : type) (e' : expr t').
 
 Inductive command : Type :=
   | CSkip
@@ -166,3 +158,13 @@ Inductive command : Type :=
   | CGets {t : type} (x : string) (e : expr t)
   | CIf (e : expr TBool) (c1 c2 : command)
   | CForeach {t : type} (x : string) (e : expr (TList t)) (c : command).
+
+Inductive pcommand : Type :=
+  | PCSkip
+  | PCSeq (pc1 pc2 : pcommand)
+  | PCLet (x : string) (p : pexpr) (pc : pcommand)
+  | PCLetMut (x : string) (p : pexpr) (pc : pcommand)
+  | PCGets (x : string) (p : pexpr)
+  | PCIf (p : pexpr) (pc1 pc2 : pcommand)
+  | PCForeach (x : string) (p : pexpr) (pc : pcommand).
+  (* | PCElaborated (c : command). *)

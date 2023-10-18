@@ -446,13 +446,14 @@ Section Examples.
      | [] => map.empty
      | (x, t) :: xs => set_local (init_locals xs) x (default_val t)
      end.
+  Definition map_to_locals (init : list (string * (type * bool))) : locals :=
+    init_locals (map (fun x => match x with
+                               | (x, (t, _)) => (x, t)
+                               end) init).
 
   Definition run_program (init : list (string * (type * bool))) (pc : pcommand)
-     := let locals_map := init_locals (map (fun x => match x with
-                                                    | (x, (t, _)) => (x, t)
-                                                    end) init)
-     in c <- @elaborate_command tenv (map.of_list init) pc;;
-        Success (SortedList.value (interp_command locals_map c)).
+     := c <- @elaborate_command tenv (map.of_list init) pc;;
+        Success (SortedList.value (interp_command (map_to_locals init) c)).
 
 
   Goal run_program [("a", (TInt, true))] <{ "a" <- 5 }> = Success [("a", existT interp_type TInt 5)].

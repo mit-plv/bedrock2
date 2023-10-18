@@ -7,6 +7,9 @@ Require Import PyLevelLang.Optimize.
 Require Import coqutil.Map.Interface coqutil.Map.SortedListString coqutil.Map.Properties.
 Require Import coqutil.Datatypes.Result.
 Require Import Coq.Lists.List.
+Require Import ExtrHaskellBasic.
+Require Import ExtrHaskellString.
+Require Import ExtrHaskellZInteger.
 
 Local Open Scope Z_scope.
 Local Open Scope string_scope.
@@ -105,17 +108,19 @@ Section Queries_Section.
 
   Local Open Scope pylevel_scope.
 
-  (* SELECT * FROM artists WHERE id < 3 *)
-  Definition filter_test := <{
-    "ans" <- flatmap artists' "x" (if "x"["id"] < 3 then ["x"] else nil[artist])
+  (* SELECT * FROM artists WHERE id < n *)
+  Definition filter_test (n : Z) := <{
+    "ans" <- flatmap artists' "x" (if "x"["id"] < <[ PAInt n ]> then ["x"] else nil[artist]);
+    "json" <- <[ PEElaborated _ (generate_json _ (ELoc (List artist) "ans")) ]>
     }>.
-  Compute run_program ((("ans", (TList artist, true)) :: nil)) filter_test.
+
 
   (* SELECT SUM(id) FROM artists *)
   Definition fold_test := <{
-    "ans" <- fold artists' 0 "x" "y" ("x"["id"] + "y")
+    "ans" <- fold artists' 0 "x" "y" ("x"["id"] + "y");
+    "json" <- <[ PEElaborated _ (generate_json _ (ELoc Int "ans")) ]>
   }>.
-  Compute run_program ((("ans", (TInt, true)) :: nil)) fold_test.
+  Compute run_program ((("json", (TString, true)) :: ("ans", (TInt, true)) :: nil)) fold_test.
 
   (* SELECT name FROM artists WHERE id < 3 *)
   Definition select_test := <{
@@ -159,6 +164,15 @@ Section Queries_Section.
   }>.
   Compute run_program ((("ans", (TList (t), true))) :: nil) join_test.
 
+  (* SELECT * FROM albums WHERE album_id = n JOIN artists WHERE album_id = id *)
+  Definition filter_albums_with_artist n := <{
+    "ans" <- flatmap (flatmap albums "y" (flatmap artists' "z" [("y", "z")])) "x" 
+    (if (fst("x")["artist_id"] == snd("x")["id"]) && (fst("x")["album_id"] == n) then ["x"] else nil[t]);
+    "json" <- <[ PEElaborated _ (generate_json _ (ELoc (List (record (("0", album) :: ("1", artist) :: nil))) "ans")) ]>
+  }>.
+  Compute run_program (("json", (TString, true)) :: (("ans", (TList t, true))) :: nil) (filter_albums_with_artist 7).
+
+  Compute (elaborate_command (map.of_list (("ans", (TList t, true))::nil)) join_test).
   Definition tmp' : command := 
     Eval cbv in match elaborate_command (map.of_list (("ans", (TList t, true))::nil)) join_test with
     | Success x => x
@@ -242,3 +256,38 @@ Section Queries_Section.
   Local Close Scope pretty_expr_scope.
 
 End Queries_Section.
+
+Require coqutil.Word.Naive.
+Require Import coqutil.Word.Bitwidth64.
+
+Definition export_prog (l : list (string * (type * bool))) (p : pcommand) :=
+  let output := run_program (word := Naive.word64) l (p (* word := Naive.word64 *))
+  in let getJsonStrs := flat_map (fun p =>
+      match p return list string with
+      | ("json", existT _ String s) => s :: nil
+      | _ => nil
+      end)
+  in match output with
+     | Success locals => match getJsonStrs locals with
+                         | str :: nil => str
+                         | _ => "Error: Program did not output json str"
+                         end
+     | Failure s => "Error: Program errored"
+     end.
+
+Definition exported_get_artist (n : Z) := export_prog 
+  (("json", (String, true)) :: ("ans", (TList artist, true)) :: nil)
+  (filter_test (word := Naive.word64) n).
+Definition exported_get_album_and_artist (n : Z) := export_prog 
+    (("json", (String, true)) ::
+     ("ans", (List (record (("0", album) :: ("1", artist) :: nil)), true)) ::
+     nil)
+  (filter_albums_with_artist (word := Naive.word64) n).
+Compute (exported_get_album_and_artist 5).
+
+Definition exported := (exported_get_artist, exported_get_album_and_artist).
+
+(*
+Extraction Language Haskell.
+ Extraction "/path/to/haskell/Extracted.hs" exported.
+*)
