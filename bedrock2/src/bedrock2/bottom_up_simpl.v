@@ -496,6 +496,14 @@ Module List.
         cbn_dropRight n ls = List.firstn (Nat.sub (List.length ls) n) ls.
     Proof. reflexivity. Qed.
 
+    Definition cbn_takeRight(n: nat)(ls: list (list A)): list (list A) :=
+      Eval unfold List.length, Nat.sub, List.skipn in
+        List.skipn (Nat.sub (List.length ls) n) ls.
+
+    Lemma cbn_takeRight_spec(n: nat)(ls: list (list A)):
+        cbn_takeRight n ls = List.skipn (Nat.sub (List.length ls) n) ls.
+    Proof. reflexivity. Qed.
+
     Definition cbn_skipn: nat -> list (list A) -> list (list A) :=
       Eval unfold List.skipn in @List.skipn (list A).
 
@@ -514,6 +522,9 @@ Module List.
     Lemma cbn_len_sum_app: forall xss yss,
         cbn_len_sum (xss ++ yss) = cbn_len_sum xss + cbn_len_sum yss.
     Proof. intros. induction xss; intros; cbn; lia. Qed.
+
+    Lemma cbn_len_sum_spec: forall xss, cbn_len_sum xss = len (List.concat xss).
+    Proof. induction xss; simpl; rewrite ?List.app_length; lia. Qed.
 
     Lemma upto_apps0: forall n i (xs: list A) (xss: list (list A))
                             (ys: list A) (yss: list (list A)),
@@ -678,16 +689,14 @@ Module List.
         eapply List.firstn_eq_O. lia.
     Qed.
 
-    (* from: discard some listlets on the left, and pull out some of the from on the right:
-       (xs1 ++ xs2 ++ xs3 ++ xs4)[i:] = (xs2 ++ xs3)[i - len xs1:] ++ xs4    *)
-    Lemma from_apps: forall n i j (xs: list A) (xss: list (list A))
-                            (ys: list A) (yss: list (list A)),
+    Lemma from_apps_drop_l: forall n i j (xs xs2 xs2': list A) (xss xss2: list (list A)),
         cbn_len_sum (cbn_firstn n xss) <= i ->
         i - cbn_len_sum (cbn_firstn n xss) = j ->
-        cbn_skipn n xss = yss ->
+        cbn_skipn n xss = xss2 ->
         cbn_concat xss = xs ->
-        cbn_concat yss = ys ->
-        List.from i xs = List.from j ys.
+        cbn_concat xss2 = xs2 ->
+        List.from j xs2 = xs2' ->
+        List.from i xs = xs2'.
     Proof.
       intros. subst. rewrite 2cbn_concat_spec. revert i xss H.
       induction n; intros; simpl in *.
@@ -701,6 +710,102 @@ Module List.
           rewrite List.app_nil_l.
           f_equal.
           lia.
+    Qed.
+
+    (* Example: If we know that i points somewhere into xs1 or xs2, we can
+                pull some listlets (xs3 and xs4) out of the from on the right:
+       (xs1 ++ xs2 ++ xs3 ++ xs4)[i:] = (xs1 ++ xs2)[:i] ++ xs3 ++ xs4 *)
+    Lemma from_apps_pullout_r: forall n i (xs xs1 xs1' xs2: list A)
+                                      (xss xss1 xss2: list (list A)),
+        i <= cbn_len_sum (cbn_firstn n xss) ->
+        cbn_firstn n xss = xss1 ->
+        cbn_skipn n xss = xss2 ->
+        cbn_concat xss = xs ->
+        cbn_concat xss1 = xs1 ->
+        cbn_concat xss2 = xs2 ->
+        List.from i xs1 = xs1' ->
+        List.from i xs = List.app xs1' xs2.
+    Proof.
+      intros; subst.
+      rewrite ?cbn_concat_spec.
+      rewrite <- (List.firstn_skipn n xss) at 1. rewrite List.concat_app.
+      rewrite cbn_firstn_spec, cbn_skipn_spec.
+      apply List.from_app_pushdown_l.
+      rewrite cbn_len_sum_spec in H.
+      exact H.
+    Qed.
+
+    (* Example: If we know that i points somewhere into xs1 or xs2, we can
+                discard some listlets on the left (xs0)
+                and pull some (xs3 and xs4) out of the from on the right:
+       (xs0 ++ xs1 ++ xs2 ++ xs3 ++ xs4)[i:] =
+       (xs1 ++ xs2)[i - len xs0 :] ++ xs3 ++ xs4 *)
+    Lemma from_apps: forall nL nR i j (xs xs2 xs2' xs3: list A)
+                            (xss xss2 xss3: list (list A)),
+        cbn_len_sum (cbn_firstn nL xss) <= i ->
+        i <= cbn_len_sum (cbn_dropRight nR xss) ->
+        i - cbn_len_sum (cbn_firstn nL xss) = j ->
+        cbn_skipn nL (cbn_dropRight nR xss) = xss2 ->
+        cbn_takeRight nR xss = xss3 ->
+        cbn_concat xss = xs ->
+        cbn_concat xss2 = xs2 ->
+        cbn_concat xss3 = xs3 ->
+        List.from j xs2 = xs2' ->
+        List.from i xs = List.app xs2' xs3.
+    Proof.
+      intros. subst xs2'.
+      (* discard special case: *)
+      assert (length xss < nL + nR \/ nL + nR <= length xss)%nat as CL by lia.
+      destruct CL as [CL | CL]. {
+        rewrite ?cbn_firstn_spec in *.
+        rewrite ?cbn_dropRight_spec in *.
+        rewrite ?cbn_skipn_spec in *.
+        pose proof H2 as P.
+        apply (f_equal (@length _)) in P.
+        rewrite List.skipn_length, List.firstn_length in P.
+        assert (length xss2 = 0)%nat as L0 by lia.
+        destruct xss2 > [clear L0 | simpl in L0; exfalso; lia].
+        simpl in H5. subst xs2.
+        rewrite cbn_takeRight_spec in H3.
+        rewrite List.from_nil. rewrite List.app_nil_l.
+        subst xs3.
+        rewrite cbn_concat_spec in *.
+        clear P.
+        subst j xs xss3.
+        assert (length xss - nR <= nL)%nat by lia.
+        assert (i = cbn_len_sum (List.firstn (length xss - nR) xss)). {
+          rewrite <- (List.firstn_skipn (length xss - nR) xss) in H.
+          rewrite List.firstn_app in H.
+          rewrite List.firstn_all2 in H by (rewrite List.firstn_length; lia).
+          rewrite cbn_len_sum_app in H.
+          rewrite ?cbn_len_sum_spec in *.
+          lia.
+        }
+        subst i.
+        rewrite cbn_len_sum_spec.
+        clear. generalize (length xss - nR)%nat as n. clear nR.
+        induction xss; intros; simpl.
+        - rewrite List.from_nil. rewrite List.skipn_nil. reflexivity.
+        - destruct n; simpl.
+          + reflexivity.
+          + rewrite <-IHxss. rewrite List.len_app. rewrite <- List.from_from by lia.
+            rewrite List.from_app_pushdown_l by lia. f_equal.
+            rewrite List.from_pastend by lia. reflexivity.
+      }
+      (* main proof: *)
+      subst.
+      eapply from_apps_pullout_r. 6,4,2: reflexivity. 3: reflexivity.
+      2: rewrite cbn_takeRight_spec, cbn_skipn_spec; reflexivity.
+      { rewrite cbn_firstn_spec, cbn_len_sum_spec, cbn_dropRight_spec in *.
+        assumption. }
+      eapply from_apps_drop_l with (n := nL); try reflexivity.
+      { rewrite cbn_firstn_spec. rewrite List.firstn_firstn.
+        replace (Init.Nat.min nL (length xss - nR)) with nL by lia.
+        assumption. }
+      rewrite ?cbn_dropRight_spec, cbn_firstn_spec, cbn_skipn_spec.
+      rewrite List.firstn_firstn.
+      replace (Init.Nat.min nL (length xss - nR)) with nL by lia.
+      reflexivity.
     Qed.
   End WithA.
 End List.
@@ -2137,10 +2242,11 @@ subst ys. refl. Succeed Qed. *) Abort.
   Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   (* upto, i points somewhere into (ys1 ++ ys2) *)
-  Goal forall (xs ys1 ys2 zs: list bool) i,
-      len xs <= i <= len xs + len ys1 + len ys2 ->
-      (xs ++ (ys1 ++ (ys2 ++ zs)))[:i] = (xs ++ ys1 ++ ys2)[:i].
-  Proof. intros. bottom_up_simpl_in_goal (). refl. Abort.
+  Goal forall (xs0 xs1 ys1 ys2 zs: list bool) i expected,
+      len xs0 + len xs1 <= i <= len xs0 + len xs1 + len ys1 + len ys2 ->
+      expected = xs0 ++ xs1 ++ (ys1 ++ ys2)[:i - len xs0 - len xs1] ->
+      (xs0 ++ (xs1 ++ (ys1 ++ (ys2 ++ zs))))[:i] = expected.
+  Proof. intros. bottom_up_simpl_in_goal (). subst expected. refl. Abort.
 
   (* push_down_from might have to chop off several lists at the start of a series of ++ *)
   Goal forall (xs ys zs: list bool) (i j: Z),
