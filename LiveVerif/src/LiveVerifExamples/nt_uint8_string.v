@@ -23,6 +23,20 @@ Module List.
       unfold List.from. intros. rewrite <- (List.firstn_skipn (Z.to_nat i) l) in H.
       intro C. apply H. apply List.in_or_app. left. assumption.
     Qed.
+
+    Lemma get_inj{inh: inhabited A}: forall (l1 l2: list A) (n: Z),
+        Z.of_nat (List.length l1) = n ->
+        Z.of_nat (List.length l2) = n ->
+        (forall i, 0 <= i < n -> List.get l1 i = List.get l2 i) ->
+        l1 = l2.
+    Proof.
+      intros. apply List.nth_inj with (n := Z.to_nat n) (d := default); try lia.
+      intros. specialize (H1 (Z.of_nat i) ltac:(lia)).
+      unfold List.get in *.
+      destruct_one_match_hyp. 1: exfalso; lia.
+      rewrite Nat2Z.id in *.
+      assumption.
+    Qed.
   End WithA.
 
   (* alternative: Coq.Structures.OrdersEx.String_as_OT.compare, but that's on strings,
@@ -187,7 +201,17 @@ step. step. step.
 
 step. step. step. step. step. step. step. step. step. step. step.
 
-step. rewrite List.app_assoc. step. subst p1. step.
+step.
+
+(* TODO automate list equality proving
+eapply List.get_inj.
+{ bottom_up_simpl_in_goal_nop_ok. reflexivity. }
+{ zify_goal. xlia zchecker. }
+{ intros ?. zify_goal. intro. step.
+bottom_up_simpl_in_goal_nop_ok.
+*)
+
+rewrite List.app_assoc. step. subst p1. step.
 symmetry. apply List.split_at_index.
 
 step. step. step. step. step. step. step. step. step. step. step. step.

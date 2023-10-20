@@ -51,7 +51,8 @@ Derive insert SuchThat (fun_correct! insert) As insert_ok.
   assert (len (sort l1 ++ [|x|]) = \[i]+1) by (rewrite List.len_app; simpl; ZnWords).
   .**/ real_insert(p, i); /**.
   2: {
-    replace (sort l1 ++ x :: l2) with ((sort l1 ++ [|x|]) ++ l2) by steps.
+    replace (x :: l2) with ([|x|] ++ l2) by steps.
+    unfold don't_know_how_to_prove.
     rewrite List.upto_app_discard_r by steps.
     rewrite List.upto_pastend by steps.
     reflexivity.
