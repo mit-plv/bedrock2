@@ -11,9 +11,9 @@ static __attribute__((constructor)) void _br2_preconditions(void) {
   static_assert(~(intptr_t)0 == -(intptr_t)1, ""two's complement"");
   assert(((void)""two's complement"", ~(intptr_t)0 == -(intptr_t)1));
   uintptr_t u = 1;
-  assert((void)""little-endian"", 1 == *(unsigned char *)&u);
+  assert(((void)""little-endian"", 1 == *(unsigned char *)&u));
   intptr_t i = 1;
-  assert((void)""little-endian"", 1 == *(unsigned char *)&i);
+  assert(((void)""little-endian"", 1 == *(unsigned char *)&i));
 }
 
 // We use memcpy to work around -fstrict-aliasing.
