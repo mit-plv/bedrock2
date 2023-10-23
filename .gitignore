@@ -20,6 +20,8 @@ Makefile.coq*
 
 .DS_Store
 
+.stack-work
+
 /bedrock2/special/stackloop
 /bedrock2/special/stackloop.c
 /bedrock2/special/stacknondet

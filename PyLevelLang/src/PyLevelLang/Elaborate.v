@@ -1,6 +1,7 @@
 Require Import PyLevelLang.Language.
 Require Import coqutil.Map.Interface coqutil.Map.SortedListString.
 Require Import coqutil.Datatypes.Result.
+Require Import coqutil.Tactics.fwd.
 Import ResultMonadNotations.
 
 (* Casts an expression `e` from `expr t2` to `expr t1`, if the two types are
@@ -37,7 +38,7 @@ Section WithMap.
   Context {tenv : map.map string (type * bool)} {tenv_ok : map.ok tenv}.
 
   (* Well-formedness judgement for `expr`s, stating that an `expr` has no free
-   * variables and variables are used with correct types *)
+   * variables and variables are used with the type given in the environment *)
   Inductive wf : tenv -> forall {t : type}, expr t -> Prop :=
     | wf_EVar G t (x : string) :
         map.get G x = Some (t, false) -> wf G (EVar t x)
@@ -380,6 +381,62 @@ Section WithMap.
       end.
   End ElaborateRecord.
 
+  Fixpoint compute_wf {t : type} (G : tenv) (e : expr t) : result unit :=
+    match e with
+    | EVar t x =>
+        match map.get G x with
+        | Some (t', false) =>
+            if type_eq_dec t t' then Success tt
+            else error:("Program has type" t "but environment has type" t' "for" x)
+        | Some (t', true) =>
+            error:("Expected EVar but got ELoc" x)
+        | None => error:("Undefined variable" x)
+        end
+    | ELoc t x =>
+        match map.get G x with
+        | Some (t', false) =>
+            error:("Expected ELoc but got EVar")
+        | Some (t', true) =>
+            if type_eq_dec t t' then Success tt
+            else error:("Program has type" t "but environment has type" t' "for" x)
+        | None => error:("Undefined variable" x)
+        end
+    | EAtom a =>
+        Success tt
+    | EUnop o e =>
+        compute_wf G e
+    | EBinop o e1 e2 =>
+        compute_wf G e1;;
+        compute_wf G e2
+    | @EFlatmap t1 _ e1 x e2 =>
+        compute_wf G e1;;
+        let G' := map.put G x (t1, false) in
+        compute_wf G' e2
+    | @EFold t1 t2 e1 e2 x y e3 =>
+        compute_wf G e1;;
+        compute_wf G e2;;
+        let G' := map.put (map.put G x (t1, false)) y (t2, false) in
+        compute_wf G' e3
+    | EIf e1 e2 e3 =>
+        compute_wf G e1;;
+        compute_wf G e2;;
+        compute_wf G e3
+    | @ELet t1 _ x e1 e2 =>
+        compute_wf G e1;;
+        let G' := map.put G x (t1, false) in
+        compute_wf G' e2
+    end.
+
+  Create HintDb wf_lemmas discriminated.
+  Hint Constructors wf: wf_lemmas.
+
+  Theorem compute_wf_sound {t : type} (e : expr t) :
+    forall G, compute_wf G e = Success tt -> wf G e.
+  Proof.
+    induction e; intros; simpl in H; fwd; subst;
+    auto with wf_lemmas.
+  Qed.
+
   (* Type checks a `pexpr` and possibly emits a typed expression
      Checks scoping for variables/locations *)
   Fixpoint elaborate (G : tenv) (p : pexpr) : result {t & expr t} :=
@@ -444,6 +501,9 @@ Section WithMap.
     | PEProj p s =>
       '(existT _ t e) <- elaborate G p;;
         elaborate_proj e s
+    | PEElaborated t e =>
+        compute_wf G e;;
+        Success (existT _ t e)
     end.
 
   Fixpoint elaborate_wf (p : pexpr) : forall G t e,
@@ -573,6 +633,12 @@ Section WithMap.
       apply elaborate_proj_wf with (e := e0) (s := s).
       + now apply IHp.
       + exact H.
+    - (* PEElaborated t' e' *) 
+      destruct (compute_wf G e') eqn:E; try easy.
+      destruct a.
+      inversion H.
+      subst.
+      apply (compute_wf_sound _ _ E).
   Qed.
 
   Fixpoint elaborate_command (G : tenv) (pc : pcommand) : result command :=
