@@ -990,7 +990,7 @@ Section Riscv.
       eapply runsToStep_cps. repeat step.
       subst stackaddr.
       repeat (bottom_up_simpl_in_hyps; fwd).
-      cbn [List.skipn List.map] in *.
+      change ([?x] ++ ?xs) with (x :: xs) in *. cbn [List.skipn List.map] in *.
       eapply IHn with (start := 1 + start) (oldvals := oldvals); try record.simp.
       + reflexivity.
       + eassumption.
@@ -1078,9 +1078,10 @@ Section Riscv.
       subst stackaddr.
       eapply interpret_loadWord. scancel_asm. clear_split_sepclause_stack.
       repeat step.
-      bottom_up_simpl_in_goal. cbn [List.nth List.length] in *.
+      bottom_up_simpl_in_goal.
+      change ([?x] ++ ?xs) with (x :: xs) in *. cbn [List.nth List.length] in *.
       repeat (bottom_up_simpl_in_hyps; fwd).
-      cbn [List.map] in *.
+      change ([?x] ++ ?xs) with (x :: xs) in *. cbn [List.map] in *.
       eapply IHn with (start := 1 + start) (vals := vals); try record.simp.
       + congruence.
       + unfold map.set. rewrite map.get_put_diff. 1: eassumption.

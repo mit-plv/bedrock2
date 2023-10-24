@@ -31,6 +31,7 @@ Require Import bedrock2.PurifySep.
 Require Import bedrock2.PurifyHeapletwise.
 Require Import bedrock2.bottom_up_simpl.
 Require Import bedrock2.safe_implication.
+Require Import bedrock2.ZListEqProver.
 Require Import bedrock2.to_from_anybytes.
 Require Import bedrock2.syntactic_f_equal_with_ZnWords.
 Require Import coqutil.Tactics.ident_ops.
@@ -246,10 +247,15 @@ Ltac destruct_ifs :=
 
 Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
 
+Ltac2 filtered_bottom_up_simpl_in_hyp_of_type(h: ident)(t: constr): unit :=
+  if Ident.starts_with @__ h then () else
+    lazy_match! t with
+    | functions_correct _ _ => ()
+    | _ => bottom_up_simpl_in_hyp_of_type silent_if_no_progress h t
+    end.
+
 Ltac2 default_simpl_in_hyps () :=
-  repeat (foreach_hyp (fun h t =>
-                         if Ident.starts_with @__ h then ()
-                         else bottom_up_simpl_in_hyp_of_type silent_if_no_progress h t));
+  repeat (foreach_hyp filtered_bottom_up_simpl_in_hyp_of_type);
   try record.simp_hyps ().
 
 Ltac default_simpl_in_hyps := ltac2:(default_simpl_in_hyps ()).
@@ -654,6 +660,7 @@ Ltac default_careful_reflexivity_step :=
   | |- _ ?l ?r => subst l
   | |- _ ?l ?r => subst r
   | |- _ => turn_relation_into_eq; syntactic_f_equal_with_ZnWords
+  | |- @eq (list _) _ _ => list_eq_step
   | |- ?rel (?pred1 ?val1 ?addr1) (?pred2 ?val2 ?addr2) =>
       is_evar val2;
       (* When is it safe to instantiate the evar val2 with val1?

@@ -30,13 +30,9 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
     i = i + 1;                                                             /**. .**/
   }                                                                        /**.
 
-  (* TODO in series of List.app, try to merge each pair of two adjacent lists *)
-  unfold List.repeatz. subst i.
-  replace (Z.to_nat \[i' ^+ /[1]]) with (Z.to_nat \[i'] + 1)%nat by steps.
-  rewrite List.repeat_app.
-  rewrite <- List.app_assoc.
-  replace (\[i' ^+ /[1]]) with (\[i'] + 1) by steps.
-  reflexivity.
+  (* TODO ZListEqProver should support (list_literal = rhs) and (lhs = list_literal) *)
+  subst i. bottom_up_simpl_in_goal. reflexivity.
+
                                                                                 .**/
 }                                                                          /**.
 Qed.

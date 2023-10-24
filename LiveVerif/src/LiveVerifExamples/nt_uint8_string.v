@@ -203,21 +203,11 @@ step. step. step. step. step. step. step. step. step. step. step.
 
 step.
 
-(* TODO automate list equality proving
-eapply List.get_inj.
-{ bottom_up_simpl_in_goal_nop_ok. reflexivity. }
-{ zify_goal. xlia zchecker. }
-{ intros ?. zify_goal. intro. step.
-bottom_up_simpl_in_goal_nop_ok.
-*)
-
-rewrite List.app_assoc. step. subst p1. step.
-symmetry. apply List.split_at_index.
+step. step. step. step.
 
 step. step. step. step. step. step. step. step. step. step. step. step.
 
-step. rewrite List.app_assoc. step. subst p2. step.
-symmetry. apply List.split_at_index.
+step. step. step. step. step.
 
 step. step. step. step.
 
@@ -237,7 +227,7 @@ destruct s1; destruct s2; simpl; symmetry.
 - eapply Z.compare_lt_iff.
   bottom_up_simpl_in_hyps. subst res.
   assert (0 <= z < 2 ^ 8). {
-    let h := constr:(#((z :: s2) ++ [|0|])) in rename h into A.
+    let h := constr:(#([|z|] ++ s2 ++ [|0|])) in rename h into A.
     eapply purify_array_ith_elem in A.
     2: typeclasses eauto with purify.
     specialize (A 0). cbv beta in A.
@@ -245,7 +235,7 @@ destruct s1; destruct s2; simpl; symmetry.
     lia.
   }
   assert (z <> 0). {
-    intro C. subst z. let h := constr:(#(~List.In 0 (0 :: ??))) in apply h.
+    intro C. subst z. let h := constr:(#(~List.In 0 ([|0|] ++ ??))) in apply h.
     constructor. reflexivity.
   }
   rewrite word.signed_opp. rewrite word.signed_eq_swrap_unsigned.
@@ -255,7 +245,7 @@ destruct s1; destruct s2; simpl; symmetry.
 - eapply Z.compare_gt_iff.
   bottom_up_simpl_in_hyps. subst res.
   assert (0 <= z < 2 ^ 8). {
-    let h := constr:(#((z :: s1) ++ [|0|])) in rename h into A.
+    let h := constr:(#([|z|] ++ s1 ++ [|0|])) in rename h into A.
     eapply purify_array_ith_elem in A.
     2: typeclasses eauto with purify.
     specialize (A 0). cbv beta in A.
@@ -263,7 +253,7 @@ destruct s1; destruct s2; simpl; symmetry.
     lia.
   }
   assert (z <> 0). {
-    intro C. subst z. let h := constr:(#(~List.In 0 (0 :: ??))) in apply h.
+    intro C. subst z. let h := constr:(#(~List.In 0 ([|0|] ++ ??))) in apply h.
     constructor. reflexivity.
   }
   rewrite word.signed_eq_swrap_unsigned.
@@ -271,7 +261,7 @@ destruct s1; destruct s2; simpl; symmetry.
   rewrite (word.swrap_inrange z) by lia. lia.
 - bottom_up_simpl_in_hyps.
   assert (0 <= z < 2 ^ 8). {
-    let h := constr:(#((z :: s1) ++ [|0|])) in rename h into A.
+    let h := constr:(#([|z|] ++ s1 ++ [|0|])) in rename h into A.
     eapply purify_array_ith_elem in A.
     2: typeclasses eauto with purify.
     specialize (A 0). cbv beta in A.
@@ -279,11 +269,11 @@ destruct s1; destruct s2; simpl; symmetry.
     lia.
   }
   assert (z <> 0). {
-    intro C. subst z. let h := constr:(#(~List.In 0 (0 :: ??))) in apply h.
+    intro C. subst z. let h := constr:(#(~List.In 0 ([|0|] ++ ??))) in apply h.
     constructor. reflexivity.
   }
   assert (0 <= z0 < 2 ^ 8). {
-    let h := constr:(#((z0 :: s2) ++ [|0|])) in rename h into A.
+    let h := constr:(#([|z0|] ++ s2 ++ [|0|])) in rename h into A.
     eapply purify_array_ith_elem in A.
     2: typeclasses eauto with purify.
     specialize (A 0). cbv beta in A.
@@ -291,7 +281,7 @@ destruct s1; destruct s2; simpl; symmetry.
     lia.
   }
   assert (z0 <> 0). {
-    intro C. subst z0. let h := constr:(#(~List.In 0 (0 :: ??))) in apply h.
+    intro C. subst z0. let h := constr:(#(~List.In 0 ([|0|] ++ ??))) in apply h.
     constructor. reflexivity.
   }
   assert (z = \[c1]) by (zify_hyps; zify_goal; xlia zchecker).

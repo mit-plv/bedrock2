@@ -48,20 +48,10 @@ void insert(uintptr_t p, uintptr_t n, uintptr_t i) /**#
             #**/ /**.
 Derive insert SuchThat (fun_correct! insert) As insert_ok.
 .**/ { /**.
-  assert (len (sort l1 ++ [|x|]) = \[i]+1) by (rewrite List.len_app; simpl; ZnWords).
   .**/ real_insert(p, i); /**.
-  2: {
-    replace (x :: l2) with ([|x|] ++ l2) by steps.
-    unfold don't_know_how_to_prove.
-    rewrite List.upto_app_discard_r by steps.
-    rewrite List.upto_pastend by steps.
-    reflexivity.
-  }
-.**/ } /*?.
-step. step. step. step. step. step. step. step. step. step. step.
-change (x :: l2) with ([|x|] ++ l2).
-rewrite List.from_app_discard_l.
-step. step. cbn. step.
+  2: instantiate (1 := x); instantiate (1 := l1).
+  2-3: unfold don't_know_how_to_prove; steps.
+.**/ } /**.
 Qed.
 
 (* Insertion sort *)

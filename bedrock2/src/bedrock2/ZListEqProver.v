@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import Coq.micromega.Lia.
+Require Import Coq.micromega.Lia coqutil.Ltac2Lib.Lia.
 Require Import Coq.Lists.List.
 Require Import coqutil.Datatypes.ZList.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
@@ -29,34 +29,32 @@ Ltac2 Set bottom_up_simpl_sidecond_hook := fun _ =>
      bottom_up_simpl_in_goal_nop_ok ();
      lia.
 
+Ltac list_eq_step :=
+  lazymatch goal with
+  | |- List.from ?i ?xs = List.from ?j ?xs => f_equal
+  | |- List.upto ?i ?xs = List.upto ?j ?xs => f_equal
+  | |- List.app _ _ = _ => eapply split_rhs; bottom_up_simpl_in_goal_nop_ok
+  | |- _ = List.app _ _ => eapply split_lhs; bottom_up_simpl_in_goal_nop_ok
+  end.
+
+Local Ltac t :=
+  match goal with
+  | |- ?x = ?x => reflexivity
+  | |- @eq (list _) _ _ => list_eq_step
+  | |- @eq Z _ _ => lia
+  end.
+
+Local Set Default Goal Selector "1".
+
 Goal forall (xs ys zs: list bool) i j0 j1 k0 k1,
     0 <= i <= len xs ->
     0 <= j0 + j1 <= len ys ->
     j0 + j1 = k0 + k1 ->
     xs ++ ys ++ (zs ++ xs[:i]) ++ xs[i:] = (xs ++ ys[:j0 + j1]) ++ ys[k0 + k1:] ++ zs ++ xs.
-Proof.
-  intros.
-  eapply split_rhs.
-  { bottom_up_simpl_in_goal_nop_ok. reflexivity. }
-  { bottom_up_simpl_in_goal_nop_ok.
-    eapply split_rhs.
-    { bottom_up_simpl_in_goal_nop_ok.
-      eapply split_lhs; bottom_up_simpl_in_goal_nop_ok.
-      1: reflexivity.
-      f_equal. lia. }
-    { bottom_up_simpl_in_goal_nop_ok.
-Abort.
+Proof. intros. t. t. t. t. t. t. t. t. t. t. t. t. Succeed Qed. Abort.
 
 Goal forall s i j,
     0 < i + j <= 1 ->
     0 < len s ->
     s[:i + j] ++ s[1:] ++ [|0|] = s ++ [|0|].
-Proof.
-  intros.
-
-  replace (i + j) with 1 by lia.
-
-  eapply split_rhs.
-  { bottom_up_simpl_in_goal_nop_ok. reflexivity. }
-  { bottom_up_simpl_in_goal_nop_ok. reflexivity. }
-Succeed Qed. Abort.
+Proof. intros. t. t. t. t. t. t. Succeed Qed. Abort.

@@ -220,7 +220,7 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
     eapply and_flip. split. 1: lia.
     eapply and_flip. split.
     { (* TODO this is an example where seeing through equalities matters: *)
-      subst v l1. erewrite push_down_len_cons. 2: reflexivity. step. }
+      subst v l1. step. }
     step. step. step. step. step.
 
     (* small post implies bigger post: *)
@@ -232,7 +232,7 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
     cancel_in_hyp HL.
     subst l1.
 
-    simpl (List.map _ (_ :: _)).
+    simpl (List.map _ (_ ++ _)).
 
     steps.
   } }
