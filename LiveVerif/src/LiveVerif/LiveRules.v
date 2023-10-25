@@ -876,6 +876,13 @@ Section WithParams.
      to be provided (at least partially) manually *)
   Definition provide_new_ghosts{Ghosts: Type}: (Ghosts -> Prop) -> Prop := @ex Ghosts.
 
+  (* marker for tactics to detect that before proving this implication, we can
+     clear all other state
+     (TODO: could also be used for Hbody, Hrest hyps of while lemmas, and for remainder
+     in call lemmas) *)
+  Definition state_implication(P1 P2: trace -> mem -> locals -> Prop): Prop :=
+    forall t m l, P1 t m l -> P2 t m l.
+
   Lemma wp_while_tailrec {measure: Type} {Ghost: Type} (v0: measure) (g0: Ghost)
     (e: expr) (c: cmd) t0 (m0: mem) l0 fs rest
     (pre post: Ghost * measure * trace * mem * locals -> Prop) {lt}
@@ -894,10 +901,11 @@ Section WithParams.
                   (post (g, v, t, m, l))
                   (loop_body_marker (bool_expr_branches b (wp_cmd fs c t m l
                       (fun t' m' l' => exists v', provide_new_ghosts (fun g' =>
-                           pre (g', v', t', m', l') /\
-                           lt v' v /\
-                           (forall t'' m'' l'', post (g', v', t'', m'', l'') ->
-                                                post (g , v , t'', m'', l''))))) True True)))
+                         pre (g', v', t', m', l') /\
+                         lt v' v /\
+                         state_implication (fun t'' m'' l'' => post (g', v', t'', m'', l''))
+                                           (fun t'' m'' l'' => post (g , v , t'', m'', l''))
+                      ))) True True)))
     (Hrest: forall t m l, post (g0, v0, t, m, l) -> wp_cmd fs rest t m l finalpost)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 finalpost.
   Proof.
@@ -939,8 +947,8 @@ Section WithParams.
                       (fun t' m' l' => exists v', provide_new_ghosts (fun g' =>
                            pre (g', v', t', m', l') /\
                            lt v' v /\
-                           (forall t'' m'' l'', functionpost g' v' t'' m'' l'' ->
-                                                functionpost g  v  t'' m'' l'')))))
+                           state_implication (functionpost g' v')
+                                             (functionpost g  v )))))
                   (wp_cmd fs rest t m l (functionpost g v))
                   True)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 (functionpost g0 v0).
@@ -983,8 +991,8 @@ Section WithParams.
                     (exists v', provide_new_ghosts (fun g' =>
                         pre (g', v', t', m', l') /\
                         lt v' v /\
-                        (forall t'' m'' l'', functionpost g' v' t'' m'' l'' ->
-                                             functionpost g  v  t'' m'' l'')))
+                        state_implication (functionpost g' v')
+                                          (functionpost g  v )))
                     (wp_cmd fs rest t' m' l' (functionpost g v))
                     True)))
     : wp_cmd fs (cmd.seq (cmd.dowhile c e) rest) t0 m0 l0 (functionpost g0 v0).
@@ -1069,8 +1077,9 @@ Section WithParams.
                            (exists v', provide_new_ghosts (fun g' =>
                                pre (g', v', t', m', l') /\
                                lt v' v /\
-                               (forall t'' m'' l'', post (g', v', t'', m'', l'') ->
-                                                    post (g , v , t'', m'', l''))))
+                               state_implication
+                                 (fun t'' m'' l'' => post (g', v', t'', m'', l''))
+                                 (fun t'' m'' l'' => post (g , v , t'', m'', l''))))
                            (post (g, v, t', m', l'))
                            True)) True True)))
     (Hrest: forall t m l, post (g0, v0, t, m, l) -> wp_cmd fs rest t m l finalpost)
@@ -1113,7 +1122,7 @@ Section WithParams.
           { eexists. split. 1: eassumption. rewrite word.eqb_eq; reflexivity. }
           { eassumption. }
           { exact I. }
-          intros *. exact id. }
+          intros ? ? ?. exact id. }
         { fwd.
           eexists (true, v'(* new, smaller measure *)), _.
           ssplit.

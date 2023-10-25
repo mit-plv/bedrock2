@@ -170,14 +170,9 @@ step. step. step. step. step. step. step. step. step. step. step. step. step. st
 step. step. step. step. step. step. step. step. step. step. step. step. step. step.
 step. step. step. step. step. step. step. step. step.
 
-clear_heapletwise_hyps.
-clear_mem_split_eqs.
-clear_heaplets.
-
 (* function post with small ghosts implies function post with bigger ghosts: *)
 
-intros t'' m'' l'' EE. inversion EE. clear EE. eapply mk_expect_1expr_return.
-1: eassumption.
+step.
 
 step. step. step. step. step. step. step. step. step. step. step. step. step.
 step. step. step.

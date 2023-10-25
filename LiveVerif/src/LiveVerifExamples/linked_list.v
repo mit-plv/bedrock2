@@ -225,7 +225,7 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
 
     (* small post implies bigger post: *)
     step. step.
-    clear and_flip. intros. fwd.
+    step. step. step. step. step. step.
     step. step. step.
 
     epose proof (fold_sll_cons _ #(p' <> /[0])) as HL.

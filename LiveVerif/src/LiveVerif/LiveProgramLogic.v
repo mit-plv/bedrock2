@@ -742,6 +742,11 @@ Ltac clear_heaplets :=
     | m: @map.rep (@word.rep _ _) Coq.Init.Byte.byte _ |- _ => clear m
     end.
 
+Ltac clear_traces :=
+  repeat match goal with
+    | t: trace |- _ => clear t
+    end.
+
 Ltac is_ground_string s :=
   lazymatch s with
   | String.EmptyString => idtac
@@ -850,6 +855,20 @@ Ltac conclusion_shape_based_step logger :=
   | |- forall t' m' (retvs: list ?word), _ -> update_locals _ retvs ?l _ =>
       logger ltac:(fun _ => idtac "intro new state after function call");
       intros
+  | |- state_implication _ _ =>
+      logger ltac:(fun _ => idtac "state_implication: clear old state and intro new state");
+      clear_heapletwise_hyps;
+      clear_mem_split_eqs;
+      clear_heaplets;
+      clear_traces;
+      intros ? ? ?;
+      lazymatch goal with
+      | |- expect_1expr_return _ _ _ _ -> expect_1expr_return _ _ _ _ =>
+          let hGet := fresh in
+          intros [? hGet ?];
+          eapply mk_expect_1expr_return; [exact hGet | clear hGet]
+      | |- _ => intro
+      end
   | |- @eq (@map.rep string (@word.rep _ _) _) ?LHS ?RHS =>
       is_map_expr_with_ground_keys LHS;
       is_map_expr_with_ground_keys RHS;
