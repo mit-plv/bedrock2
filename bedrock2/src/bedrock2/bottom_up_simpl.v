@@ -1040,7 +1040,9 @@ Ltac2 rec push_down_upto(force_progress: bool)(treat_app: bool)
   let nop := fun (_: unit) =>
                if force_progress then gfail "no progress"
                else res_nothing_to_simpl '(@List.upto $tp $i $l) in
-  match! l with (*non-lazy because of max_n_st*)
+  match! l with
+  | _ => res_rewrite '(List.upto_beginning $l $i ltac2:(bottom_up_simpl_sidecond_hook ()))
+  | _ => res_rewrite '(List.upto_pastend $l $i ltac2:(bottom_up_simpl_sidecond_hook ()))
   | List.app _ _ =>
       if treat_app then
         let xss := List.reify_apps l in
@@ -1105,12 +1107,7 @@ Ltac2 rec push_down_upto(force_progress: bool)(treat_app: bool)
                       ltac2:(bottom_up_simpl_sidecond_hook ())) (* might fail! *)
   | _ => if is_concrete_enough i l true then
            let l' := convertible_list_upto i l in res_convertible l'
-         else
-           try res_rewrite '(List.upto_beginning $l $i
-                                  ltac2:(bottom_up_simpl_sidecond_hook ()))
-           else try res_rewrite '(List.upto_pastend $l $i
-                                    ltac2:(bottom_up_simpl_sidecond_hook ()))
-                else nop ()
+         else nop ()
   end.
 
 (* returns a proof whose LHS is (List.from i l) and an RHS where the from has been
@@ -1118,6 +1115,8 @@ Ltac2 rec push_down_upto(force_progress: bool)(treat_app: bool)
 Ltac2 rec push_down_from(force_progress: bool)(treat_app: bool)
                         (tp: constr)(i: constr)(l: constr): res :=
   (*non-lazy*)match! l with
+  | _ => res_rewrite '(List.from_beginning $l $i ltac2:(bottom_up_simpl_sidecond_hook ()))
+  | _ => res_rewrite '(List.from_pastend $l $i ltac2:(bottom_up_simpl_sidecond_hook ()))
   | List.app _ _ =>
       if treat_app then
         let xss := List.reify_apps l in
@@ -1229,14 +1228,9 @@ Ltac2 rec push_down_from(force_progress: bool)(treat_app: bool)
                              end))
   | _ => if is_concrete_enough i l true then
            let l' := convertible_list_from i l in res_convertible l'
-         else
-           try res_rewrite '(List.from_beginning $l $i
-                               ltac2:(bottom_up_simpl_sidecond_hook ()))
-           else res_rewrite '(List.from_pastend $l $i
-                                ltac2:(bottom_up_simpl_sidecond_hook ()))
-  | _ => if force_progress
-         then gfail "no progress"
-         else res_nothing_to_simpl '(@List.from $tp $i $l)
+         else if force_progress
+              then gfail "no progress"
+              else res_nothing_to_simpl '(@List.from $tp $i $l)
   end.
 
 Section PushDownGet.
@@ -2575,6 +2569,18 @@ Section Tests.
       (List.repeatz z n)[n - i:] = List.repeatz z i.
   Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
+  Goal forall (l: list bool) i j,
+      len l <= i ->
+      j <= 0 ->
+      (l[i:], l[j:], l[:i], l[:j]) = (nil, l, l, nil).
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  Goal forall (b: bool) l n i j,
+      0 <= n <= i ->
+      j <= 0 ->
+      l = List.repeatz b n ->
+      (l[i:], l[j:], l[:i], l[:j]) = (nil, l, l, nil).
+  Proof. intros. subst l. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   (** ** Not supported yet: *)
 

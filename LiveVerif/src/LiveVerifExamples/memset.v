@@ -28,12 +28,7 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
   while (i < n) /* decreases (n ^- i) */ {                                 /**. .**/
     store8(a + i, b);                                                      /**. .**/
     i = i + 1;                                                             /**. .**/
-  }                                                                        /**.
-
-  (* TODO ZListEqProver should support (list_literal = rhs) and (lhs = list_literal) *)
-  subst i. bottom_up_simpl_in_goal. reflexivity.
-
-                                                                                .**/
+  }                                                                        /**. .**/
 }                                                                          /**.
 Qed.
 

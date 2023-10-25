@@ -50,7 +50,7 @@ Derive insert SuchThat (fun_correct! insert) As insert_ok.
 .**/ { /**.
   .**/ real_insert(p, i); /**.
   2: instantiate (1 := x); instantiate (1 := l1).
-  2-3: unfold don't_know_how_to_prove; steps.
+  all: unfold don't_know_how_to_prove; steps.
 .**/ } /**.
 Qed.
 
