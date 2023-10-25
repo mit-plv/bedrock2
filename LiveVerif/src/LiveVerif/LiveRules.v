@@ -949,7 +949,7 @@ Section WithParams.
                            lt v' v /\
                            state_implication (functionpost g' v')
                                              (functionpost g  v )))))
-                  (wp_cmd fs rest t m l (functionpost g v))
+                  (pop_scope_marker (after_loop fs rest t m l (functionpost g v)))
                   True)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t0 m0 l0 (functionpost g0 v0).
   Proof.
@@ -993,7 +993,7 @@ Section WithParams.
                         lt v' v /\
                         state_implication (functionpost g' v')
                                           (functionpost g  v )))
-                    (wp_cmd fs rest t' m' l' (functionpost g v))
+                    (pop_scope_marker (after_loop fs rest t' m' l' (functionpost g v)))
                     True)))
     : wp_cmd fs (cmd.seq (cmd.dowhile c e) rest) t0 m0 l0 (functionpost g0 v0).
   Proof.

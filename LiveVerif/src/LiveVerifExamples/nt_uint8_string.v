@@ -166,18 +166,10 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
     lia.
   }
 
-step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step. step. step.
-
-(* function post with small ghosts implies function post with bigger ghosts: *)
-
-step.
-
-step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step.
+  steps.
 
 {
+  unfold don't_know_how_to_prove.
   erewrite List.compare_cons_cons_same; try assumption.
   eapply Z.compare_eq_iff.
   subst p1 p2.
@@ -188,25 +180,6 @@ step. step. step.
   zify_hyps.
   xlia zchecker.
 }
-
-(* Need to join the char at p1' (coming from bigger frame of smaller post)
-   with its tail at p1 (coming from smaller post) in order to satisfy
-   bigger post.
-   Or split what we have in the goal: *)
-
-step. step. step. step. step. step. step. step. step. step. step.
-
-step.
-
-step. step. step. step.
-
-step. step. step. step. step. step. step. step. step. step. step. step.
-
-step. step. step. step. step.
-
-step. step. step. step.
-
-clear Scope2. (* not in loop body any more *)
 
 .**/
   uintptr_t res = c1 - c2;                                                 /**. .**/

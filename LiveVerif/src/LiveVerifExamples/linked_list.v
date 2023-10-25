@@ -158,17 +158,15 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
   let cond := constr:(live_expr:(p != 0)) in
   let measure0 := constr:(len l) in
   eapply (wp_while_tailrec measure0 (l, p, R) cond)
-         with (pre := fun '(L, p, F, v, ti, m, l) =>
-                        l = map.of_list [|("p", p)|] /\
-                        v = len L /\
-                        <{ * sll L p * F }> m /\
-                        ti = t).
+         with (pre := fun '(L, p, F, v, ti, m, l) => ands [|
+                        l = map.of_list [|("p", p)|];
+                        v = len L;
+                        <{ * sll L p * F }> m;
+                        ti = t|]).
 
   1: eauto with wf_of_type.
   1: solve [steps].
-  {
-    intros v (? & ?) *. intros. fwd. subst t0 l0.
-    clear H0 H1 D p m m0 m1 l.
+  { start_loop_body. subst t0.
     steps.
     { (* when loop condition is false, post must hold, and by generalizing it from
          the symbolic state, we can design it, hopefully without spelling it out
@@ -181,12 +179,12 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
                              * F }> m /\
                           ti = t).
       cbv beta iota.
-      subst r.
+      subst p.
       eapply invert_sll_null in H0.
       heapletwise_step.
       (* note: only one heaplet left --> D gets deleted, and heapletwise stops working *)
       repeat heapletwise_step.
-      subst l1.
+      subst L.
       simpl (sll _ _).
       steps.
       eapply sep_emp_l. auto. }
@@ -206,6 +204,7 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
       .**/ p = load(p + 4); /**.
 
       .**/ } /**. new_ghosts(l', _, _).
+    cbn [ands].
     rewrite ->?and_assoc. (* to make sure frame evar appears in Rest of canceling, so
                              that canceling_step doesn't instantiate frame with anymem *)
 
@@ -217,10 +216,11 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
     (* manual flipping to make it look more like a function call so that
        heapletwise's "instantiate frame with wand" trick works: *)
     eapply and_flip. split. 1: reflexivity.
+    eapply and_flip. split. 1: exact I.
     eapply and_flip. split. 1: lia.
     eapply and_flip. split.
     { (* TODO this is an example where seeing through equalities matters: *)
-      subst v l1. step. }
+      subst v L. step. }
     step. step. step. step. step.
 
     (* small post implies bigger post: *)
@@ -230,7 +230,7 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
 
     epose proof (fold_sll_cons _ #(p' <> /[0])) as HL.
     cancel_in_hyp HL.
-    subst l1.
+    subst L.
 
     simpl (List.map _ (_ ++ _)).
 
