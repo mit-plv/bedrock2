@@ -109,20 +109,19 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
   set (p2_pre := p2). change p2_pre with p2 at 1.
   pose proof (eq_refl: p2_pre = p2). clearbody p2_pre. move p2_pre before p1_pre.
   move p1 after c2. move p2 after p1.
-  (* pattern out ghost vars from functionpost to get post of do-while lemma: *)
+
+  Import pattern_tuple.
   lazymatch goal with
   | |- exec ?fs ?body ?t ?m ?l ?P =>
-      lazymatch eval pattern s1, s2, p1_pre, p2_pre, R, (len s1) in P with
-      | ?f s1 s2 p1_pre p2_pre R (len s1) =>
-          change (exec fs body t m l ((fun (g: list Z * list Z * word * word * (mem -> Prop)) (v: Z) =>
-          let (g, R) := g in
-          let (g, p2_pre) := g in
-          let (g, p1_pre) := g in
-          let (s1, s2) := g in
-          ltac:(let r := eval cbv beta in (f s1 s2 p1_pre p2_pre R v) in exact r))
-                (s1, s2, p1_pre, p2_pre, R) (len s1)))
-      end
+      let P' := eval pattern (len s1) in P in
+      change (exec fs body t m l P')
   end.
+  lazymatch goal with
+  | |- exec ?fs ?body ?t ?m ?l (?P ?v0) =>
+      let P' := pattern_tuple_in_term P (s1, s2, p1_pre, p2_pre, R) in
+      change (exec fs body t m l (P' v0))
+  end.
+
   eapply wp_dowhile_tailrec_use_functionpost.
   { eauto with wf_of_type. }
   {  Ltac log_packaged_context P ::= idtac P.
