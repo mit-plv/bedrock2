@@ -103,37 +103,18 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
   delete #(c1 = ??).
   delete #(c2 = ??).
   loop invariant above c1.
-  unfold ready.
+  (* Local Arguments ready : clear implicits. *)
   set (p1_pre := p1). change p1_pre with p1 at 1.
   pose proof (eq_refl: p1_pre = p1). clearbody p1_pre. move p1_pre before t.
   set (p2_pre := p2). change p2_pre with p2 at 1.
   pose proof (eq_refl: p2_pre = p2). clearbody p2_pre. move p2_pre before p1_pre.
   move p1 after c2. move p2 after p1.
-
-  Import pattern_tuple.
-  lazymatch goal with
-  | |- exec ?fs ?body ?t ?m ?l ?P =>
-      let P' := eval pattern (len s1) in P in
-      change (exec fs body t m l P')
-  end.
-  lazymatch goal with
-  | |- exec ?fs ?body ?t ?m ?l (?P ?v0) =>
-      let P' := pattern_tuple_in_term P (s1, s2, p1_pre, p2_pre, R) in
-      change (exec fs body t m l (P' v0))
-  end.
-
-  eapply wp_dowhile_tailrec_use_functionpost.
-  { eauto with wf_of_type. }
-  {  Ltac log_packaged_context P ::= idtac P.
-    package_heapletwise_context. }
-  start_loop_body.
-  steps.
-
-  .**/
-  c1 = deref8(p1);                                                         /**. .**/
-  c2 = deref8(p2);                                                         /**. .**/
-  p1 = p1 + 1;                                                             /**. .**/
-  p2 = p2 + 1;                                                             /**.
+                                                                                .**/
+  do /* initial_ghosts(s1, s2, p1_pre, p2_pre, R); decreases (len s1) */ { /**. .**/
+    c1 = deref8(p1);                                                       /**. .**/
+    c2 = deref8(p2);                                                       /**. .**/
+    p1 = p1 + 1;                                                           /**. .**/
+    p2 = p2 + 1;                                                           /**.
 
   unfold ready.
 
@@ -144,8 +125,8 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
      exists b, dexpr_bool3 _ _ ?condEvar _ _ _ _) => unify condEvar e
   end.
   step. step.
-
-  .**/ } /**. new_ghosts(s1[1:], s2[1:], p1, p2, _).
+                                                                                .**/
+  } /**. new_ghosts(s1[1:], s2[1:], p1, p2, _).
 
   assert (0 < len s1). {
     assert (len s1 <> 0). {
@@ -180,7 +161,7 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
   xlia zchecker.
 }
 
-.**/
+                                                                                .**/
   uintptr_t res = c1 - c2;                                                 /**. .**/
   return res;                                                              /**. .**/
 }                                                                          /**.

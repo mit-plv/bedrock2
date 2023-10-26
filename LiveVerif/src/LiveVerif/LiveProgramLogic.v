@@ -12,6 +12,7 @@ Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.foreach_hyp.
 Require Import coqutil.Tactics.grepeat.
+Require Import coqutil.Tactics.pattern_tuple.
 Require Import coqutil.Datatypes.RecordSetters.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
@@ -506,6 +507,21 @@ Ltac while cond measure0 :=
   | eauto with wf_of_type
   | start_loop_body ].
 
+Ltac dowhile_tailrec_use_functionpost ghosts0 measure0 :=
+  lazymatch goal with
+  | |- exec ?fs ?body ?t ?m ?l ?P =>
+      let P' := eval pattern measure0 in P in change (exec fs body t m l P')
+  end;
+  lazymatch goal with
+  | |- exec ?fs ?body ?t ?m ?l (?P ?v0) =>
+      let P' := pattern_tuple_in_term P ghosts0 in
+      change (exec fs body t m l (P' v0))
+  end;
+  eapply wp_dowhile_tailrec_use_functionpost with (g0 := ghosts0) (v0 := measure0);
+  [ eauto with wf_of_type
+  | package_heapletwise_context
+  | start_loop_body ].
+
 Tactic Notation "new_ghosts" open_constr(g) := eexists g.
 
 Ltac is_local_var name :=
@@ -559,6 +575,7 @@ Ltac add_regular_snippet s :=
           end
       end
   | SWhile ?cond ?measure0 => while cond measure0
+  | SDoTailrec ?ghosts0 ?measure0 => dowhile_tailrec_use_functionpost ghosts0 measure0
   | SStart => fail "SStart can only be used to start a function"
   | SEnd => close_block
   | SRet ?retexpr => ret retexpr
