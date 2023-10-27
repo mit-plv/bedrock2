@@ -114,19 +114,10 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
     c1 = deref8(p1);                                                       /**. .**/
     c2 = deref8(p2);                                                       /**. .**/
     p1 = p1 + 1;                                                           /**. .**/
-    p2 = p2 + 1;                                                           /**.
+    p2 = p2 + 1;                                                           /**. .**/
+  } while (c1 == c2 && c1 != 0);                                           /**.
 
-  unfold ready.
-
-  let e := constr:(live_expr:(c1 == c2 && c1 != 0)) in
-  lazymatch goal with
-  (* from hypothesis of do-while lemma: *)
-  | |- exec _ _ ?t ?m ?l (fun t' m' l' =>
-     exists b, dexpr_bool3 _ _ ?condEvar _ _ _ _) => unify condEvar e
-  end.
-  step. step.
-                                                                                .**/
-  } /**. new_ghosts(s1[1:], s2[1:], p1, p2, _).
+    new_ghosts(s1[1:], s2[1:], p1, p2, _).
 
   assert (0 < len s1). {
     assert (len s1 <> 0). {

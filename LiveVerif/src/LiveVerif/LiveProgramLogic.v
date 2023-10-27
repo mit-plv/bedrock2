@@ -522,6 +522,14 @@ Ltac dowhile_tailrec_use_functionpost ghosts0 measure0 :=
   | package_heapletwise_context
   | start_loop_body ].
 
+Ltac end_dowhile e :=
+  lazymatch goal with
+  (* from hypothesis of do-while lemma: *)
+  | |- exec _ _ ?t ?m ?l (fun t' m' l' =>
+     exists b, dexpr_bool3 _ _ ?condEvar _ _ _ _) => unify condEvar e
+  end;
+  close_block.
+
 Tactic Notation "new_ghosts" open_constr(g) := eexists g.
 
 Ltac is_local_var name :=
@@ -576,6 +584,7 @@ Ltac add_regular_snippet s :=
       end
   | SWhile ?cond ?measure0 => while cond measure0
   | SDoTailrec ?ghosts0 ?measure0 => dowhile_tailrec_use_functionpost ghosts0 measure0
+  | SEndDo ?c => end_dowhile c
   | SStart => fail "SStart can only be used to start a function"
   | SEnd => close_block
   | SRet ?retexpr => ret retexpr

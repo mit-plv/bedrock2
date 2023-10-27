@@ -14,6 +14,7 @@ Inductive snippet :=
 | SWhile(c: expr){Measure: Type}(m: Measure)           (* while(c)/* decreases m */ { *)
 | SDoTailrec{G M: Type}(ghosts0: G)(measure0: M)
   (* do /* initial_ghosts ghosts0; decreases measure0 */ {                            *)
+| SEndDo(c: expr)                                      (* } while (c);                *)
 | SStart                                               (* {                           *)
 | SEnd                                                 (* }                           *)
 | SRet(retexpr: expr)                                  (* return e;                   *)
