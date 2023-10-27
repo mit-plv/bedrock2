@@ -31,7 +31,7 @@ Ltac can_have_PredicateSize PredTp :=
 : typeclass_instances.
 
 Definition array{width}{BW: Bitwidth width}{word: word width}
-  {mem: map.map word Byte.byte}{T: Type}
+  {mem: map.map word Byte.byte}[T: Type]
   (elem: T -> word -> mem -> Prop){elemSize: PredicateSize elem}
   (n: Z)(vs: list T)(addr: word): mem -> Prop :=
   sep (emp (len vs = n))
@@ -43,7 +43,7 @@ Definition array{width}{BW: Bitwidth width}{word: word width}
   exact (n * elemSize) : typeclass_instances.
 
 Lemma purify_array{width}{BW: Bitwidth width}{word: word width}{word_ok: word.ok word}
-  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}{T: Type} elem
+  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}[T: Type] elem
   {elemSize: PredicateSize elem}(n: Z)(vs: list T)(addr: word):
   purify (array elem n vs addr) (len vs = n). (* TODO also n <= 2^width or n < 2^width? *)
 Proof.
@@ -54,7 +54,7 @@ Qed.
 (* for concrete lists: *)
 Lemma purify_array_and_elems{width}{BW: Bitwidth width}
   {word: word width}{word_ok: word.ok word}
-  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}{T: Type} elem
+  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}[T: Type] elem
   {elemSize: PredicateSize elem}{P: Prop}
   (n: Z)(vs: list T)(addr: word):
   purify (bedrock2.Array.array (fun a v => elem v a) (word.of_Z elemSize) addr vs) P ->
@@ -79,7 +79,7 @@ Ltac is_concrete_list l :=
    Note: not registered as a hint because usually not needed *)
 Lemma purify_array_ith_elem{width}{BW: Bitwidth width}
   {word: word width}{word_ok: word.ok word}
-  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}{T: Type} elem
+  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}[T: Type] elem
   {elemSize: PredicateSize elem}{P: T -> Prop}{inh: Inhabited.inhabited T}
   (n: Z)(vs: list T)(addr: word):
   (forall v a, purify (elem v a) (P v)) ->
@@ -154,7 +154,7 @@ Proof. unfold purify. intros. constructor. Qed.
 #[export] Hint Extern 1 (cannot_purify (if _ then _ else _))
 => constructor : suppressed_warnings.
 
-Lemma anyval_is_emp{word: Type}{mem: map.map word Coq.Init.Byte.byte}{T: Type}
+Lemma anyval_is_emp{word: Type}{mem: map.map word Coq.Init.Byte.byte}[T: Type]
   (p: T -> word -> mem -> Prop)(q: T -> Prop)(a: word):
   (forall x: T, is_emp (p x a) (q x)) -> is_emp (anyval p a) (exists x: T, q x).
 Proof. unfold anyval, is_emp, impl1, emp, ex1. intros. firstorder idtac. Qed.

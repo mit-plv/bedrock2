@@ -4,6 +4,21 @@ Require Import LiveVerifExamples.onesize_malloc.
 
 (* TODO move *)
 
+Import coqutil.Tactics.autoforward.
+
+#[export] Instance notin_nil[A: Type](a: A): autoforward (~ List.In a (@nil A)) True.
+Proof. intros ?. constructor. Qed.
+
+#[export] Instance notin_app[A: Type](a: A)(l1 l2: list A):
+  autoforward (~ List.In a (l1 ++ l2)) (~ List.In a l1 /\ ~ List.In a l2).
+Proof.
+  intros ?. split; intro C; apply H; apply List.in_app_iff; auto.
+Qed.
+
+#[export] Instance notin_singleton[A: Type](x y: A):
+  autoforward (~ List.In x (cons y nil)) (x <> y).
+Proof. intros ? C. apply H. subst. constructor. reflexivity. Qed.
+
 Module List.
   Section WithA.
     Context [A: Type].
@@ -75,6 +90,16 @@ End List.
 
 Load LiveVerif.
 
+Section Array.
+  Context [T: Type] (elem: T -> word -> mem -> Prop) {sz: PredicateSize elem}.
+
+  Lemma array1_to_elem'{inh: Inhabited.inhabited T}: forall addr l n m,
+      n = 1 ->
+      with_mem m (array elem n l addr) ->
+      with_mem m (elem l[0] addr).
+  Proof. intros * ->. eapply array1_to_elem. Qed.
+End Array.
+
 Local Ltac step_hook ::= solve [auto using List.notin_from].
 
 Definition nt_str(s: list Z)(a: word): mem -> Prop :=
@@ -119,133 +144,49 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
 
     new_ghosts(s1[1:], s2[1:], p1, p2, _).
 
-  assert (0 < len s1). {
-    assert (len s1 <> 0). {
-      intro C. destruct s1.
-      - bottom_up_simpl_in_hyps. congruence.
-      - discriminate C.
-    }
-    lia.
-  }
+    assert (len s1 <> 0) by (intro; bottom_up_simpl_in_hyps; congruence).
+    assert (len s2 <> 0) by (intro; bottom_up_simpl_in_hyps; congruence).
 
-  assert (0 < len s2). {
-    assert (len s2 <> 0). {
-      intro C. destruct s2.
-      - bottom_up_simpl_in_hyps. congruence.
-      - discriminate C.
-    }
-    lia.
-  }
+    steps.
 
-  steps.
-
-{
-  unfold don't_know_how_to_prove.
-  erewrite List.compare_cons_cons_same; try assumption.
-  eapply Z.compare_eq_iff.
-  subst p1 p2.
-  bottom_up_simpl_in_hyps.
-  let h := constr:(#(s1[:1])) in eapply array1_to_elem in h; purify_hyp h.
-  let h := constr:(#(s2[:1])) in eapply array1_to_elem in h; purify_hyp h.
-  bottom_up_simpl_in_hyps.
-  zify_hyps.
-  xlia zchecker.
-}
+    unfold don't_know_how_to_prove.
+    erewrite List.compare_cons_cons_same; try lia; try assumption.
+    eapply Z.compare_eq_iff.
+    repeat match goal with
+           | H: with_mem _ (array _ _ _ _) |- _ =>
+               eapply array1_to_elem' in H;
+               [ new_mem_hyp H | zify_goal; xlia zchecker ]
+           end.
+    bottom_up_simpl_in_hyps.
+    zify_hyps.
+    xlia zchecker.
 
                                                                                 .**/
   uintptr_t res = c1 - c2;                                                 /**. .**/
   return res;                                                              /**. .**/
 }                                                                          /**.
-unzify.
-unfold don't_know_how_to_prove.
+  unzify.
+  unfold don't_know_how_to_prove.
 
-destruct s1; destruct s2; simpl; symmetry.
-- eapply Z.compare_eq_iff.
-  bottom_up_simpl_in_hyps. subst res.
-  apply word.signed_of_Z_nowrap. lia.
-- eapply Z.compare_lt_iff.
-  bottom_up_simpl_in_hyps. subst res.
-  assert (0 <= z < 2 ^ 8). {
-    let h := constr:(#([|z|] ++ s2 ++ [|0|])) in rename h into A.
-    eapply purify_array_ith_elem in A.
-    2: typeclasses eauto with purify.
-    specialize (A 0). cbv beta in A.
-    bottom_up_simpl_in_hyp A.
-    lia.
-  }
-  assert (z <> 0). {
-    intro C. subst z. let h := constr:(#(~List.In 0 ([|0|] ++ ??))) in apply h.
-    constructor. reflexivity.
-  }
-  rewrite word.signed_opp. rewrite word.signed_eq_swrap_unsigned.
-  rewrite word.unsigned_of_Z_nowrap by lia.
-  rewrite (word.swrap_inrange z) by lia.
-  unfold word.swrap. zify_goal. xlia zchecker.
-- eapply Z.compare_gt_iff.
-  bottom_up_simpl_in_hyps. subst res.
-  assert (0 <= z < 2 ^ 8). {
-    let h := constr:(#([|z|] ++ s1 ++ [|0|])) in rename h into A.
-    eapply purify_array_ith_elem in A.
-    2: typeclasses eauto with purify.
-    specialize (A 0). cbv beta in A.
-    bottom_up_simpl_in_hyp A.
-    lia.
-  }
-  assert (z <> 0). {
-    intro C. subst z. let h := constr:(#(~List.In 0 ([|0|] ++ ??))) in apply h.
-    constructor. reflexivity.
-  }
-  rewrite word.signed_eq_swrap_unsigned.
-  rewrite word.unsigned_of_Z_nowrap by lia.
-  rewrite (word.swrap_inrange z) by lia. lia.
-- bottom_up_simpl_in_hyps.
-  assert (0 <= z < 2 ^ 8). {
-    let h := constr:(#([|z|] ++ s1 ++ [|0|])) in rename h into A.
-    eapply purify_array_ith_elem in A.
-    2: typeclasses eauto with purify.
-    specialize (A 0). cbv beta in A.
-    bottom_up_simpl_in_hyp A.
-    lia.
-  }
-  assert (z <> 0). {
-    intro C. subst z. let h := constr:(#(~List.In 0 ([|0|] ++ ??))) in apply h.
-    constructor. reflexivity.
-  }
-  assert (0 <= z0 < 2 ^ 8). {
-    let h := constr:(#([|z0|] ++ s2 ++ [|0|])) in rename h into A.
-    eapply purify_array_ith_elem in A.
-    2: typeclasses eauto with purify.
-    specialize (A 0). cbv beta in A.
-    bottom_up_simpl_in_hyp A.
-    lia.
-  }
-  assert (z0 <> 0). {
-    intro C. subst z0. let h := constr:(#(~List.In 0 ([|0|] ++ ??))) in apply h.
-    constructor. reflexivity.
-  }
-  assert (z = \[c1]) by (zify_hyps; zify_goal; xlia zchecker).
-  assert (z0 = \[c2]) by (zify_hyps; zify_goal; xlia zchecker).
-  subst z z0 res.
-  destruct_one_match.
-  + eapply Z.compare_eq_iff in E.
-    exfalso.
-    assert (c1 = /[0]) by (zify_hyps; zify_goal; xlia zchecker).
-    subst c1.
-    eapply H4. constructor. bottom_up_simpl_in_goal. reflexivity.
-  + eapply (proj1 (Z.compare_lt_iff _ _)) in E.
-    eapply Z.compare_lt_iff.
-    rewrite 2word.of_Z_unsigned.
-    rewrite word.signed_sub.
-    rewrite 2word.signed_eq_swrap_unsigned.
-    unfold word.swrap. zify_goal. xlia zchecker.
-  + eapply (proj1 (Z.compare_gt_iff _ _)) in E.
-    eapply Z.compare_gt_iff.
-    rewrite 2word.of_Z_unsigned.
-    rewrite word.signed_sub.
-    rewrite 2word.signed_eq_swrap_unsigned.
-    unfold word.swrap. zify_goal. xlia zchecker.
-Unshelve.
-all: typeclasses eauto.
+  do 2 (let A := constr:(#array) in
+        eapply purify_array_ith_elem in A;
+        [ | typeclasses eauto with purify ];
+        specialize (A 0); cbv beta in A;
+        bottom_up_simpl_in_hyp A;
+        specialize (A ltac:(lia))).
+
+  destruct s1; destruct s2; simpl; symmetry; fwd; bottom_up_simpl_in_hyps.
+  - eapply Z.compare_eq_iff. steps.
+  - eapply Z.compare_lt_iff. zify_hyps. steps.
+  - eapply Z.compare_gt_iff. zify_hyps. steps.
+  - destruct_one_match.
+    + eapply Z.compare_eq_iff in E. zify_hyps. steps.
+    + eapply (proj1 (Z.compare_lt_iff _ _)) in E.
+      eapply Z.compare_lt_iff.
+      zify_hyps. steps.
+    + eapply (proj1 (Z.compare_gt_iff _ _)) in E.
+      eapply Z.compare_gt_iff.
+      zify_hyps. steps.
 Qed.
 
 End LiveVerif. Comments .**/ //.
