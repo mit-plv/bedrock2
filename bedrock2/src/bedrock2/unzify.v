@@ -259,6 +259,10 @@ Ltac zify_term wok e :=
   | ?f1 ?a0 =>
       lazymatch f1 with
       | @word.unsigned _ _ => zify_unsigned wok a0
+      | @word.signed _ _ =>
+          let p := zify_unsigned wok a0 in
+          let n := fresh "__Zrange_0" in
+          unique_pose_proof_name n (word.signed_eq_unsigned_wrap_for_lia _ _ p)
       | Z.of_nat => zify_of_nat wok a0
       | Z.opp => zify_app1 wok e f1 a0
       | ?f2 ?a1 =>
@@ -400,6 +404,11 @@ with zify_unsigned wok e :=
           let p_a0 := zify_term wok a0 in
           let n := fresh "__Zrange_0" in
           unique_pose_proof_name n (@word.unsigned_of_Z_eq_wrap_for_lia _ _ wok _ _ p_a0)
+      | @word.opp _ _ =>
+          let p_a0 := zify_unsigned wok a0 in
+          let n := fresh "__Zspecopp_0" in
+          let __ := unique_pose_proof_name n (word.unsigned_opp_eq_for_lia p_a0) in
+          zify_unsigned_nop e
       | ?f2 ?a1 =>
           lazymatch f2 with
           | @word.add _ _ => zify_unsigned_app2 wok
@@ -785,6 +794,8 @@ Ltac apply_range_bounding_lemma_in_hyp wok h tp :=
     lazymatch tp with
     | word.unsigned _ = _ =>
         eapply (@word.unsigned_range_eq _ _ wok) in h; clear_Z_hyp_if_derivable h
+    | word.signed _ = _ =>
+        eapply (@word.signed_range_eq_for_lia _ _ wok) in h; clear_Z_hyp_if_derivable h
     | Z.of_nat _ = _ => eapply Z_of_nat_range_eq in h; clear_Z_hyp_if_derivable h
     | _ => idtac
     end
@@ -841,6 +852,18 @@ Section Tests.
 
   Context {word: word.word 32} {word_ok: word.ok word}.
   Local Hint Mode Word.Interface.word - : typeclass_instances.
+
+  Goal forall (a b: word),
+      word.signed (a ^+ b) = word.signed (b ^+ a).
+  Proof. intros. zify_goal. xlia zchecker. Succeed Qed. Abort.
+
+  Goal forall (a b c: word),
+      word.signed (a ^+ b ^- c) = word.signed (word.opp c ^+ b ^+ a).
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
+
+  Goal forall (a b c: word),
+      word.signed (a ^+ b ^- c) = word.signed (word.of_Z 0 ^- c ^+ b ^+ a).
+  Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: word) (z: Z), \[a ^+ b] < z -> let c := b ^+ a in \[c] < z.
   Proof. intros. rzify_lia. Succeed Qed. Abort.

@@ -137,6 +137,17 @@ Module word.
         crhs = false /\ word.unsigned (if c then a else b) = ub.
     Proof using. intros. subst. destruct crhs; intuition. Qed.
 
+    Lemma unsigned_opp_eq_for_lia: forall [a: word] [ua: Z],
+        word.unsigned a = ua ->
+        (ua <> 0 /\ word.unsigned (word.opp a) = 2 ^ width - ua) \/
+        (ua = 0 /\ word.unsigned (word.opp a) = 0).
+    Proof.
+      intros. assert (ua = 0 \/ ua <> 0) as C by lia. subst.
+      destruct C as [C | C].
+      - rewrite word.unsigned_opp_0 by assumption. lia.
+      - erewrite unsigned_opp_eq_nowrap. 2: reflexivity. 2: exact C. lia.
+    Qed.
+
     (* Pushing down word.of_Z: *)
 
     (* lemma word.of_Z_unsigned can be used as-is *)
@@ -176,5 +187,28 @@ Module word.
         word.of_Z (z1 * z2) = word.mul w1 w2.
     Proof. intros. subst. apply word.ring_morph_mul. Qed.
 
+    (* word.signed: don't push it down, but just express it in terms of word.unsigned *)
+
+    Lemma signed_eq_unsigned_wrap_for_lia: forall (w: word) (uw: Z),
+        word.unsigned w = uw ->
+        word.signed w = uw - 2 ^ width * ((uw + 2 ^ (width - 1)) / 2 ^ width).
+    Proof.
+      intros. subst uw.
+      rewrite word.signed_eq_swrap_unsigned. unfold word.swrap.
+      etransitivity.
+      - eapply Z.sub_cancel_r. eapply Z.mod_eq. eapply word.modulus_nonzero.
+      - ring.
+    Qed.
+
+    Lemma signed_range_eq_for_lia{z}{x: word}:
+      word.signed x = z ->
+      - 2 ^ width <= 2 * z < 2 ^ width. (* <- avoid using 2^(width-1) *)
+    Proof.
+      intros. pose proof (word.signed_range x).
+      replace (2 ^ width) with (2 * 2 ^ (width - 1)). 1: lia.
+      replace width with (width - 1 + 1) at 2 by lia.
+      pose proof word.width_pos.
+      rewrite Z.pow_add_r; simpl (2 ^ 1); lia.
+    Qed.
   End WithWord.
 End word.
