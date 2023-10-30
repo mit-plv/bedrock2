@@ -100,7 +100,7 @@ Inductive stepping: Type :=.
 Definition ready{P: Prop} := P.
 
 (* heapletwise- and word-aware lia, successor of ZnWords *)
-Ltac hwlia := zify_hyps; puri_simpli_zify_hyps accept_always; zify_goal; xlia zchecker.
+Ltac hwlia := zify_hyps; puri_simpli_zify_hyps true; zify_goal; xlia zchecker.
 
 Ltac2 Set bottom_up_simpl_sidecond_hook := fun _ => ltac1:(zify_goal; xlia zchecker).
 
@@ -1005,10 +1005,10 @@ Ltac final_program_logic_step logger :=
         end ].
 
 Ltac new_heapletwise_hyp_hook h t ::=
-  puri_simpli_zify_hyp accept_unless_follows_by_xlia h t.
+  puri_simpli_zify_hyp false h t.
 
 Ltac heapletwise_hyp_pre_clear_hook H ::=
-  let T := type of H in puri_simpli_zify_hyp accept_unless_follows_by_xlia H T.
+  let T := type of H in puri_simpli_zify_hyp false H T.
 
 Ltac fwd_subst H ::= idtac.
 
@@ -1040,7 +1040,7 @@ Ltac undisplay logger :=
   | _: currently ?s |- _ =>
       constr_eq s displaying;
       zify_hyps;
-      puri_simpli_zify_hyps accept_unless_follows_by_xlia;
+      puri_simpli_zify_hyps false;
       set_state stepping;
       logger ltac:(fun _ => idtac "purify & zify")
   end.

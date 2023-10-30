@@ -785,37 +785,44 @@ Ltac clear_if_dup h :=
   | |- _ => idtac
   end.
 
-Ltac clear_Z_hyp_if_derivable h :=
+Ltac do_clear_Z_hyp_if_derivable h :=
   let tp := type of h in
   try (clear h; assert_succeeds (idtac; assert tp by xlia zchecker)).
 
-Ltac apply_range_bounding_lemma_in_hyp wok h tp :=
+Ltac don't_clear_Z_hyp_if_derivable h := idtac.
+
+Ltac apply_range_bounding_lemma_in_hyp maybe_clear_Z_hyp_if_derivable wok h tp :=
   tryif ident_starts_with __Zrange_ h then
     lazymatch tp with
     | word.unsigned _ = _ =>
-        eapply (@word.unsigned_range_eq _ _ wok) in h; clear_Z_hyp_if_derivable h
+        eapply (@word.unsigned_range_eq _ _ wok) in h;
+        maybe_clear_Z_hyp_if_derivable h
     | word.signed _ = _ =>
-        eapply (@word.signed_range_eq_for_lia _ _ wok) in h; clear_Z_hyp_if_derivable h
-    | Z.of_nat _ = _ => eapply Z_of_nat_range_eq in h; clear_Z_hyp_if_derivable h
+        eapply (@word.signed_range_eq_for_lia _ _ wok) in h;
+        maybe_clear_Z_hyp_if_derivable h
+    | Z.of_nat _ = _ =>
+        eapply Z_of_nat_range_eq in h;
+        maybe_clear_Z_hyp_if_derivable h
     | _ => idtac
     end
   else idtac.
-
-Ltac apply_range_bounding_lemma_in_eqs wok :=
-  foreach_hyp_upwards (apply_range_bounding_lemma_in_hyp wok).
 
 Ltac zify_goal :=
   let g := lazymatch goal with |- ?g => g end in
   let wok := get_word_ok_or_dummy in
   let pf := zify_prop wok g in
   eapply (iff_to_bw_impl _ _ pf);
-  apply_range_bounding_lemma_in_eqs wok.
+  (* the result of zify_goal is very short-lived (only one xlia call), so
+     we don't waste time on clearing derivable Z hyps seems *)
+  foreach_hyp_upwards (apply_range_bounding_lemma_in_hyp don't_clear_Z_hyp_if_derivable wok).
 
 Ltac zify_hyps :=
   let wok := get_word_ok_or_dummy in
   foreach_var (zify_letbound_var wok);
   foreach_hyp (zify_hyp wok);
-  apply_range_bounding_lemma_in_eqs wok.
+  (* the results of zify_hyps is often used many times, and might also be seen by the
+     user while debugging, so clearing derivable Z hyps seems worthwhile *)
+  foreach_hyp_upwards (apply_range_bounding_lemma_in_hyp do_clear_Z_hyp_if_derivable wok).
 
 (* structure:
    rzify recurses into logical connectives, =, <> and word operations, posing a

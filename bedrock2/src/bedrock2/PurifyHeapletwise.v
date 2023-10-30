@@ -9,7 +9,10 @@ Require Import coqutil.Tactics.ident_ops.
 Require Import bedrock2.bottom_up_simpl.
 Require Import bedrock2.unzify.
 
-Ltac puri_simpli_zify_hyp fail_if_too_trivial h t :=
+Ltac fail_if_too_trivial t :=
+  assert_fails (idtac; assert t by xlia zchecker).
+
+Ltac puri_simpli_zify_hyp fastMode h t :=
   let pure := purified_hyp h t in
   try ((* try block starts here because everthing starting from here needs
           to be reverted if the resulting hyp is too trivial *)
@@ -22,21 +25,24 @@ Ltac puri_simpli_zify_hyp fail_if_too_trivial h t :=
              let tp := type of hp in
              let wok := get_word_ok_or_dummy in
              let zo := zify_hyp_option wok hp tp in
-             assert_succeeds
-               (idtac;
+             lazymatch fastMode with
+             | true => idtac
+             | false => assert_succeeds (idtac;
                 lazymatch zo with
                 | @None ?tz => clear hp; fail_if_too_trivial tz
                 | @Some ?tz ?hz => clear hp hz; fail_if_too_trivial tz
-                end);
-             apply_range_bounding_lemma_in_eqs wok
+                end)
+             end;
+             let maybe_clear :=
+               lazymatch fastMode with
+               | true => don't_clear_Z_hyp_if_derivable
+               | false => do_clear_Z_hyp_if_derivable
+               end in
+             foreach_hyp_upwards (apply_range_bounding_lemma_in_hyp maybe_clear wok)
       end).
 
-(* possible arguments for fail_if_too_trivial above: *)
-Ltac accept_always t := idtac.
-Ltac accept_unless_follows_by_xlia t := assert_fails (idtac; assert t by xlia zchecker).
-
-Ltac puri_simpli_zify_hyps fail_if_too_trivial :=
-  foreach_hyp (puri_simpli_zify_hyp fail_if_too_trivial).
+Ltac puri_simpli_zify_hyps fastMode :=
+  foreach_hyp (puri_simpli_zify_hyp fastMode).
 
 Inductive derivability_test_marker: Prop := mk_derivability_test_marker.
 
@@ -53,6 +59,6 @@ Ltac clear_upto_marker marker :=
 
 Ltac unpurify :=
   pose proof mk_derivability_test_marker;
-  puri_simpli_zify_hyps accept_always;
+  puri_simpli_zify_hyps true;
   foreach_hyp_from_marker_upwards derivability_test_marker clear_pure_hyp_if_derivable;
   clear_upto_marker derivability_test_marker.
