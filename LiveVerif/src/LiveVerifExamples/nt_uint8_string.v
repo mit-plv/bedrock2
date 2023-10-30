@@ -2,7 +2,7 @@
 Require Import LiveVerif.LiveVerifLib.
 Require Import LiveVerifExamples.onesize_malloc.
 
-(* TODO move *)
+(* TODO move to fwd_list_hints *)
 
 Import coqutil.Tactics.autoforward.
 
@@ -18,6 +18,32 @@ Qed.
 #[export] Instance notin_singleton[A: Type](x y: A):
   autoforward (~ List.In x (cons y nil)) (x <> y).
 Proof. intros ? C. apply H. subst. constructor. reflexivity. Qed.
+
+
+(* TODO move to fwd_arith_hints *)
+
+#[export] Instance Z_compare_eq(n m: Z): autoforward ((n ?= m) = Eq) (n = m).
+Proof. unfold autoforward. apply Z.compare_eq_iff. Qed.
+
+#[export] Instance Z_compare_lt(n m: Z): autoforward ((n ?= m) = Lt) (n < m).
+Proof. unfold autoforward. apply Z.compare_lt_iff. Qed.
+
+#[export] Instance Z_compare_gt(n m: Z): autoforward ((n ?= m) = Gt) (m < n).
+Proof. unfold autoforward. apply Z.compare_gt_iff. Qed.
+
+(* TODO move *)
+
+Lemma Z_compare_eq_impl(n m: Z): safe_implication (n = m) ((n ?= m) = Eq).
+Proof. unfold safe_implication. apply Z.compare_eq_iff. Qed.
+
+Lemma Z_compare_lt_impl(n m: Z): safe_implication (n < m) ((n ?= m) = Lt).
+Proof. unfold safe_implication. apply Z.compare_lt_iff. Qed.
+
+Lemma Z_compare_gt_impl(n m: Z): safe_implication (m < n) ((n ?= m) = Gt).
+Proof. unfold safe_implication. apply Z.compare_gt_iff. Qed.
+
+#[export] Hint Resolve Z_compare_eq_impl Z_compare_lt_impl Z_compare_gt_impl
+  : safe_implication.
 
 Module List.
   Section WithA.
@@ -151,15 +177,13 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
 
     unfold don't_know_how_to_prove.
     erewrite List.compare_cons_cons_same; try lia; try assumption.
-    eapply Z.compare_eq_iff.
     repeat match goal with
            | H: with_mem _ (array _ _ _ _) |- _ =>
                eapply array1_to_elem' in H;
                [ new_mem_hyp H | zify_goal; xlia zchecker ]
            end.
     bottom_up_simpl_in_hyps.
-    zify_hyps.
-    xlia zchecker.
+    steps.
 
                                                                                 .**/
   uintptr_t res = c1 - c2;                                                 /**. .**/
@@ -175,18 +199,10 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
         bottom_up_simpl_in_hyp A;
         specialize (A ltac:(lia))).
 
-  destruct s1; destruct s2; simpl; symmetry; fwd; bottom_up_simpl_in_hyps.
-  - eapply Z.compare_eq_iff. steps.
-  - eapply Z.compare_lt_iff. zify_hyps. steps.
-  - eapply Z.compare_gt_iff. zify_hyps. steps.
-  - destruct_one_match.
-    + eapply Z.compare_eq_iff in E. zify_hyps. steps.
-    + eapply (proj1 (Z.compare_lt_iff _ _)) in E.
-      eapply Z.compare_lt_iff.
-      zify_hyps. steps.
-    + eapply (proj1 (Z.compare_gt_iff _ _)) in E.
-      eapply Z.compare_gt_iff.
-      zify_hyps. steps.
+  destruct s1; destruct s2; simpl; symmetry; fwd; bottom_up_simpl_in_hyps;
+    zify_hyps; steps.
+  unfold don't_know_how_to_prove.
+  destruct_one_match; zify_hyps; steps.
 Qed.
 
 End LiveVerif. Comments .**/ //.
