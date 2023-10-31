@@ -649,12 +649,6 @@ Ltac cleanup_step :=
   | |- _ => progress fwd
   end.
 
-Definition don't_know_how_to_prove{A: Type}(R: A -> A -> Prop) := R.
-Notation "'don't_know_how_to_prove' R x y" :=
-  (don't_know_how_to_prove R x y)
-  (only printing, at level 10, x at level 0, y at level 0,
-   format "don't_know_how_to_prove  R '//' x '//' y").
-
 Lemma eq_to_impl1[mem: Type]: forall (P Q: mem -> Prop), P = Q -> impl1 P Q.
 Proof. intros. subst. reflexivity. Qed.
 
@@ -726,14 +720,6 @@ Ltac default_careful_reflexivity_step :=
           end
       end;
       unify val2 val1
-  | |- ?rel ?l ?r =>
-      lazymatch rel with
-      | @eq _ => idtac
-      | @impl1 _ => idtac
-      | @iff1 _ => idtac
-      (* fails if rel is already a (don't_know_how_to_prove _) *)
-      end;
-      change (don't_know_how_to_prove rel l r)
   end.
 
 (* supposed to work on goals of the form (?rel ?lhs ?rhs), with rel being on of
@@ -983,8 +969,13 @@ Ltac sidecond_step logger := first
             intros (* don't put this too early, because heapletwise has some
                       specialized intros that rename and move new hyps *)
         end
-      | solve [intuition idtac];
-        logger ltac:(fun _ => idtac "intuition idtac") ].
+      | lazymatch goal with
+        | |- _ = _ => fail
+        | |- _ => (* Beware: intuition runs unification that arbitrarily unfolds
+                     definitions, might need to stop using it *)
+                  solve [intuition idtac];
+                  logger ltac:(fun _ => idtac "intuition idtac")
+        end ].
 
 Ltac final_program_logic_step logger :=
   (* Note: Here, the logger has to be invoked *after* the tactic, because we only
@@ -1080,7 +1071,6 @@ Ltac can_continue :=
 Ltac one_step :=
   lazymatch goal with
   | |- @ready _ => fail
-  | |- don't_know_how_to_prove _ _ _ => fail
   | |- after_if _ _ _ _ _ _ => fail
   | |- needs_opening_else_and_lbrace _ => fail
   | |- expect_1expr_return _ _ _ _ => fail

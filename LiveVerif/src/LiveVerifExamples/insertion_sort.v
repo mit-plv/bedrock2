@@ -50,7 +50,7 @@ Derive insert SuchThat (fun_correct! insert) As insert_ok.
 .**/ { /**.
   .**/ real_insert(p, i); /**.
   2: instantiate (1 := x); instantiate (1 := l1).
-  all: unfold don't_know_how_to_prove; steps.
+  all: steps.
 .**/ } /**.
 Qed.
 
@@ -99,9 +99,6 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
     rewrite List.assoc_app_cons in *.
 
     .**/ insert(p,n,i); /**.
-    { (* Note: not proven automatically because evars are not yet determined
-         when this equality is encountered. *)
-      assumption. }
 
     .**/ i = i+1; /**.
 

@@ -371,7 +371,7 @@ Goal forall (fib: word -> word) (n : word),
  a = fib (i ^- /[1]).
 Proof.
   t name:(fib1).
-  unfold don't_know_how_to_prove. subst. bottom_up_simpl_in_goal. reflexivity.
+  subst. bottom_up_simpl_in_goal. reflexivity.
 Qed.
 
 Goal forall (fib: word -> word) (n : word),
@@ -385,7 +385,7 @@ Goal forall (fib: word -> word) (n : word),
  \[n] <= \[i] ->
  b = fib n.
 Proof.
-  t name:(fib2). unfold don't_know_how_to_prove. f_equal. ZnWords.
+  t name:(fib2). f_equal. ZnWords.
 Qed.
 
 Goal forall (in0 in1 in2 : Z) (w0 : word),

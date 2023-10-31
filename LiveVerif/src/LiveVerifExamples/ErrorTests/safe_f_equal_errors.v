@@ -47,8 +47,7 @@ Goal forall n l (i j count p: word) R (m' m1 m: mem),
 Proof.
   intros. steps.
   lazymatch goal with
-  | |- don't_know_how_to_prove eq \[count] (\[count] + 123) =>
-      idtac
+  | |- \[count] = \[count] + 123 => idtac
   end.
 Abort.
 

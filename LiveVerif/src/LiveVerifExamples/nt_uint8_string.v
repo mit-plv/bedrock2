@@ -198,7 +198,6 @@ Derive strCmp SuchThat (fun_correct! strCmp) As strCmp_ok.                      
 }                                                                          /**.
 
   unzify.
-  unfold don't_know_how_to_prove.
 
   let A := constr:(#array) in
   eapply purify_array_ith_elem in A;
@@ -262,7 +261,6 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
 
     steps.
 
-    unfold don't_know_how_to_prove.
     erewrite List.compare_cons_cons_same; try lia; try assumption.
     repeat match goal with
            | H: with_mem _ (array _ _ _ _) |- _ =>
@@ -277,7 +275,6 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
   return res;                                                              /**. .**/
 }                                                                          /**.
   unzify.
-  unfold don't_know_how_to_prove.
 
   do 2 (let A := constr:(#array) in
         eapply purify_array_ith_elem in A;
@@ -288,7 +285,6 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
 
   destruct s1; destruct s2; simpl; symmetry; fwd; bottom_up_simpl_in_hyps;
     zify_hyps; steps.
-  unfold don't_know_how_to_prove.
   destruct_one_match; zify_hyps; steps.
 Qed.
 
