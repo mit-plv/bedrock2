@@ -48,7 +48,7 @@ Ltac typeclasses_eauto_with_safe_implication :=
         | context[?x] => is_evar x; set x
         end
     end;
-  typeclasses eauto with safe_implication.
+  once (typeclasses eauto with safe_implication).
 
 Ltac safe_implication_step :=
   match goal with
@@ -60,9 +60,16 @@ Ltac safe_implication_step :=
   | |- ?Q =>
       let H := fresh in
       eassert (safe_implication _ Q) as H by typeclasses_eauto_with_safe_implication;
-      unfold safe_implication in H;
-      apply H;
-      clear H
+      lazymatch type of H with
+      | safe_implication ?p ?p =>
+          (* "fail 1000" will be swallowed by ltac2, so if that happens, we still want
+             to emit a warning, at least *)
+          idtac "Warning: There is a safe_implication hint leading to a no-progress step on" p;
+          fail 1000 "There is a safe_implication hint leading to a no-progress step on" p
+      | _ => unfold safe_implication in H;
+             apply H;
+             clear H
+      end
   end.
 
 Require Import Coq.Lists.List.
