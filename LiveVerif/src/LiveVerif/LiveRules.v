@@ -872,6 +872,34 @@ Section WithParams.
       eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
   Qed.
 
+  Lemma wp_dowhile {measure : Type} (v0 : measure) (e: expr) (c: cmd) t (m: mem) l fs rest
+    (invariant: measure -> trace -> mem -> locals -> Prop) {lt}
+    {post : trace -> mem -> locals -> Prop}
+    (Hpre: invariant v0 t m l)
+    (Hwf : well_founded lt)
+    (Hbody : forall v t m l,
+      invariant v t m l ->
+      loop_body_marker (wp_cmd fs c t m l (fun t' m' l' =>
+        exists b, dexpr_bool3 m' l' e b
+                    (exists v', invariant v' t' m' l' /\ lt v' v)
+                    (pop_scope_marker (after_loop fs rest t' m' l' post))
+                    True)))
+    : wp_cmd fs (cmd.seq (cmd.dowhile c e) rest) t m l post.
+  Proof.
+    eapply wp_seq. eapply wp_dowhile0. 1,2: eassumption.
+    intros * Hinv. specialize Hbody with (1 := Hinv).
+    eapply exec.weaken. 1: exact Hbody.
+    clear Hinv Hbody t t0 m0 l0 Hpre.
+    cbv beta. intros ? ? ? [b H]. inversion H. subst. clear H.
+    eexists. split. 1: eassumption.
+    unfold bool_expr_branches in *. apply proj1 in H2. split.
+    - intro NE.
+      rewrite word.eqb_ne in H2. 1: eapply H2. intro C. subst v1.
+      apply NE. apply word.unsigned_of_Z_0.
+    - intro E. rewrite word.eqb_eq in H2. 1: eapply H2.
+      eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
+  Qed.
+
   (* alias of "exists" to mark ghost vars of tailrecursive loop body calls that need
      to be provided (at least partially) manually *)
   Definition provide_new_ghosts{Ghosts: Type}: (Ghosts -> Prop) -> Prop := @ex Ghosts.

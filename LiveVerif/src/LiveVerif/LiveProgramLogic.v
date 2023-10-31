@@ -507,6 +507,12 @@ Ltac while cond measure0 :=
   | eauto with wf_of_type
   | start_loop_body ].
 
+Ltac dowhile measure0 :=
+  eapply (wp_dowhile measure0);
+  [ package_heapletwise_context
+  | eauto with wf_of_type
+  | start_loop_body ].
+
 Ltac dowhile_tailrec_use_functionpost ghosts0 measure0 :=
   lazymatch goal with
   | |- exec ?fs ?body ?t ?m ?l ?P =>
@@ -583,6 +589,7 @@ Ltac add_regular_snippet s :=
           end
       end
   | SWhile ?cond ?measure0 => while cond measure0
+  | SDo ?measure0 => dowhile measure0
   | SDoTailrec ?ghosts0 ?measure0 => dowhile_tailrec_use_functionpost ghosts0 measure0
   | SEndDo ?c => end_dowhile c
   | SStart => fail "SStart can only be used to start a function"
@@ -943,9 +950,12 @@ Ltac sidecond_step logger := first
             [ logger ltac:(fun _ => idtac "discarding contradictory branch of \/ in" H) ]
         end
       | lazymatch goal with
-        | |- ?P /\ ?Q =>
+        | |- ?g =>
+            is_destructible_and g;
             split;
             logger ltac:(fun _ => idtac "split")
+        end
+      | lazymatch goal with
         | |- _ = _ =>
             careful_reflexivity_step_hook;
             logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")
