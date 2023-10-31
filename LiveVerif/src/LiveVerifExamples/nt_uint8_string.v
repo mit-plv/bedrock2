@@ -160,6 +160,8 @@ Derive strCmp SuchThat (fun_correct! strCmp) As strCmp_ok.                      
   set (p2_pre := p2) in *. change p2_pre with p2 at 1. move p2_pre before p1_pre.
   prove (\[p1 ^- p1_pre] <= len s1).
   prove (\[p2 ^- p2_pre] <= len s2).
+  prove (\[p1 ^- p1_pre] = \[p2 ^- p2_pre]).
+  prove (s1[:\[p1 ^- p1_pre]] = s2[:\[p2 ^- p2_pre]]).
   clearbody p1_pre p2_pre.
 
   move p1 after c2. move p2 after p1.
@@ -171,26 +173,23 @@ Derive strCmp SuchThat (fun_correct! strCmp) As strCmp_ok.                      
     p2 = p2 + 1;                                                           /**. .**/
   } while (c1 == c2 && c1 != 0);                                           /**.
 
-
-  1-3: assert (\[p1' ^- p1_pre] <> len s1)
-         by (zify_goal; intro; bottom_up_simpl_in_hyps; congruence).
-  1-3: assert (\[p2' ^- p2_pre] <> len s2)
-         by (zify_goal; intro; bottom_up_simpl_in_hyps; congruence).
+  1-4: assert (\[p1' ^- p1_pre] <> len s1)
+         by (zify_goal; intro; bsimpl_in_hyps; congruence).
+  1-4: assert (\[p2' ^- p2_pre] <> len s2)
+         by (zify_goal; intro; bsimpl_in_hyps; congruence).
   1: solve [steps].
   1: solve [zify_hyps; steps].
 
-  unzify.
-  subst v.
-  subst p1.
-  zify_hyps.
-  split.
-
-  steps.
   (* TODO include in purification of array? *)
-  assert (len s1 < 2^32) by admit.
-  assert (len s2 < 2^32) by admit.
+  all: assert (len s1 < 2^32) by admit.
+  all: assert (len s2 < 2^32) by admit.
 
-  step.
+  { rewrite (List.split_at_index (s1[:\[p1 ^- p1_pre]]) (\[p1' ^- p1_pre])).
+    step. step. congruence.
+    (* TODO diff between slice start and end is 1 *)
+    admit. }
+
+  solve [step].
 
                                                                                 .**/
   uintptr_t res = c1 - c2;                                                 /**. .**/
@@ -215,9 +214,18 @@ Derive strCmp SuchThat (fun_correct! strCmp) As strCmp_ok.                      
 
   destr (\[p1' ^- p1_pre] =? len s1);
   destr (\[p2' ^- p2_pre] =? len s2);
-  fwd; zify_hyps; bottom_up_simpl_in_hyps.
-
-  (* TODO add clause to invariant that says "same up to (p1' ^- p1_pre)" *)
+  fwd; zify_hyps; bsimpl_in_hyps.
+  - subst s1. admit. (* List.compare_refl *)
+  - unzify. rewrite (List.split_at_index s2 \[p2' ^- p2_pre]).
+    let h := constr:(#(s1 = ??)) in rewrite <- h.
+    admit. (* List.compare_l_is_prefix *)
+  - unzify. rewrite (List.split_at_index s1 \[p1' ^- p1_pre]).
+    let h := constr:(#(?? = s2)) in rewrite h.
+    admit. (* List.compare_r_is_prefix *)
+  - unzify.
+    rewrite (List.split_at_index s2 \[p2' ^- p2_pre]).
+    rewrite (List.split_at_index s1 \[p1' ^- p1_pre]).
+    admit. (* List.compare_common_prefix *)
 Abort.
 
 #[export] Instance strcmp_spec: fnspec :=                                       .**/
@@ -256,8 +264,8 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
 
     new_ghosts(s1[1:], s2[1:], p1, p2, _).
 
-    assert (len s1 <> 0) by (intro; bottom_up_simpl_in_hyps; congruence).
-    assert (len s2 <> 0) by (intro; bottom_up_simpl_in_hyps; congruence).
+    assert (len s1 <> 0) by (intro; bsimpl_in_hyps; congruence).
+    assert (len s2 <> 0) by (intro; bsimpl_in_hyps; congruence).
 
     steps.
 
@@ -267,7 +275,7 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
                eapply array1_to_elem' in H;
                [ new_mem_hyp H | zify_goal; xlia zchecker ]
            end.
-    bottom_up_simpl_in_hyps.
+    bsimpl_in_hyps.
     steps.
 
                                                                                 .**/
@@ -283,7 +291,7 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
         bottom_up_simpl_in_hyp A;
         specialize (A ltac:(lia))).
 
-  destruct s1; destruct s2; simpl; symmetry; fwd; bottom_up_simpl_in_hyps;
+  destruct s1; destruct s2; simpl; symmetry; fwd; bsimpl_in_hyps;
     zify_hyps; steps.
   destruct_one_match; zify_hyps; steps.
 Qed.

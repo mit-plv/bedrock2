@@ -255,11 +255,9 @@ Ltac2 filtered_bottom_up_simpl_in_hyp_of_type(h: ident)(t: constr): unit :=
     | _ => bottom_up_simpl_in_hyp_of_type silent_if_no_progress h t
     end.
 
-Ltac2 default_simpl_in_hyps () :=
-  repeat (foreach_hyp filtered_bottom_up_simpl_in_hyp_of_type);
-  try record.simp_hyps ().
+Ltac bsimpl_in_hyps := ltac2:(foreach_hyp filtered_bottom_up_simpl_in_hyp_of_type).
 
-Ltac default_simpl_in_hyps := ltac2:(default_simpl_in_hyps ()).
+Ltac default_simpl_in_hyps := bsimpl_in_hyps; try record.simp_hyps.
 
 Ltac default_simpl_in_all :=
   default_simpl_in_hyps; bottom_up_simpl_in_goal_nop_ok; try record.simp_goal.
