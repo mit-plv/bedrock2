@@ -246,7 +246,8 @@ Ltac package_context :=
   let lasthyp := last_var_except Post in
   lazymatch type of lasthyp with
   | scope_marker _ => idtac
-  | _ => idtac "Warning: package_context failed to package" lasthyp "(and maybe more)"
+  | _ => idtac "Warning: package_context failed to package" lasthyp "(and maybe more)."
+               "Note that ghost vars need to be above the loop invariant marker."
   end;
   lazymatch goal with
   | |- _ ?Measure ?T ?M ?L => pattern Measure, T, M, L in Post

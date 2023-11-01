@@ -218,18 +218,24 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
   (* invariant: *p = a *)                                                       .**/
   uintptr_t found = 0;                                                     /**.
 
-  prove (found = /[1] -> s \[v]).
-  delete #(found = /[0]).
-  move sk after a.
-  move p after a.
-  loop invariant above a.
+  pose (measure := sk).
+  prove (found = /[0] /\ measure = sk \/ found = /[1] /\ s \[v]) as A.
+  move A before sk.
+  clearbody measure.
+  delete (#(found = /[0])).
+  move p after t.
+  move sk before t.
+  loop invariant above p.
   unfold ready.
+  (*
+                                                                                .**/
+  while (a != NULL && !found) /* initial_ghosts(s, sk, R); decreases(measure) */ { /**.*)
   lazymatch goal with
   | |- exec ?fs ?body ?t ?m ?l ?P =>
       lazymatch eval pattern R in P with
       | ?f R =>
-          change (exec fs body t m l ((fun (g: set Z * (mem -> Prop)) (_: tree_skeleton) =>
-            let (_, F) := g in f F) (s, R) sk))
+          change (exec fs body t m l ((fun (g: set Z * tree_skeleton * (mem -> Prop)) (_: tree_skeleton) =>
+            let (_, F) := g in f F) (s, sk, R) measure))
       end
   end.
   let e := constr:(live_expr:(a != NULL && !found)) in
@@ -243,37 +249,19 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
     uintptr_t x = load32(a + 4);                                           /**. .**/
     if (x == v) /* split */ {                                              /**. .**/
       found = 1;                                                           /**. .**/
-    } /**. new_ghosts(_, _).
+    } /**. new_ghosts(_, (Node skL skR) (*<- doesn't decrease but that's also not the measure *), _).
 
-step. step. step. step. step. step.
-(*   ?Goal3 = Node skL skR : can't use reflexivity because that wouldn't decrease measure *)
-admit.
-step. step. step. step.
-
-step. step. step. step. step. step. step. step. step. step. step. step.
-2: {
-  step. step. step. step.
-
-step.
-
- step.
- step.
-
-step. step. step. step. step.
-
-subst v. bottom_up_simpl_in_goal. assumption.
-
-step.
-}
-
-step. step.
-(*   tree_skeleton_lt (Node skL skR) (Node skL skR)    *)
-
-(* --> need to change loop lemma or invariant so that the measure doesn't need
-   to decrease if found=true and we'll exit *)
-
-(*
- else {                                                               /**. .**/
+      steps.
+      { subst v. bottom_up_simpl_in_goal. assumption. }
+      { lazymatch goal with
+        | H: /[0] = /[0] /\ _ \/ _ |- _ =>
+            destruct H; fwd; try (exfalso; solve[zify_hyps; xlia zchecker])
+        end.
+        subst v0.
+        (* arbitrarily pick skL, could also pick skR, just need something smaller *)
+        eapply tree_skeleton_lt_l. constructor. }
+                                                                                .**/
+    else {                                                                 /**. .**/
       if (v < x) {                                                         /**. .**/
         p = a;                                                             /**. .**/
         a = load(p);                                                       /**. .**/
@@ -283,7 +271,11 @@ step. step.
       }                                                                    /**.
       (* TODO can we pull this out of the branches?
         a = load(p);                         *)                                 .**/
-    }                                                                      /**. .**/
+    }                                                                      /**.
+      new_ghosts(_, if c then skL else skR, _).
+      steps.
+(*
+                                                                               .**/
   }                                                                        /**.
 
 {
