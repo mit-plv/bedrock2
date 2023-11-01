@@ -320,7 +320,7 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
   unfold ready.
   let cond := constr:(live_expr:(!res && a != 0)) in
   let measure0 := constr:(sk) in
-  eapply (wp_while_tailrec_with_done_flag measure0 (s, a, R) cond).
+  eapply (wp_while_tailrec_skip_last_pre measure0 (s, a, R) cond).
   1: eauto with wf_of_type.
   { collect_heaplets_into_one_sepclause.
     package_context. }
