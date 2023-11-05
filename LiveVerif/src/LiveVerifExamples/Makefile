@@ -13,7 +13,7 @@ TEST_OUTS := $(patsubst %.c,%.out,$(C_TESTS))
 	cat prelude.h.snippet $*.v > $@
 
 %_test.exe: %_test.c %_exported.h
-	$(CC) $< -o $@
+	$(CC) -O2 $< -o $@
 
 %_test.out: %_test.exe
 	$(abspath $<) > $@

@@ -3,6 +3,14 @@ Require Import LiveVerif.LiveVerifLib.
 
 Load LiveVerif.
 
+(*
+Ltac log_packaged_context P ::=
+  lazymatch P with
+  | ?f _ _ _ _ => let c := eval cbv beta in (fun measure ti mi li => f measure ti mi li) in
+                  idtac c
+  end.
+*)
+
 #[export] Instance spec_of_memset: fnspec :=                                    .**/
 
 void memset(uintptr_t a, uintptr_t b, uintptr_t n) /**#
@@ -17,8 +25,6 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
 {                                                                          /**. .**/
   uintptr_t i = 0;                                                         /**.
 
-  prove (len bs = \[n]) as lenbs.
-  move lenbs before t.
   swap bs with
     (List.repeatz \[b] \[i] ++ bs[\[i]:])
     in #(array (uint 8)).
