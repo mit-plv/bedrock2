@@ -194,7 +194,7 @@ Fixpoint cbt' (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word): mem -> Pr
     | Leaf => ex1 (fun k: word => ex1 (fun v: word =>
         <{ * emp (a <> /[0])
            * freeable 12 a
-           * <{ + uint 32 (-1)
+           * <{ + uint 32 (2 ^ 32 - 1)
                 + uintptr k
                 + uintptr v }> a
            * emp (p = full_prefix k)
@@ -245,9 +245,7 @@ Qed.
 Lemma purify_cbt' :
   forall sk p c a, purify (cbt' sk p c a) (a <> /[0] /\ 0 <= length p <= 32).
 Proof.
-  unfold purify. intros. unfold cbt' in H. destruct sk;
-  [ destruct H as [k [v [m0 [m1 [_ H]]]]] |
-    destruct H as [aL [pL [cL [aR [pR [cR [m0 [m1[_ H]]]]]]]]] ]; steps.
+  unfold purify. intros. destruct sk; simpl cbt' in *; steps; subst p; simpl; steps.
 Qed.
 
 Lemma purify_wand : forall (P Q: mem -> Prop), purify (wand P Q) True.
@@ -281,7 +279,10 @@ Lemma cbt_key_has_prefix : forall (sk: tree_skeleton) (p: prefix) (c: word_map) 
     cbt' sk p c a m -> map.get c k <> None -> is_prefix_key p k.
 Proof.
   induction sk.
-  - intros. unfold cbt' in H. steps.
+  - intros. unfold cbt' in H. steps. subst c. unfold map.singleton in *. subst p.
+    assert (k = k0 \/ k <> k0). step. destruct H. subst k0. unfold is_prefix_key.
+    unfold is_prefix. step. rewrite map.get_put_diff in H0.
+    rewrite map.get_empty in H0. congruence. assumption.
   - intros. simpl in H. steps. apply split_du in H11. unfold map.split in H11.
     destruct H11. destruct (map.get c k) eqn:E; [ | tauto ]. clear H0.
     subst c. epose proof (map.putmany_spec cL cR k). destruct H.
@@ -314,44 +315,40 @@ Print spec_of_dummy.
 (* observation: if A and B both can't be purified, purify_rec fails on sep A B, but
 not on sep A P or sep P B, where P can be purified *)
 
-(*
-loop invariant (holds both before, during, and after loop):
-variables p (current CBT pointer), cc (current CBT content), sk (current CBT skeleton)
-memory: nncbt cc p * wand (nncbt cc p) (nncb c tp) * R
-additional condition: map.get c k = None <-> map.get cc k
-*)
 
 Require Import bedrock2.PurifySep.
-(*
-Ltac is_var_b x ::=
-  match constr:(Set) with
-  | _ => let __ := match constr:(Set) with
-                   | _ => idtac "is_var_b is getting called with" x; is_var x
-                   end in
-         constr:(true)
-  | _ => constr:(false)
-  end.
-*)
 
 Lemma wand_trans : forall (P Q R : mem -> Prop),
     impl1 <{ * wand P Q * wand Q R }> (wand P R).
 Proof.
-  intros. unfold impl1. intros. unfold sep in H. destruct H as [mp [mq [H1 [H2 H3]]]].
-  unfold wand in *. intros. unfold map.split in *. destruct H1. destruct H.
-  subst x. apply map.disjoint_putmany_l in H5. destruct H5.
-  eapply H3 with (m1 := map.putmany m1 mp). split. subst m2.
-  rewrite map.putmany_comm. rewrite map.putmany_assoc. rewrite map.putmany_comm.
-  reflexivity. apply map.disjoint_putmany_l. split. apply map.disjoint_comm.
-  assumption. assumption. apply map.disjoint_putmany_l. split; assumption.
-  apply map.disjoint_putmany_r. split. assumption. apply map.disjoint_comm.
-  assumption. eapply H2. split. eapply map.putmany_comm. apply map.disjoint_comm.
-  assumption. assumption. assumption.
+  (* Set Printing Coercions. *)
+  unfold impl1. intros. unfold wand in *. intros. steps. unfold "|=" in *.
+  rewrite mmap.du_assoc in H0. rewrite mmap.du_comm in H0.
+  rewrite mmap.du_assoc in H0. remember (m1 \*/ m0). destruct m.
+  eapply H3. rewrite split_du. eassumption. eapply H2. rewrite split_du.
+  symmetry. rewrite mmap.du_comm. eassumption. assumption. discriminate.
 Qed.
 
 Lemma wand_ex_r : forall {A: Type} (P : mem -> Prop) (Q: A -> mem -> Prop),
     impl1 (ex1 (fun x => wand P (Q x))) (wand P (ex1 Q)).
 Proof.
-Admitted.
+  unfold impl1. intros. destruct H. unfold wand. intros. apply H in H0.
+  eexists. auto.
+Qed.
+
+Lemma wand_emp_iff_impl : forall (P Q : mem -> Prop),
+    (wand P Q map.empty) <-> (impl1 P Q).
+Proof.
+  intros. unfold wand. split; intros.
+  - unfold impl1. intros. eapply H.
+    apply map.split_empty_l. reflexivity. assumption.
+  - apply H. rewrite map.split_empty_l in H0. congruence.
+Qed.
+
+Lemma wand_same_emp : forall P : mem -> Prop, wand P P map.empty.
+Proof.
+  unfold wand. intros. apply map.split_empty_l in H. congruence.
+Qed.
 
 Lemma du_def_split : forall (m m1 : mem) (mm: mmap mem),
     mm \*/ m1 = m -> exists m2 : mem, mm = m2 /\ map.split m m2 m1.
@@ -391,17 +388,12 @@ Lemma append_1_prefix : forall (p : prefix) (k : word),
 Proof.
 Admitted.
 
-(*
-Lemma du_on_sep : forall (m m1 m2: mem) (P Q : mem -> Prop), P m1 -> Q m2 -> mmap.du m1 m2 = m -> sep P Q m.
+Lemma manual_du_on_sep : forall (m m1 m2: mem) (P Q : mem -> Prop),
+    P m1 -> Q m2 -> mmap.du m1 m2 = m -> sep P Q m.
 Proof.
   steps. change (P m1) with (m1 |= P) in H.
-  change (Q m2) with (m2 |= Q) in H0. step. step. step.
-  change (m1 \*/ m2) with
-  (interp_mem_tree (NDisjointUnion (NLeaf m1) (NLeaf m2))). apply cancel_head.
-*)
-
-
-Ltac evar_dbg ev val := eassert (ev = val); reflexivity.
+  change (Q m2) with (m2 |= Q) in H0. steps.
+Qed.
 
 Local Hint Extern 1 (PredicateSize (cbt' ?sk)) => exact 12 : typeclass_instances.
 
@@ -412,75 +404,59 @@ uintptr_t cbt_best_leaf(uintptr_t tp, uintptr_t k) /**#
   ghost_args := (c: word_map) (R: mem -> Prop);
   requires t m := <{ * nncbt c tp
                      * R }> m;
-  ensures t' m' res := t' = t (* /\ ex1 (fun k' => ex1 (fun v' =>
+  ensures t' m' res := t' = t /\ ex1 (fun k' => ex1 (fun v' =>
                   let leaf := cbt' Leaf (full_prefix k') (map.singleton k' v') res in
                         <{ * leaf
                            * wand leaf (nncbt c tp)
-                           * emp (k <> k' <-> map.get c k = None)}> )) m' *) #**/     /**.
+                           * emp (k <> k' <-> map.get c k = None)
+                           * R }> )) m' #**/     /**.
 Derive cbt_best_leaf SuchThat (fun_correct! cbt_best_leaf) As cbt_best_leaf_ok.  .**/
 {                                                                            /**. .**/
   uintptr_t p = tp;                                                          /**.
+
+  (* setting up the loop invariant *)
   rename p' into pr. move H0 at bottom. move sk at bottom. rewrite <- Def0 in H0.
   move m0 at bottom. remember c as cc.
   prove (m0 |= sep (cbt' sk pr cc p) (wand (cbt' sk pr cc p) (nncbt c tp))).
-  subst cc. unfold nncbt. unfold sep. unfold "|=". exists m0. exists map.empty.
-  split. apply map.split_empty_r. reflexivity. split. assumption. unfold wand.
-  intros. eexists. eexists. apply map.split_empty_l in H. subst p. subst m3.
-  (* use a lemma to get the wand *)
-  eassumption.
+  { subst cc. subst tp. prove (mmap.Def m0 = mmap.Def m0). unfold "|=". steps.
+  unfold canceling. steps. simpl. subst m2. apply wand_emp_iff_impl. unfold nncbt.
+  eapply impl1_ex1_r. eapply impl1_ex1_r. eapply impl1_refl. }
   prove (map.get c k = None <-> map.get cc k = None). subst cc. reflexivity.
+  rewrite Heqcc. (* rewriting inside ready *)
   clear H0.
-  clear Heqcc. move cc before pr.
-  loop invariant above p. clear Def0.
-Ltac log_packaged_context P ::= idtac P.
-.**/
+  clear Heqcc.
+  loop invariant above p. clear Def0.                                            .**/
   while (load32(p) != -1) /* decreases sk */ { /*?.
-
-  subst v. destruct sk. simpl cbt' in *. steps. simpl cbt' in *.
-  step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step.
-  constructor. constructor. constructor. step. step. step; [ | trivial]. step.
-  step. step. step. Show Existentials.
+  subst v.
+  instantiate (3:=(match sk with | Leaf => ?[ME1] | _ => ?[ME2] end)).
+  destruct sk; cycle 1. simpl cbt' in *. steps.
   .**/
   (* without "== 1", not supported in one of the tactics *)
-  if (((k >> load32(p)) & 1) == 1) { /**.
-  (* to debug evar instantiation failure: write an ltac snippet to get the evar into
-  an ltac variable; write assert (myevar = valueImtryingtoassign). reflexivity. ->
-  gives better error message *)
-  (* continue with this function; try another CBT function; implement delete (in C) *)
-  .**/
-    p = load(p + 8);   /**. .**/
-  } /**. unfold canceling. unfold seps.
-  step. step. step.
-  unzify. (* write and use lemmas about wand and ex1 *)
-  eapply wand_trans. eassert (mmap.Def m4 = _ \*/ m3). rewrite <- D.
-  rewrite mmap.du_assoc. rewrite mmap.du_comm with (p := m3).
-  rewrite <- mmap.du_assoc. reflexivity.
-  symmetry in H1. destruct ((m2 \*/ m5) \*/ m1) eqn:E; [ | discriminate].
-  apply split_du in H1. unfold map.split in H1. destruct H1. rewrite H1.
-  apply sep_from_disjointb. apply map.disjointb_spec. assumption. 2: eassumption.
-  clear H5 H15 H1 D m4 m3.
-  (* use exists x. A -> B    ->    A -> exists x. B lemma for wands here *)
-  unfold wand. intros. exists aL. exists pL. exists cL. exists p. exists pR. exists cR.
-  step. step. step. step. step. step. step. step. unfold canceling.
-  split; [ | trivial ]. intros. injection H15 as H15. subst m.
-  unfold seps. replace m3 with (map.putmany m3 map.empty). apply sep_from_disjointb.
-  apply map.disjointb_spec. apply map.disjoint_empty_r. assumption.
-  repeat rewrite sep_emp_l. step. step. step. step. step. step. step. step.
-  apply split_du in H14. unfold emp. split; trivial. apply map.putmany_empty_r.
-  split; [ | trivial ]. rewrite H4. split. apply split_du in H14.
-  unfold map.split in H14. destruct H14. subst cc. intros.
-  apply map.invert_get_putmany_None in H1. destruct H1. assumption.
-  step. destruct (map.get cc k) eqn:E; [ exfalso | trivial ]. apply split_du in H14.
-  apply map.get_split with (k:=k) in H14. destruct H14; destruct H14.
-  rewrite H14 in E. apply cbt_key_has_prefix with (k:=k) in H7.
+    if (((k >> load32(p)) & 1) == 1) /* split */ {                           /**. .**/
+      p = load(p + 8);                                                       /**. .**/
+    }                                                                        /**.
+  unfold canceling. unfold seps. step. step. step. eapply wand_trans.
+  apply sep_comm. step. step. unfold canceling. step. step. step. unfold seps.
+  unfold wand. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step.
+  change (cbt' sk2 pR cR p m4) with (m4 |= cbt' sk2 pR cR p) in H15.
+  step. step. step. step. step. step. step. step. step. step.
+  rewrite split_du. assumption. step. step. step. step. rewrite H4. clear H4 H5.
+  split. step. apply split_du in H14. unfold map.split in H14. destruct H14.
+  subst cc. apply map.invert_get_putmany_None in H1. step. assumption. step.
+  destruct (map.get cc k) eqn:E; [ exfalso | trivial ]. apply split_du in H14.
+  apply map.get_split with (k:=k) in H14. destruct H14; step.
+  rewrite H4p0 in E. apply cbt_key_has_prefix with (k:=k) in H7.
   eapply is_prefix_key_trans in H11. 4: eassumption. apply append_0_prefix in H11.
-  rewrite H11 in H. ZnWords. step. unfold append_0. simpl. step. step. congruence.
-  congruence. .**/
-  else { /**. .**/
-    p = load(p + 4);  /**. .**/
-  } /**. unfold canceling. unfold seps. step. step. step. eapply wand_trans.
+  rewrite H in H11. ZnWords. step. unfold append_0. simpl. step. step.
+  congruence. congruence. step. step. .**/
+    else {                                                                   /**. .**/
+      p = load(p + 4);                                                       /**. .**/
+    }                                                                        /**.
+  (* the proof here in the else branch is almost exactly the same as in
+     the then branch, except that we unfold wand a bit later and instead
+     apply the wand_ex_r lemma before the unfolding *)
+  unfold canceling. unfold seps. step. step. step. eapply wand_trans.
   unfold seps. apply sep_comm. step. step. unfold canceling. step. step. step.
   unfold seps. apply wand_ex_r. step. apply wand_ex_r. step. apply wand_ex_r.
   step. apply wand_ex_r. step. apply wand_ex_r. step. apply wand_ex_r. step.
@@ -496,118 +472,16 @@ Ltac log_packaged_context P ::= idtac P.
   rewrite H4p0 in E. apply cbt_key_has_prefix with (k:=k) in H8.
   eapply is_prefix_key_trans in H12. 4: eassumption. apply append_1_prefix in H12.
   congruence. step. unfold append_1. simpl. step. step. congruence. step. .**/
-  } /**. .**/
-  return p; /**.
-steps.
-  step. .**/
-  } /**. .**/
-  return p; /**.
- step. step. step. step. step. step. step. step. step.
-  step. step. unfold cbt'. unfold split_range_from_hyp. unfold canceling.
-  step. unfold cbt' in H3. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. unfold cbt' in H3. step. step. step. step. step. step.
-  step. step. step. step. step. Unshelve. exact nil. exact cmd.skip. .**/
-  } /**.
-  apply cbt_key_has_prefix with (k:=k) in H6. eapply is_prefix_key_trans in H12.
+  }                                                                          /**.
+  simpl cbt' in *. steps. .**/
+  return p;                                                                  /**. .**/
+} /**. unfold full_prefix. step. step. step. step. step. reflexivity.
+  subst pr. subst cc. step. step. rewrite H4.
+  unfold map.singleton. split. step. rewrite map.get_put_diff.
+  apply map.get_empty. assumption. step. intro. subst k0.
+  rewrite map.get_put_same in H1. discriminate. steps.
+Qed.
 
-  assu
-
-
-  step. rewrite sep_co
-  eassert (mmap.Def m4 = _ \*/ m3). rewrite <- D. rewrite mmap.du_assoc.
-  rewrite mmap.du_comm with (p := m3). rewrite <- mmap.du_assoc. reflexivity.
-  destruct ((m2 \*/ m6) \*/ m1) eqn:E; [ | discriminate ]. clear E D. symmetry in H1.
-  step.
-  eassert (m |= _). admit.
-  apply split_du in H1. unfold map.split in H1
-  apply wand_ex_r. step.
-  apply wand_ex_r. step.
-
-
-
-  step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  apply du_def_split in H1. destruct H1 as [m7 H1].
-  unfold "\*/" in H1.
-  destruct (mmap.of_option (map.du m2 m5)) eqn:E.
-  destruct (mmap.of_option (map.du m m1)) eqn:E2.
-  eassert (map.split m4 _ m3). instantiate (1 := m7).
-  unfold map.du in H1. destruct (map.disjointb m7 m3). simpl in H1. injection H1 as H1.
-  subst m4. apply map.split_disjoint_putmany. Check (mmap.Def m).
-  Set Printing Coercions. Chinstantiate (1 := ?[mymy]).
-  (* instantiate (mymy := m7). *) Check ?Q. evar_dbg ?mymy m7.
-  step. step. step. step. step. step. step.
-  constructor. constructor. instantiate (1 := k).
-  unfold WeakestPrecondition.dexpr. simpl. subst l. simpl.
-  unfold WeakestPrecondition.get. exists k. simpl. step.
-  unfold SortedList.lookup. simpl. step. step. step. step. step.
-  instantiate (8 := p0). constructor. constructor.
-  unfold WeakestPrecondition.dexpr. simpl. subst l. simpl.
-  unfold WeakestPrecondition.get. exists p0. simpl. step.
-  unfold SortedList.lookup. simpl. step. step. step. step. step.
-  unfold canceling. step. step. step.
-
-  destruct v.
-
-  unfold cbt' in H4. step. step. step. step. step. step. step. step.
-  step. step. step.
-
-  simpl in H4. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. unfold seps. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step.
-
-  (* assignment in if-branch *)
-  eapply (wp_set) with (x := "p") (e := (live_expr:(load32(p + 8)))).
-  step. step. constructor. constructor. instantiate (1 := p0).
-  unfold WeakestPrecondition.dexpr. simpl. subst l. simpl.
-  unfold WeakestPrecondition.get. exists p0. simpl. step.
-  unfold SortedList.lookup. simpl. step. step. step. step. step.
-
-  destruct v.
-
-  unfold cbt' in H4. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step.
-
-  simpl in H4. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step.
-  instantiate (2 := \[aR]). Check \[aR]. Checstep. step. step. step. step. step. step.
-  instantiate (8 :
-
-  .**/
-    kb = 1;                     /**.
-
-  (* leaf case *)
-  unfold cbt' in H4. step. step. step. step. step. step.
-  step. step. step. step. step.
-
-  split.
-  assumption. split. assumption. split. assumption. reflexivity.
-  eauto with wf_of_type. intros. destruct v. exists false. destruct H0. destruct H0.
-  destruct H0. destruct H0. destruct H0. destruct H0. destruct H3. destruct H4.
-  destruct H5. subst l. destruct H0. destruct H0. destruct H0. destruct H6.
-  apply mk_dexpr_bool3 with (/[0]). constructor. step. step.
-  unfold "|=" in H. step. step. step. stepassert (emp True m0).
-  admit. purify_hyp H8. unfold "|=" in H. purify_
-  purify H4. step. bedrock2.PurifySep.purify H.
-  Ltac purified_hyp_of_pred ::= fail 10000. step.
-  **/
-  if (k & 1 << load32(p)) { /**.
-  destruct "\*/" in D
-  eapply (wp_while_tailrec_with_done_flag measure0 (sk, cc, p, pr, R) cond).
-  eauto with wf_of_type.
-    { Ltac log_packaged_context P ::= idtac P.
-    package_heapletwise_context. }
-  {       collect_heaplets_into_one_sepclause.
-
-  loop invariant above Def0. .**/ *) Abort. (*
-  while (load32(p) != 0) /* decreases (1) */ {                        /**.
-  (* the termination measure should be the tree skeleton. How do we get
-     the skeleton out of p? *)
-  (* -> ?apply the while rule manually? *)
-Abort. *)
 (* use result pointer *)
 (* keep a log *)
 #[export] Instance spec_of_cbt_lookup: fnspec :=                                .**/
