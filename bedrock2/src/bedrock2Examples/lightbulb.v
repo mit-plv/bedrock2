@@ -212,7 +212,7 @@ Section WithParameters.
     1: repeat (eapply align_trace_cons || exact (eq_sym (List.app_nil_l _)) || eapply align_trace_app).
 
     eexists; split; cbv [mmio_trace_abstraction_relation].
-    1:repeat (eapply List.Forall2_cons || eapply List.Forall2_refl || eapply List.Forall2_app; eauto).
+    1:repeat (eapply List.Forall2_cons || eapply List.Forall2_nil || eapply List.Forall2_app; eauto).
     1,2 : match goal with
     |- mmio_event_abstraction_relation _ _ =>
         (left+right); eexists _, _; split; exact eq_refl
@@ -234,7 +234,7 @@ Section WithParameters.
     all: repeat (eapply align_trace_cons || exact (eq_sym (List.app_nil_l _)) || eapply align_trace_app).
     all : eexists; split.
     all : try subst err; rewrite ?word.unsigned_of_Z.
-    all : repeat (eapply List.Forall2_cons || eapply List.Forall2_refl || eapply List.Forall2_app || eauto 15 using concat_app).
+    all : repeat (eapply List.Forall2_cons || eapply List.Forall2_nil || eapply List.Forall2_app || eauto 15 using concat_app).
     { subst v. rewrite word.unsigned_xor_nowrap, H10, word.unsigned_of_Z in H4. case (H4 eq_refl). }
     { subst v. rewrite word.unsigned_xor_nowrap, H9, word.unsigned_of_Z in H4. inversion H4. }
     { subst v. rewrite word.unsigned_xor_nowrap, H9, word.unsigned_of_Z in H4. inversion H4. }
@@ -279,7 +279,7 @@ Section WithParameters.
     1: replace (word.unsigned (word.of_Z 42)) with 42 in * by ZnWords.ZnWords.
     2: {
       eexists nil; split; eauto.
-      eexists nil; split; cbv [mmio_trace_abstraction_relation]; eauto using List.Forall2_refl.
+      eexists nil; split; cbv [mmio_trace_abstraction_relation]; eauto using List.Forall2_nil.
       right; repeat split; eauto.
       { intros (?&?&?). ZnWords.ZnWords. }
       intros HX; rewrite ?word.unsigned_of_Z in HX; inversion HX. }
@@ -308,7 +308,7 @@ Section WithParameters.
     all: repeat (eapply align_trace_cons || exact (eq_sym (List.app_nil_l _))).
     all : eexists; split.
 
-    all : repeat (eapply List.Forall2_cons || eapply List.Forall2_refl).
+    all : repeat (eapply List.Forall2_cons || eapply List.Forall2_nil).
     all :
     try match goal with
     |- mmio_event_abstraction_relation _ _ =>
