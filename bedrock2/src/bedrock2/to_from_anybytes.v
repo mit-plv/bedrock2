@@ -115,6 +115,56 @@ Section WithMem.
       destruct width_cases as [E|E]; rewrite E; cbv; discriminate.
   Qed.
 
+  Lemma uint_fillable(nbits: Z):
+    0 < nbits ->
+    nbits mod 8 = 0 ->
+    fillable (uint nbits) (nbits_to_nbytes nbits).
+  Proof.
+    unfold fillable, iff1. unfold uint at 2. intros a m. split; intro Hm.
+    - eapply anybytes_to_alt in Hm.
+      eapply Array.anybytes_to_array_1 in Hm.
+      destruct Hm as (bs & Hm & HL).
+      eexists. eapply sep_emp_l.
+      unfold Scalars.littleendian, ptsto_bytes.ptsto_bytes.
+      rewrite HList.tuple.to_list_of_list.
+      split.
+      2: {
+        rewrite <- HL.
+        rewrite (LittleEndianList.split_le_combine bs). assumption.
+      }
+      pose proof (LittleEndianList.le_combine_bound bs) as A.
+      replace (8 * Z.of_nat (length bs)) with nbits in A.
+      1: exact A.
+      unfold nbits_to_nbytes in *. Z.div_mod_to_equations. lia.
+    - unfold Scalars.littleendian, ptsto_bytes.ptsto_bytes in Hm.
+      destruct Hm as [v Hm].
+      eapply sep_emp_l in Hm.
+      destruct Hm as (B & Hm).
+      eapply Array.array_1_to_anybytes in Hm.
+      eapply anybytes_from_alt in Hm. 2: lia.
+      lazymatch goal with
+      | H: (array (uint 8) ?n ? addr) _ |- (array (uint 8) ?n' ? addr) _ =>
+          replace n with n' in H
+      end.
+      1: assumption.
+      rewrite HList.tuple.to_list_of_list.
+      rewrite LittleEndianList.length_le_split.
+      unfold nbits_to_nbytes. Z.div_mod_to_equations. lia.
+  Qed.
+
+  Lemma uint8_fillable: fillable (uint 8) 1.
+  Proof. apply uint_fillable; reflexivity. Qed.
+
+  Lemma uint16_fillable: fillable (uint 16) 2.
+  Proof. apply uint_fillable; reflexivity. Qed.
+
+  Lemma uint32_fillable: fillable (uint 32) 4.
+  Proof. apply uint_fillable; reflexivity. Qed.
+
+  Lemma uint64_fillable: fillable (uint 64) 8.
+  Proof. apply uint_fillable; reflexivity. Qed.
+
+
   (* TODO make non-fake *)
   Lemma array_fake_contiguous: forall T (elem: T -> word -> mem -> Prop)
                                       {sz: PredicateSize elem} n vs,
@@ -179,6 +229,10 @@ Create HintDb fillable.
 #[export] Hint Resolve
   uintptr32_fillable
   uintptr64_fillable
+  uint8_fillable
+  uint16_fillable
+  uint32_fillable
+  uint64_fillable
 : fillable.
 
 #[export] Hint Extern 20 (contiguous ?p ?n) =>
