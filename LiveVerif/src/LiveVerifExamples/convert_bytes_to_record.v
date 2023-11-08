@@ -3,6 +3,20 @@ Require Import LiveVerif.LiveVerifLib.
 
 Load LiveVerif.
 
+Record baz := {
+  bazA: Z;
+  bazB: Z;
+  bazC: word;
+}.
+
+Definition baz_t(b: baz): word -> mem -> Prop := .**/
+typedef struct __attribute__ ((__packed__)) {
+  uint16_t bazA;
+  uint16_t bazB;
+  uintptr_t bazC;
+} baz_t;
+/**.
+
 Record bar := {
   barA: Z;
   barB: Z;
@@ -53,6 +67,106 @@ Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          
 }                                                                          /**.
 subst tmp. bottom_up_simpl_in_goal. reflexivity.
 Qed.
+
+
+#[export] Instance spec_of_init_baz0: fnspec :=                                  .**/
+
+void init_baz(uintptr_t p, uintptr_t bazPayloadLen) /**#
+  ghost_args := (R: mem -> Prop);
+  requires t m := <{ * array (uint 8) 8 ? p
+                     * R }> m;
+  ensures t' m' := t' = t /\
+       <{ * baz_t ? p
+          * R }> m' #**/                                                   /**.
+Derive init_baz SuchThat (fun_correct! init_baz) As init_baz_ok.                .**/
+{                                                                          /**. .**/
+}                                                                          /**.
+  unfold anyval at 2. unfold baz_t.
+  clear_heapletwise_hyps; clear_mem_split_eqs; clear_heaplets.
+  intros m ?.
+  set (mAll := m) in |-*.
+  eexists (Build_baz _ _ _). cbn. unfold sepapp.
+  change (m |= array (uint 8) 8 ? p) in H.
+  assert (mmap.du (mmap.Def m) (mmap.Def map.empty) = mmap.Def mAll) as D. {
+    rewrite mmap.du_empty_r. reflexivity.
+  }
+  clearbody mAll.
+  steps.
+  (* evars were created too early! *)
+Abort.
+
+
+#[export] Instance spec_of_init_sepapps: fnspec :=                              .**/
+
+void init_sepapps(uintptr_t p, uintptr_t sepappsPayloadLen) /**#
+  ghost_args := bs (R: mem -> Prop);
+  requires t m := <{ * array (uint 8) 8 bs p
+                     * R }> m;
+  ensures t' m' := t' = t /\ exists v1 v2 v3,
+       <{ * <{ + uint 16 v1
+               + uint 16 v2
+               + uintptr v3 }> p
+          * R }> m' #**/                                                   /**.
+Derive init_sepapps SuchThat (fun_correct! init_sepapps) As init_sepapps_ok.    .**/
+{                                                                          /**. .**/
+}                                                                          /*?.
+  step. step. step.
+  (* stop before the existentials get turned into evars! *)
+  unfold sepapps. simpl. unfold sepapp.
+  enough (<{ * uint 16 ? p
+             * uint 16 ? (p ^+ /[2])
+             * uintptr ? (p ^+ /[2] ^+ /[2])
+             * R }> m).
+  { unfold anyval in *. steps. }
+  steps.
+Qed.
+
+#[export] Instance spec_of_init_baz: fnspec :=                                  .**/
+
+void init_baz(uintptr_t p, uintptr_t bazPayloadLen) /**#
+  ghost_args := bs (R: mem -> Prop);
+  requires t m := <{ * array (uint 8) 8 bs p
+                     * R }> m;
+  ensures t' m' := t' = t /\
+       <{ * baz_t ? p
+          * R }> m' #**/                                                   /**.
+Derive init_baz SuchThat (fun_correct! init_baz) As init_baz_ok.                .**/
+{                                                                          /**. .**/
+}                                                                          /**.
+  unfold anyval, baz_t.
+  clear_heapletwise_hyps; clear_mem_split_eqs; clear_heaplets.
+  intros m ?.
+  set (mAll := m) in |-*.
+  change (m |= array (uint 8) 8 bs p) in H.
+  assert (mmap.du (mmap.Def m) (mmap.Def map.empty) = mmap.Def mAll) as D. {
+    rewrite mmap.du_empty_r. reflexivity.
+  }
+  clearbody mAll.
+  unfold sepapps. simpl. unfold sepapp.
+  enough (<{ * uint 16 ? p
+             * uint 16 ? (p ^+ /[2])
+             * uintptr ? (p ^+ /[2] ^+ /[2])
+             * emp True }> mAll).
+  { unfold anyval in *. repeat heapletwise_step.
+    eexists (Build_baz _ _ _). cbn. steps. }
+  steps.
+Qed.
+
+
+#[export] Instance spec_of_init_bar: fnspec :=                                  .**/
+
+void init_bar(uintptr_t p, uintptr_t barPayloadLen) /**#
+  ghost_args := bs (R: mem -> Prop);
+  requires t m := <{ * array (uint 8) (8 + 4 * \[barPayloadLen]) bs p
+                     * R }> m;
+  ensures t' m' := t' = t /\
+       <{ * bar_t (Z.to_N \[barPayloadLen]) ? p
+          * R }> m' #**/                                                   /**.
+Derive init_bar SuchThat (fun_correct! init_bar) As init_bar_ok.                .**/
+{                                                                          /**. .**/
+}                                                                          /**.
+Abort.
+
 
 #[export] Instance spec_of_init_foo: fnspec :=                                  .**/
 
