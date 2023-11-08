@@ -194,7 +194,7 @@ Fixpoint cbt' (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word): mem -> Pr
     | Leaf => ex1 (fun k: word => ex1 (fun v: word =>
         <{ * emp (a <> /[0])
            * freeable 12 a
-           * <{ + uint 32 (2 ^ 32 - 1)
+           * <{ + uintptr /[-1] (* uint 32 (2 ^ 32 - 1) *)
                 + uintptr k
                 + uintptr v }> a
            * emp (p = full_prefix k)
@@ -204,7 +204,7 @@ Fixpoint cbt' (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word): mem -> Pr
           =>
           <{ * emp (a <> /[0])
              * freeable 12 a
-             * <{ + uint 32 p.(length)
+             * <{ + uintptr /[p.(length)] (* uint 32 p.(length) *)
                   + uintptr aL
                   + uintptr aR }> a
              * cbt' skL pL cL aL
@@ -265,7 +265,19 @@ Proof. unfold purify. auto. Qed.
       => constructor : suppressed_warnings.
 #[local] Hint Extern 1 (cannot_purify (or1 _ _))
       => constructor : suppressed_warnings.
+#[local] Hint Extern 1 (cannot_purify (sep _ _))
+      => constructor : suppressed_warnings.
+#[local] Hint Extern 1 (cannot_purify (uint _ _ _))
+      => constructor : suppressed_warnings.
+#[local] Hint Extern 1 (cannot_purify _)
+      => constructor : suppressed_warnings.
 #[local] Hint Extern 1 (PredicateSize_not_found (wand _))
+      => constructor : suppressed_warnings.
+#[local] Hint Extern 1 (PredicateSize_not_found (or1 _))
+      => constructor : suppressed_warnings.
+#[local] Hint Extern 1 (PredicateSize_not_found (nncbt _))
+      => constructor : suppressed_warnings.
+#[local] Hint Extern 1 (PredicateSize_not_found (sep allocator))
       => constructor : suppressed_warnings.
 
 #[local] Hint Unfold cbt : heapletwise_always_unfold.
@@ -350,6 +362,41 @@ Proof.
   unfold wand. intros. apply map.split_empty_l in H. congruence.
 Qed.
 
+Lemma or1_intro_l : forall P Q : mem -> Prop, impl1 P (or1 P Q).
+Proof.
+  unfold impl1. unfold or1. auto.
+Qed.
+
+Lemma or1_intro_r : forall P Q : mem -> Prop, impl1 Q (or1 P Q).
+Proof.
+  unfold impl1. unfold or1. auto.
+Qed.
+
+Lemma to_with_mem : forall (P : mem -> Prop) (m : mem), P m -> with_mem m P.
+Proof.
+  auto.
+Qed.
+
+Ltac hyps_to_with_mem := repeat match goal with
+  | H: ?P ?m |- _ => apply to_with_mem in H
+  end.
+
+Lemma or1_sep : forall P Q R : mem -> Prop,
+  iff1 (sep (or1 P Q) R) (or1 (sep P R) (sep Q R)).
+Proof.
+  intros. split; steps; lazymatch goal with H: context[ or1 ] |- _ => destruct H end;
+    steps; hyps_to_with_mem;
+    [ left | right | eapply (or1_intro_l _ Q m0) in H0
+    | eapply (or1_intro_r P _ m0) in H0];
+    steps; hyps_to_with_mem; steps.
+Qed.
+
+Lemma or1_seps : forall (P Q : mem -> Prop) (Ps : list (mem -> Prop)),
+  iff1 (seps (cons (or1 P Q) Ps)) (or1 (seps (cons P Ps)) (seps (cons Q Ps))).
+Proof.
+  intros. simpl. destruct Ps; [ | apply or1_sep]; apply iff1_refl.
+Qed.
+
 Lemma du_def_split : forall (m m1 : mem) (mm: mmap mem),
     mm \*/ m1 = m -> exists m2 : mem, mm = m2 /\ map.split m m2 m1.
 Proof.
@@ -395,61 +442,68 @@ Proof.
   change (Q m2) with (m2 |= Q) in H0. steps.
 Qed.
 
+Lemma map_get_putmany_not_left : forall (m1 m2 : word_map) (k : word),
+    map.get m1 k = None -> map.get (map.putmany m1 m2) k = map.get m2 k.
+Proof.
+  intros. destruct (map.get m2 k) eqn:E. erewrite map.get_putmany_right. reflexivity.
+  assumption. erewrite map.get_putmany_left; assumption.
+Qed.
+
 Local Hint Extern 1 (PredicateSize (cbt' ?sk)) => exact 12 : typeclass_instances.
 
 #[export] Instance spec_of_cbt_best_leaf: fnspec :=                             .**/
 
 
 uintptr_t cbt_best_leaf(uintptr_t tp, uintptr_t k) /**#
-  ghost_args := (c: word_map) (R: mem -> Prop);
-  requires t m := <{ * nncbt c tp
+  ghost_args := (sk: tree_skeleton) (pr: prefix) (c: word_map) (R: mem -> Prop);
+  requires t m := <{ * cbt' sk pr c tp
                      * R }> m;
   ensures t' m' res := t' = t /\ ex1 (fun k' => ex1 (fun v' =>
                   let leaf := cbt' Leaf (full_prefix k') (map.singleton k' v') res in
                         <{ * leaf
-                           * wand leaf (nncbt c tp)
-                           * emp (k <> k' <-> map.get c k = None)
+                           * wand leaf (cbt' sk pr c tp)
+                           * emp (k <> k' -> map.get c k = None)
+                           * emp (k = k' -> map.get c k = Some v')
                            * R }> )) m' #**/     /**.
 Derive cbt_best_leaf SuchThat (fun_correct! cbt_best_leaf) As cbt_best_leaf_ok.  .**/
 {                                                                            /**. .**/
   uintptr_t p = tp;                                                          /**.
 
   (* setting up the loop invariant *)
-  rename p' into pr. move H0 at bottom. move sk at bottom. rewrite <- Def0 in H0.
-  move m0 at bottom. remember c as cc.
-  prove (m0 |= sep (cbt' sk pr cc p) (wand (cbt' sk pr cc p) (nncbt c tp))).
-  { subst cc. subst tp. prove (mmap.Def m0 = mmap.Def m0). unfold "|=". steps.
-  unfold canceling. steps. simpl. subst m2. apply wand_emp_iff_impl. unfold nncbt.
-  eapply impl1_ex1_r. eapply impl1_ex1_r. eapply impl1_refl. }
-  prove (map.get c k = None <-> map.get cc k = None). subst cc. reflexivity.
-  rewrite Heqcc. (* rewriting inside ready *)
-  clear H0.
-  clear Heqcc.
-  loop invariant above p. clear Def0.                                            .**/
-  while (load32(p) != -1) /* decreases sk */ { /*?.
+  move H0 at bottom. rewrite <- Def0 in H0.
+  move m0 at bottom. remember c as c'. remember sk as sk'. remember pr as pr'.
+  prove (m0 |= sep (cbt' sk' pr' c' p) (wand (cbt' sk' pr' c' p) (cbt' sk pr c tp))).
+  { subst sk'. subst pr'. subst c'. subst tp. prove (mmap.Def m0 = mmap.Def m0).
+    unfold "|=". steps. unfold canceling. steps. simpl. subst m2.
+    apply wand_emp_iff_impl. eapply impl1_refl. }
+  prove (map.get c' k = map.get c k). subst c. reflexivity.
+  rewrite Heqc'. rewrite Heqsk'. rewrite Heqpr'. (* rewriting inside ready *)
+  clear H0 Heqc' Heqsk' Heqpr' Def0.
+  loop invariant above p.                                            .**/
+  while (load(p) != -1) /* decreases sk' */ { /*?.
   subst v.
-  instantiate (3:=(match sk with | Leaf => ?[ME1] | _ => ?[ME2] end)).
-  destruct sk; cycle 1. simpl cbt' in *. steps.
+  instantiate (3:=(match sk' with | Leaf => ?[ME1] | _ => ?[ME2] end)).
+  destruct sk'; cycle 1. simpl cbt' in *. steps.
   .**/
   (* without "== 1", not supported in one of the tactics *)
-    if (((k >> load32(p)) & 1) == 1) /* split */ {                           /**. .**/
+    if (((k >> load(p)) & 1) == 1) /* split */ {                           /**. .**/
       p = load(p + 8);                                                       /**. .**/
     }                                                                        /**.
   unfold canceling. unfold seps. step. step. step. eapply wand_trans.
   apply sep_comm. step. step. unfold canceling. step. step. step. unfold seps.
   unfold wand. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step.
-  change (cbt' sk2 pR cR p m4) with (m4 |= cbt' sk2 pR cR p) in H15.
+  change (cbt' sk'2 pR cR p m4) with (m4 |= cbt' sk'2 pR cR p) in H15.
   step. step. step. step. step. step. step. step. step. step.
-  rewrite split_du. assumption. step. step. step. step. rewrite H4. clear H4 H5.
-  split. step. apply split_du in H14. unfold map.split in H14. destruct H14.
-  subst cc. apply map.invert_get_putmany_None in H1. step. assumption. step.
-  destruct (map.get cc k) eqn:E; [ exfalso | trivial ]. apply split_du in H14.
-  apply map.get_split with (k:=k) in H14. destruct H14; step.
-  rewrite H4p0 in E. apply cbt_key_has_prefix with (k:=k) in H7.
+  rewrite split_du. assumption. step. step. step. step.
+  rewrite <- H4. clear H4 H5.
+  apply split_du in H14. unfold map.split in H14. destruct H14.
+  subst c'. symmetry. apply map_get_putmany_not_left.
+  destruct (map.get cL k) eqn:E; [ exfalso | trivial ].
+  apply cbt_key_has_prefix with (k:=k) in H7.
   eapply is_prefix_key_trans in H11. 4: eassumption. apply append_0_prefix in H11.
   rewrite H in H11. ZnWords. step. unfold append_0. simpl. step. step.
-  congruence. congruence. step. step. .**/
+  congruence. step. step. .**/
     else {                                                                   /**. .**/
       p = load(p + 4);                                                       /**. .**/
     }                                                                        /**.
@@ -461,63 +515,316 @@ Derive cbt_best_leaf SuchThat (fun_correct! cbt_best_leaf) As cbt_best_leaf_ok. 
   unfold seps. apply wand_ex_r. step. apply wand_ex_r. step. apply wand_ex_r.
   step. apply wand_ex_r. step. apply wand_ex_r. step. apply wand_ex_r. step.
   unfold wand. intros. step. step. step. step. step. step. step.
-  change (cbt' sk1 pL cL p m4) with (m4 |= cbt' sk1 pL cL p) in H15. step. step.
+  change (cbt' sk'1 pL cL p m4) with (m4 |= cbt' sk'1 pL cL p) in H15. step. step.
   step. step. step. step. step. step. step. step. step. rewrite <- split_du in H14.
-  assumption. step. step. step. step. rewrite H4. clear H4 H5.
-  split. step.
-  apply split_du in H14. unfold map.split in H14. destruct H14. subst cc.
+  assumption. step. step. step. step. rewrite <- H4. clear H4 H5.
+  apply split_du in H14. unfold map.split in H14. destruct H14. subst c'.
+  symmetry. apply map.get_putmany_left.
+  destruct (map.get cR k) eqn:E; [ exfalso | trivial ]. (*
   apply map.invert_get_putmany_None in H1. step. assumption. step.
-  destruct (map.get cc k) eqn:E; [ exfalso | trivial ]. apply split_du in H14.
+  destruct (map.get c' k) eqn:E; [ exfalso | trivial ]. apply split_du in H14.
   apply map.get_split with (k:=k) in H14. destruct H14; step. congruence.
-  rewrite H4p0 in E. apply cbt_key_has_prefix with (k:=k) in H8.
+  rewrite H4p0 in E. *) apply cbt_key_has_prefix with (k:=k) in H8.
   eapply is_prefix_key_trans in H12. 4: eassumption. apply append_1_prefix in H12.
   congruence. step. unfold append_1. simpl. step. step. congruence. step. .**/
   }                                                                          /**.
   simpl cbt' in *. steps. .**/
   return p;                                                                  /**. .**/
 } /**. unfold full_prefix. step. step. step. step. step. reflexivity.
-  subst pr. subst cc. step. step. rewrite H4.
-  unfold map.singleton. split. step. rewrite map.get_put_diff.
-  apply map.get_empty. assumption. step. intro. subst k0.
-  rewrite map.get_put_same in H1. discriminate. steps.
+  subst pr'. subst c'. step. rewrite <- H4. unfold map.singleton. step. step.
+  rewrite map.get_put_diff. apply map.get_empty. assumption. step. step. subst k0.
+  rewrite map.get_put_same. steps. steps.
 Qed.
 
-(* use result pointer *)
-(* keep a log *)
+(*
+(* comment-out rationale: while properties of a tree-subtree pair probably can be
+   extracted from a T1 --* T2 wand (T1 here is a subtree T2) (like here below,
+   it seems painful to
+   prove such a lemma; it seems easier to assert the properties we need in the
+   postcondition of cbt_find_best, where they should be easier to prove *)
+Lemma subtree_content : forall (tp tp' : word) (sk sk' : tree_skeleton)
+                               (pr pr' : prefix) (c c' : word_map) (k : word) (m : mem),
+  sep (cbt' sk' pr' c' tp') (wand (cbt' sk' pr' c' tp') (cbt' sk pr c tp)) m ->
+  is_prefix_key pr' k -> map.get c k = map.get c' k.
+Proof.
+  induction sk.
+  - intros. destruct sk'. pose proof H. apply wand_mp in H. simpl in H. apply to_with_mem in H1.
+    steps. unfold "|=" in H1. unfold sep in H1. fwd. destruct sk'.
+    + simpl in H1p1. repeat destruct_ex1_step. repeat split_sep_step.
+      repeat destruct_emp_step. subst pr'.
+apply split_du in D. rewrite <- manual_du_on_sep in H1.
+Admitted.
+*)
+
+Lemma map_singleton_inj : forall (k1 k2 v1 v2 : word),
+    map.singleton k1 v1 = map.singleton k2 v2 -> k1 = k2 /\ v1 = v2.
+Proof.
+  intros. unfold map.singleton in *. assert (k1 = k2).
+  assert (k1 = k2 \/ k1 <> k2). step. destruct H0; [ trivial | exfalso ].
+  f_apply (fun m: word_map => map.get m k2) H. rewrite map.get_put_same in H.
+  rewrite map.get_put_diff in H. rewrite map.get_empty in H. discriminate.
+  auto. subst k1. steps. f_apply (fun m: word_map => map.get m k2) H.
+  repeat rewrite map.get_put_same in H. congruence.
+Qed.
+
 #[export] Instance spec_of_cbt_lookup: fnspec :=                                .**/
-(* parameter "d" for "default" *)
-uintptr_t cbt_lookup(uintptr_t tp, uintptr_t k, uintptr_t d) /**#
-  ghost_args := (c: word_map) (R: mem -> Prop);
+uintptr_t cbt_lookup(uintptr_t tp, uintptr_t k, uintptr_t val_out) /**#
+  ghost_args := (c: word_map) (val_out_orig: word) (R: mem -> Prop);
   requires t m := <{ * cbt c tp
+                     * uintptr val_out_orig val_out
                      * R }> m;
   ensures t' m' res := t' = t
-           /\ <{ * emp (match map.get c k with | Some v => v | None => d end = res)
+           /\ <{ * emp (res = /[match map.get c k with | Some _ => 1 | None => 0 end])
                  * cbt c tp
+                 * uintptr (match map.get c k with
+                            | Some v => v
+                            | None => val_out_orig
+                            end) val_out
                  * R }> m'         #**/                                     /**.
 Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.           .**/
 {                                                                           /**. .**/
   if (tp == NULL) /* split */ {                                             /**. .**/
-    return d;                                                               /**. .**/
-  }                                                                         /*?.
-  step. step. step. step. step.  destruct H0. unfold nncbt in H0. step. step.
-  destruct sk; simpl in H0. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. subst c. rewrite map.get_empty. step.
-  subst tp. steps.                                                               .**/
+    return 0;                                                               /**. .**/
+  }                                                                         /**.
+  destruct H0. steps. apply purify_cbt' in H0. steps. apply purify_emp in H0.
+  steps. subst c. rewrite map.get_empty. step. subst tp. steps. destruct H0.
+  steps. apply purify_cbt' in H. steps. apply purify_emp in H. steps. subst c.
+  rewrite map.get_empty. steps. .**/
   else {                                                                    /**.
-  Abort.
+  destruct H0; [ | exfalso ]; hyps_to_with_mem; repeat heapletwise_step; fwd;
+  [ | contradiction ]. .**/
+    uintptr_t n = cbt_best_leaf(tp, k);                                     /*?.
+  steps. unfold enable_frame_trick.enable_frame_trick. steps. .**/
+    uintptr_t k' = load(n + 4);                                             /*?.
+  simpl in H1. step. step. step. step. step. step. step.
+  apply map_singleton_inj in H12. fwd. subst k0. steps. .**/
+    if (k' == k) /* split */ {                                              /**. .**/
+      store(val_out, load(n + 8));                                          /**. .**/
+      return 1;                                                             /**. .**/
+    }                                                                       /**.
+  destruct (map.get c k); [ trivial | exfalso ]. assert (None = Some v).
+  auto. discriminate.
+  unfold canceling. step. step. step. apply or1_seps. left. simpl. step.
+  step. step. step. instantiate (2:=sk). instantiate (1:=p). step.
+  clear D H0 m0. clear m2 H3 m3.
+  assert ((m11 \*/ (m1 \*/ (m5 \*/ m7))) \*/ m4 = m11 \*/ (((m1 \*/ m4) \*/ m5) \*/ m7)).
+  rewrite mmap.du_assoc. f_equal. rewrite (mmap.du_assoc _ _ m4).
+  rewrite (mmap.du_comm _ m4). repeat rewrite mmap.du_assoc. reflexivity.
+  remember (m1 \*/ m4 \*/ m5) as m0. destruct m0; cycle 1. rewrite D0 in H0.
+  simpl in H0. discriminate. rewrite H0. clear H0. assert (cbt' sk p c tp m0).
+  remember (m1 \*/ m4) as m2. destruct m2; [ | discriminate ].
+  symmetry in Heqm0.
+  eassert (<{ * ?[P] * (wand ?P ?[Q]) }> m0). eapply manual_du_on_sep. 3: eassumption.
+  2: eassumption. unfold cbt'. steps. symmetry in Heqm2. steps. apply wand_mp in H0.
+  assumption. hyps_to_with_mem. step. step. step. step. step. step.
+  symmetry in H9. apply H6 in H9. rewrite H9. steps. steps.  .**/
+    else {                                                                 /**. .**/
+      return 0;                                                            /**. .**/
+    }                                                                      /**.
+  assert (map.get c k = None). apply H4. congruence. steps. unfold canceling.
+  step. step. step. apply or1_seps. left. simpl. step. step. step. step.
+  instantiate (2:=sk). instantiate (1:=p). step. clear D H0 H3 m0 m2 m3 m.
+  assert ((m1 \*/ (m5 \*/ (m7 \*/ m9))) \*/ m4 = (m4 \*/ m1 \*/ m5) \*/ (m7 \*/ m9)).
+  rewrite mmap.du_comm. repeat rewrite mmap.du_assoc. reflexivity.
+  remember (m4 \*/ m1 \*/ m5) as m0. rewrite H0. destruct m0; cycle 1.
+  rewrite D0 in H0. simpl in H0. discriminate. clear H0. assert (cbt' sk p c tp m).
+  remember (m4 \*/ m1). destruct m0; [ | discriminate ].
+  symmetry in Heqm0.
+  eassert (<{ * ?[P] * (wand ?P ?[Q]) }> m). eapply manual_du_on_sep.
+  3: eassumption. 2: eassumption. unfold cbt'. symmetry in Heqm1. steps.
+  apply wand_mp in H0. assumption. hyps_to_with_mem. steps.
+  apply not_eq_sym in H9. apply H4 in H9. rewrite H9. steps. steps.
+ .**/
+  }                                                                        /**. .**/
+}                                                                          /**.
+Qed.
 
-#[export] Instance spec_of_cbt_insert: fnspec :=                                  .**/
+#[export] Instance spec_of_cbt_alloc_leaf: fnspec :=                            .**/
+
+uintptr_t cbt_alloc_leaf(uintptr_t k, uintptr_t v) /**#
+  ghost_args := (R: mem -> Prop);
+  requires t m := <{ * allocator * R }> m;
+  ensures t' m' res := t' = t
+           /\ <{ * (if \[res] =? 0 then
+                     allocator_failed_below 12
+                   else
+                     <{ * allocator
+                        * cbt (map.singleton k v) res }>)
+                 * R }> m' #**/                                            /**.
+Derive cbt_alloc_leaf SuchThat (fun_correct! cbt_alloc_leaf) As cbt_alloc_leaf_ok. .**/
+{                                                                          /**. .**/
+  uintptr_t p = malloc(12);                                                /**. .**/
+  if (p == NULL) /* split */ {                                             /**. .**/
+    return NULL;                                                           /**. .**/
+  }                                                                        /**.
+  assert (\[/[0]] = 0). step. rewrite H3. simpl (_ =? _) in *.
+  cbv iota in *. steps. .**/
+  else {                                                                   /**.
+  assert (\[p] =? 0 = false). steps. rewrite H3 in H2. unfold "|=" in H2. .**/
+    store(p, -1);                                                          /**. .**/
+    store(p + 4, k);                                                       /**. .**/
+    store(p + 8, v);                                                       /**. .**/
+    return p;                                                              /**. .**/
+  }                                                                        /**.
+  replace (\[p] =? 0) with (false) by steps. step. step. unfold canceling.
+  step. step. step. apply or1_seps. left. simpl. step. step. step.
+  instantiate (2:=Leaf). simpl cbt'. step. step. step. step. step.
+  assert (m7 \*/ (m10 \*/ (m8 \*/ (((m4 \*/ m0) \*/ m1) \*/ m2))) =
+  (m7 \*/ m10 \*/ m8) \*/ (((m4 \*/ m0) \*/ m1) \*/ m2)).
+  repeat rewrite mmap.du_assoc. reflexivity. remember (m7 \*/ m10 \*/ m8) as m11.
+  destruct m11; cycle 1. rewrite D0 in H10. simpl in H10. discriminate.
+  rewrite H10. step. step. step.
+  instantiate (2:=k). instantiate (1:=v). clear H5 H7.
+  assert (<{ + uintptr /[-1]
+                          + uintptr k
+                          + uintptr v }> p m). symmetry in Heqm11. unfold sepapps.
+  simpl. unfold sepapp. steps. clear H2 H8 H11. unfold canceling. step. step.
+  step. unfold seps. remember ((m4 \*/ m0) \*/ m2) as m12. destruct m12; cycle 1.
+  simpl in D0. discriminate. eapply manual_du_on_sep. 3: eassumption. assumption.
+  symmetry in Heqm12. step. step. step. step. step. step. unfold canceling.
+  step. step. step. simpl. eapply proj2. rewrite <- (sep_emp_l _ R).
+  remember (m4 \*/ m0) as m11. destruct m11; cycle 1. simpl in D0. discriminate.
+  eapply manual_du_on_sep. 3: eassumption. instantiate (1:=True). symmetry in Heqm0.
+  unfold anyval in H6. destruct H6. apply array_0_is_emp in H2. unfold emp in H2. fwd.
+  unfold anyval in H9. destruct H9. apply array_0_is_emp in H2. unfold emp in H2. fwd.
+  apply split_du in Heqm0. unfold map.split in Heqm0. fwd. subst m6. unfold emp.
+  split. apply map.empty_putmany. step. step. step. step. step. step. step. step.
+  step. step. step. step. .**/
+}                                                                          /**.
+Qed.
+
+(* whether like this or in some other way, it would be nice to have some
+   automated reasoning about maps *)
+(*
+Ltac reason_map := repeat lazymatch goal with
+  (*
+  | H: context[ map.get map.empty ?k ] |- _ => rewrite map.get_empty in H
+  | H: context[ map.get (map.put _ ?k _) ?k ] |- _ => rewrite map.get_put_same in H *)
+  | H: context[ map.get (map.singleton ?k _) ?k ] |- _ =>
+    unfold map.singleton in H; rewrite map.get_put_same in H
+  | |- context[ map.get (map.singleton ?k _) ?k ] =>
+    unfold map.singleton; rewrite map.get_put_same
+  end.
+*)
+
+Lemma map_get_singleton_same : forall (k v : word),
+    map.get (map.singleton k v) k = Some v.
+Proof.
+  intros. unfold map.singleton. apply map.get_put_same.
+Qed.
+
+Lemma map_get_singleton_diff : forall (k k' v : word),
+    k' <> k -> map.get (map.singleton k v) k' = None.
+Proof.
+  intros. unfold map.singleton. rewrite map.get_put_diff. apply map.get_empty.
+  assumption.
+Qed.
+
+Ltac destruct_split H :=
+  try apply split_du in H; unfold map.split in H; destruct H.
+
+Ltac eq_neq_cases k1 k2 :=
+  let H := fresh "H" in assert (H: k1 = k2 \/ k1 <> k2); [ step | ]; destruct H.
+
+Lemma cbt_nonempty : forall sk pr c tp m,
+  cbt' sk pr c tp m -> exists k v, map.get c k = Some v.
+Proof.
+  induction sk; intros; simpl in H.
+  - steps. subst c. instantiate (2:=k). reason_map. reflexivity.
+  - repeat heapletwise_step. apply IHsk2 in H4. cleanup_step. steps.
+    destruct_split H10. subst c. apply map.get_putmany_right. eassumption.
+Qed.
+
+Lemma putmany_singleton_left_small : forall (c1 c2 : word_map) k v,
+  map.putmany c1 c2 = map.singleton k v ->
+  c1 = map.empty \/ exists v', c1 = map.singleton k v'.
+Proof.
+  intros. destruct (map.get c1 k) eqn:E.
+  - right. exists r. apply map.map_ext. intros. eq_neq_cases k k0. subst k0.
+    rewrite map_get_singleton_same. assumption. rewrite map_get_singleton_diff.
+    f_apply (fun c : word_map => map.get c k0) H. rewrite map_get_singleton_diff in H.
+    apply map.invert_get_putmany_None in H. destruct H. assumption. congruence.
+    congruence.
+  - left. apply map.map_ext. intros. eq_neq_cases k k0. subst k0.
+    rewrite map.get_empty. assumption. rewrite map.get_empty.
+    f_apply (fun c : word_map => map.get c k0) H. rewrite map_get_singleton_diff in H.
+    apply map.invert_get_putmany_None in H. tauto. congruence.
+Qed.
+
+Lemma putmany_singleton_right_small : forall (c1 c2 : word_map) k v,
+   map.putmany c1 c2 = map.singleton k v -> c2 = map.empty \/ c2 = map.singleton k v.
+Proof.
+  intros. destruct (map.get c2 k) eqn:E; [ right | left ]; apply map.map_ext;
+  intros; eq_neq_cases k k0.
+  - subst k0. rewrite map_get_singleton_same. rewrite E.
+    eapply map.get_putmany_right in E. rewrite H in E.
+    rewrite map_get_singleton_same in E. congruence.
+  - eapply map.get_putmany_right in E. rewrite H in E. rewrite map_get_singleton_diff.
+    f_apply (fun c : word_map => map.get c k0) H. rewrite map_get_singleton_same in E.
+    rewrite map_get_singleton_diff in H. apply map.invert_get_putmany_None in H.
+    tauto. congruence. congruence.
+  - subst k0. rewrite map.get_empty. assumption.
+  - f_apply (fun c : word_map => map.get c k0) H. rewrite map_get_singleton_diff in H.
+    apply map.invert_get_putmany_None in H. rewrite map.get_empty. tauto. congruence.
+Qed.
+
+Lemma cbt_singleton_is_leaf : forall sk pr k v tp m,
+    cbt' sk pr (map.singleton k v) tp m -> sk = Leaf.
+Proof.
+  destruct sk.
+  - intros. reflexivity.
+  - intros. exfalso. simpl in *. steps. destruct_split H10. symmetry in H.
+    pose proof H. apply putmany_singleton_left_small in H. destruct H.
+    apply cbt_nonempty in H3. cleanup_step. subst cL. rewrite map.get_empty in H3.
+    discriminate. cleanup_step. apply putmany_singleton_right_small in H10.
+    destruct H10. apply cbt_nonempty in H4. cleanup_step. subst cR.
+    rewrite map.get_empty in H4. discriminate. unfold map.disjoint in H9.
+    specialize (H9 k v' v). subst cL. subst cR.
+    repeat rewrite map_get_singleton_same in H9. auto.
+Qed.
+
+#[export] Instance spec_of_cbt_insert: fnspec :=                                .**/
 
 uintptr_t cbt_insert(uintptr_t tp, uintptr_t k, uintptr_t v) /**#
   ghost_args := (c: word_map) (R: mem -> Prop);
-  requires t m := <{ * cbt c tp
+  requires t m := <{ * allocator
+                     * cbt c tp
                      * R }> m;
   ensures t' m' res := t' = t
-           /\ <{ * cbt (map.put c k v) res
-                 * R }> m'        #**/                                      /**.
-Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.
+           /\ <{ * (if \[res] =? 0 then
+                     <{ * allocator_failed_below 12
+                        * cbt c tp }>
+                    else
+                     <{ * allocator
+                        * cbt (map.put c k v) res }>)
+                 * R }> m'        #**/                                     /**.
+Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          .**/
+{                                                                          /**. .**/
+  if (tp == NULL) /* split */ {                                            /**. .**/
+    (* a direct `return cbt_alloc_leaf(k, v);` gives a type error
+       (the assignment_rhs type vs the expr type) *)
+    uintptr_t res = cbt_alloc_leaf(k, v);                                  /**. .**/
+    return res;                                                            /**. .**/
+  }                                                                        /**.
+  destruct H2. step. step. apply purify_cbt' in H2. tauto. step. step.
+  destruct (\[res] =? 0) eqn:E. steps. subst tp. steps. steps.
+  unfold "|=" in H1. unfold canceling. steps. apply or1_seps.
+  right. simpl. assert (mmap.Def m1 = mmap.Def m1). step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step.
+  unfold "|=" in H1. step. destruct H4; cycle 1. step. step. step.
+  f_apply (fun c : word_map => map.get c k) H1p0.
+  rewrite map_get_singleton_same in *. rewrite map.get_empty in *.
+  discriminate. step. step. step. unfold canceling. step. step. step.
+  apply or1_seps. left. simpl. step. step. step. instantiate (2:=Leaf).
+  instantiate (1:=full_prefix k). simpl cbt'. step. step. step. step.
+  step. step. pose proof (cbt_singleton_is_leaf _ _ _ _ _ _ H1). subst sk.
+  simpl (cbt' Leaf) in H1. unfold "|=" in H1. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step.
+  instantiate (2:=k). instantiate (1:= v). step. step. step. subst c.
+  reflexivity. repeat rewrite mmap.du_empty_l. step. step.
+  apply map_singleton_inj in H7. steps. steps.
+
+  }
 (* TODO: implement & prove *)
 Abort.
 
