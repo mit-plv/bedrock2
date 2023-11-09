@@ -730,7 +730,7 @@ Lemma cbt_nonempty : forall sk pr c tp m,
   cbt' sk pr c tp m -> exists k v, map.get c k = Some v.
 Proof.
   induction sk; intros; simpl in H.
-  - steps. subst c. instantiate (2:=k). reason_map. reflexivity.
+  - steps. subst c. instantiate (2:=k). rewrite map_get_singleton_same. reflexivity.
   - repeat heapletwise_step. apply IHsk2 in H4. cleanup_step. steps.
     destruct_split H10. subst c. apply map.get_putmany_right. eassumption.
 Qed.
