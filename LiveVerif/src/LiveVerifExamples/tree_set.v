@@ -148,6 +148,7 @@ Ltac step_hook ::=
       then left else fail
   | H1: ?x <= ?y, H2: ?y <= ?x, C: ?s ?x |- ?s ?y =>
       (replace y with x by xlia zchecker); exact C
+  | H: _ \/ _ |- _ => decompose [and or] H; clear H; try (exfalso; xlia zchecker); []
   | |- impl1 (bst' _ _ ?a) (bst' _ _ ?a) =>
       reflexivity (* might instantiate evars and that's ok here, as long as the
                      address is the same on both sides *)
@@ -203,15 +204,13 @@ uintptr_t bst_add(uintptr_t p, uintptr_t v) /**#
   requires t m := <{ * allocator
                      * bst s p
                      * R }> m;
-  ensures t' m' q := t' = t /\
-                     (if \[q] =? 0 then
-                        <{ * allocator_cannot_allocate 12
-                           * bst s p
-                           * R }> m'
-                      else
-                        <{ * allocator
-                           * bst (fun x => x = \[v] \/ s x) q
-                           * R }> m') #**/                                 /**.
+  ensures t' m' r := t' = t /\
+                     ((\[r] = 0 /\ <{ * allocator_failed_below 12
+                                      * bst s p
+                                      * R }> m') \/
+                      (\[r] = 1 /\ <{ * allocator
+                                      * bst (fun x => x = \[v] \/ s x) p
+                                      * R }> m')) #**/                     /**.
 Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   .**/
 {                                                                          /**. .**/
   uintptr_t a = load(p);                                                   /**.
@@ -225,46 +224,52 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
   delete (#(found = /[0])).
   move p after t.
   move sk before t.
-  loop invariant above p.
-  unfold ready.
-  (*
+  (* Local Arguments ready : clear implicits. *)
+  set (p_orig := p) in *. change p_orig with p at 1.
+  let h := constr:(#(uintptr a p_orig)) in change p_orig with p in h.
+  loop invariant above a.
+  (* Ltac log_packaged_context P ::= idtac P. *)
                                                                                 .**/
-  while (a != NULL && !found) /* initial_ghosts(s, sk, R); decreases(measure) */ { /**.*)
-  lazymatch goal with
-  | |- exec ?fs ?body ?t ?m ?l ?P =>
-      lazymatch eval pattern R in P with
-      | ?f R =>
-          change (exec fs body t m l ((fun (g: set Z * tree_skeleton * (mem -> Prop)) (_: tree_skeleton) =>
-            let (_, F) := g in f F) (s, sk, R) measure))
-      end
-  end.
-  let e := constr:(live_expr:(a != NULL && !found)) in
-  eapply (wp_while_tailrec_use_functionpost _ _ e).
-  { eauto with wf_of_type. }
-  { (* Ltac log_packaged_context P ::= idtac P. *)
-    package_heapletwise_context. }
-  start_loop_body.
-  steps.
-                                                                                .**/
+  while (a != NULL && !found)
+    /* initial_ghosts(p, s, sk, R); decreases(measure) */
+  {                                                                        /**. .**/
     uintptr_t x = load32(a + 4);                                           /**. .**/
     if (x == v) /* split */ {                                              /**. .**/
       found = 1;                                                           /**. .**/
-    } /**. new_ghosts(_, (Node skL skR) (*<- doesn't decrease but that's also not the measure *), _).
-
+    }                                                                      /**.
+      (* Note: (Node skL skR) doesn't decrease but that's also not the measure *)
+      new_ghosts(_, _, Node skL skR , _).
       steps.
       { subst v. bottom_up_simpl_in_goal. assumption. }
-      { lazymatch goal with
-        | H: /[0] = /[0] /\ _ \/ _ |- _ =>
-            destruct H; fwd; try (exfalso; solve[zify_hyps; xlia zchecker])
-        end.
-        subst v0.
-        (* arbitrarily pick skL, could also pick skR, just need something smaller *)
+      { (* arbitrarily pick skL, could also pick skR, just need something smaller *)
         eapply tree_skeleton_lt_l. constructor. }
                                                                                 .**/
     else {                                                                 /**. .**/
-      if (v < x) {                                                         /**. .**/
+      if (v < x) /* split */ {                                             /**. .**/
         p = a;                                                             /**. .**/
         a = load(p);                                                       /**. .**/
+      }                                                                    /**.
+        new_ghosts(_, _, skL, _).
+        steps.
+        lazymatch goal with
+        | H: _ \/ _ |- _ \/ _ => destruct H; [left|right]
+        end.
+
+
+step. step. step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step.
+
+(*
+s vs. (fun x : Z => s x /\ x < v1)
+
+cannot change outermost indirection pointer when going from smaller to bigger post!
+
+fwd.
+
+        unzify.
+
+Search p'.
+
       } else {                                                             /**. .**/
         p = a + 8;                                                         /**. .**/
         a = load(p);                                                       /**. .**/
@@ -274,7 +279,8 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
     }                                                                      /**.
       new_ghosts(_, if c then skL else skR, _).
       steps.
-(*
+
+      step.
                                                                                .**/
   }                                                                        /**.
 

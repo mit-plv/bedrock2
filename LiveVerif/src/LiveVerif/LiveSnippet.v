@@ -12,6 +12,8 @@ Inductive snippet :=
 | SIf(cond: expr)(split: bool)                         (* if (cond) /* split */ {     *)
 | SElse(startsWithClosingBrace: bool)                  (* } else {     |    else {    *)
 | SWhile(c: expr){Measure: Type}(m: Measure)           (* while(c)/* decreases m */ { *)
+| SWhileTailrec(c: expr){G M: Type}(ghosts0: G)(measure0: M)
+  (* while (c) /* initial_ghosts ghosts0; decreases measure0 */                       *)
 | SDo{Measure: Type}(m: Measure)                       (* do /* decreases m */ {      *)
 | SDoTailrec{G M: Type}(ghosts0: G)(measure0: M)
   (* do /* initial_ghosts ghosts0; decreases measure0 */ {                            *)

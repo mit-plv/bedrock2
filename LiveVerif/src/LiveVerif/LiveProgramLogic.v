@@ -505,6 +505,21 @@ Ltac while cond measure0 :=
   | eauto with wf_of_type
   | start_loop_body ].
 
+Ltac while_tailrec_use_functionpost cond ghosts0 measure0 :=
+  lazymatch goal with
+  | |- exec ?fs ?body ?t ?m ?l ?P =>
+      let P' := eval pattern measure0 in P in change (exec fs body t m l P')
+  end;
+  lazymatch goal with
+  | |- exec ?fs ?body ?t ?m ?l (?P ?v0) =>
+      let P' := pattern_tuple_in_term P ghosts0 in
+      change (exec fs body t m l (P' v0))
+  end;
+  eapply (wp_while_tailrec_use_functionpost measure0 ghosts0 cond);
+  [ eauto with wf_of_type
+  | package_heapletwise_context
+  | start_loop_body ].
+
 Ltac dowhile measure0 :=
   eapply (wp_dowhile measure0);
   [ package_heapletwise_context
@@ -534,7 +549,19 @@ Ltac end_dowhile e :=
   end;
   close_block.
 
-Tactic Notation "new_ghosts" open_constr(g) := eexists g.
+Ltac _new_ghosts g :=
+  lazymatch goal with
+  | |- provide_new_ghosts (fun _: ?G => _) =>
+      let expected := prod_size G in
+      let actual := pair_size g in
+      tryif constr_eq actual expected
+      then eexists g
+      else let expected := eval cbv in (Z.of_nat expected) in
+           let actual := eval cbv in (Z.of_nat actual) in
+           fail "Expected" expected "ghosts, but got" actual
+  end.
+
+Tactic Notation "new_ghosts" open_constr(g) := _new_ghosts g.
 
 Ltac is_local_var name :=
   lazymatch goal with
@@ -587,6 +614,7 @@ Ltac add_regular_snippet s :=
           end
       end
   | SWhile ?cond ?measure0 => while cond measure0
+  | SWhileTailrec ?cond ?g0 ?m0 => while_tailrec_use_functionpost cond g0 m0
   | SDo ?measure0 => dowhile measure0
   | SDoTailrec ?ghosts0 ?measure0 => dowhile_tailrec_use_functionpost ghosts0 measure0
   | SEndDo ?c => end_dowhile c

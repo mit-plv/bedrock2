@@ -248,6 +248,11 @@ Notation "}" := SEnd (in custom snippet at level 0).
 Notation "} 'else' {" := (SElse true) (in custom snippet at level 0).
 Notation "'else' {" := (SElse false) (in custom snippet at level 0).
 
+Notation "'while' ( e ) /* 'initial_ghosts' g0 ; 'decreases' m0 */ {" :=
+  (SWhileTailrec e g0 m0)
+  (in custom snippet at level 0, e custom live_expr,
+   g0 constr at level 0, m0 constr at level 0).
+
 Notation "'while' ( e ) /* 'decreases' m */ {" :=
   (SWhile e m) (in custom snippet at level 0, e custom live_expr, m constr at level 0).
 

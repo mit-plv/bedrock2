@@ -255,5 +255,7 @@ End LiveVerif.
       => constructor : suppressed_warnings.
 #[export] Hint Extern 1 (cannot_purify allocator)
       => constructor : suppressed_warnings.
+#[export] Hint Extern 1 (cannot_purify (allocator_failed_below _))
+      => constructor : suppressed_warnings.
 
 Comments .**/ //.

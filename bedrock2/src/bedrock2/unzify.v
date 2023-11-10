@@ -816,6 +816,11 @@ Ltac zify_goal :=
      we don't waste time on clearing derivable Z hyps seems *)
   foreach_hyp_upwards (apply_range_bounding_lemma_in_hyp don't_clear_Z_hyp_if_derivable wok).
 
+Ltac zify_one_hyp h :=
+  let tp := type of h in
+  let wok := get_word_ok_or_dummy in
+  let __ := zify_hyp_option wok h tp in idtac.
+
 Ltac zify_hyps :=
   let wok := get_word_ok_or_dummy in
   foreach_var (zify_letbound_var wok);
