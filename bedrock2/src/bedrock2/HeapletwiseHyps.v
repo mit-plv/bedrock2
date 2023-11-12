@@ -724,8 +724,7 @@ Ltac clear_heapletwise_hyp H :=
            | _ => fail 1000 H "has unexpected shape" tH
            end in
   heapletwise_hyp_pre_clear_hook H;
-  (clear H || fail 1000 "Can't clear" H ": probably a bug!");
-  try clear m.
+  clear H m.
 
 Ltac clear_heapletwise_hyps :=
   repeat match goal with
@@ -766,17 +765,14 @@ Ltac replace_with_new_mem_hyp H :=
   | sep _ _ => fail "first destruct the sep"
   | _ => idtac
   end;
-  let HOld := match reverse goal with
-              | HOld: with_mem ?mOld ?Pold |- _ =>
-                  let __ := match constr:(Set) with
-                            | _ => tryif constr_eq HOld H then
-                                    fail (*bad choice of HOld: don't replace H by itself*)
-                                   else same_pred_and_addr Pnew Pold
-                            end in HOld
-              end in
-  move H before HOld;
-  clear_heapletwise_hyp HOld;
-  rename H into HOld.
+  match reverse goal with
+  | HOld: with_mem ?mOld ?Pold |- _ =>
+      tryif constr_eq HOld H then fail (*bad choice of HOld: don't replace H by itself*)
+      else same_pred_and_addr Pnew Pold;
+      move H before HOld;
+      clear_heapletwise_hyp HOld;
+      rename H into HOld
+  end.
 
 (* Called whenever a new heapletwise hyp is created whose type will get destructed further *)
 Ltac new_heapletwise_hyp_hook h t := idtac.

@@ -82,7 +82,7 @@ Derive init_baz SuchThat (fun_correct! init_baz) As init_baz_ok.                
 {                                                                          /**. .**/
 }                                                                          /**.
   unfold anyval at 2. unfold baz_t.
-  clear_heapletwise_hyps; clear_mem_split_eqs; clear_heaplets.
+  clear_mem_split_eqs; clear_heapletwise_hyps; clear_heaplets.
   intros m ?.
   set (mAll := m) in |-*.
   eexists (Build_baz _ _ _). cbn. unfold sepapp.
@@ -134,7 +134,7 @@ Derive init_baz SuchThat (fun_correct! init_baz) As init_baz_ok.                
 {                                                                          /**. .**/
 }                                                                          /**.
   unfold anyval, baz_t.
-  clear_heapletwise_hyps; clear_mem_split_eqs; clear_heaplets.
+  clear_mem_split_eqs; clear_heapletwise_hyps; clear_heaplets.
   intros m ?.
   set (mAll := m) in |-*.
   change (m |= array (uint 8) 8 bs p) in H.

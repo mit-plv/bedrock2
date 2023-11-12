@@ -352,6 +352,11 @@ Section WithMem.
   Qed.
 End WithMem.
 
+Notation "'EX' x .. y , p" := (ex1 (fun x => .. (ex1 (fun y => p)) ..))
+  (at level 200, x binder, right associativity,
+   format "'[' 'EX'  '/  ' x  ..  y ,  '/  ' p ']'")
+  : type_scope.
+
 #[export] Hint Extern 1
   (PredicateSize (anyval (@array ?width ?BW ?word ?mem ?T ?elem ?elemSize ?n))) =>
   exact (n * elemSize) : typeclass_instances.

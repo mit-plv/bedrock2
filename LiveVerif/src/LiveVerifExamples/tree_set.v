@@ -40,7 +40,7 @@ Context {consts: malloc_constants}.
 Fixpoint bst'(sk: tree_skeleton)(s: set Z)(addr: word){struct sk}: mem -> Prop :=
   match sk with
   | Leaf => emp (addr = /[0] /\ forall x, ~ s x)
-  | Node skL skR => ex1 (fun p: word => (ex1 (fun v: Z => (ex1 (fun q: word =>
+  | Node skL skR => EX (p: word) (v: Z) (q: word),
       <{ * emp (addr <> /[0])
          * emp (s v)
          * freeable 12 addr
@@ -48,15 +48,14 @@ Fixpoint bst'(sk: tree_skeleton)(s: set Z)(addr: word){struct sk}: mem -> Prop :
               + uint 32 v
               + uintptr q }> addr
          * bst' skL (fun x => s x /\ x < v) p
-         * bst' skR (fun x => s x /\ v < x) q }>)))))
+         * bst' skR (fun x => s x /\ v < x) q }>
   end.
 
 (* Note: one level of indirection because sometimes we have to change the root
-   pointer (eg from null (empty) to non-null) or it is convenient *)
+   pointer (eg from null (empty) to non-null or vice versa) *)
 Definition bst(s: set Z)(addr: word): mem -> Prop :=
-  ex1 (fun rootp => <{ * uintptr rootp addr
-                       * freeable 4 addr
-                       * ex1 (fun sk: tree_skeleton => bst' sk s rootp) }>).
+  EX rootp, <{ * uintptr rootp addr
+               * EX sk: tree_skeleton, bst' sk s rootp }>.
 
 Local Hint Extern 1 (PredicateSize (bst' ?sk)) =>
   let r := eval cbv iota in
@@ -157,44 +156,20 @@ Ltac step_hook ::=
 
 #[export] Instance spec_of_bst_init: fnspec :=                              .**/
 
-uintptr_t bst_init( ) /**#
+void bst_init(uintptr_t p) /**#
   ghost_args := (R: mem -> Prop);
-  requires t m := <{ * allocator
+  requires t m := <{ * array (uint 8) 4 ? p
                      * R }> m;
-  ensures t' m' res := t' = t /\
-                       <{ * (if \[res] =? 0 then
-                               allocator_failed_below 4
-                             else
-                               <{ * allocator
-                                  * bst (fun _ => False) res }>)
-                          * R }> m' #**/                                   /**.
+  ensures t' m' := t' = t /\
+                   <{ * bst (fun _ => False) p
+                      * R }> m' #**/                                       /**.
 Derive bst_init SuchThat (fun_correct! bst_init) As bst_init_ok.                .**/
 {                                                                          /**. .**/
-  uintptr_t res = malloc(4);                                               /**. .**/
-  if (res == NULL) /* split */ {                                           /**. .**/
-    return NULL;                                                           /**. .**/
-  }                                                                        /**.
-    replace (\[/[0]] =? 0) with true by steps.
-    replace (0 =? 0) with true in * by steps.
-    steps.
-                                                                                .**/
-  else {                                                                   /**.
-    replace (\[res] =? 0) with false in * by steps.
-    let h := constr:(#(@sep)) in unfold with_mem, anyval in h.
-    step. step. step.
-    match goal with
-    | h: _ |- _ => change (with_mem m0 (array (uint 8) 4 v res)) in h
-    end.
-                                                                                .**/
-    store(res, NULL);                                                      /**. .**/
-    return res;                                                            /**. .**/
-  }                                                                        /**.
-    replace (\[res] =? 0) with false by steps.
-    steps.
-    instantiate (2 := Leaf). clear Error. unfold find_hyp_for_range. cbn [bst'].
-    steps.
-                                                                                .**/
-}                                                                          /**.
+  store(p, 0);                                                             /**. .**/
+}                                                                          /*?.
+  step. step. step. step. step. step. step. step.
+  instantiate (1 := Leaf).
+  steps.
 Qed.
 
 #[export] Instance spec_of_bst_add: fnspec :=                              .**/
@@ -224,9 +199,7 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
   delete (#(found = /[0])).
   move p after t.
   move sk before t.
-  (* Local Arguments ready : clear implicits. *)
-  set (p_orig := p) in *. change p_orig with p at 1.
-  let h := constr:(#(uintptr a p_orig)) in change p_orig with p in h.
+  Local Arguments ready : clear implicits.
   loop invariant above a.
   (* Ltac log_packaged_context P ::= idtac P. *)
                                                                                 .**/
@@ -250,6 +223,14 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
         a = load(p);                                                       /**. .**/
       }                                                                    /**.
         new_ghosts(_, _, skL, _).
+        step. step. step. step. step. step. step. step. step. step. step.
+        step. step. step. step.
+
+        (* hole is introduced *)
+        step.
+        step. step. step.
+        (* hole gets move into second subgoal through evar *)
+        step. step. step. step. step. step. step. step. step.
         steps.
         lazymatch goal with
         | H: _ \/ _ |- _ \/ _ => destruct H; [left|right]
@@ -257,19 +238,57 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
 
 
 step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+step. 1-2: cycle 1.
+step. step. step.
+lazymatch goal with
+| |- context C[sepapps ?l p] =>
+    let r := eval cbn in (sepapps l p) in
+    let g := context C[r] in
+    change g
+end.
+unfold sepapp.
+lazymatch goal with
+| H: ?m |= sepapps ?l p |- _ =>
+    let r := eval cbn in (sepapps l p) in
+    change (r m) in H;
+    unfold sepapp, hole in H
+end.
+steps.
+step.
+steps.
+clear Error.
+lazymatch goal with
+| |- context C[sepapps ?l p] =>
+    let r := eval cbn in (sepapps l p) in
+    let g := context C[r] in
+    change g
+end.
+unfold sepapp.
+lazymatch goal with
+| H: ?m |= sepapps ?l p |- _ =>
+    let r := eval cbn in (sepapps l p) in
+    change (r m) in H;
+    unfold sepapp, hole in H
+end.
+step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step.
+clear Def0 x __Z_Def0.
+replace (fun x : Z => (x = \[v] \/ s x) /\ x < \[v]) with
+        (fun x : Z => s x /\ x < \[v]).
+2: { Import FunctionalExtensionality PropExtensionality.
+     extensionality x.
+     apply propositional_extensionality.
+     split; steps. }
+replace (fun x : Z => (x = \[v] \/ s x) /\ \[v] < x) with
+        (fun x : Z => s x /\ \[v] < x).
+2: { extensionality x.
+     apply propositional_extensionality.
+     split; steps. }
+
+(* key sets don't match?? *)
 
 (*
-s vs. (fun x : Z => s x /\ x < v1)
-
-cannot change outermost indirection pointer when going from smaller to bigger post!
-
-fwd.
-
-        unzify.
-
-Search p'.
-
       } else {                                                             /**. .**/
         p = a + 8;                                                         /**. .**/
         a = load(p);                                                       /**. .**/
@@ -292,6 +311,7 @@ Search p'.
 *)
 
 Abort.
+
 
 #[export] Instance spec_of_bst_contains: fnspec :=                              .**/
 
@@ -337,6 +357,7 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
                         ti = t).
       cbv beta iota.
       steps.
+(*
     }
     (* loop body: *)
                                                                                 .**/
@@ -355,7 +376,6 @@ step. step. step. step. step. step. step. step. new_ghosts(_, _, _). step. step.
 step. step. step. step. step. step. step. step. step. step. step. step. step. step.
 step. step. step. step.
 
-(*
 .**/
     else {                                                                 /**. .**/
       if (here < v) /* split */ {                                          /**. .**/

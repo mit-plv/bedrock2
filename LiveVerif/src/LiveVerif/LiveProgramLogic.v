@@ -866,8 +866,8 @@ Ltac conclusion_shape_based_step logger :=
       lazymatch goal with
       | H: scope_marker IfCondition |- pop_scope_marker ?g => clear H; change g
       end;
-      clear_heapletwise_hyps;
       clear_mem_split_eqs;
+      clear_heapletwise_hyps;
       clear_heaplets
   | |- pop_scope_marker (wp_cmd _ cmd.skip _ _ _ (fun _ _ _ => True)) =>
       logger ltac:(fun _ => idtac
@@ -902,8 +902,8 @@ Ltac conclusion_shape_based_step logger :=
       intros
   | |- state_implication _ _ =>
       logger ltac:(fun _ => idtac "state_implication: clear old state and intro new state");
-      clear_heapletwise_hyps;
       clear_mem_split_eqs;
+      clear_heapletwise_hyps;
       clear_heaplets;
       clear_traces;
       intros ? ? ?;
