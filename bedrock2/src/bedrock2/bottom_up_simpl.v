@@ -2584,6 +2584,17 @@ Section Tests.
 
   (** ** Not supported yet: *)
 
+  Goal forall b (bs: list Z) (a i: word),
+      0 <= \[i] < len bs ->
+      (List.repeatz \[b] \[i] ++ bs[\[i]:])[\[a ^+ i ^- a] / 1] = bs[\[i]].
+  Proof.
+    intros.
+    (* TODO should work in just one step: *)
+    bottom_up_simpl_in_goal ().
+    bottom_up_simpl_in_goal ().
+    refl.
+  Succeed Qed. Abort.
+
   Goal forall a b z, z = \[a ^+ b] -> /[z] = a ^+ b.
   Proof. intros. Abort.
 
