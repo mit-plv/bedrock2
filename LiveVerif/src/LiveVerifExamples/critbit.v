@@ -287,6 +287,20 @@ Hint Resolve purify_cbt' : purify.
 Hint Resolve purify_wand : purify.
 Print HintDb purify.
 
+Local Hint Extern 1 (PredicateSize (cbt' ?sk)) => exact 12 : typeclass_instances.
+
+Lemma cbt_fields (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word) :
+  impl1 (cbt' sk p c a) (ex1 (fun w2 => ex1 (fun w3 => ex1 (fun R =>
+       <{ * <{ + uintptr
+       (match sk with
+        | Leaf => /[-1]
+        | Node _ _ => /[p.(length)]
+        end)
+        + uintptr w2 + uintptr w3 }> a * R }>)))).
+Proof.
+  unfold impl1. intros. destruct sk; simpl in *; steps.
+Qed.
+
 Lemma cbt_key_has_prefix : forall (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word) (m: mem) (k: word),
     cbt' sk p c a m -> map.get c k <> None -> is_prefix_key p k.
 Proof.
@@ -435,6 +449,11 @@ Lemma append_1_prefix : forall (p : prefix) (k : word),
 Proof.
 Admitted.
 
+Lemma prefixes_of_same : forall (p1 p2 p3: prefix),
+  length p1 <= length p2 -> is_prefix p1 p3 -> is_prefix p2 p3 -> is_prefix p1 p2.
+Proof.
+Admitted.
+
 Lemma manual_du_on_sep : forall (m m1 m2: mem) (P Q : mem -> Prop),
     P m1 -> Q m2 -> mmap.du m1 m2 = m -> sep P Q m.
 Proof.
@@ -449,22 +468,276 @@ Proof.
   assumption. erewrite map.get_putmany_left; assumption.
 Qed.
 
-Local Hint Extern 1 (PredicateSize (cbt' ?sk)) => exact 12 : typeclass_instances.
+(*
+Lemma uintptr_footprint : forall a v m,
+  uintptr v a m -> forall addr,
+  map.get m addr <> None <-> 0 <= \[addr ^- a] < 4.
+
+
+Lemma cbt_leaf_footprint : forall pr c lp m,
+  cbt' Leaf pr c lp m -> forall addr,
+  map.get m addr <> None <-> 0 <= \[addr ^- lp] < 12.
+Proof.
+
+  assert (malloc_block_size > 12). unfold malloc_block_size.
+  intros. simpl in H. steps.
+  assert (map.get m addr = None <-> map.get m1 addr = None).
+  apply split_du in D. unfold map.split in D. destruct D. subst m.
+  split; intros. apply map.invert_get_putmany_None in H. tauto.
+  rewrite map.get_putmany_left. unfold freeable in H2.
+
+
+Lemma determine_leaf_in_leaf : forall pr pr' c c' lp lp' m0 m1,
+  map.disjoint m0 m1 ->
+  cbt' Leaf pr' c' lp' m0 ->
+  wand (cbt' Leaf pr' c' lp') (cbt' Leaf pr c lp) m1 ->
+  (pr = pr' /\ c = c' /\ lp = lp').
+Proof.
+  intros. remember (map.putmany m0 m1) as m. assert (map.split m m0 m1).
+  unfold map.split. tauto. apply split_du in H2.
+  eapply manual_du_on_sep in H2; [ | eassumption | eassumption ].
+  eapply wand_mp in H2. assert
+
+(* same as with subtree_content lemma further up *)
+Lemma leaf_value_write : forall sk pr k v v' c m m0 lp tp,
+  map.disjoint m0 m ->
+  cbt' Leaf (full_prefix k) (map.singleton k v) lp m0 ->
+  wand (cbt' Leaf (full_prefix k) (map.singleton k v) lp) (cbt' sk pr c tp) m ->
+  wand (cbt' Leaf (full_prefix k) (map.singleton k v') lp) (cbt' sk pr (map.put c k v') tp) m.
+Proof.
+  induction sk.
+  - intros. unfold wand. intros. pose proof manual_du_on_sep.
+    remember (map.putmany m0 m) as mm. assert (map.split mm m0 m). unfold map.split.
+    tauto. apply split_du in H5. eapply H4 in H5. 2: eexact H0. 2: eexact H1.
+    apply wand_mp in H5. simpl in H5. step. steps. subst c.
+
+Inductive cbt_subtree :
+  tree_skeleton -> prefix -> word_map -> word -> mem ->
+  tree_skeleton -> prefix -> word_map -> word -> mem ->
+  Prop :=
+  | cbt_subtree_refl (sk' : tree_skeleton) (pr' : prefix) (c' : word_map) (tp' : word) (m' : mem) : cbt' sk' pr' c' tp' m' ->
+      cbt_subtree sk' pr' c' tp' m' sk' pr' c' tp' m'
+  | cbt_subtree_step (sk' : tree_skeleton) (pr' : prefix) (c' : word_map) (tp' : word) (m' : mem) (sk : tree_skeleton) (pr : prefix) (
+*)
+
+Lemma map_put_putmany_right : forall (m1 m2: word_map) (k v: word),
+  map.put (map.putmany m1 m2) k v = map.putmany m1 (map.put m2 k v).
+Proof.
+  intros. apply map.map_ext. intros. assert (k0 = k \/ k0 <> k). step.
+  destruct H. subst k0. rewrite map.get_put_same. erewrite map.get_putmany_right.
+  reflexivity. rewrite map.get_put_same. reflexivity.
+  rewrite map.get_put_diff; [ | assumption ]. destruct (map.get m2 k0) eqn:E.
+  erewrite map.get_putmany_right; [ | eassumption ].
+  erewrite map.get_putmany_right. reflexivity. rewrite map.get_put_diff.
+  assumption. assumption. rewrite map.get_putmany_left; [ | assumption ].
+  rewrite map.get_putmany_left; [ reflexivity | rewrite map.get_put_diff; assumption ].
+Qed.
+
+Lemma map_put_putmany_left : forall (m1 m2: word_map) (k v: word),
+  map.get m2 k = None ->
+  map.put (map.putmany m1 m2) k v = map.putmany (map.put m1 k v) m2.
+Proof.
+Admitted.
+
+Lemma map_get_singleton_same : forall (k v : word),
+    map.get (map.singleton k v) k = Some v.
+Proof.
+  intros. unfold map.singleton. apply map.get_put_same.
+Qed.
+
+Lemma map_get_singleton_diff : forall (k k' v : word),
+    k' <> k -> map.get (map.singleton k v) k' = None.
+Proof.
+  intros. unfold map.singleton. rewrite map.get_put_diff. apply map.get_empty.
+  assumption.
+Qed.
+
+Lemma map_put_singleton_same : forall (k v v': word),
+  map.put (map.singleton k v) k v' = map.singleton k v'.
+Proof.
+  intros. unfold map.singleton. apply map.put_put_same.
+Qed.
+
+Ltac destruct_split H :=
+  try apply split_du in H; unfold map.split in H; destruct H.
+
+Ltac eq_neq_cases k1 k2 :=
+  let H := fresh "H" in assert (H: k1 = k2 \/ k1 <> k2); [ step | ]; destruct H.
+
+#[export] Instance spec_of_cbt_update_or_best: fnspec :=                        .**/
+
+uintptr_t cbt_update_or_best(uintptr_t tp, uintptr_t k, uintptr_t v) /**#
+  ghost_args := (sk: tree_skeleton) (pr: prefix) (c: word_map) (R: mem -> Prop);
+  requires t m := <{ * cbt' sk pr c tp
+                     * R }> m;
+  ensures t' m' res := t' = t /\ map.get c res <> None /\
+                       (forall pr_q k_q,
+                       0 <= length pr_q <= 32 ->
+                       map.get c k_q <> None -> is_prefix_key pr_q k_q ->
+                       is_prefix_key pr_q k -> is_prefix_key pr_q res) /\
+                ((res = k /\ <{ * cbt' sk pr (map.put c k v) tp * R }> m')
+            \/   (res <> k /\ <{ * cbt' sk pr c tp * R }> m')) #**/     /**.
+Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
+  As cbt_update_or_best_ok. .**/
+{                                                                            /**. .**/
+  uintptr_t p = tp;                                                          /**. (* .**/
+  uintptr_t cb = 0;                                                          /**. *)
+
+  (* setting up the loop precondition *)
+  rewrite <- Def0 in H0.
+  (* delete #(cb = ??). *)
+  move t before tp.
+  unfold ready. rewrite <- Def0. rewrite Def0 at 2.
+  delete #(p = ??).
+  move sk at bottom.
+  move c after Scope1.
+  move R after Scope1.
+  move pr after Scope1.
+  loop invariant above m.
+
+  (* transform goal here *)
+  lazymatch goal with
+  | |- exec ?fs ?body ?t ?m ?l ?P =>
+      lazymatch eval pattern sk, p, pr, c, R in P with
+      | ?f sk p pr c R =>
+          change (exec fs body t m l ((fun (g: word * prefix * word_map * (mem -> Prop)) (sk: tree_skeleton) =>
+     (*let '(s1, s2, p1, p2, R) := g in f s1 s2 p1 p2 R) (s1, s2, p1, p2, R) (len s1)))*)
+          let (g, R) := g in
+          let (g, c) := g in
+          let (p, pr) := g in
+          f sk p pr c R) (p, pr, c, R) sk))
+      end
+  end.
+  eapply wp_while_tailrec_use_functionpost with (e:=live_expr:(load(p) != -1)).
+  { eauto with wf_of_type. }
+  { package_heapletwise_context. }
+  start_loop_body.
+  subst v0.
+  instantiate (3:=(match sk with | Leaf => ?[vLeaf] | _ => ?[vNode] end)).
+  destruct sk; cycle 1. simpl cbt' in H3. steps. .**/
+    if (((k >> load(p)) & 1) == 1) /* split */ {                             /**. .**/
+      p = load(p + 8);                                                       /**. .**/
+    }                                                                        /**.
+  new_ghosts(p, pR, cR, <{ * R
+                           * freeable 12 p'
+                           * cbt' sk1 pL cL aL
+                           * <{ + uintptr /[length pr]
+                                + uintptr aL
+                                + uintptr p }> p' }>). instantiate (1:=sk2).
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. unfold state_implication.
+  (* ^^ step on state_implication clears c = cL \*/ cR (which we need) *)
+  step. destruct H1. step. econstructor. eassumption. apply split_du in H12.
+  unfold map.split in H12. destruct H12. subst c. step. step. step. step.
+  destruct (map.get cR retv) eqn:E; [ | congruence ]. intro.
+  eapply map.get_putmany_right in E. erewrite H1 in E. discriminate.
+  step. step. destruct (map.get cR k_q) eqn:E. eapply HPp2. lia. erewrite E.
+  congruence. assumption. assumption.
+  destruct (map.get (map.putmany cL cR) k_q) eqn:E2; [ | congruence ].
+  eapply map.get_putmany_left in E. erewrite E2 in E. rewrite E in H13.
+  eapply cbt_key_has_prefix in H13. 2: eassumption.
+  assert (length pr_q <= length pr \/ length pr < length pr_q). lia.
+  eapply cbt_key_has_prefix in HPp1. 2: eassumption.
+  destruct H16. eapply prefixes_of_same in H16. 2: eexact H14.
+  eapply is_prefix_trans. lia. 4: eassumption. lia. simpl. lia.
+  eapply is_prefix_trans. lia. 4: eassumption. simpl. lia. lia.
+  eapply is_prefix_trans. lia. 3: eassumption. lia. simpl. lia.
+  apply is_prefix_append_1. lia. eapply is_prefix_trans. lia. 4: eexact H13.
+  lia. simpl. lia. eapply is_prefix_trans. lia. 4: eassumption. simpl. lia.
+  lia. apply is_prefix_append_0. lia.
+  assert (is_prefix (append_0 pr) pr_q). eapply prefixes_of_same. simpl. lia.
+  2: eexact H14. eapply is_prefix_trans. simpl. lia. 3: eassumption. lia.
+  simpl. lia. assumption. eapply is_prefix_trans in H15. 5: eassumption.
+  apply append_0_prefix in H15. exfalso. ZnWords. lia. simpl. lia. lia.
+  simpl. lia.
+  simpl cbt'. destruct HPp3; [ left | right ]. steps. unfold map.split. step.
+  apply map_put_putmany_right. apply map.disjoint_put_r; [ | assumption ].
+  destruct (map.get cL k) eqn:E; [ exfalso | trivial ].
+  assert (map.get cL k <> None). congruence. eapply cbt_key_has_prefix in H13.
+  2: eassumption. eapply is_prefix_trans in H13. 5: eassumption.
+  apply append_0_prefix in H13. ZnWords. lia. simpl. lia. lia. simpl. lia.
+  steps. steps. unfold map.split. steps. .**/
+    else {                                                                   /**. .**/
+      p = load(p + 4);                                                       /**. .**/
+    }                                                                        /**.
+  new_ghosts(p, pL, cL, <{ * R
+                           * freeable 12 p'
+                           * cbt' sk2 pR cR aR
+                           * <{ + uintptr /[length pr]
+                                + uintptr p
+                                + uintptr aR }> p' }>).
+  apply split_du in H12. unfold map.split in H12. destruct H12. subst c.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. unfold state_implication. step.
+  destruct H1. step. econstructor. eassumption. step. step. step. step.
+  intro. apply map.invert_get_putmany_None in H1. tauto.
+  eapply cbt_key_has_prefix in HPp1. 2: eassumption. step. step.
+  destruct (map.get (map.putmany cL cR) k_q) eqn:E; [ | congruence ].
+  destruct (map.get cR k_q) eqn:E2; cycle 1. rewrite map.get_putmany_left in E;
+  [ | eassumption ]. eapply HPp2. lia. 2: eexact H14. congruence. assumption.
+  assert (map.get cR k_q <> None). congruence. eapply cbt_key_has_prefix in H16.
+  2: eassumption. assert (length pr_q <= length pr \/ length pr < length pr_q). lia.
+  destruct H17. eapply prefixes_of_same in H17. 2: eexact H14.
+  eapply is_prefix_trans. lia. 4: eassumption. lia. simpl. lia.
+  eapply is_prefix_trans. lia. 4: eassumption. simpl. lia. lia.
+  eapply is_prefix_trans. lia. 4: apply is_prefix_append_0. lia. simpl. lia.
+  assumption. lia.
+  eapply is_prefix_trans. lia. 4: eexact H16. lia. simpl. lia.
+  eapply is_prefix_trans. lia. 4: eassumption. simpl. lia. lia.
+  apply is_prefix_append_1. lia. assert (is_prefix (append_1 pr) pr_q).
+  eapply prefixes_of_same. simpl. lia. 2: eexact H14. eapply is_prefix_trans.
+  simpl. lia. 3: eassumption. lia. simpl. lia. assumption.
+  eapply is_prefix_trans in H15. 5: eassumption. eapply append_1_prefix in H15.
+  exfalso. ZnWords. lia. simpl. lia. lia. simpl. lia.
+  simpl cbt'. destruct HPp3; [ left | right ]. steps. unfold map.split.
+  assert (map.get cR k = None). (* step.
+  apply map_put_putmany_left. *) destruct (map.get cR k) eqn:E;
+  [ exfalso | trivial ]. assert (map.get cR k <> None). congruence.
+  eapply cbt_key_has_prefix in H13. 2: eassumption. eapply is_prefix_trans in H13.
+  5: eassumption. apply append_1_prefix in H13. congruence. lia. simpl. lia. lia.
+  simpl. lia. step. apply map_put_putmany_left. assumption.
+  apply map.disjoint_put_l. assumption. assumption.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. apply map.split_disjoint_putmany. assumption. step. step. .**/
+  }                                                                         /**.
+  simpl cbt' in H3. steps. .**/
+  if (load(p + 4) == k) /* split */ {                                       /**. .**/
+    store(p + 8, v);                                                        /**. .**/
+    return k;                                                               /**. .**/
+  }                                                                         /**.
+  subst c. rewrite map_get_singleton_same. congruence. left. simpl cbt'.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. subst c. apply map_put_singleton_same.
+  step. step. .**/
+  else {                                                                    /**. .**/
+    return load(p + 4);                                                     /**. .**/
+  }                                                                         /**.
+  subst c. rewrite map_get_singleton_same. congruence. subst c.
+  eq_neq_cases k0 k_q. subst k0. assumption.
+  rewrite map_get_singleton_diff in H8. contradiction. congruence.
+  right. step. step. simpl cbt'. steps. .**/
+}                                                                           /**.
+Qed.
 
 #[export] Instance spec_of_cbt_best_leaf: fnspec :=                             .**/
-
 
 uintptr_t cbt_best_leaf(uintptr_t tp, uintptr_t k) /**#
   ghost_args := (sk: tree_skeleton) (pr: prefix) (c: word_map) (R: mem -> Prop);
   requires t m := <{ * cbt' sk pr c tp
                      * R }> m;
   ensures t' m' res := t' = t /\ ex1 (fun k' => ex1 (fun v' =>
-                  let leaf := cbt' Leaf (full_prefix k') (map.singleton k' v') res in
-                        <{ * leaf
-                           * wand leaf (cbt' sk pr c tp)
-                           * emp (k <> k' -> map.get c k = None)
-                           * emp (k = k' -> map.get c k = Some v')
-                           * R }> )) m' #**/     /**.
+     let leaf := cbt' Leaf (full_prefix k') (map.singleton k' v') res in
+       <{ * leaf
+          * wand leaf (cbt' sk pr c tp) (*
+          * and1 (wand leaf (cbt' sk pr c tp))
+            (fun m => forall v'', (* forall version of ex1? *)
+               wand (cbt' Leaf (full_prefix k') (map.singleton k' v'') res)
+                    (cbt' sk pr (map.put c k v'') tp) m) *)
+          * emp (k <> k' -> map.get c k = None)
+          * emp (k = k' -> map.get c k = Some v')
+          * R }> )) m' #**/     /**.
 Derive cbt_best_leaf SuchThat (fun_correct! cbt_best_leaf) As cbt_best_leaf_ok.  .**/
 {                                                                            /**. .**/
   uintptr_t p = tp;                                                          /**.
@@ -475,10 +748,23 @@ Derive cbt_best_leaf SuchThat (fun_correct! cbt_best_leaf) As cbt_best_leaf_ok. 
   prove (m0 |= sep (cbt' sk' pr' c' p) (wand (cbt' sk' pr' c' p) (cbt' sk pr c tp))).
   { subst sk'. subst pr'. subst c'. subst tp. prove (mmap.Def m0 = mmap.Def m0).
     unfold "|=". steps. unfold canceling. steps. simpl. subst m2.
-    apply wand_emp_iff_impl. eapply impl1_refl. }
+    apply wand_emp_iff_impl. eapply impl1_refl. } (*
+  unfold "|=" in H. step. unzify. unpurify. *)
   prove (map.get c' k = map.get c k). subst c. reflexivity.
   rewrite Heqc'. rewrite Heqsk'. rewrite Heqpr'. (* rewriting inside ready *)
-  clear H0 Heqc' Heqsk' Heqpr' Def0.
+  clear Heqc' Heqsk' Heqpr' Def0. (*
+  prove (forall v'' lp,
+    m0 |= <{ * cbt' Leaf (full_prefix k') (map.singleton k' v'') lp
+  prove (forall k' v v' lp ma' mb' ma mb lp,
+    ((map.split m2 ma' mb' /\
+     cbt' Leaf (full_prefix k') (map.singleton k' v) lp ma' /\
+     wand (cbt' Leaf (full_prefix k') (map.singleton k' v) lp)
+          (cbt' sk' pr' c' p) mb') ->
+    (wand (cbt' Leaf (full_prefix k') (map.singleton k' v') lp)
+          (cbt' sk' pr' (map.put c' k v') mb'))) ->
+    ((map.split
+    (map.sp *)
+  clear H0.
   loop invariant above p.                                            .**/
   while (load(p) != -1) /* decreases sk' */ { /*?.
   subst v.
@@ -520,11 +806,8 @@ Derive cbt_best_leaf SuchThat (fun_correct! cbt_best_leaf) As cbt_best_leaf_ok. 
   assumption. step. step. step. step. rewrite <- H4. clear H4 H5.
   apply split_du in H14. unfold map.split in H14. destruct H14. subst c'.
   symmetry. apply map.get_putmany_left.
-  destruct (map.get cR k) eqn:E; [ exfalso | trivial ]. (*
-  apply map.invert_get_putmany_None in H1. step. assumption. step.
-  destruct (map.get c' k) eqn:E; [ exfalso | trivial ]. apply split_du in H14.
-  apply map.get_split with (k:=k) in H14. destruct H14; step. congruence.
-  rewrite H4p0 in E. *) apply cbt_key_has_prefix with (k:=k) in H8.
+  destruct (map.get cR k) eqn:E; [ exfalso | trivial ].
+  apply cbt_key_has_prefix with (k:=k) in H8.
   eapply is_prefix_key_trans in H12. 4: eassumption. apply append_1_prefix in H12.
   congruence. step. unfold append_1. simpl. step. step. congruence. step. .**/
   }                                                                          /**.
@@ -707,25 +990,6 @@ Ltac reason_map := repeat lazymatch goal with
   end.
 *)
 
-Lemma map_get_singleton_same : forall (k v : word),
-    map.get (map.singleton k v) k = Some v.
-Proof.
-  intros. unfold map.singleton. apply map.get_put_same.
-Qed.
-
-Lemma map_get_singleton_diff : forall (k k' v : word),
-    k' <> k -> map.get (map.singleton k v) k' = None.
-Proof.
-  intros. unfold map.singleton. rewrite map.get_put_diff. apply map.get_empty.
-  assumption.
-Qed.
-
-Ltac destruct_split H :=
-  try apply split_du in H; unfold map.split in H; destruct H.
-
-Ltac eq_neq_cases k1 k2 :=
-  let H := fresh "H" in assert (H: k1 = k2 \/ k1 <> k2); [ step | ]; destruct H.
-
 Lemma cbt_nonempty : forall sk pr c tp m,
   cbt' sk pr c tp m -> exists k v, map.get c k = Some v.
 Proof.
@@ -783,6 +1047,9 @@ Proof.
     repeat rewrite map_get_singleton_same in H9. auto.
 Qed.
 
+
+Inductive hidden (P : Prop): Prop := hide: P -> hidden P.
+
 #[export] Instance spec_of_cbt_insert: fnspec :=                                .**/
 
 uintptr_t cbt_insert(uintptr_t tp, uintptr_t k, uintptr_t v) /**#
@@ -822,10 +1089,53 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
   step. step. step. step. step. step. step. step. step. step.
   instantiate (2:=k). instantiate (1:= v). step. step. step. subst c.
   reflexivity. repeat rewrite mmap.du_empty_l. step. step.
-  apply map_singleton_inj in H7. steps. steps.
+  apply map_singleton_inj in H7. steps. steps. .**/
+  else {                                                                   /**.
+    destruct H2; cycle 1. step. step. step. contradiction. step. step. .**/
+    uintptr_t best_k = cbt_update_or_best(tp, k, v);                       /**.
+    unfold enable_frame_trick.enable_frame_trick. steps. .**/
+    if (best_k == k) /* split */ {                                         /**.
+      subst best_k. destruct H2p4; [ | tauto ]. .**/
+      return tp;                                                           /**. .**/
+    }                                                                      /**.
+  assert (\[tp] =? 0 = false). step. rewrite H5. step. step.
+  unfold canceling. step. step. step. step. apply or1_seps. left. simpl.
+  step. step. step. step. step. step. step. step. step. .**/
+    else {                                                                 /**.
 
+(* TODO: verify the below implementation; implement critical_bit (a new function)  *)
+
+uintptr_t p = tp;
+uintptr_t cb = critical_bit(k, block_k);
+// ghosts: prefix required for the currently focused tree + the usual ones
+while (load(p) < cb) {
+// while (load(p) >= 0 && (k & ((1 << load(p)) - 1)) == (block_k & ((1 << load(p)) - 1))) {
+  if (((k >> load(p)) & 1) == 1) {
+    p = load(p + 8);
   }
-(* TODO: implement & prove *)
+  else {
+    p = load(p + 4);
+  }
+}
+uintptr_t new_leaf = cbt_alloc_leaf(k, v);
+if (new_leaf == NULL) return tp;
+uintptr_t new_node = malloc(12);
+if (new_node == NULL) return tp;
+store(new_node, load(p));
+store(new_node + 4, load(p + 4));
+store(new_node + 8, load(p + 8));
+store(p, cb);
+if (((k >> cb) & 1) == 1) {
+  store(p + 4, new_node);
+  store(p + 8, new_leaf);
+}
+else {
+  store(p + 4, new_leaf);
+  store(p + 8, new_node);
+}
+return tp;
+
+}
 Abort.
 
 End LiveVerif. Comments .**/ //.
