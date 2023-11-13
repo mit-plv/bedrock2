@@ -210,6 +210,10 @@ Section WithMem64.
 End WithMem64.
 
 Create HintDb contiguous.
+#[global] Hint Variables Opaque : contiguous.
+#[global] Hint Constants Opaque : contiguous.
+#[global] Hint Transparent PredicateSize : contiguous.
+
 #[export] Hint Resolve
   sepapps_cons_contiguous
   sepapps_nil_contiguous
@@ -226,6 +230,10 @@ Create HintDb contiguous.
 : contiguous.
 
 Create HintDb fillable.
+#[global] Hint Variables Opaque : fillable.
+#[global] Hint Constants Opaque : fillable.
+#[global] Hint Transparent PredicateSize : fillable.
+
 #[export] Hint Resolve
   uintptr32_fillable
   uintptr64_fillable
@@ -238,7 +246,15 @@ Create HintDb fillable.
 #[export] Hint Extern 20 (contiguous ?p ?n) =>
   let h := head p in
   (* seemingly superfluous match strips cast added by unfold *)
-  lazymatch constr:(ltac:(unfold h; typeclasses eauto) : contiguous p n) with
+  lazymatch constr:(ltac:(unfold h; typeclasses eauto with contiguous) : contiguous p n) with
+  | ?res => exact res
+  end
+: contiguous.
+
+#[export] Hint Extern 20 (fake_contiguous ?p) =>
+  let h := head p in
+  (* seemingly superfluous match strips cast added by unfold *)
+  lazymatch constr:(ltac:(unfold h; typeclasses eauto with contiguous) : fake_contiguous p) with
   | ?res => exact res
   end
 : contiguous.
