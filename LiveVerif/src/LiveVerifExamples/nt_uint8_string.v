@@ -126,7 +126,7 @@ Section Array.
   Proof. intros * ->. eapply array1_to_elem. Qed.
 End Array.
 
-Local Ltac step_hook ::= solve [auto using List.notin_from].
+Local Ltac step_hook ::= solve [auto using List.notin_from with nocore safe_core].
 
 Definition nt_str(s: list Z)(a: word): mem -> Prop :=
   sep (array (uint 8) (len s + 1) (s ++ [| 0 |]) a)

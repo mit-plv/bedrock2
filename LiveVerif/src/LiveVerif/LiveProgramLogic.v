@@ -994,13 +994,6 @@ Ltac sidecond_step logger := first
             logger ltac:(fun _ => idtac "intros");
             intros (* don't put this too early, because heapletwise has some
                       specialized intros that rename and move new hyps *)
-        end
-      | lazymatch goal with
-        | |- _ = _ => fail
-        | |- _ => (* Beware: intuition runs unification that arbitrarily unfolds
-                     definitions, might need to stop using it *)
-                  solve [intuition idtac];
-                  logger ltac:(fun _ => idtac "intuition idtac")
         end ].
 
 Ltac final_program_logic_step logger :=

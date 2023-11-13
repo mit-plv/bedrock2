@@ -35,7 +35,7 @@ Ltac standalone_solver_step :=
         | |- forall _, _ =>
             intros
         end
-      | solve [intuition idtac]
+      | solve [auto 4 with nocore safe_core]
     ].
 
 (* TODO investigate why standalone_solver_step is not as powerful as step *)

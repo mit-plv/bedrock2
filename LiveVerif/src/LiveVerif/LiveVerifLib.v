@@ -2,6 +2,7 @@ Require Export Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Export Coq.micromega.Lia.
 Require Export coqutil.Datatypes.Inhabited.
 Require Export coqutil.Tactics.Tactics.
+Require Export coqutil.Tactics.safe_auto.
 Require Export coqutil.Map.Interface coqutil.Map.Properties.
 Require coqutil.Map.SortedListString. (* for function env, other maps are kept abstract *)
 Require Export coqutil.Word.Interface coqutil.Word.Properties.

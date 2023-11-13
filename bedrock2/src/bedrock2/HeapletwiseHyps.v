@@ -144,6 +144,27 @@ Section HeapletwiseHyps.
         mmap.equal_union value_eqb (interp_mem_tree t1) (interp_mem_tree t2)
     end.
 
+  (* sound but not complete (because (NLeaf map.empty)) is considered non-empty *)
+  Fixpoint mem_tree_is_empty(t: mem_tree): bool :=
+    match t with
+    | NEmpty => true
+    | NLeaf _ => false
+    | NDisjointUnion t1 t2 => andb (mem_tree_is_empty t1) (mem_tree_is_empty t2)
+    | NEqualUnion t1 t2 => andb (mem_tree_is_empty t1) (mem_tree_is_empty t2)
+    end.
+
+  Lemma mem_tree_is_empty_sound: forall t,
+      mem_tree_is_empty t = true ->
+      interp_mem_tree t = mmap.Def map.empty.
+  Proof.
+    induction t; simpl; intros.
+    - reflexivity.
+    - discriminate.
+    - fwd. rewrite IHt1, IHt2 by assumption. apply mmap.du_empty_l.
+    - fwd. rewrite IHt1, IHt2 by assumption.
+      unfold mmap.equal_union. destruct_one_match; congruence.
+  Qed.
+
   Fixpoint mem_tree_lookup(t: mem_tree)(path: list bool): option mem :=
     match t with
     | NEmpty => None
@@ -329,9 +350,30 @@ Section HeapletwiseHyps.
     unfold wand'. intros. eapply H. 2: eassumption. rewrite H0. assumption.
   Qed.
 
-  Lemma consume_mem_tree: forall {hs path m mFull},
+Set Printing Coercions.
+
+  Lemma invert_du_empty: forall (m1 m2: mmap mem),
+      mmap.du m1 m2 = mmap.Def map.empty ->
+      m1 = map.empty /\ m2 = map.empty.
+  Proof.
+    unfold mmap.du, mmap.of_option. intros. destruct_one_match_hyp; fwd. 2: discriminate.
+    unfold map.du in *. destruct_one_match_hyp. 2: discriminate.
+    eapply map.disjointb_spec in E0. fwd. auto.
+  Qed.
+
+  Lemma invert_equal_union_empty: forall (m1 m2: mmap mem),
+      mmap.equal_union value_eqb m1 m2 = mmap.Def map.empty ->
+      m1 = map.empty /\ m2 = map.empty.
+  Proof.
+    unfold mmap.equal_union, mmap.of_option.
+    intros. destruct_one_match_hyp; fwd. 2: discriminate.
+    auto.
+  Qed.
+
+  Lemma consume_mem_tree: forall {hs hs' path m mFull},
       mem_tree_lookup hs path = Some m ->
-      mem_tree_remove hs path = Some NEmpty ->
+      mem_tree_remove hs path = Some hs' ->
+      interp_mem_tree hs' = mmap.Def map.empty ->
       interp_mem_tree hs = mmap.Def mFull ->
       m = mFull.
   Proof.
@@ -339,12 +381,43 @@ Section HeapletwiseHyps.
     - discriminate.
     - reflexivity.
     - destruct b; fwd; simpl in *.
-      + destruct_one_match_hyp.
-        * rewrite map.du_empty_l in *. simpl in *.
-          fwd. eapply IHhs2; try eassumption. reflexivity.
-        * discriminate.
-      + rewrite mmap.du_empty_r in H1. eapply IHhs1; try eassumption.
-    - eapply invert_Some_eq_equal_union in H1. fwd.
+      + destruct_one_match_hyp; fwd.
+        * rewrite ?H1 in *. rewrite mmap.du_empty_l in *.
+          eapply IHhs2; try eassumption. reflexivity.
+        * simpl in *. eapply invert_du_empty in H1. fwd.
+          eapply IHhs2; try eassumption; try reflexivity.
+          rewrite H1p0 in H2. rewrite mmap.du_empty_l in *. assumption.
+        * simpl in *. eapply invert_du_empty in H1. fwd.
+          eapply invert_du_empty in H1p1. fwd.
+          rewrite H1p0 in H2. rewrite mmap.du_empty_l in *.
+          eapply IHhs2; try eassumption; try reflexivity.
+          simpl. rewrite H1p1p0, H1p1p1. apply mmap.du_empty_l.
+        * simpl in *. eapply invert_du_empty in H1. fwd.
+          rewrite H1p0 in H2. rewrite mmap.du_empty_l in *.
+          eapply invert_equal_union_empty in H1p1. fwd.
+          eapply IHhs2; try eassumption; try reflexivity.
+          simpl. rewrite H1p1p0, H1p1p1.
+          unfold mmap.equal_union. destruct_one_match; congruence.
+      + destruct_one_match_hyp; fwd.
+        * rewrite ?H1 in *. rewrite mmap.du_empty_r in *.
+          eapply IHhs1; try eassumption. reflexivity.
+        * set (l := NLeaf m0) in *. cbn -[l] in *.
+          eapply invert_du_empty in H1. fwd. subst l.
+          simpl in *. fwd.
+          eapply IHhs1; try eassumption; try reflexivity.
+          rewrite H1p1 in H2. rewrite mmap.du_empty_r in *. assumption.
+        * simpl in *. eapply invert_du_empty in H1. fwd.
+          eapply invert_du_empty in H1p0. fwd.
+          rewrite H1p1 in H2. rewrite mmap.du_empty_r in *.
+          eapply IHhs1; try eassumption; try reflexivity.
+          simpl. rewrite H1p0p0, H1p0p1. apply mmap.du_empty_l.
+        * simpl in *. eapply invert_du_empty in H1. fwd.
+          rewrite H1p1 in H2. rewrite mmap.du_empty_r in *.
+          eapply invert_equal_union_empty in H1p0. fwd.
+          eapply IHhs1; try eassumption; try reflexivity.
+          simpl. rewrite H1p0p0, H1p0p1.
+          unfold mmap.equal_union. destruct_one_match; congruence.
+    - eapply invert_Some_eq_equal_union in H2. fwd.
       destruct b; fwd; eauto.
   Qed.
 
@@ -455,16 +528,18 @@ Section HeapletwiseHyps.
     intros. eapply cancel_sep_head. eapply cancel_head; eassumption.
   Qed.
 
-  Lemma canceling_last_step: forall hs path {P m} {Rest: Prop},
+  Lemma canceling_last_step: forall hs path {P hs' m} {Rest: Prop},
       with_mem m P ->
       mem_tree_lookup hs path = Some m ->
-      mem_tree_remove hs path = Some NEmpty ->
+      mem_tree_remove hs path = Some hs' ->
+      mem_tree_is_empty hs' = true ->
       Rest ->
       canceling [P] (interp_mem_tree hs) Rest.
   Proof.
     unfold canceling. simpl. intros. split. 2: assumption.
     intros.
-    pose proof (consume_mem_tree H0 H1 H3) as A. subst. assumption.
+    eapply mem_tree_is_empty_sound in H2.
+    pose proof (consume_mem_tree H0 H1 H2 H4) as A. subst. assumption.
   Qed.
 
   (* for home-made rewrite *)
@@ -969,8 +1044,7 @@ Ltac cancel_head_with_hyp H :=
                  | cons _ _ => open_constr:(cancel_head hs p H)
                  end in
       eapply lem;
-      [ reflexivity
-      | reflexivity
+      [ reflexivity ..
       | cbn [interp_mem_tree] ]
   end.
 
@@ -1033,8 +1107,7 @@ Ltac canceling_step :=
                            | cons _ _ => open_constr:(cancel_frame_evar_filling_step hs p H)
                            end in
                 eapply lem;
-                [ reflexivity
-                | reflexivity
+                [ reflexivity ..
                 | cbn [interp_mem_tree] ]
             end
         | cons _ _ => fail 1000 "frame evar must be last in list"
@@ -1289,6 +1362,19 @@ Section HeapletwiseHypsTests.
   Proof.
     unfold impl1. intros. repeat step.
   Qed.
+
+  Goal forall (P R1 R2: mem -> Prop),
+      P = emp True ->
+      impl1 (sep (sep P P) (sep R1 R2)) (sep R2 R1).
+  Proof.
+    intros *. intros ? m ?.
+    step. step. step. step. step.
+    subst P.
+    step. step.
+    (* after removing m2 from ((map.empty \*/ map.empty) \*/ m2), the memory is
+       not literally empty, but it's (map.empty \*/ map.empty) *)
+    step. step.
+  Succeed Qed. Abort.
 
   (* sample caller: *)
   Goal forall (p1 p2 p3 x y: nat) t (m: mem) l (R: mem -> Prop),

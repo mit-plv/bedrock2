@@ -151,7 +151,7 @@ Ltac step_hook ::=
   | |- impl1 (bst' _ _ ?a) (bst' _ _ ?a) =>
       reflexivity (* might instantiate evars and that's ok here, as long as the
                      address is the same on both sides *)
-  | |- _ => solve [auto 3]
+  | |- _ => solve [auto 3 with nocore safe_core]
   end.
 
 #[export] Instance spec_of_bst_init: fnspec :=                              .**/
@@ -174,7 +174,7 @@ Qed.
 
 #[export] Instance spec_of_bst_add: fnspec :=                              .**/
 
-uintptr_t bst_add(uintptr_t p, uintptr_t v) /**#
+uintptr_t bst_add(uintptr_t p, uintptr_t vAdd) /**#
   ghost_args := s (R: mem -> Prop);
   requires t m := <{ * allocator
                      * bst s p
@@ -184,7 +184,7 @@ uintptr_t bst_add(uintptr_t p, uintptr_t v) /**#
                                       * bst s p
                                       * R }> m') \/
                       (\[r] = 1 /\ <{ * allocator
-                                      * bst (fun x => x = \[v] \/ s x) p
+                                      * bst (fun x => x = \[vAdd] \/ s x) p
                                       * R }> m')) #**/                     /**.
 Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   .**/
 {                                                                          /**. .**/
@@ -193,7 +193,7 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
   uintptr_t found = 0;                                                     /**.
 
   pose (measure := sk).
-  prove (found = /[0] /\ measure = sk \/ found = /[1] /\ s \[v]) as A.
+  prove (found = /[0] /\ measure = sk \/ found = /[1] /\ s \[vAdd]) as A.
   move A before sk.
   clearbody measure.
   delete (#(found = /[0])).
@@ -207,18 +207,18 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
     /* initial_ghosts(p, s, sk, R); decreases(measure) */
   {                                                                        /**. .**/
     uintptr_t x = load32(a + 4);                                           /**. .**/
-    if (x == v) /* split */ {                                              /**. .**/
+    if (x == vAdd) /* split */ {                                           /**. .**/
       found = 1;                                                           /**. .**/
     }                                                                      /**.
       (* Note: (Node skL skR) doesn't decrease but that's also not the measure *)
       new_ghosts(_, _, Node skL skR , _).
       steps.
-      { subst v. bottom_up_simpl_in_goal. assumption. }
+      { subst vAdd. bottom_up_simpl_in_goal. assumption. }
       { (* arbitrarily pick skL, could also pick skR, just need something smaller *)
         eapply tree_skeleton_lt_l. constructor. }
                                                                                 .**/
     else {                                                                 /**. .**/
-      if (v < x) /* split */ {                                             /**. .**/
+      if (vAdd < x) /* split */ {                                          /**. .**/
         p = a;                                                             /**. .**/
         a = load(p);                                                       /**. .**/
       }                                                                    /**.
@@ -229,8 +229,8 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
         (* hole is introduced *)
         step.
         step. step. step.
-        (* hole gets move into second subgoal through evar *)
-        step. step. step. step. step. step. step. step. step.
+        (* hole gets moved into second subgoal through evar *)
+        step. step. step. step. step. step. step. step. step. step. step.
         steps.
         lazymatch goal with
         | H: _ \/ _ |- _ \/ _ => destruct H; [left|right]
@@ -256,7 +256,9 @@ lazymatch goal with
 end.
 steps.
 step.
+(* retv = 1 case: *)
 steps.
+1-2: cycle 1.
 clear Error.
 lazymatch goal with
 | |- context C[sepapps ?l p] =>
@@ -271,47 +273,196 @@ lazymatch goal with
     change (r m) in H;
     unfold sepapp, hole in H
 end.
-step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step. step.
 step. step. step. step. step.
 clear Def0 x __Z_Def0.
-replace (fun x : Z => (x = \[v] \/ s x) /\ x < \[v]) with
-        (fun x : Z => s x /\ x < \[v]).
-2: { Import FunctionalExtensionality PropExtensionality.
-     extensionality x.
-     apply propositional_extensionality.
-     split; steps. }
-replace (fun x : Z => (x = \[v] \/ s x) /\ \[v] < x) with
-        (fun x : Z => s x /\ \[v] < x).
-2: { extensionality x.
-     apply propositional_extensionality.
-     split; steps. }
-
-(* key sets don't match?? *)
-
-(*
-      } else {                                                             /**. .**/
+lazymatch goal with
+| H: _ |= bst' _ ?s1 ?ptr |- context[bst' _ ?s2 ?ptr] =>
+    replace s2 with s1
+end.
+2: {
+  Import FunctionalExtensionality PropExtensionality.
+  extensionality x.
+  apply propositional_extensionality.
+  split; steps.
+  all: intuition fail.
+}
+step.
+lazymatch goal with
+| H: _ |= bst' _ ?s1 ?ptr |- context[bst' _ ?s2 ?ptr] =>
+    replace s2 with s1
+end.
+2: {
+  Import FunctionalExtensionality PropExtensionality.
+  extensionality x.
+  apply propositional_extensionality.
+  split; steps.
+}
+step. step. step. step. step.
+                                                                                .**/
+      else {                                                               /**. .**/
         p = a + 8;                                                         /**. .**/
         a = load(p);                                                       /**. .**/
       }                                                                    /**.
       (* TODO can we pull this out of the branches?
-        a = load(p);                         *)                                 .**/
-    }                                                                      /**.
-      new_ghosts(_, if c then skL else skR, _).
-      steps.
+        a = load(p);                         *)
 
-      step.
-                                                                               .**/
+        new_ghosts(_, _, skR, _).
+        steps.
+        lazymatch goal with
+        | H: _ \/ _ |- _ \/ _ => destruct H; [left|right]
+        end.
+        steps.
+        1-2: cycle 1.
+
+clear Error.
+lazymatch goal with
+| |- context C[sepapps ?l a'] =>
+    let r := eval cbn in (sepapps l a') in
+    let g := context C[r] in
+    change g
+end.
+unfold sepapp.
+lazymatch goal with
+| H: ?m |= sepapps ?l a' |- _ =>
+    let r := eval cbn in (sepapps l a') in
+    change (r m) in H;
+    unfold sepapp, hole in H
+end.
+steps.
+step.
+(* retv = 1 case: *)
+steps.
+1-2: cycle 1.
+clear Error.
+lazymatch goal with
+| |- context C[sepapps ?l a'] =>
+    let r := eval cbn in (sepapps l a') in
+    let g := context C[r] in
+    change g
+end.
+unfold sepapp.
+lazymatch goal with
+| H: ?m |= sepapps ?l a' |- _ =>
+    let r := eval cbn in (sepapps l a') in
+    change (r m) in H;
+    unfold sepapp, hole in H
+end.
+step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step.
+clear Def0 x __Z_Def0.
+lazymatch goal with
+| H: _ |= bst' _ ?s1 ?ptr |- context[bst' _ ?s2 ?ptr] =>
+    replace s2 with s1
+end.
+2: {
+  Import FunctionalExtensionality PropExtensionality.
+  extensionality x.
+  apply propositional_extensionality.
+  split; steps.
+}
+step.
+lazymatch goal with
+| H: _ |= bst' _ ?s1 ?ptr |- context[bst' _ ?s2 ?ptr] =>
+    replace s2 with s1
+end.
+2: {
+  Import FunctionalExtensionality PropExtensionality.
+  extensionality x.
+  apply propositional_extensionality.
+  split; steps.
+  all: intuition fail.
+}
+step. step. step. step. step.
+
+                                                                                .**/
+    }                                                                      /**. .**/
+  }                                                                        /**. .**/
+  if (found) /* split */ {                                                 /**. .**/
+    return 1;                                                              /**. .**/
   }                                                                        /**.
 
-{
+clear Error. unfold find_hyp_for_range.
+lazymatch goal with
+| H: _ |= bst' _ ?s1 ?ptr |- context[bst' _ ?s2 ?ptr] =>
+    replace s2 with s1
+end.
+2: {
+  extensionality x.
+  apply propositional_extensionality.
+  split; steps.
+  destruct H5. 1: solve [exfalso; steps].
+  destruct H2; steps. subst x. assumption.
+}
+steps.
 
-  (* different clause is picked for cancellation based on which of the 3 branches was
-     taken, need to do case split... *)
-  subst p''''. p''.
-*)
+                                                                                .**/
+  else {                                                                   /**. .**/
+    /* key not found, so we zoomed into the tree until it is empty, and
+       shrinked the function's postcondition and the context -- there's
+       no more tree around, and we'll just retrun a singleton tree! */     /**. .**/
+    uintptr_t res = malloc(12);                                            /**. .**/
+    if (res) /* split */ {                                                 /**.
+      destruct_one_match_hyp. 1: solve [exfalso; steps].
+      let h := constr:(#(@with_mem)) in unfold with_mem in h. unfold ready. steps.
 
-Abort.
+      (* ugh, turning malloc'd bytes into a sepapps takes too much code: *)
+      assert (<{ * uintptr ? res
+                 * uint 32 ? (res ^+ /[4])
+                 * uintptr ? (res ^+ /[8]) }> m1). {
+        clear_mem_split_eqs. revert H2. clear_heapletwise_hyps.
+        intros. unfold anyval in *|-. repeat heapletwise_step.
+        set (mAll := m1).
+        assert (mmap.du (mmap.Def m1) (mmap.Def map.empty) = mmap.Def mAll) as D. {
+          rewrite mmap.du_empty_r. reflexivity.
+        }
+        clearbody mAll.
+        steps.
+      }
+      clear H2.
 
+#[local] Hint Extern 1 (cannot_purify (uint _ ? _))
+      => constructor : suppressed_warnings.
+
+      unfold ready. steps.
+
+                                                                                .**/
+      store(res, 0);                                                       /**. .**/
+      store32(res+4, vAdd);                                                /**. .**/
+      store(res+8, 0);                                                     /**. .**/
+      store(p, res);                                                       /**. .**/
+      return 1;                                                            /**. .**/
+    }                                                                      /**.
+    1-2: cycle 1.
+    unfold split_concl_at.
+lazymatch goal with
+| |- context C[sepapps ?l res] =>
+    let r := eval cbn in (sepapps l res) in
+    let g := context C[r] in
+    change g
+end.
+unfold sepapp.
+steps.
+clear Error. unfold find_hyp_for_range.
+instantiate (1 := Leaf).
+instantiate (1 := Leaf).
+steps. 1-3: intuition lia.
+
+                                                                                .**/
+  else {                                                                   /**.
+    destruct_one_match_hyp. 2: exfalso; congruence.
+    (* malloc failed! *)                                                        .**/
+    return 0;                                                              /**. .**/
+  }                                                                        /**.
+  clear Error.
+  instantiate (1 := Leaf).
+  unfold find_hyp_for_range.
+  steps.
+                                                                                .**/
+}                                                                          /**. .**/
+}                                                                          /**.
+(* TODO indentation? *)
+Qed.
 
 #[export] Instance spec_of_bst_contains: fnspec :=                              .**/
 
