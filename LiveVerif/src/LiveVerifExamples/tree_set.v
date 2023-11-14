@@ -75,6 +75,10 @@ Local Hint Extern 1 (PredicateSize (bst' ?sk)) =>
 
 #[local] Hint Unfold bst : heapletwise_always_unfold.
 
+(* TODO move *)
+#[local] Hint Extern 1 (cannot_purify (uint _ ? _))
+      => constructor : suppressed_warnings.
+
 Lemma invert_bst'_null{sk s p m}:
     p = /[0] ->
     m |= bst' sk s p ->
@@ -122,10 +126,31 @@ Qed.
     destruct b; eauto.
   Qed.
 
+Definition same_set{A: Type}(s1 s2: set A) := forall x, s1 x <-> s2 x.
+
+Import FunctionalExtensionality PropExtensionality.
+
+Lemma bst'_change_set: forall sk a s1 s2,
+    safe_implication (same_set s1 s2) (impl1 (bst' sk s1 a) (bst' sk s2 a)).
+Proof.
+  unfold safe_implication, same_set. intros.
+  replace s2 with s1. 1: reflexivity.
+  extensionality x.
+  apply propositional_extensionality.
+  apply H.
+Qed.
+
+#[local] Hint Resolve bst'_change_set : safe_implication.
+
+(* always unify (set A) with (A -> Prop) *)
+#[global] Hint Transparent set : safe_implication.
+
 Ltac step_hook ::=
   match goal with
   | |- _ => progress cbn [bst']
   | sk: tree_skeleton |- _ => progress subst sk
+  | |- same_set _ _ => reflexivity (* <- might instantiate evars and we're fine with that *)
+  | |- same_set _ _ => solve [unfold same_set; intros; split; steps; intuition congruence]
   | H: _ |= bst' _ _ ?p, E: ?p = /[0] |- _ =>
       assert_fails (has_evar H); eapply (invert_bst'_null E) in H
   | H: _ |= bst' _ _ ?p, N: ?p <> /[0] |- _ =>
@@ -148,19 +173,19 @@ Ltac step_hook ::=
   | H1: ?x <= ?y, H2: ?y <= ?x, C: ?s ?x |- ?s ?y =>
       (replace y with x by xlia zchecker); exact C
   | H: _ \/ _ |- _ => decompose [and or] H; clear H; try (exfalso; xlia zchecker); []
-  | |- impl1 (bst' _ _ ?a) (bst' _ _ ?a) =>
-      reflexivity (* might instantiate evars and that's ok here, as long as the
-                     address is the same on both sides *)
   | |- _ => solve [auto 3 with nocore safe_core]
   end.
 
-(* address equality is already checked *)
 Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
   lazymatch conclPred with
   | bst' ?sk2 ?s2 =>
       lazymatch hypPred with
       | bst' ?sk1 ?s1 =>
-          syntactic_unify_only_inst_r hypPred conclPred
+          (* Note: address has already been checked, and if sk and/or s don't
+             unify, sidecondition solving steps will make them match later,
+             so here, we just need to take care of instantiating evars from conclPred *)
+          try syntactic_unify_only_inst_r s1 s2;
+          try syntactic_unify_only_inst_r sk1 sk2
       end
   end.
 
@@ -283,32 +308,8 @@ lazymatch goal with
     change (r m) in H;
     unfold sepapp, hole in H
 end.
-step. step. step. step. step. step. step. step. step.
-step. step. step. step. step.
-clear Def0 x __Z_Def0.
-lazymatch goal with
-| H: _ |= bst' _ ?s1 ?ptr |- context[bst' _ ?s2 ?ptr] =>
-    replace s2 with s1
-end.
-2: {
-  Import FunctionalExtensionality PropExtensionality.
-  extensionality x.
-  apply propositional_extensionality.
-  split; steps.
-  all: intuition fail.
-}
-step.
-lazymatch goal with
-| H: _ |= bst' _ ?s1 ?ptr |- context[bst' _ ?s2 ?ptr] =>
-    replace s2 with s1
-end.
-2: {
-  Import FunctionalExtensionality PropExtensionality.
-  extensionality x.
-  apply propositional_extensionality.
-  split; steps.
-}
-step. step. step. step. step.
+steps.
+steps.
                                                                                 .**/
       else {                                                               /**. .**/
         p = a + 8;                                                         /**. .**/
@@ -358,56 +359,14 @@ lazymatch goal with
     change (r m) in H;
     unfold sepapp, hole in H
 end.
-step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step.
-clear Def0 x __Z_Def0.
-lazymatch goal with
-| H: _ |= bst' _ ?s1 ?ptr |- context[bst' _ ?s2 ?ptr] =>
-    replace s2 with s1
-end.
-2: {
-  Import FunctionalExtensionality PropExtensionality.
-  extensionality x.
-  apply propositional_extensionality.
-  split; steps.
-}
-step.
-lazymatch goal with
-| H: _ |= bst' _ ?s1 ?ptr |- context[bst' _ ?s2 ?ptr] =>
-    replace s2 with s1
-end.
-2: {
-  Import FunctionalExtensionality PropExtensionality.
-  extensionality x.
-  apply propositional_extensionality.
-  split; steps.
-  all: intuition fail.
-}
-
-step. step. step. step. step.
-
+steps.
+steps.
                                                                                 .**/
     }                                                                      /**. .**/
   }                                                                        /**. .**/
   if (found) /* split */ {                                                 /**. .**/
     return 1;                                                              /**. .**/
-  }                                                                        /**.
-
-clear Error. unfold find_hyp_for_range.
-lazymatch goal with
-| H: _ |= bst' _ ?s1 ?ptr |- context[bst' _ ?s2 ?ptr] =>
-    replace s2 with s1
-end.
-2: {
-  extensionality x.
-  apply propositional_extensionality.
-  split; steps.
-  destruct H5. 1: solve [exfalso; steps].
-  destruct H2; steps. subst x. assumption.
-}
-steps.
-
-                                                                                .**/
+  }                                                                        /**. .**/
   else {                                                                   /**. .**/
     /* key not found, so we zoomed into the tree until it is empty, and
        shrinked the function's postcondition and the context -- there's
@@ -431,10 +390,6 @@ steps.
         steps.
       }
       clear H2.
-
-#[local] Hint Extern 1 (cannot_purify (uint _ ? _))
-      => constructor : suppressed_warnings.
-
       unfold ready. steps.
 
                                                                                 .**/
