@@ -218,7 +218,7 @@ Ltac get_current_mem :=
 Ltac move_mem_hyp_just_below_scope_marker :=
   let m := get_current_mem in
   lazymatch goal with
-  | H: _ ?m |- _ =>
+  | H: _ m |- _ =>
       move H at bottom;
       lazymatch goal with
       | s: scope_marker _ |- _ =>
