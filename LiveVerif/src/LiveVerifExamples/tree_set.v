@@ -33,13 +33,16 @@ Proof. unfold safe_implication, tree_skeleton_lt. intros. auto. Qed.
 
 #[local] Hint Resolve tree_skeleton_lt_l tree_skeleton_lt_r : safe_implication.
 
+Definition same_set{A: Type}(s1 s2: set A) := forall x, s1 x <-> s2 x.
+Definition is_empty_set{A: Type}(s: set A) := forall x, ~ s x.
+
 Load LiveVerif.
 
 Context {consts: malloc_constants}.
 
 Fixpoint bst'(sk: tree_skeleton)(s: set Z)(addr: word){struct sk}: mem -> Prop :=
   match sk with
-  | Leaf => emp (addr = /[0] /\ forall x, ~ s x)
+  | Leaf => emp (addr = /[0] /\ is_empty_set s)
   | Node skL skR => EX (p: word) (v: Z) (q: word),
       <{ * emp (addr <> /[0])
          * emp (s v)
@@ -126,8 +129,6 @@ Qed.
     destruct b; eauto.
   Qed.
 
-Definition same_set{A: Type}(s1 s2: set A) := forall x, s1 x <-> s2 x.
-
 Import FunctionalExtensionality PropExtensionality.
 
 Lemma bst'_change_set: forall sk a s1 s2,
@@ -145,12 +146,23 @@ Qed.
 (* always unify (set A) with (A -> Prop) *)
 #[global] Hint Transparent set : safe_implication.
 
+Ltac zset_solver :=
+  unfold same_set, is_empty_set;
+  intros;
+  lazymatch goal with
+  | |- _ <-> _ => split
+  | |- _ => idtac
+  end;
+  steps;
+  intuition (lia || congruence).
+
 Ltac step_hook ::=
   match goal with
   | |- _ => progress cbn [bst']
   | sk: tree_skeleton |- _ => progress subst sk
   | |- same_set _ _ => reflexivity (* <- might instantiate evars and we're fine with that *)
-  | |- same_set _ _ => solve [unfold same_set; intros; split; steps; intuition congruence]
+  | |- same_set _ _ => solve [zset_solver]
+  | |- is_empty_set _ => solve [zset_solver]
   | H: _ |= bst' _ _ ?p, E: ?p = /[0] |- _ =>
       assert_fails (has_evar H); eapply (invert_bst'_null E) in H
   | H: _ |= bst' _ _ ?p, N: ?p <> /[0] |- _ =>
@@ -158,6 +170,7 @@ Ltac step_hook ::=
   | H: ?addr <> /[0] |- context[bst' ?sk_evar _ ?addr] =>
       is_evar sk_evar;
       let n := open_constr:(Node _ _) in unify sk_evar n
+  | |- context[bst' ?skEvar ?s /[0]] => is_evar skEvar; unify skEvar Leaf
   | s: set Z, H: forall x: Z, ~ _ |- _ =>
       lazymatch goal with
       | |- context[s ?v] =>
@@ -165,6 +178,11 @@ Ltac step_hook ::=
           | context[s] => unique pose proof (H v)
           end
       end
+  | s: set Z |- _ => match goal with
+                     | H: s ?x1 |- s ?x2 => replace x2 with x1; [exact H | solve[steps]]
+                     end
+  | H: ?res = 0 /\ _ \/ ?res = 1 /\ _
+    |- ?res = 0 /\ _ \/ ?res = 1 /\ _ => destruct H; [left|right]
   | |- ?A \/ ?B =>
       tryif (assert_succeeds (assert (~ A) by (zify_goal; xlia zchecker)))
       then right else
@@ -201,10 +219,7 @@ void bst_init(uintptr_t p) /**#
 Derive bst_init SuchThat (fun_correct! bst_init) As bst_init_ok.                .**/
 {                                                                          /**. .**/
   store(p, 0);                                                             /**. .**/
-}                                                                          /*?.
-  step. step. step. step. step. step. step. step.
-  instantiate (1 := Leaf).
-  steps.
+}                                                                          /**.
 Qed.
 
 #[export] Instance spec_of_bst_add: fnspec :=                              .**/
@@ -246,40 +261,20 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
       found = 1;                                                           /**. .**/
     }                                                                      /**.
       (* Note: (Node skL skR) doesn't decrease but that's also not the measure *)
-      new_ghosts(_, _, Node skL skR , _).
-      steps.
-      { subst vAdd. bottom_up_simpl_in_goal. assumption. }
-      { (* arbitrarily pick skL, could also pick skR, just need something smaller *)
-        eapply tree_skeleton_lt_l. constructor. }
-                                                                                .**/
+      new_ghosts(_, _, Node skL skR , _). steps.
+      (* arbitrarily pick skL, could also pick skR, just need something smaller *)
+      eapply tree_skeleton_lt_l. constructor.                                   .**/
     else {                                                                 /**. .**/
       if (vAdd < x) /* split */ {                                          /**. .**/
         p = a;                                                             /**. .**/
         a = load(p);                                                       /**. .**/
       }                                                                    /**.
-        new_ghosts(_, _, skL, _).
-        steps.
-        lazymatch goal with
-        | H: _ \/ _ |- _ \/ _ => destruct H; [left|right]
-        end.
-        steps.
-        steps.
-                                                                                .**/
+        new_ghosts(_, _, skL, _). steps.                                        .**/
       else {                                                               /**. .**/
         p = a + 8;                                                         /**. .**/
         a = load(p);                                                       /**. .**/
       }                                                                    /**.
-      (* TODO can we pull this out of the branches?
-        a = load(p);                         *)
-
-        new_ghosts(_, _, skR, _).
-        steps.
-        lazymatch goal with
-        | H: _ \/ _ |- _ \/ _ => destruct H; [left|right]
-        end.
-        steps.
-        steps.
-                                                                                .**/
+        new_ghosts(_, _, _, _). steps.                                          .**/
     }                                                                      /**. .**/
   }                                                                        /**. .**/
   if (found) /* split */ {                                                 /**. .**/
@@ -316,26 +311,14 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
       store(res+8, 0);                                                     /**. .**/
       store(p, res);                                                       /**. .**/
       return 1;                                                            /**. .**/
-    }                                                                      /**.
-clear Error. unfold find_hyp_for_range.
-instantiate (1 := Leaf).
-instantiate (1 := Leaf).
-steps. 1-2: intuition lia.
-
-                                                                                .**/
-  else {                                                                   /**.
-    destruct_one_match_hyp. 2: exfalso; congruence.
-    (* malloc failed! *)                                                        .**/
-    return 0;                                                              /**. .**/
-  }                                                                        /**.
-  clear Error.
-  instantiate (1 := Leaf).
-  unfold find_hyp_for_range.
-  steps.
-                                                                                .**/
-}                                                                          /**. .**/
+    }                                                                      /**. .**/
+    else {                                                                 /**.
+      destruct_one_match_hyp. 2: exfalso; congruence.
+      (* malloc failed! *)                                                      .**/
+      return 0;                                                            /**. .**/
+    }                                                                      /**. .**/
+  }                                                                        /**. .**/
 }                                                                          /**.
-(* TODO indentation? *)
 Qed.
 
 #[export] Instance spec_of_bst_contains: fnspec :=                              .**/
