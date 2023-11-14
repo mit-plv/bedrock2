@@ -915,6 +915,14 @@ Ltac conclusion_shape_based_step logger :=
           eapply mk_expect_1expr_return; [exact hGet | clear hGet]
       | |- _ => intro
       end
+  | |- packaged_mem_clause_marker ?p =>
+      (* the point of this marker was to prevent start_canceling from including the
+         stuff on the rhs of /\ in the "Rest" argument of canceling, but once we're
+         here, `split` has run, so there's nothing to the right any more that needs
+         to be prevented from being put into the "Rest" argument, so we can now
+         remove this marker *)
+      logger ltac:(fun _ => idtac "remove packaged_mem_clause_marker");
+      change p
   | |- @eq (@map.rep string (@word.rep _ _) _) ?LHS ?RHS =>
       is_map_expr_with_ground_keys LHS;
       is_map_expr_with_ground_keys RHS;

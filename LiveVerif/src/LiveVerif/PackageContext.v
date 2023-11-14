@@ -56,6 +56,16 @@ Ltac assert_scope_kind expected :=
   tryif constr_eq sk expected then idtac
   else fail "This snippet is only allowed in a" expected "block, but we're in a" sk "block".
 
+(* When a memory assertion is encountered in conclusion the be proven,
+   we need to know in which of the two modes we are:
+   a) prove function precondition, with continuation in the "Rest" argument
+      of the canceling judgment
+   b) prove invariant or postcondition, where "Rest" argument should be True,
+      even if there's more stuff to prove.
+   See also HeapletwiseHyps.will_merge_back_later.
+   This marker tells us that we are in mode b). *)
+Definition packaged_mem_clause_marker(P: Prop) := P.
+
 Fixpoint ands(Ps: list Prop): Prop :=
   match Ps with
   | cons P rest => P /\ ands rest
@@ -218,7 +228,8 @@ Ltac get_current_mem :=
 Ltac move_mem_hyp_just_below_scope_marker :=
   let m := get_current_mem in
   lazymatch goal with
-  | H: _ m |- _ =>
+  | H: ?p m |- _ =>
+      change (packaged_mem_clause_marker (p m)) in H;
       move H at bottom;
       lazymatch goal with
       | s: scope_marker _ |- _ =>
@@ -747,7 +758,9 @@ Ltac normalize_locals_post :=
   end.
 
 Ltac after_if :=
-  intros ? ? ? [?c ?Def0 ?];
+  let H := fresh in
+  intros ? ? ? [?c ?Def0 H];
+  cbv beta delta [packaged_mem_clause_marker] in H;
   repeat pull_elet_dlet_and_exists_step;
   repeat merge_and_pair constr_eqb merge_ands_at_indices_same_prop;
   repeat merge_and_pair neg_prop merge_ands_at_indices_neg_prop;
@@ -783,7 +796,9 @@ Ltac unpackage_context_step :=
           let t := beta1 body x in
           change t in H
       end
-  | H: ands _ |- _ => destruct_ands H
+  | H: ands _ |- _ =>
+      cbv beta delta [packaged_mem_clause_marker] in H;
+      destruct_ands H
   end.
 
 Ltac unpackage_context :=

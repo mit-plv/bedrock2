@@ -247,39 +247,10 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
     }                                                                      /**.
       (* Note: (Node skL skR) doesn't decrease but that's also not the measure *)
       new_ghosts(_, _, Node skL skR , _).
-
-      step. step. step. step. step. step. step. step. step. step. step. step.
-
-Definition not_a_function_pre(P: Prop) := P.
-
-lazymatch goal with
-| |- ?A /\ ?B /\ True =>
-enough ((not_a_function_pre A /\ True) /\ B) as HH
-end.
-{ unfold not_a_function_pre. decompose [and] HH. auto. }
-
-step. step.
-
-(* function_pre needs to be default because function specs don't have special
-   markers and we can't easily descend into them to change them.
-   so TODO we need to add the marker in non_function context, let's add it
-   in PackageContext: move_mem_hyp_just_below_scope_marker *)
-unfold not_a_function_pre.
-step.
-      step. step. step. step. step. step. step. step. step. step.
-
-1-2: cycle 1.
-
-step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-steps.
+      steps.
       { subst vAdd. bottom_up_simpl_in_goal. assumption. }
-split.
       { (* arbitrarily pick skL, could also pick skR, just need something smaller *)
         eapply tree_skeleton_lt_l. constructor. }
-
-step.
-step.
                                                                                 .**/
     else {                                                                 /**. .**/
       if (vAdd < x) /* split */ {                                          /**. .**/
