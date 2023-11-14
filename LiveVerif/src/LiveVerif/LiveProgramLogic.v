@@ -28,6 +28,7 @@ Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.HeapletwiseAutoSplitMerge.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.sepapp.
+Require Import bedrock2.canceling_sepapps.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.PurifyHeapletwise.
 Require Import bedrock2.bottom_up_simpl.
@@ -1087,7 +1088,7 @@ Ltac hyp_clause_matches_goal_clause hypClause goalClause ::=
 Ltac fwd_subst H ::= idtac.
 
 Ltac heapletwise_step' logger :=
-  heapletwise_step;
+  first [heapletwise_step | cancel_sepapps_step];
   logger ltac:(fun _ => idtac "heapletwise_step").
 
 Ltac sepclause_impl_step_hook ::= first [ step_hook | sidecond_step ignore_logger_thunk ].

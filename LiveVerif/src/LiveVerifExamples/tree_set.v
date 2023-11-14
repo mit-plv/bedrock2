@@ -247,10 +247,39 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
     }                                                                      /**.
       (* Note: (Node skL skR) doesn't decrease but that's also not the measure *)
       new_ghosts(_, _, Node skL skR , _).
-      steps.
+
+      step. step. step. step. step. step. step. step. step. step. step. step.
+
+Definition not_a_function_pre(P: Prop) := P.
+
+lazymatch goal with
+| |- ?A /\ ?B /\ True =>
+enough ((not_a_function_pre A /\ True) /\ B) as HH
+end.
+{ unfold not_a_function_pre. decompose [and] HH. auto. }
+
+step. step.
+
+(* function_pre needs to be default because function specs don't have special
+   markers and we can't easily descend into them to change them.
+   so TODO we need to add the marker in non_function context, let's add it
+   in PackageContext: move_mem_hyp_just_below_scope_marker *)
+unfold not_a_function_pre.
+step.
+      step. step. step. step. step. step. step. step. step. step.
+
+1-2: cycle 1.
+
+step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+steps.
       { subst vAdd. bottom_up_simpl_in_goal. assumption. }
+split.
       { (* arbitrarily pick skL, could also pick skR, just need something smaller *)
         eapply tree_skeleton_lt_l. constructor. }
+
+step.
+step.
                                                                                 .**/
     else {                                                                 /**. .**/
       if (vAdd < x) /* split */ {                                          /**. .**/
@@ -258,58 +287,12 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
         a = load(p);                                                       /**. .**/
       }                                                                    /**.
         new_ghosts(_, _, skL, _).
-        step. step. step. step. step. step. step. step. step. step. step.
-        step. step. step. step.
-
-        (* hole is introduced *)
-        step.
-        step. step. step.
-        (* hole gets moved into second subgoal through evar *)
-        step. step. step. step. step. step. step. step. step. step. step.
         steps.
         lazymatch goal with
         | H: _ \/ _ |- _ \/ _ => destruct H; [left|right]
         end.
-
-
-step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. 1-2: cycle 1.
-step. step. step.
-lazymatch goal with
-| |- context C[sepapps ?l p] =>
-    let r := eval cbn in (sepapps l p) in
-    let g := context C[r] in
-    change g
-end.
-unfold sepapp.
-lazymatch goal with
-| H: ?m |= sepapps ?l p |- _ =>
-    let r := eval cbn in (sepapps l p) in
-    change (r m) in H;
-    unfold sepapp, hole in H
-end.
-steps.
-step.
-(* retv = 1 case: *)
-steps.
-1-2: cycle 1.
-clear Error.
-lazymatch goal with
-| |- context C[sepapps ?l p] =>
-    let r := eval cbn in (sepapps l p) in
-    let g := context C[r] in
-    change g
-end.
-unfold sepapp.
-lazymatch goal with
-| H: ?m |= sepapps ?l p |- _ =>
-    let r := eval cbn in (sepapps l p) in
-    change (r m) in H;
-    unfold sepapp, hole in H
-end.
-steps.
-steps.
+        steps.
+        steps.
                                                                                 .**/
       else {                                                               /**. .**/
         p = a + 8;                                                         /**. .**/
@@ -324,43 +307,7 @@ steps.
         | H: _ \/ _ |- _ \/ _ => destruct H; [left|right]
         end.
         steps.
-        1-2: cycle 1.
-
-clear Error.
-lazymatch goal with
-| |- context C[sepapps ?l a'] =>
-    let r := eval cbn in (sepapps l a') in
-    let g := context C[r] in
-    change g
-end.
-unfold sepapp.
-lazymatch goal with
-| H: ?m |= sepapps ?l a' |- _ =>
-    let r := eval cbn in (sepapps l a') in
-    change (r m) in H;
-    unfold sepapp, hole in H
-end.
-steps.
-step.
-(* retv = 1 case: *)
-steps.
-1-2: cycle 1.
-clear Error.
-lazymatch goal with
-| |- context C[sepapps ?l a'] =>
-    let r := eval cbn in (sepapps l a') in
-    let g := context C[r] in
-    change g
-end.
-unfold sepapp.
-lazymatch goal with
-| H: ?m |= sepapps ?l a' |- _ =>
-    let r := eval cbn in (sepapps l a') in
-    change (r m) in H;
-    unfold sepapp, hole in H
-end.
-steps.
-steps.
+        steps.
                                                                                 .**/
     }                                                                      /**. .**/
   }                                                                        /**. .**/
@@ -399,20 +346,10 @@ steps.
       store(p, res);                                                       /**. .**/
       return 1;                                                            /**. .**/
     }                                                                      /**.
-    1-2: cycle 1.
-    unfold split_concl_at.
-lazymatch goal with
-| |- context C[sepapps ?l res] =>
-    let r := eval cbn in (sepapps l res) in
-    let g := context C[r] in
-    change g
-end.
-unfold sepapp.
-steps.
 clear Error. unfold find_hyp_for_range.
 instantiate (1 := Leaf).
 instantiate (1 := Leaf).
-steps. 1-3: intuition lia.
+steps. 1-2: intuition lia.
 
                                                                                 .**/
   else {                                                                   /**.

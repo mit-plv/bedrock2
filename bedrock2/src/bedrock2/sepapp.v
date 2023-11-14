@@ -6,6 +6,7 @@ Require Import coqutil.Byte.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
+Require Import bedrock2.is_emp.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.PurifySep.
 
@@ -40,7 +41,7 @@ Inductive sized_predicate{width: Z}{BW: Bitwidth width}{word: word.word width}
   {mem: map.map word Byte.byte}: Type :=
 | mk_sized_predicate(p: word -> mem -> Prop)(sz: PredicateSize p).
 
-Section Reassociate_sepapp.
+Section WithParams.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}
     {mem: map.map word byte} {mem_ok: map.ok mem}.
 
@@ -188,7 +189,22 @@ Section Reassociate_sepapp.
   Proof. intros. rewrite <-2flatten_eq_interp_sepapp_tree. f_equal. assumption. Qed.
 *)
 
-End Reassociate_sepapp.
+  Lemma sepapps_is_emp: forall l a,
+      List.map (fun '(mk_sized_predicate _ sz) => mk_sized_predicate (hole sz) sz) l = l ->
+      is_emp (sepapps l a) True.
+  Proof.
+    induction l; cbn; intros.
+    - unfold is_emp. reflexivity.
+    - rewrite sepapps_cons. destruct a. simpl.
+      fwd. rewrite <- H. specialize IHl with (1 := H0).
+      eapply weaken_is_emp; cycle 1.
+      + eapply sep_is_emp.
+        * unfold hole, is_emp. reflexivity.
+        * apply IHl.
+      + auto.
+  Qed.
+
+End WithParams.
 
 #[export] Hint Resolve purify_sepapps_nil: purify.
 #[export] Hint Resolve purify_sepapps_cons: purify.
@@ -242,3 +258,15 @@ Ltac sepapps_size_with_ground_acc acc l :=
 #[export] Hint Extern 1 (PredicateSize (sepapps ?l)) =>
   let sz := sepapps_size_with_ground_acc Z0 l in exact sz
 : typeclass_instances.
+
+Ltac only_holes l :=
+  lazymatch l with
+  | cons (mk_sized_predicate (hole _) _) ?rest => only_holes rest
+  | nil => idtac
+  end.
+
+#[export] Hint Extern 10 (is_emp (sepapps ?l _) _) =>
+    only_holes l;
+    eapply sepapps_is_emp;
+    reflexivity
+: is_emp.
