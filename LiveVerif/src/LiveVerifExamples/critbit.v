@@ -60,6 +60,7 @@ Ltac unfold_bits_step :=
       let Hb := fresh "Hb" in assert (Hb: 0 <= X < 2 ^ 32); [ ZnWords | ];
                               rewrite (Z.mod_small X (2 ^ 32) Hb) in H; clear Hb
   | _ => rewrite word.unsigned_and in *
+  | _ => rewrite word.unsigned_xor in *
   | _ => rewrite word.unsigned_or in *
   | _ => rewrite word.unsigned_not in *
   | _ => rewrite word.unsigned_slu; [ | ZnWords ]
@@ -70,6 +71,7 @@ Ltac unfold_bits_step :=
   | _ => rewrite <- Z.land_ones; [ | lia ]
   | _ => rewrite Z.testbit_ones; [ | lia ]
   | _ => rewrite Z.land_spec in *
+  | _ => rewrite Z.lxor_spec in *
   | _ => rewrite Z.lor_spec in *
   | _ => rewrite bitblast.Z.shiftl_spec' in *
   | _ => rewrite bitblast.Z.shiftr_spec' in *
@@ -268,6 +270,8 @@ Proof. unfold purify. auto. Qed.
 #[local] Hint Extern 1 (cannot_purify (sep _ _))
       => constructor : suppressed_warnings.
 #[local] Hint Extern 1 (cannot_purify (uint _ _ _))
+      => constructor : suppressed_warnings.
+#[local] Hint Extern 1 (cannot_purify allocator)
       => constructor : suppressed_warnings.
 #[local] Hint Extern 1 (cannot_purify _)
       => constructor : suppressed_warnings.
@@ -1047,8 +1051,220 @@ Proof.
     repeat rewrite map_get_singleton_same in H9. auto.
 Qed.
 
+Inductive hidden (P : Type): Type := hide: P -> hidden P.
 
-Inductive hidden (P : Prop): Prop := hide: P -> hidden P.
+Lemma xor_0_l: forall w, word.xor /[-1] w = word.not w.
+Proof.
+  intros. apply word.unsigned_inj. unfold_bits. apply Z.bits_inj.
+  unfold Z.eqf. intros. unfold_bits. destruct (Z.testbit \[w] n);
+  destruct xorb eqn:E; unfold xorb in E; fwd; lia.
+Qed.
+
+#[export] Instance spec_of_critical_bit: fnspec :=                              .**/
+
+uintptr_t critical_bit(uintptr_t k1, uintptr_t k2) /**#
+  (* heaplet packaging doesn't work well then there's just one item in the heap *)
+  ghost_args := (R1 R2: mem -> Prop);
+  requires t m := <{ * R1 * R2 }> m /\ k1 <> k2;
+  ensures t' m' res := t = t' /\ <{ * R1 * R2 }> m'
+                /\ 0 <= \[res] < 32
+                /\ prefix_bits \[res] k1 = prefix_bits \[res] k2
+                /\ prefix_bits (\[res] + 1) k1 <> prefix_bits (\[res] + 1) k2 #**/  /**.
+Derive critical_bit SuchThat (fun_correct! critical_bit) As critical_bit_ok.    .**/
+{                                                                          /**. .**/
+  uintptr_t i = 0;                                                         /**.
+  prove (0 <= \[i] < 32).
+  prove (word.and (word.not (/[-1] ^<< i)) k1 = word.and (word.not (/[-1] ^<< i)) k2).
+  subst i. replace (word.not (/[-1] ^<< /[0])) with /[0]. apply word.unsigned_inj.
+  unfold_bits. repeat rewrite Z.land_0_r. reflexivity. apply word.unsigned_inj.
+  unfold_bits. simpl. reflexivity.
+  delete #(i = /[0]).
+  loop invariant above H.
+  move i at bottom. .**/
+  while (i < 31 && ((-1 ^ (-1 << (i + 1))) & k1) == ((-1 ^ (-1 << (i + 1))) & k2))
+    /* decreases (32 - \[i]) */ {                                          /**. .**/
+    i = i + 1;                                                             /**. .**/
+  }                                                                        /**.
+  subst i. replace (word.opp /[1]) with (/[-1]) in H5.
+  rewrite xor_0_l in H5. assumption. ZnWords. .**/
+  return i;                                                                /**. .**/
+}                                                                          /**.
+  unfold prefix_bits. assert (Hi: \[i] =? 32 = false). lia. rewrite Hi.
+  replace /[\[i]] with i. assumption. ZnWords.
+  unfold prefix_bits. destruct (\[i] + 1 =? 32) eqn:E. assumption.
+  destruct H. exfalso. ZnWords. replace (word.opp /[1]) with (/[-1]) in H.
+  rewrite xor_0_l in H. replace (/[\[i] + 1]) with (i ^+ /[1]).
+  assumption. ZnWords. ZnWords.
+Qed.
+
+Definition empty_prefix := {| length := 0; bits := /[0] |}.
+
+Lemma empty_is_prefix: forall pr, 0 <= length pr <= 32 -> is_prefix empty_prefix pr.
+Proof.
+  intros. unfold is_prefix. unfold empty_prefix. simpl. step. step.
+  unfold prefix_bits. simpl.
+Admitted.
+
+Lemma is_prefix_key_extend_0: forall pr k,
+  0 <= length pr < 32 -> is_prefix_key pr k ->
+  word.and (k ^>> /[length pr]) /[1] = /[0] ->
+  is_prefix_key (append_0 pr) k.
+Proof.
+Admitted.
+
+Lemma is_prefix_key_extend_1: forall pr k,
+  0 <= length pr < 32 -> is_prefix_key pr k ->
+  word.and (k ^>> /[length pr]) /[1] = /[1] ->
+  is_prefix_key (append_1 pr) k.
+Proof.
+Admitted.
+
+Lemma clip_prefix_bits: forall n1 n2 w,
+  0 <= n1 <= n2 -> n2 <= 32 -> prefix_bits n1 (prefix_bits n2 w) = prefix_bits n1 w.
+Proof.
+Admitted.
+
+Lemma clip_prefix_bits_equality: forall n1 n2 wa wb,
+  0 <= n1 <= n2 -> n2 <= 32 -> prefix_bits n2 wa = prefix_bits n2 wb ->
+  prefix_bits n1 wa = prefix_bits n1 wb.
+Proof.
+Admitted.
+
+Lemma map_get_putmany_not_None_iff: forall (m1 m2: word_map) (k: word),
+  map.get (map.putmany m1 m2) k <> None <->
+  (map.get m1 k <> None \/ map.get m2 k <> None).
+Proof.
+  intros. destruct (map.get m2 k) eqn:E.
+  - erewrite map.get_putmany_right. 2: eassumption. split. right. tauto. congruence.
+  - erewrite map.get_putmany_left. 2: eassumption. tauto.
+Qed.
+
+Lemma bits_equality_is_prefix_key_iff: forall pr k1 k2,
+  prefix_bits (length pr) k1 = prefix_bits (length pr) k2 ->
+  (is_prefix_key pr k1 <-> is_prefix_key pr k2).
+Proof.
+  intros. unfold is_prefix_key. unfold is_prefix. simpl. rewrite H. tauto.
+Qed.
+
+#[export] Instance spec_of_cbt_insert_at: fnspec :=                             .**/
+
+uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /**#
+  ghost_args := (sk: tree_skeleton) (total_pr: prefix) (pr: prefix) (c: word_map)
+                (R: mem -> Prop);
+  requires t m := <{ * allocator
+                     * cbt' sk pr c tp
+                     * R }> m
+                  /\ is_prefix total_pr pr /\ is_prefix_key total_pr k
+                  /\ 0 <= \[cb] < 32
+                  /\ exists k',
+                       (map.get c k' <> None
+                         /\ prefix_bits \[cb] k' = prefix_bits \[cb] k)
+                  /\ forall k',
+                       (map.get c k' <> None ->
+                         prefix_bits \[cb] k' <> prefix_bits \[cb] k);
+  ensures t' m' res := t' = t
+                       /\ if \[res] =? 0 then
+                            <{ * allocator_failed_below 12
+                               * cbt' sk pr c tp
+                               * R
+                               * (fun _ => True) }> m'
+                          else
+                            res = tp /\
+                            ex1 (fun sk' => ex1 (fun pr' =>
+                              <{ * allocator
+                                 * emp (is_prefix total_pr pr')
+                                 * cbt' sk' pr' (map.put c k v) tp
+                                 * R }>)) m' #**/ /**.
+Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok.  .**/
+{                                                                           /**. .**/
+  uintptr_t p = tp;                                                         /**.
+  rewrite <- Def0 in H2.
+  move t before tp.
+  unfold ready. rewrite <- Def0. rewrite Def0 at 2.
+  delete #(p = ??).
+  move sk at bottom. (*
+  move c after Scope5.
+  move R after Scope1.
+  move p' after Scope1. *)
+  move k' before Scope1.
+  move p before Scope1.
+  loop invariant above m.
+  (*
+  eapply exec.weaken; cycle 1. intros.
+  lazymatch goal with
+  | |- ?g => lazymatch eval pattern t'0, m'0, l' in g with
+             | ?f t'0 m'0 l' =>
+               instantiate (1:=fun t m l => (is_prefix focus_pr p') /\ f t m l) in H1
+             end
+  end.
+  cbv beta in H1. tauto.
+  *)
+
+  (* transform goal here *)
+  lazymatch goal with
+  | |- exec ?fs ?body ?t ?m ?l ?P =>
+      lazymatch eval pattern sk, p, pr, total_pr, c, R in P with
+      | ?f sk p pr total_pr c R =>
+          change (exec fs body t m l ((fun (g: word * prefix * prefix * word_map * (mem -> Prop)) (sk: tree_skeleton) =>
+     (*let '(s1, s2, p1, p2, R) := g in f s1 s2 p1 p2 R) (s1, s2, p1, p2, R) (len s1)))*)
+          let (g, R) := g in
+          let (g, c) := g in
+          let (g, total_pr) := g in
+          let (p, pr) := g in
+          f sk p pr total_pr c R) (p, pr, total_pr, c, R) sk))
+      end
+  end.
+  eapply wp_while_tailrec_use_functionpost with (e:=live_expr:(load(p) < cb)).
+  { eauto with wf_of_type. }
+  { package_heapletwise_context. }
+  start_loop_body.
+  subst v0.
+  repeat heapletwise_step.
+
+  (* we want to progress on the goal with several steps that
+  mess up our hypotheses -- so we create a copy of the context by splitting
+  the current goal (?C) into (?A) and (?A -> ?C) *)
+  eassert (imp: ?[A] -> ?[C]). 2: eapply imp. 2: clear imp. intro.
+  apply cbt_fields in H10. step. step. step. step. step. step. step. step.
+  apply hide in X.
+  step. step. step. step. step. step. step.
+  inversion X. eexact X0.
+
+  steps.
+
+  (* in this case (loop condition true), sk must be an internal node *)
+  destruct sk; [ exfalso; ZnWords | ].
+
+  pose proof H10 as Hprk'. eapply cbt_key_has_prefix in Hprk'. 2: eassumption.
+  simpl cbt' in H10. repeat heapletwise_step.
+  .**/
+      if (((k >> load(p)) & 1) == 1) /* split */ {                            /**. .**/
+        p = load(p + 8);                                                      /**. .**/
+      }                                                                       /**.
+  new_ghosts (p, pR, append_1 pr, cR,
+      <{ * R
+         * freeable 12 p'
+         * <{ + uintptr /[length pr]
+              + uintptr aL
+              + uintptr p }> p'
+         * cbt' sk1 pL cL aL }>).
+  steps. apply is_prefix_key_extend_1. lia.
+  eapply clip_prefix_bits_equality with (n1:=length pr) in H8.
+  unfold is_prefix_key. unfold full_prefix. unfold is_prefix. simpl.
+  rewrite <- H8. unfold is_prefix_key in Hprk'. unfold full_prefix in Hprk'.
+  unfold is_prefix in Hprk'. simpl in Hprk'. assumption. step. step. step.
+  destruct_split H18. subst c. apply map_get_putmany_not_None_iff in H7.
+  destruct H7; [ exfalso | assumption ]. eapply cbt_key_has_prefix in H11.
+  2: eassumption. eapply is_prefix_key_trans in H11. 4: eassumption.
+  eapply clip_prefix_bits_equality in H8.
+  rewrite bits_equality_is_prefix_key_iff in H11. 2: eassumption.
+  apply append_0_prefix in H11. ZnWords. lia. simpl. lia. lia. simpl. lia. lia.
+  apply H9. destruct_split H18. subst c. apply map_get_putmany_not_None_iff.
+  tauto.
+  rewrite H0 in *. cbv beta in HPp1.
+  4: eassumption.
+
+
 
 #[export] Instance spec_of_cbt_insert: fnspec :=                                .**/
 
@@ -1091,22 +1307,120 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
   reflexivity. repeat rewrite mmap.du_empty_l. step. step.
   apply map_singleton_inj in H7. steps. steps. .**/
   else {                                                                   /**.
-    destruct H2; cycle 1. step. step. step. contradiction. step. step. .**/
-    uintptr_t best_k = cbt_update_or_best(tp, k, v);                       /**.
-    unfold enable_frame_trick.enable_frame_trick. steps. .**/
+  destruct H2; cycle 1. step. step. step. contradiction. step. step. .**/
+  uintptr_t best_k = cbt_update_or_best(tp, k, v);                         /**.
+  unfold enable_frame_trick.enable_frame_trick.
+  clear D H3 H1 H0 m m0 m2 m3. steps. .**/
     if (best_k == k) /* split */ {                                         /**.
-      subst best_k. destruct H2p4; [ | tauto ]. .**/
+  subst best_k. destruct H0p4; [ | tauto ]. step. unzify. .**/
       return tp;                                                           /**. .**/
     }                                                                      /**.
-  assert (\[tp] =? 0 = false). step. rewrite H5. step. step.
+  assert (Htp: \[tp] =? 0 = false). step. rewrite Htp. step. step.
   unfold canceling. step. step. step. step. apply or1_seps. left. simpl.
-  step. step. step. step. step. step. step. step. step. .**/
-    else {                                                                 /**.
+  steps. steps. destruct H0p4; [ exfalso; tauto | ]. .**/
+    else {                                                                 /*?.
+  fwd. steps. .**/
+      uintptr_t p = tp;                                                    /**. .**/
+      uintptr_t cb = critical_bit(k, best_k);                              /**.
+  instantiate (3:=emp True). steps.
+  unfold enable_frame_trick.enable_frame_trick.
+  clear m' m0 m2 m3 H1 H3 H4 D. steps.
+
+  (* setting up the loop precondition *)
+  (* setting up the loop precondition *)
+  rewrite <- Def0 in H5.
+  (* delete #(cb = ??). *)
+  move t' before tp.
+  unfold ready. rewrite <- Def0. rewrite Def0 at 2.
+  delete #(p = ??).
+  move sk at bottom. (*
+  move c after Scope5.
+  move R after Scope1.
+  move p' after Scope1. *)
+  loop invariant above H5.
+  remember empty_prefix as focus_pr.
+  prove (is_prefix focus_pr p'). subst focus_pr. apply empty_is_prefix.
+  apply purify_cbt' in H5. lia.
+  delete #(focus_pr = ??).
+  move focus_pr after Scope6.
+  (*
+  eapply exec.weaken; cycle 1. intros.
+  lazymatch goal with
+  | |- ?g => lazymatch eval pattern t'0, m'0, l' in g with
+             | ?f t'0 m'0 l' =>
+               instantiate (1:=fun t m l => (is_prefix focus_pr p') /\ f t m l) in H1
+             end
+  end.
+  cbv beta in H1. tauto.
+  *)
+
+  (* transform goal here *)
+  lazymatch goal with
+  | |- exec ?fs ?body ?t ?m ?l ?P =>
+      lazymatch eval pattern sk, p, p' (*, focus_pr*), c, R in P with
+      | ?f sk p p' (*focus_pr*) c R =>
+          change (exec fs body t m l ((fun (g: word * prefix * prefix * word_map * (mem -> Prop)) (sk: tree_skeleton) =>
+     (*let '(s1, s2, p1, p2, R) := g in f s1 s2 p1 p2 R) (s1, s2, p1, p2, R) (len s1)))*)
+          let (g, R) := g in
+          let (g, c) := g in
+          let (g, _) := g in
+          let (p, p') := g in
+          f sk p p' (*focus_pr*) c R) (p, p', focus_pr, c, R) sk))
+      end
+  end.
+  eapply wp_while_tailrec_use_functionpost with (e:=live_expr:(load(p) < cb)).
+  { eauto with wf_of_type. }
+  { package_heapletwise_context. }
+  start_loop_body.
+  subst v0.
+  rewrite <- Def0 in H5.
+  (* delete #(cb = ??). *)
+  move t' before tp.
+  unfold ready. rewrite <- Def0. rewrite Def0 at 2.
+  delete #(p = ??).
+  move sk at bottom. (*
+  move c after Scope5.
+  move R after Scope1.
+  move p' after Scope1. *)
+  loop invariant above H5.
+  remember empty_prefix as focus_pr.
+  prove (is_prefix focus_pr p'). subst focus_pr. apply empty_is_prefix.
+  apply purify_cbt' in H5. lia.
+  delete #(focus_pr = ??).
+  move focus_pr after Scope6.
+  (*
+  eapply exec.weaken; cycle 1. intros.
+  lazymatch goal with
+  | |- ?g => lazymatch eval pattern t'0, m'0, l' in g with
+             | ?f t'0 m'0 l' =>
+               instantiate (1:=fun t m l => (is_prefix focus_pr p') /\ f t m l) in H1
+             end
+  end.
+  cbv beta in H1. tauto.
+  *)
+
+  (* transform goal here *)
+  lazymatch goal with
+  | |- exec ?fs ?body ?t ?m ?l ?P =>
+      lazymatch eval pattern sk, p, p' (*, focus_pr*), c, R in P with
+      | ?f sk p p' (*focus_pr*) c R =>
+          change (exec fs body t m l ((fun (g: word * prefix * prefix * word_map * (mem -> Prop)) (sk: tree_skeleton) =>
+     (*let '(s1, s2, p1, p2, R) := g in f s1 s2 p1 p2 R) (s1, s2, p1, p2, R) (len s1)))*)
+          let (g, R) := g in
+          let (g, c) := g in
+          let (g, _) := g in
+          let (p, p') := g in
+          f sk p p' (*focus_pr*) c R) (p, p', focus_pr, c, R) sk))
+      end
+  end.
+  eapply wp_while_tailrec_use_functionpost with (e:=live_expr:(load(p) < cb)).
+  { eauto with wf_of_type. }
+  { package_heapletwise_context. }
+  start_loop_body.
+  subst v0.
 
 (* TODO: verify the below implementation; implement critical_bit (a new function)  *)
 
-uintptr_t p = tp;
-uintptr_t cb = critical_bit(k, block_k);
 // ghosts: prefix required for the currently focused tree + the usual ones
 while (load(p) < cb) {
 // while (load(p) >= 0 && (k & ((1 << load(p)) - 1)) == (block_k & ((1 << load(p)) - 1))) {
