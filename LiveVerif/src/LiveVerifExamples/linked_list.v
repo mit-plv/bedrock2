@@ -46,6 +46,13 @@ Local Hint Extern 1 (PredicateSize (sll ?l)) =>
   exact r
 : typeclass_instances.
 
+Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
+  lazymatch conclPred with
+  | sll ?l2 => lazymatch hypPred with
+               | sll ?l1 => syntactic_unify_only_inst_r hypPred conclPred
+               end
+  end.
+
 Lemma invert_sll_null: forall l m, m |= sll l /[0] -> m |= emp (l = nil).
 Proof.
   unfold with_mem. intros. destruct l; simpl in *.
@@ -122,14 +129,9 @@ Derive sll_reverse SuchThat (fun_correct! sll_reverse) As sll_reverse_ok.       
     acc = p;                                                               /**. .**/
     p = tail;                                                              /**. .**/
   }                                                                        /**.
-clear Error.
-instantiate (1 := l').
-all: steps.
-{
   subst v. subst lTodo.
   bottom_up_simpl_in_goal.
   step.
-}
                                                                                 .**/
   return acc;                                                              /**.
 

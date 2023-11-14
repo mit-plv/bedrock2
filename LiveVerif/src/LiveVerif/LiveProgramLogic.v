@@ -1030,6 +1030,60 @@ Ltac new_heapletwise_hyp_hook h t ::=
 Ltac heapletwise_hyp_pre_clear_hook H ::=
   let T := type of H in puri_simpli_zify_hyp false H T.
 
+(* safe_to_cancel:
+   An alternative mechanism to the range-based decisions on what's safe to cancel in
+   HeapletwiseAutoSplitMerge.v.
+   Needed if the size of the predicate is not yet known, eg the size could be
+           match ?treeShape with
+           | Leaf => 0
+           | Node _ _ => 12
+           end
+*)
+
+(* hypPred and conclPred are of type (word -> mem -> Prop) *)
+Ltac predicates_safe_to_cancel_hook hypPred conclPred := fail.
+
+(* hypPred and conclPred are of type (word -> mem -> Prop) *)
+Ltac predicates_safe_to_cancel hypPred conclPred :=
+  first
+    [ predicates_safe_to_cancel_hook hypPred conclPred
+    | lazymatch conclPred with
+      | uintptr ?v2 => lazymatch hypPred with
+                       | uintptr ?v1 => is_evar v2; unify v1 v2
+                       end
+      | uint ?nbits ?v2 => lazymatch hypPred with
+                           | uint nbits ?v1 => is_evar v2; unify v1 v2
+                           end
+      | array ?elem ?n2 ?vs2 => lazymatch hypPred with
+                                | array elem ?n1 ?vs1 =>
+                                    assert_succeeds (idtac; assert (n1 = n2)
+                                                       by (zify_goal; xlia zchecker));
+                                    tryif is_evar vs2 then unify vs1 vs2 else idtac
+                                end
+      end ].
+
+(* can instantiate evars in goalClause *)
+Ltac is_safe_to_cancel hypClause goalClause :=
+  tryif constr_eq hypClause goalClause then idtac else
+  (* DON'T do
+  lazymatch hypClause with
+  | goalClause => idtac
+  ... because it seems sometimes goalClause with evars matches hypClause without evars
+      even though they are not constr_eq *)
+  lazymatch hypClause with
+  | ?pred1 ?addr1 =>
+      lazymatch goalClause with
+      | ?pred2 ?addr2 =>
+          first [ constr_eq addr1 addr2
+                | assert_succeeds (idtac; assert (addr1 = addr2)
+                                     by (zify_goal; xlia zchecker)) ];
+          predicates_safe_to_cancel pred1 pred2
+      end
+  end.
+
+Ltac hyp_clause_matches_goal_clause hypClause goalClause ::=
+  is_safe_to_cancel hypClause goalClause.
+
 Ltac fwd_subst H ::= idtac.
 
 Ltac heapletwise_step' logger :=

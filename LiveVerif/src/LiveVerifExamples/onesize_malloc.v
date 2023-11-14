@@ -94,6 +94,15 @@ Local Hint Unfold
   freeable
 : heapletwise_always_unfold.
 
+Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
+  lazymatch conclPred with
+  | malloc_state_t {| free_list := ?addr2 |} =>
+      lazymatch hypPred with
+      | malloc_state_t {| free_list := ?addr1 |} =>
+          is_evar addr2; unify addr1 addr2
+      end
+  end.
+
 Lemma recover_allocator_cannot_allocate: forall n,
     impl1 (allocator_cannot_allocate n) allocator.
 Proof.

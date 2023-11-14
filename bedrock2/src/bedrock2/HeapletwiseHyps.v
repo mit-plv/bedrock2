@@ -460,18 +460,20 @@ Set Printing Coercions.
       destruct b; fwd; eauto.
   Qed.
 
-  Lemma cancel_head: forall hs path {P: mem -> Prop} {Ps hs' m Rest},
-      with_mem m P ->
+  Lemma cancel_head: forall hs path {P P': mem -> Prop} {Ps hs' m Rest},
+      with_mem m P' ->
+      impl1 P' P ->
       mem_tree_lookup hs path = Some m ->
       mem_tree_remove hs path = Some hs' ->
       canceling Ps (interp_mem_tree hs') Rest ->
       canceling (P :: Ps) (interp_mem_tree hs) Rest.
   Proof.
-    unfold with_mem, canceling. intros. destruct H2 as [H2 HR]. split; [intros |exact HR].
+    unfold with_mem, canceling. intros. destruct H3 as [H3 HR]. split; [intros |exact HR].
+    eapply H0 in H.
     eapply seps_cons.
-    pose proof (split_mem_tree H0 H1 H3) as A.
+    pose proof (split_mem_tree H1 H2 H4) as A.
     unfold mmap.du in A. fwd.
-    specialize (H2 _ eq_refl).
+    specialize (H3 _ eq_refl).
     eapply split_du in A.
     eapply sep_comm.
     exists m1, m. auto.
@@ -525,11 +527,12 @@ Set Printing Coercions.
       canceling (cons F nil) (interp_mem_tree hs') Rest ->
       canceling (cons (sep P F) nil) (interp_mem_tree hs) Rest.
   Proof.
-    intros. eapply cancel_sep_head. eapply cancel_head; eassumption.
+    intros. eapply cancel_sep_head. eapply cancel_head; try eassumption. reflexivity.
   Qed.
 
-  Lemma canceling_last_step: forall hs path {P hs' m} {Rest: Prop},
-      with_mem m P ->
+  Lemma canceling_last_step: forall hs path {P P' hs' m} {Rest: Prop},
+      with_mem m P' ->
+      impl1 P' P ->
       mem_tree_lookup hs path = Some m ->
       mem_tree_remove hs path = Some hs' ->
       mem_tree_is_empty hs' = true ->
@@ -538,8 +541,8 @@ Set Printing Coercions.
   Proof.
     unfold canceling. simpl. intros. split. 2: assumption.
     intros.
-    eapply mem_tree_is_empty_sound in H2.
-    pose proof (consume_mem_tree H0 H1 H2 H4) as A. subst. assumption.
+    eapply mem_tree_is_empty_sound in H3.
+    pose proof (consume_mem_tree H1 H2 H3 H5) as A. subst. apply H0. assumption.
   Qed.
 
   (* for home-made rewrite *)
@@ -1044,7 +1047,11 @@ Ltac cancel_head_with_hyp H :=
                  | cons _ _ => open_constr:(cancel_head hs p H)
                  end in
       eapply lem;
-      [ reflexivity ..
+      [ lazymatch goal with
+        | |- impl1 ?P ?P => reflexivity (* fast, common path *)
+        | |- _ => idtac (* leave implication open for other tactics to pick up *)
+        end
+      | reflexivity ..
       | cbn [interp_mem_tree] ]
   end.
 
@@ -1087,6 +1094,8 @@ Ltac syntactic_unify_only_inst_r x y :=
       | _ => constr_eq x y
       end ].
 
+(* can be overridden with ::=, and can accept clause pairs that need a proof
+   produced by tactics outside this file (canceling will just leave a goal open) *)
 Ltac hyp_clause_matches_goal_clause hypClause goalClause :=
   syntactic_unify_only_inst_r hypClause goalClause.
 
@@ -1103,7 +1112,7 @@ Ltac canceling_step :=
                 let hs := reify_mem_tree om in
                 let p := path_in_mem_tree hs m in
                 let lem := lazymatch p with
-                           | nil => open_constr:(canceling_last_step hs p H)
+                           | nil => open_constr:(canceling_last_step hs p H impl1_refl)
                            | cons _ _ => open_constr:(cancel_frame_evar_filling_step hs p H)
                            end in
                 eapply lem;
@@ -1231,7 +1240,7 @@ Ltac canceling_step_in_hyp C :=
       let H := match goal with
                | H: with_mem _ ?P' |- _ =>
                    let __ := match constr:(Set) with
-                             |  _ => hyp_clause_matches_goal_clause P' P
+                             |  _ => syntactic_unify_only_inst_r P' P
                              end in H
                end in
       let m := lazymatch type of H with with_mem ?m _ => m end in

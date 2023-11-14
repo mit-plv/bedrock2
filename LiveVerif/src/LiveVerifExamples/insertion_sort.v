@@ -54,6 +54,9 @@ Derive insert SuchThat (fun_correct! insert) As insert_ok.
 .**/ } /**.
 Qed.
 
+Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
+  syntactic_unify_only_inst_r hypPred conclPred.
+
 (* Insertion sort *)
 #[export] Instance spec_of_insertion_sort: fnspec :=                                   .**/
 void insertion_sort(uintptr_t p, uintptr_t n) /**#

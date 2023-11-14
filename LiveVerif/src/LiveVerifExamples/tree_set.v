@@ -103,7 +103,7 @@ Proof.
   destruct sk; simpl in *|-.
   { exfalso. unfold with_mem, emp in *. intuition idtac. }
   repeat heapletwise_step.
-  do 5 eexists. split. 1: reflexivity.
+  eexists _, _, p0, v, q. split. 1: reflexivity.
   split. 1: eassumption.
   repeat heapletwise_step.
 Qed.
@@ -152,6 +152,16 @@ Ltac step_hook ::=
       reflexivity (* might instantiate evars and that's ok here, as long as the
                      address is the same on both sides *)
   | |- _ => solve [auto 3 with nocore safe_core]
+  end.
+
+(* address equality is already checked *)
+Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
+  lazymatch conclPred with
+  | bst' ?sk2 ?s2 =>
+      lazymatch hypPred with
+      | bst' ?sk1 ?s1 =>
+          syntactic_unify_only_inst_r hypPred conclPred
+      end
   end.
 
 #[export] Instance spec_of_bst_init: fnspec :=                              .**/
@@ -373,6 +383,7 @@ end.
   split; steps.
   all: intuition fail.
 }
+
 step. step. step. step. step.
 
                                                                                 .**/
