@@ -1215,6 +1215,38 @@ Lemma and_1_not_1_0: forall w, word.and w /[1] <> /[1] -> word.and w /[1] = /[0]
 Proof.
 Admitted.
 
+Lemma map_disjoint_singleton_l: forall (m: word_map) k v,
+  map.get m k = None -> map.disjoint (map.singleton k v) m.
+Proof.
+  intros. unfold map.singleton. apply map.disjoint_put_l. assumption.
+  apply map.disjoint_empty_l.
+Qed.
+
+Lemma map_disjoint_singleton_r: forall (m: word_map) k v,
+  map.get m k = None -> map.disjoint m (map.singleton k v).
+Proof.
+  intros. unfold map.singleton. apply map.disjoint_put_r. assumption.
+  apply map.disjoint_empty_r.
+Qed.
+
+Lemma map_putmany_singleton_l: forall (m: word_map) k v,
+  map.get m k = None -> map.putmany (map.singleton k v) m = map.put m k v.
+Proof.
+  intros. unfold map.singleton. rewrite <- map_put_putmany_left.
+  rewrite map.putmany_empty_l. reflexivity. assumption.
+Qed.
+
+Lemma map_putmany_singleton_r: forall (m: word_map) k v,
+  map.putmany m (map.singleton k v) = map.put m k v.
+Proof.
+  intros. unfold map.singleton. rewrite <- map_put_putmany_right.
+  rewrite map.putmany_empty_r. reflexivity.
+Qed.
+
+Ltac destruct_array_0 H :=
+  unfold anyval in H; destruct H; apply array_0_is_emp in H; [ | reflexivity ];
+  unfold emp in H; destruct H.
+
 #[export] Instance spec_of_cbt_insert_at: fnspec :=                             .**/
 
 uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /**#
@@ -1457,26 +1489,29 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   lia. lia. step. step.
 
   subst c. apply map_get_singleton_not_None in H8. subst w2. subst pr.
-  specialize (H10 k').
-  subst pr.
-  assert (\[cb] + 1 <= length pr).
+  epose proof (is_prefix_key_extend_0_or_1 _ _). destruct H8. 4: exfalso.
+  3: eassumption. simpl. lia. unfold is_prefix_key. unfold is_prefix.
+  unfold full_prefix. simpl. step. lia. rewrite clip_prefix_bits. congruence.
+  lia. lia. eapply H10. rewrite map_get_singleton_same. congruence.
+  eassert (Hlen: \[cb] + 1 = length ?[PR]); cycle 1. rewrite Hlen.
+  eapply same_prefix_bits_equality. eassumption. eapply is_prefix_key_extend_1.
+  simpl. lia. unfold is_prefix_key. unfold is_prefix. simpl.
+  rewrite clip_prefix_bits. step. step. step. step. step. step. simpl. step.
 
-  unfold append_0. simpl. unfold is_prefix. simpl.
-  unfold canonic_bits. simpl.
-  step. ste
+  step. step. pose proof H13. apply cbt_singleton_is_leaf in H27. subst sk0.
+  simpl (cbt' Leaf) in *. unfold "|=" in H13. repeat heapletwise_step.
+  subst p0. apply map_singleton_inj in H32. fwd. subst k0.
+  eapply is_prefix_key_extend_1. simpl. lia. unfold is_prefix_key.
+  unfold is_prefix. simpl. rewrite clip_prefix_bits. step. step. step. simpl.
+  step. step.
 
-step. unfold full_prefix in H5. simpl in H5.
+  step. unfold map.split. step. rewrite map_putmany_singleton_r. step.
+  apply map_disjoint_singleton_r. apply eq_None_by_false. intro.
+  apply H10 in H27. congruence.
+  destruct_array_0 H24. rewrite H24 in *.
+  destruct_array_0 H21. rewrite H21 in *.
+  unfold canceling. step. step. step. simpl. step. step. step. step. step.
 
-  simpl cbt'.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  eassert (Hsepapps:
-    <{ + uintptr ?[L] + uintptr ?[X] + uintptr ?[X2] }> p = ?[S]).
-  unfold sepapps. simpl. unfold sepapp. reflexivity.
-  rewrite Hsepapps. clear Hsepapps. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step.
-  step.
-  admit.
 
 
 uintptr_t new_leaf = cbt_alloc_leaf(k, v);
