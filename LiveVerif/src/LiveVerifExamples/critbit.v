@@ -293,6 +293,35 @@ Print HintDb purify.
 
 Local Hint Extern 1 (PredicateSize (cbt' ?sk)) => exact 12 : typeclass_instances.
 
+Lemma cbt_expose_fields (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word):
+  impl1 (cbt' sk p c a) (ex1 (fun w1 => ex1 (fun w2 => ex1 (fun w3 =>
+    <{ * freeable 12 a
+       * <{ + uintptr w1
+            + uintptr w2
+            + uintptr w3 }> a
+       * emp (a <> /[0])
+       * match sk with
+         | Leaf => <{ * emp (w1 = /[-1])
+                      * emp (p = full_prefix w2)
+                      * emp (c = map.singleton w2 w3) }>
+         | Node skL skR => ex1 (fun pL: prefix => ex1 (fun cL: word_map =>
+                           ex1 (fun pR: prefix => ex1 (fun cR: word_map =>
+                         <{ * emp (w1 = /[p.(length)])
+                            * cbt' skL pL cL w2
+                            * cbt' skR pR cR w3
+                            * emp (0 <= p.(length) <= 31)
+                            * emp (is_canonic p)
+                            * emp (is_prefix (append_0 p) pL)
+                            * emp (is_prefix (append_1 p) pR)
+                            * emp (map.split c cL cR) }>))))
+         end
+                                                              }> )))).
+Proof.
+  unfold impl1. intro m. intros. destruct sk; simpl cbt' in *.
+  - steps.
+  - steps. apply split_du. assumption.
+Qed.
+
 Lemma cbt_fields (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word) :
   impl1 (cbt' sk p c a) (ex1 (fun w2 => ex1 (fun w3 => ex1 (fun R =>
        <{ * <{ + uintptr
@@ -1146,6 +1175,46 @@ Proof.
   intros. unfold is_prefix_key. unfold is_prefix. simpl. rewrite H. tauto.
 Qed.
 
+Lemma same_prefix_bits_equality: forall pr k1 k2,
+  is_prefix_key pr k1 -> is_prefix_key pr k2 ->
+  prefix_bits (length pr) k1 = prefix_bits (length pr) k2.
+Proof.
+  intros. unfold is_prefix_key in *. unfold is_prefix in *.
+  simpl in *. fwd. congruence.
+Qed.
+
+Lemma eq_None_by_false {X : Type}: forall o: option X, ~(o <> None) -> o = None.
+Proof.
+  intros. destruct o. exfalso. apply H. congruence. congruence.
+Qed.
+
+Lemma map_get_singleton_not_None: forall k v k': word,
+  map.get (map.singleton k v) k' <> None -> k = k'.
+Proof.
+  intros. eq_neq_cases k k'; [ trivial | exfalso ].
+  rewrite map_get_singleton_diff in H; congruence.
+Qed.
+
+Lemma is_prefix_refl: forall pr, is_prefix pr pr.
+Proof.
+  intros. unfold is_prefix. step.
+Qed.
+
+Lemma is_prefix_key_refl: forall k, is_prefix_key (full_prefix k) k.
+Proof.
+  intros. unfold is_prefix_key. apply is_prefix_refl.
+Qed.
+
+Lemma is_prefix_key_extend_0_or_1: forall pr k,
+  0 <= length pr < 32 -> is_prefix_key pr k ->
+  (is_prefix_key (append_0 pr) k \/ is_prefix_key (append_1 pr) k).
+Proof.
+Admitted.
+
+Lemma and_1_not_1_0: forall w, word.and w /[1] <> /[1] -> word.and w /[1] = /[0].
+Proof.
+Admitted.
+
 #[export] Instance spec_of_cbt_insert_at: fnspec :=                             .**/
 
 uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /**#
@@ -1154,6 +1223,7 @@ uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /*
   requires t m := <{ * allocator
                      * cbt' sk pr c tp
                      * R }> m
+                  /\ 0 <= length total_pr
                   /\ is_prefix total_pr pr /\ is_prefix_key total_pr k
                   /\ 0 <= \[cb] < 32
                   /\ exists k',
@@ -1161,7 +1231,7 @@ uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /*
                          /\ prefix_bits \[cb] k' = prefix_bits \[cb] k)
                   /\ forall k',
                        (map.get c k' <> None ->
-                         prefix_bits \[cb] k' <> prefix_bits \[cb] k);
+                         prefix_bits (\[cb] + 1) k' <> prefix_bits (\[cb] + 1) k);
   ensures t' m' res := t' = t
                        /\ if \[res] =? 0 then
                             <{ * allocator_failed_below 12
@@ -1169,7 +1239,9 @@ uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /*
                                * R
                                * (fun _ => True) }> m'
                           else
-                            res = tp /\
+                            (* `id` is a hack to identify this occurrence when
+                                rewriting *)
+                            res = id tp /\
                             ex1 (fun sk' => ex1 (fun pr' =>
                               <{ * allocator
                                  * emp (is_prefix total_pr pr')
@@ -1178,9 +1250,11 @@ uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /*
 Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok.  .**/
 {                                                                           /**. .**/
   uintptr_t p = tp;                                                         /**.
+  assert (Htpnn: tp <> /[0]). apply purify_cbt' in H2. tauto.
+  move Htpnn after Scope1.
   rewrite <- Def0 in H2.
   move t before tp.
-  unfold ready. rewrite <- Def0. rewrite Def0 at 2.
+  unfold ready. rewrite <- Def0. rewrite Def0 at 2. replace (id p) with tp.
   delete #(p = ??).
   move sk at bottom. (*
   move c after Scope5.
@@ -1225,7 +1299,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   mess up our hypotheses -- so we create a copy of the context by splitting
   the current goal (?C) into (?A) and (?A -> ?C) *)
   eassert (imp: ?[A] -> ?[C]). 2: eapply imp. 2: clear imp. intro.
-  apply cbt_fields in H10. step. step. step. step. step. step. step. step.
+  apply cbt_fields in H11. step. step. step. step. step. step. step. step.
   apply hide in X.
   step. step. step. step. step. step. step.
   inversion X. eexact X0.
@@ -1235,12 +1309,12 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   (* in this case (loop condition true), sk must be an internal node *)
   destruct sk; [ exfalso; ZnWords | ].
 
-  pose proof H10 as Hprk'. eapply cbt_key_has_prefix in Hprk'. 2: eassumption.
-  simpl cbt' in H10. repeat heapletwise_step.
+  pose proof H11 as Hprk'. eapply cbt_key_has_prefix in Hprk'. 2: eassumption.
+  simpl cbt' in H11. repeat heapletwise_step.
   .**/
-      if (((k >> load(p)) & 1) == 1) /* split */ {                            /**. .**/
-        p = load(p + 8);                                                      /**. .**/
-      }                                                                       /**.
+    if (((k >> load(p)) & 1) == 1) /* split */ {                            /**. .**/
+      p = load(p + 8);                                                      /**. .**/
+    }                                                                       /**.
   new_ghosts (p, pR, append_1 pr, cR,
       <{ * R
          * freeable 12 p'
@@ -1248,21 +1322,182 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
               + uintptr aL
               + uintptr p }> p'
          * cbt' sk1 pL cL aL }>).
-  steps. apply is_prefix_key_extend_1. lia.
-  eapply clip_prefix_bits_equality with (n1:=length pr) in H8.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. simpl. step. step. step. step.
+  apply is_prefix_key_extend_1. lia.
+  eapply clip_prefix_bits_equality with (n1:=length pr) in H9.
   unfold is_prefix_key. unfold full_prefix. unfold is_prefix. simpl.
-  rewrite <- H8. unfold is_prefix_key in Hprk'. unfold full_prefix in Hprk'.
+  rewrite <- H9. unfold is_prefix_key in Hprk'. unfold full_prefix in Hprk'.
   unfold is_prefix in Hprk'. simpl in Hprk'. assumption. step. step. step.
-  destruct_split H18. subst c. apply map_get_putmany_not_None_iff in H7.
-  destruct H7; [ exfalso | assumption ]. eapply cbt_key_has_prefix in H11.
-  2: eassumption. eapply is_prefix_key_trans in H11. 4: eassumption.
-  eapply clip_prefix_bits_equality in H8.
-  rewrite bits_equality_is_prefix_key_iff in H11. 2: eassumption.
-  apply append_0_prefix in H11. ZnWords. lia. simpl. lia. lia. simpl. lia. lia.
-  apply H9. destruct_split H18. subst c. apply map_get_putmany_not_None_iff.
+  step. step. step.
+  destruct_split H19. subst c. apply map_get_putmany_not_None_iff in H8.
+  destruct H8; [ exfalso | assumption ]. eapply cbt_key_has_prefix in H12.
+  2: eassumption. eapply is_prefix_key_trans in H12. 4: eassumption.
+  eapply clip_prefix_bits_equality in H9.
+  rewrite bits_equality_is_prefix_key_iff in H12. 2: eassumption.
+  apply append_0_prefix in H12. ZnWords. lia. simpl. lia. lia. simpl. lia. lia.
+  step. step. step. step.
+  apply H10. destruct_split H19. subst c. apply map_get_putmany_not_None_iff.
   tauto.
-  rewrite H0 in *. cbv beta in HPp1.
-  4: eassumption.
+  step. step. step. step. unfold state_implication. clear D m.
+  step. destruct H18.
+  econstructor. eassumption. step. step. step. step. step.
+  rewrite H18 in *. change (0 =? 0) with true in HPp1. cbv iota in HPp1.
+  simpl cbt'. steps. apply split_du in H19. assumption. step.
+  replace (\[retv] =? 0) with false in HPp1; [ | lia ]. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  replace (\[retv] =? 0) with false in HPp1 by ZnWords.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. 2: instantiate (2:=Node sk1 sk').
+  2: simpl cbt'. 2: steps. step. destruct_split H19. subst c.
+  unfold map.split. step. apply map_put_putmany_right.
+  apply map.disjoint_put_r. apply eq_None_by_false. intro.
+  eapply cbt_key_has_prefix in H12. 2: eassumption.
+  eapply is_prefix_key_trans in H12. 4: eassumption.
+  apply append_0_prefix in H12. ZnWords. lia. simpl. lia. lia. assumption. .**/
+    else {                                                                    /**. .**/
+      p = load(p + 4);                                                        /**. .**/
+    }                                                                         /**.
+  new_ghosts (p, pL, append_0 pr, cL,
+      <{ * R
+         * freeable 12 p'
+         * <{ + uintptr /[length pr]
+              + uintptr p
+              + uintptr aR }> p'
+         * cbt' sk2 pR cR aR }>).
+  step. steps. simpl. steps. apply is_prefix_key_extend_0. lia.
+  eapply clip_prefix_bits_equality with (n1:=length pr) in H9.
+  rewrite bits_equality_is_prefix_key_iff. 2: symmetry. 2: eassumption.
+  assumption. lia. lia. apply and_1_not_1_0. assumption. destruct_split H19.
+  subst c. apply map_get_putmany_not_None_iff in H8. destruct H8;
+  [ assumption | exfalso ]. eapply cbt_key_has_prefix in H13. 2: eassumption.
+  eapply is_prefix_key_trans in H13. 4: eassumption.
+  eapply clip_prefix_bits_equality in H9.
+  eapply bits_equality_is_prefix_key_iff in H13. 2: symmetry. 2: eassumption.
+  apply append_1_prefix in H13. congruence. lia. simpl. lia. lia. simpl. lia.
+  lia. apply H10. destruct_split H19. subst c. apply map_get_putmany_not_None_iff.
+  tauto. step. step. step. unfold state_implication. clear D m. step.
+  destruct H18. econstructor. eassumption. step. step. step. step. step.
+  replace (\[retv] =? 0) with true in * by lia. simpl cbt'. steps.
+  apply split_du. assumption. replace (\[retv] =? 0) with false in * by lia.
+  step. step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step.
+  2: instantiate (2:=Node sk' sk2). 2: simpl cbt'. 2: steps. step.
+  destruct_split H19. subst c.
+  assert (map.get cR k = None).
+  apply eq_None_by_false. intro. eapply cbt_key_has_prefix in H13.
+  2: eassumption. eapply is_prefix_key_trans in H13. 4: eassumption.
+  eapply append_1_prefix in H13. congruence. lia. simpl. lia. lia.
+  unfold map.split. step.
+  apply map_put_putmany_left. assumption. apply map.disjoint_put_l. assumption.
+  replace (\[retv] =? 0) with false in * by lia. steps. .**/
+  }                                                                          /**. .**/
+  uintptr_t new_leaf = cbt_alloc_leaf(k, v);                                 /**. .**/
+  if (new_leaf == NULL) /* split */ {                                        /**. .**/
+    return NULL;                                                             /**.
+  change (0 =? 0) with true in H1. cbv iota in H1. .**/
+  }                                                                          /**. .**/
+  else {                                                                     /**.
+  replace (\[new_leaf] =? 0) with false in * by ZnWords. unfold "|=" in H1. .**/
+    uintptr_t new_node = malloc(12);                                         /**. .**/
+    if (new_node == NULL) /* split */ {                                      /**.
+  change (0 =? 0) with true in *. cbv iota in *. .**/
+      return NULL;                                                           /**. .**/
+    }                                                                        /**. .**/
+    else {                                                                   /**.
+  replace (\[new_node] =? 0) with false in * by ZnWords. unfold "|=" in H1.
+  apply cbt_expose_fields in H11. destruct H13; repeat step. .**/
+      store(new_node, load(p));                                              /**. .**/
+      store(new_node + 4, load(p + 4));                                      /**. .**/
+      store(new_node + 8, load(p + 8));                                      /**. .**/
+      store(p, cb);                                                          /**. .**/
+      if (((k >> cb) & 1) == 1) /* split */ {                                /**. .**/
+        store(p + 4, new_node);                                              /**. .**/
+        store(p + 8, new_leaf);                                              /**. .**/
+        return tp;                                                           /**. .**/
+      }                                                                      /*?.
+  step. step. step. step. step. steps. step. step. step. step.
+  instantiate (2:=Node sk sk0). step. step. step.
+  instantiate (1:={|length:=\[cb]; bits:=prefix_bits \[cb] k|}).
+  enough (length total_pr <= \[cb]).
+  unfold is_prefix. step. step. step. rewrite clip_prefix_bits.
+  unfold is_prefix_key in H6. unfold is_prefix in H6. simpl in H6. step.
+  assumption. lia. lia.
+  assert (length total_pr <= 32). unfold is_prefix_key in H6.
+  unfold full_prefix in H6. unfold is_prefix in H6. simpl in H6. lia.
+  assert (Hcmp: length total_pr <= \[cb] \/ \[cb] + 1 <= length total_pr). lia.
+  destruct Hcmp; [ assumption | exfalso ].
+  apply H10 with k'. assumption.
+  apply clip_prefix_bits_equality with (length total_pr). lia. lia.
+  apply same_prefix_bits_equality. 2: assumption.
+  enough (is_prefix_key pr k'). eapply is_prefix_key_trans in H28. 4: eassumption.
+  assumption. lia. destruct sk; unfold "|=" in H18; steps. subst pr. simpl. lia.
+  destruct sk; unfold "|=" in H18; steps. subst pr. subst c.
+  apply map_get_singleton_not_None in H8. subst w2. apply is_prefix_key_refl.
+  destruct_split H35. subst c. rewrite map_get_putmany_not_None_iff in H8.
+  destruct H8. eapply cbt_key_has_prefix in H18. 2: eassumption.
+  eapply is_prefix_trans. lia. 3: apply is_prefix_append_0. simpl. lia.
+  simpl. lia. lia. eapply is_prefix_trans. 4: eassumption. simpl. lia. lia.
+  simpl. lia. assumption.
+  eapply cbt_key_has_prefix in H29. 2: eassumption.
+  eapply is_prefix_trans. lia. 3: apply is_prefix_append_1. simpl. lia.
+  simpl. lia. lia. eapply is_prefix_trans. 4: eassumption. simpl. lia. lia.
+  simpl. lia. assumption.
+
+  simpl cbt'. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. instantiate (2:=c). instantiate (3:=pr).
+  destruct sk; simpl cbt'; unfold "|=" in H18; repeat heapletwise_step.
+  step. eassert (Hsepapps:
+    <{ + uintptr ?[I1] + uintptr ?[I2] + uintptr ?[I3] }> ?[P] = ?[S]).
+  unfold sepapps. simpl. unfold sepapp. reflexivity.
+  rewrite Hsepapps. clear Hsepapps. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step.
+  unfold is_canonic. unfold canonic_bits. simpl. apply clip_prefix_bits.
+  lia. lia. step. step.
+
+  subst c. apply map_get_singleton_not_None in H8. subst w2. subst pr.
+  specialize (H10 k').
+  subst pr.
+  assert (\[cb] + 1 <= length pr).
+
+  unfold append_0. simpl. unfold is_prefix. simpl.
+  unfold canonic_bits. simpl.
+  step. ste
+
+step. unfold full_prefix in H5. simpl in H5.
+
+  simpl cbt'.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  eassert (Hsepapps:
+    <{ + uintptr ?[L] + uintptr ?[X] + uintptr ?[X2] }> p = ?[S]).
+  unfold sepapps. simpl. unfold sepapp. reflexivity.
+  rewrite Hsepapps. clear Hsepapps. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step.
+  step.
+  admit.
+
+
+uintptr_t new_leaf = cbt_alloc_leaf(k, v);
+if (new_leaf == NULL) return tp;
+uintptr_t new_node = malloc(12);
+if (new_node == NULL) return tp;
+store(new_node, load(p));
+store(new_node + 4, load(p + 4));
+store(new_node + 8, load(p + 8));
+store(p, cb);
+if (((k >> cb) & 1) == 1) {
+  store(p + 4, new_node);
+  store(p + 8, new_leaf);
+}
+else {
+  store(p + 4, new_leaf);
+  store(p + 8, new_node);
+}
+return tp;
+
+}
 
 
 
