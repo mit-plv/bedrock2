@@ -222,6 +222,31 @@ Derive bst_init SuchThat (fun_correct! bst_init) As bst_init_ok.                
 }                                                                          /**.
 Qed.
 
+#[export] Instance spec_of_bst_alloc_node: fnspec :=                              .**/
+
+uintptr_t bst_alloc_node( ) /**#
+  ghost_args := (R: mem -> Prop);
+  requires t m := <{ * allocator
+                     * R }> m;
+  ensures t' m' res := t' = t /\
+                       ((\[res] =  0 /\ <{ * allocator_failed_below 12
+                                           * R }> m') \/
+                        (\[res] <> 0 /\ <{ * allocator
+                                           * freeable 12 res
+                                           * uintptr ? res
+                                           * uint 32 ? (res ^+ /[4])
+                                           * uintptr ? (res ^+ /[8])
+                                           * R }> m')) #**/                /**.
+Derive bst_alloc_node SuchThat (fun_correct! bst_alloc_node)
+As bst_alloc_node_ok.                                                           .**/
+{                                                                          /**. .**/
+  uintptr_t res = malloc(12);                                              /**. .**/
+  return res;                                                              /**. .**/
+}                                                                          /**.
+  destruct_one_match_hyp; steps.
+Qed.
+
+
 #[export] Instance spec_of_bst_add: fnspec :=                              .**/
 
 uintptr_t bst_add(uintptr_t p, uintptr_t vAdd) /**#
@@ -260,21 +285,17 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
     if (x == vAdd) /* split */ {                                           /**. .**/
       found = 1;                                                           /**. .**/
     }                                                                      /**.
-      (* Note: (Node skL skR) doesn't decrease but that's also not the measure *)
-      new_ghosts(_, _, Node skL skR , _). steps.
       (* arbitrarily pick skL, could also pick skR, just need something smaller *)
       eapply tree_skeleton_lt_l. constructor.                                   .**/
     else {                                                                 /**. .**/
       if (vAdd < x) /* split */ {                                          /**. .**/
         p = a;                                                             /**. .**/
         a = load(p);                                                       /**. .**/
-      }                                                                    /**.
-        new_ghosts(_, _, skL, _). steps.                                        .**/
+      }                                                                    /**. .**/
       else {                                                               /**. .**/
         p = a + 8;                                                         /**. .**/
         a = load(p);                                                       /**. .**/
-      }                                                                    /**.
-        new_ghosts(_, _, _, _). steps.                                          .**/
+      }                                                                    /**. .**/
     }                                                                      /**. .**/
   }                                                                        /**. .**/
   if (found) /* split */ {                                                 /**. .**/
@@ -284,37 +305,16 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
     /* key not found, so we zoomed into the tree until it is empty, and
        shrinked the function's postcondition and the context -- there's
        no more tree around, and we'll just retrun a singleton tree! */     /**. .**/
-    uintptr_t res = malloc(12);                                            /**. .**/
-    if (res) /* split */ {                                                 /**.
-      destruct_one_match_hyp. 1: solve [exfalso; steps].
-      let h := constr:(#(@with_mem)) in unfold with_mem in h. unfold ready. steps.
-
-      (* ugh, turning malloc'd bytes into a sepapps takes too much code: *)
-      assert (<{ * uintptr ? res
-                 * uint 32 ? (res ^+ /[4])
-                 * uintptr ? (res ^+ /[8]) }> m1). {
-        clear_mem_split_eqs. revert H2. clear_heapletwise_hyps.
-        intros. unfold anyval in *|-. repeat heapletwise_step.
-        set (mAll := m1).
-        assert (mmap.du (mmap.Def m1) (mmap.Def map.empty) = mmap.Def mAll) as D. {
-          rewrite mmap.du_empty_r. reflexivity.
-        }
-        clearbody mAll.
-        steps.
-      }
-      clear H2.
-      unfold ready. steps.
-
-                                                                                .**/
+    uintptr_t res = bst_alloc_node();                                      /**. .**/
+    if (res) /* split */ {                                                 /**. .**/
       store(res, 0);                                                       /**. .**/
       store32(res+4, vAdd);                                                /**. .**/
       store(res+8, 0);                                                     /**. .**/
       store(p, res);                                                       /**. .**/
       return 1;                                                            /**. .**/
     }                                                                      /**. .**/
-    else {                                                                 /**.
-      destruct_one_match_hyp. 2: exfalso; congruence.
-      (* malloc failed! *)                                                      .**/
+    else {                                                                 /**. .**/
+      /* malloc failed! */                                                 /**. .**/
       return 0;                                                            /**. .**/
     }                                                                      /**. .**/
   }                                                                        /**. .**/

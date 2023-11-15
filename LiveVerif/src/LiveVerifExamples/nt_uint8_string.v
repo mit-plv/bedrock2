@@ -228,6 +228,8 @@ Derive strCmp SuchThat (fun_correct! strCmp) As strCmp_ok.                      
     admit. (* List.compare_common_prefix *)
 Abort.
 
+Ltac provide_new_ghosts_hook ::= manual_new_ghosts.
+
 #[export] Instance strcmp_spec: fnspec :=                                       .**/
 
 uintptr_t strcmp(uintptr_t p1, uintptr_t p2) /**#

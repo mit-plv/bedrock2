@@ -885,21 +885,12 @@ Ltac new_mem_hyp h :=
          || new_heapletwise_hyp_hook h t
   end.
 
-Ltac split_sep_step :=
-  let D := fresh "D" in
-  let m1 := fresh "m0" in
-  let m2 := fresh "m0" in
-  let H1 := fresh "H0" in
-  let H2 := fresh "H0" in
-  lazymatch goal with
-  | H: with_mem ?m1 (eq ?m2) |- _ =>
-      match goal with
-      | H': with_mem m2 _ |- _ => move H' after H
-      | |- _ => idtac
-      end;
-      unfold with_mem in H; subst m1
-  | H: sep _ _ _ |- _ =>
-    autounfold with heapletwise_always_unfold in H;
+Ltac split_sep_step_in H :=
+    let D := fresh "D" in
+    let m1 := fresh "m0" in
+    let m2 := fresh "m0" in
+    let H1 := fresh "H0" in
+    let H2 := fresh "H0" in
     lazymatch type of H with
     | @sep _ _ ?mem ?P ?Q ?parent_m =>
       let unpackP := should_unpack P in
@@ -940,7 +931,23 @@ Ltac split_sep_step :=
           end
       | unit => idtac
       end
-    end
+    end.
+
+Ltac split_sep_step :=
+  lazymatch goal with
+  | H: with_mem ?m1 (eq ?m2) |- _ =>
+      match goal with
+      | H': with_mem m2 _ |- _ => move H' after H
+      | |- _ => idtac
+      end;
+      unfold with_mem in H; subst m1
+  | H: sep _ _ _ |- _ =>
+      autounfold with heapletwise_always_unfold in H;
+      split_sep_step_in H
+  | H: with_mem ?m (sep ?P ?Q) |- _ =>
+      change (sep P Q m) in H;
+      autounfold with heapletwise_always_unfold in H;
+      split_sep_step_in H
   end.
 
 Ltac destruct_ex1_as H name :=
@@ -1055,6 +1062,14 @@ Ltac cancel_head_with_hyp H :=
       | cbn [interp_mem_tree] ]
   end.
 
+Ltac decomposing_intro :=
+  match goal with
+  | |- _ -> ?P =>
+      let H := fresh in intro H;
+      try (progress (decompose [ex and or] H); clear H)
+  | |- forall _, _ => intro
+  end.
+
 (* An evar/frame trick inspired by unfolding the definition of magic wand.
    Advantages:
    - Works even if the predicates about the remaining memory contain variables
@@ -1079,8 +1094,8 @@ Ltac instantiate_frame_evar_with_remaining_obligation :=
   | |- canceling (cons ?R nil) ?om (enable_frame_trick ?P) =>
       let P := lazymatch eval pattern R in P with ?f _ => f end in
       eapply (canceling_done_frame_generic om P);
-      [ solve [clear; unfold sep; intros; fwd; eauto 20] | ]
-end.
+      [ solve [clear; unfold sep; repeat decomposing_intro; eauto 40] | ]
+  end.
 
 (* both x and y may contain evars, but only evars in y will be instantiated *)
 Ltac syntactic_unify_only_inst_r x y :=

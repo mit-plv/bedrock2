@@ -142,6 +142,8 @@ Derive sll_reverse SuchThat (fun_correct! sll_reverse) As sll_reverse_ok.       
 }                                                                          /**.
 Qed.
 
+Ltac provide_new_ghosts_hook ::= manual_new_ghosts.
+
 #[export] Instance spec_of_sll_inc: fnspec := .**/
 
 void sll_inc(uintptr_t p) /**#

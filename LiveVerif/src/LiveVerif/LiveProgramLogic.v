@@ -564,6 +564,16 @@ Ltac _new_ghosts g :=
 
 Tactic Notation "new_ghosts" open_constr(g) := _new_ghosts g.
 
+Ltac guess_new_ghosts :=
+  lazymatch goal with
+  | |- provide_new_ghosts ?g => change (ex g)
+  end.
+
+Ltac manual_new_ghosts := fail.
+
+(* Can be overridden to guess_new_ghosts or manual_new_ghosts *)
+Ltac provide_new_ghosts_hook := guess_new_ghosts.
+
 Ltac is_local_var name :=
   lazymatch goal with
   | |- wp_cmd _ _ _ _ (map.of_list ?l) _ =>
@@ -1156,7 +1166,7 @@ Ltac one_step :=
   | |- after_if _ _ _ _ _ _ => fail
   | |- needs_opening_else_and_lbrace _ => fail
   | |- expect_1expr_return _ _ _ _ => fail
-  | |- provide_new_ghosts _ => fail
+  | |- provide_new_ghosts _ => provide_new_ghosts_hook
   | _: tactic_error _ |- _ => fail
   | |- _ => step_silent
   end.
