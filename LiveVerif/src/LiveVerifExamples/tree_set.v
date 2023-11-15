@@ -153,18 +153,19 @@ Ltac zset_solver :=
   | |- _ <-> _ => split
   | |- _ => idtac
   end;
-  steps;
-  intuition (lia || congruence).
+  intuition (lia || congruence || solve [eauto 3]).
 
 Ltac step_hook ::=
   match goal with
   | |- _ => progress cbn [bst']
   | sk: tree_skeleton |- _ => progress subst sk
   | |- same_set _ _ => reflexivity (* <- might instantiate evars and we're fine with that *)
-  | |- same_set _ _ => solve [zset_solver]
-  | |- is_empty_set _ => solve [zset_solver]
+  | |- same_set _ _ => zset_solver
+  | |- is_empty_set _ => zset_solver
   | H: _ |= bst' _ _ ?p, E: ?p = /[0] |- _ =>
       assert_fails (has_evar H); eapply (invert_bst'_null E) in H
+  | H: _ |= bst' _ _ ?p, E: \[?p] = 0 |- _ =>
+      eapply invert_bst'_null in H; [ | zify_goal; xlia zchecker ]
   | H: _ |= bst' _ _ ?p, N: ?p <> /[0] |- _ =>
       assert_fails (has_evar H); eapply (invert_bst'_nonnull N) in H
   | H: ?addr <> /[0] |- context[bst' ?sk_evar _ ?addr] =>
@@ -178,11 +179,18 @@ Ltac step_hook ::=
           | context[s] => unique pose proof (H v)
           end
       end
-  | s: set Z |- _ => match goal with
-                     | H: s ?x1 |- s ?x2 => replace x2 with x1; [exact H | solve[steps]]
-                     end
-  | H: ?res = 0 /\ _ \/ ?res = 1 /\ _
-    |- ?res = 0 /\ _ \/ ?res = 1 /\ _ => destruct H; [left|right]
+  | s: set Z |- _ =>
+      match goal with
+      | H: s ?x1 |- s ?x2 =>
+          assert_fails (idtac; has_evar x2);
+          assert_fails (idtac; has_evar x1);
+          replace x2 with x1; [exact H | solve[steps]]
+      | |- ~ s _ => zset_solver
+      end
+  | H: ?res = ?c1 /\ _ \/ ?res = ?c2 /\ _
+    |- ?res = ?c1 /\ _ \/ ?res = ?c2 /\ _ =>
+      assert_succeeds (idtac; assert (c1 <> c2) by (zify_goal; xlia zchecker));
+      destruct H; [left|right]
   | |- ?A \/ ?B =>
       tryif (assert_succeeds (assert (~ A) by (zify_goal; xlia zchecker)))
       then right else
@@ -274,7 +282,7 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
   delete (#(found = /[0])).
   move p after t.
   move sk before t.
-  Local Arguments ready : clear implicits.
+  (* Local Arguments ready : clear implicits. *)
   loop invariant above a.
   (* Ltac log_packaged_context P ::= idtac P. *)
                                                                                 .**/
@@ -323,92 +331,59 @@ Qed.
 
 #[export] Instance spec_of_bst_contains: fnspec :=                              .**/
 
-uintptr_t bst_contains(uintptr_t p, uintptr_t v) /**#
+uintptr_t bst_contains(uintptr_t p, uintptr_t query) /**#
   ghost_args := s (R: mem -> Prop);
   requires t m := <{ * bst s p
                      * R }> m;
   ensures t' m' b := t' = t /\
-                     (\[b] = 1 /\ s \[v] \/ \[b] = 0 /\ ~ s \[v]) /\
+                     (\[b] = 1 /\ s \[query] \/ \[b] = 0 /\ ~ s \[query]) /\
                      <{ * bst s p
                         * R }> m' #**/                                     /**.
 Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    .**/
 {                                                                          /**. .**/
-  uintptr_t res = 0;                                                       /**. .**/
+  uintptr_t found = 0;                                                     /**. .**/
   uintptr_t a = load(p);                                                   /**.
 
-  let h := constr:(#bst') in loop pre above h.
-  (* TODO this step is needed because `m2 |= uintptr a p` will get pulled into
-     the loop pre/post even though it could remain outside (because we currently
-     mention the whole memory in the loop). Better: Use/integrate frame rule in
-     loop rule so that unneeded mem hyps can stay outside *)
-  let h := constr:(#(uintptr a p)) in remember a as root in h.
-
-  unfold ready.
-  let cond := constr:(live_expr:(!res && a != 0)) in
-  let measure0 := constr:(sk) in
-  eapply (wp_while_tailrec_skip_last_pre measure0 (s, a, R) cond).
-  1: eauto with wf_of_type.
-  { collect_heaplets_into_one_sepclause.
-    package_context. }
-  { start_loop_body.
-    steps.
-    { (* loop condition false implies post (which could be constructed here from
-         the context, hopefully) *)
-      instantiate (1 := fun '(s, olda, F, sk, ti, mi, li) =>
-                        exists newa res,
-                        li = map.of_list [|("a", newa); ("p", p); ("res", res); ("v", v)|] /\
-                          <{ * uintptr a p
-                             * freeable 4 p
-                             * bst' sk s olda
-                             * F }> mi /\
-                        (\[res] = 1 /\ s \[v] \/ \[res] = 0 /\ ~ s \[v]) /\
-                        ti = t).
-      cbv beta iota.
-      steps.
-(*
-    }
-    (* loop body: *)
+  move sk after found.
+  pose (measure := sk).
+  loop invariant above a.
+  prove (found = /[0] /\ measure = sk \/ found = /[1] /\ s \[query]) as A.
+  move A before found.
+  delete #(found = ??).
+  clearbody measure.
+  move sk before t.
+  (* Ltac log_packaged_context P ::= idtac P. *)
                                                                                 .**/
+  while (!found && a != 0)
+    /* initial_ghosts(p, s, sk, R); decreases measure */
+  {                                                                        /**. .**/
     uintptr_t here = load32(a+4);                                          /**. .**/
-    if (v < here) /* split */ {                                            /**. .**/
-      a = load(a);                                                         /**. .**/
-    }                                                                      /*?.
-
-step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step.
-step. step.
-
-step. (* change: applies invert_bst'_nonnull in H3, earlier than before! *)
-
-step. step. step. step. step. step. step. step. new_ghosts(_, _, _). step. step. step.
-step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step.
-
-.**/
+    if (query < here) /* split */ {                                        /**. .**/
+      p = a;                                                               /**. .**/
+      a = load(p);                                                         /**. .**/
+    }                                                                      /**. .**/
     else {                                                                 /**. .**/
-      if (here < v) /* split */ {                                          /**. .**/
-        a = load(a+8);                                                     /**. .**/
+      if (here < query) /* split */ {                                      /**. .**/
+        p = a + 8;                                                         /**. .**/
+        a = load(p);                                                       /**. .**/
       }                                                                    /**. .**/
       else {                                                               /**. .**/
-        res = 1;                                                           /**. .**/
-      }                                                                    /**. .**/
+        found = 1;                                                         /**. .**/
+      }                                                                    /**.
+        (* arbitrarily pick skL, could also pick skR, just need something smaller *)
+        eapply tree_skeleton_lt_l. constructor.                                 .**/
     }                                                                      /**. .**/
-  }                                                                        /**.
-  }
-  (* after loop *)
-  subst a. clear res Def0.
-  clear_until_LoopInvOrPreOrPost_marker.
-  steps.
-  subst l.
-                                                                                .**/
-  return res;                                                              /**. .**/
+  }                                                                        /**. .**/
+  return found;                                                            /**. .**/
 }                                                                          /**.
+  destr (\[a] =? 0); steps. zset_solver.
 Qed.
-*)
-Abort.
 
-(* note: inability to break out of loop is cumbersome, because it complicates pre:
-   it has to incorporate almost all of post for the res=true case,
-   and even if we break, we still have to decrease the termination measure *)
+(* Note: inability to break out of loop is cumbersome, because it complicates pre:
+   - it has to incorporate almost all of post for the res=true case
+     ==> not too bad though, in these examples
+   - and even if we are done, we still have to decrease the termination measure
+     ==> trick: separate variable for termination measure, and only link it to sep
+         clauses in pre if done flag is false *)
 
 End LiveVerif. Comments .**/ //.
