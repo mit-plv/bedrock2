@@ -248,7 +248,7 @@ uintptr_t bst_alloc_node( ) /**#
 Derive bst_alloc_node SuchThat (fun_correct! bst_alloc_node)
 As bst_alloc_node_ok.                                                           .**/
 {                                                                          /**. .**/
-  uintptr_t res = malloc(12);                                              /**. .**/
+  uintptr_t res = Malloc(12);                                              /**. .**/
   return res;                                                              /**. .**/
 }                                                                          /**.
   destruct_one_match_hyp; steps.
@@ -286,7 +286,7 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
   loop invariant above a.
   (* Ltac log_packaged_context P ::= idtac P. *)
                                                                                 .**/
-  while (a != NULL && !found)
+  while (a && !found)
     /* initial_ghosts(p, s, sk, R); decreases(measure) */
   {                                                                        /**. .**/
     uintptr_t x = load32(a + 4);                                           /**. .**/

@@ -117,22 +117,26 @@ Proof.
   eapply sep_emp_r in H. eapply recover_allocator_cannot_allocate. eapply H.
 Qed.
 
-#[export] Instance spec_of_malloc_init: fnspec :=                                .**/
+Axiom TODO: False.
 
-uintptr_t malloc_init (uintptr_t p, uintptr_t n) /**#
+#[export] Instance spec_of_Malloc_init: fnspec :=                                .**/
+
+void Malloc_init (uintptr_t p, uintptr_t n) /**#
   ghost_args := (R: mem -> Prop);
   requires t m := 8 <= malloc_block_size < 2 ^ 32 /\
                   \[n] mod malloc_block_size = 0 /\
+                  \[p] + \[n] < 2 ^ 32 /\ (* <-- no wrap around because otherwise
+                                             some pointers in free list might be null *)
                   <{ * array (uint 8) (sizeof malloc_state_t) ? /[malloc_state_ptr]
                      * array (uint 8) \[n] ? p
                      * R }> m;
-  ensures t' m' p := t' = t /\
+  ensures t' m' := t' = t /\
         <{ * allocator
            * R }> m' #**/                                                     /**.
-Derive malloc_init SuchThat (fun_correct! malloc_init) As malloc_init_ok.          .**/
+Derive Malloc_init SuchThat (fun_correct! Malloc_init) As Malloc_init_ok.          .**/
 {                                                                          /**. .**/
   store(malloc_state_ptr, p);                                              /**. .**/
-  uintptr_t tail = NULL;                                                   /**. .**/
+  uintptr_t tail = 0;                                                      /**. .**/
   uintptr_t head = p + n;                                                  /**.
 
   assert (\[n] = \[n] / malloc_block_size * malloc_block_size) as NAlt. {
@@ -146,7 +150,8 @@ Derive malloc_init SuchThat (fun_correct! malloc_init) As malloc_init_ok.       
   }
   forget (\[n] / malloc_block_size) as c.
   let h := find #(array (uint 8)) in rewrite NAlt in h.
-  let h := find #(head = ??) in replace n with /[c * malloc_block_size] in Def1 by steps.
+  let h := find #(\[p] + \[n]) in rewrite NAlt in h.
+  let h := find #(head = ??) in replace n with (/[c] ^* /[malloc_block_size]) in Def1 by steps.
   pose proof (fixed_size_free_list_nil malloc_block_size tail map.empty
                 ltac:(assumption) ltac:(unfold emp; auto)) as A.
   rewrite <- (mmap.du_empty_r m3) in D0.
@@ -155,16 +160,86 @@ Derive malloc_init SuchThat (fun_correct! malloc_init) As malloc_init_ok.       
   delete #(tail = ??).
   let h := find #(8 <= malloc_block_size) in move h after tail.
   delete #(?? mod malloc_block_size = 0).
+  prove (c * malloc_block_size < 2 ^ 32).
+  delete #(\[n] = ??). (* try to not use n any more *)
   loop invariant above tail.
                                                                                 .**/
   while (head != p) /* decreases c */ {                                    /**. .**/
-    head = head - malloc_block_size;                                       /**. .**/
-    store(head, tail);                                                     /**.
-Abort.
+    head = head - malloc_block_size;                                       /**.
 
-#[export] Instance spec_of_malloc: fnspec :=                                    .**/
+    assert (\[head ^- p] + 4 <= c * malloc_block_size). {
+      (* TODO can we automate this proof so that the assertion is not needed
+         any more, because the subrange check that needs it finds it on its own? *)
+      subst head.
+      subst head'.
+      bottom_up_simpl_in_goal.
+      zify_hyps.
+      assert (0 < c) by lia.
+      replace (/[c]) with (/[c-1] ^+ /[1]).
+      2: solve [steps].
+      bottom_up_simpl_in_goal.
+      zify_goal.
+      lia.
+    }                                                                           .**/
+    store(head, tail);                                                     /**. .**/
+    tail = head;                                                           /**. .**/
+  }                                                                        /*?.
+    lazymatch goal with
+    | H: merge_step _ |- _ => clear H
+    end.
+    step. step. step. step. step. step. step. step. step. step. step. step. step.
+    instantiate (1 := c - 1). solve [step].
+    2: solve [step].
+    steps.
 
-uintptr_t malloc (uintptr_t n) /**#
+    unzify.
+    case TODO.
+(*
+    assert (\[tail] <> 0). {
+      subst.
+      assert (0 < c) by lia.
+      replace (/[c]) with (/[c-1] ^+ /[1]).
+      2: solve [steps].
+      bottom_up_simpl_in_goal.
+      zify_goal.
+      lia.
+
+      zify_goal.
+ by steps.
+    2: {
+    clear Error. unfold find_hyp_for_range.
+    unzify.
+
+
+assert (subrange head 4 p (c * malloc_block_size * 1)). {
+  unfold subrange.
+  subst head.
+  subst head'.
+  bottom_up_simpl_in_goal.
+
+  clear Error.
+  assert (0 < c) by lia.
+  replace (/[c]) with (/[c-1] ^+ /[1]).
+  2: solve [steps].
+  bottom_up_simpl_in_goal.
+
+  zify_goal.
+  lia.
+
+clear Error.
+Search p.
+
+jj
+*)
+                                                                                .**/
+}                                                                          /**.
+  all: case TODO.
+  Unshelve. try exact (word.of_Z 0).
+Qed.
+
+#[export] Instance spec_of_Malloc: fnspec :=                                    .**/
+
+uintptr_t Malloc (uintptr_t n) /**#
   ghost_args := (R: mem -> Prop);
   requires t m := <{ * allocator
                      * R }> m;
@@ -176,7 +251,7 @@ uintptr_t malloc (uintptr_t n) /**#
                                 * array (uint 8) \[n] ? p
                                 * freeable \[n] p }>)
                         * R }> m' #**/                                     /**.
-Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      .**/
+Derive Malloc SuchThat (fun_correct! Malloc) As Malloc_ok.                      .**/
 {                                                                          /**. .**/
   uintptr_t l = load(malloc_state_ptr);                                    /**. .**/
   if (l != 0 && n <= malloc_block_size) /* split */ {                      /**.
@@ -205,7 +280,7 @@ Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      
   }                                                                        /**.
     replace (\[l] =? 0) with false; steps.                                      .**/
   else {                                                                   /**. .**/
-    return NULL;                                                           /**. .**/
+    return 0;                                                              /**. .**/
   }                                                                        /**.
     replace (\[/[0]] =? 0) with true; steps.
     instantiate (1 := \[n]). 1-2: steps.
@@ -213,9 +288,9 @@ Derive malloc SuchThat (fun_correct! malloc) As malloc_ok.                      
 }                                                                          /**.
 Qed.
 
-#[export] Instance spec_of_free: fnspec :=                                      .**/
+#[export] Instance spec_of_Free: fnspec :=                                      .**/
 
-void free (uintptr_t p) /**#
+void Free (uintptr_t p) /**#
   ghost_args := n (R: mem -> Prop);
   requires t m := <{ * allocator
                      * array (uint 8) \[n] ? p
@@ -224,7 +299,7 @@ void free (uintptr_t p) /**#
   ensures t' m' := t' = t /\
                    <{ * allocator
                       * R }> m' #**/                                       /**.
-Derive free SuchThat (fun_correct! free) As free_ok.                            .**/
+Derive Free SuchThat (fun_correct! Free) As Free_ok.                            .**/
 {                                                                          /**.
   pose proof merge_anyval_array as M.
   specialize M with (addr :=  p).

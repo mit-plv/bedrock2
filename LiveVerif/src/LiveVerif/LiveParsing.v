@@ -143,8 +143,6 @@ Notation "deref32( a )" := (deref access_size.four a)
 Notation "deref( a )" := (deref access_size.word a)
   (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
 
-Notation NULL := 0.
-
 Set Ltac2 Backtrace.
 
 Goal forall (word: Type) (x: word),
@@ -291,8 +289,8 @@ Goal True.
   pose */ uintptr_t s = O(1, 2); /*.
   pose */ uintptr_t s = O(10, s, s); /*.
   pose live_expr:(s << s) as x.
-  pose */ store(s, NULL); /*.
-  pose */ if (s != NULL) { /*.
+  pose */ store(s, 0); /*.
+  pose */ if (s != 0) { /*.
   pose */ s = s; /*.
   pose */ s = 12; /*.
   pose */ s = (-12); /*.

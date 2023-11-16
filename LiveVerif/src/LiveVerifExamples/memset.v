@@ -11,9 +11,9 @@ Ltac log_packaged_context P ::=
   end.
 *)
 
-#[export] Instance spec_of_memset: fnspec :=                                    .**/
+#[export] Instance spec_of_Memset: fnspec :=                                    .**/
 
-void memset(uintptr_t a, uintptr_t b, uintptr_t n) /**#
+void Memset(uintptr_t a, uintptr_t b, uintptr_t n) /**#
   ghost_args := bs (R: mem -> Prop);
   requires t m := <{ * array (uint 8) \[n] bs a
                      * R }> m /\
@@ -21,7 +21,7 @@ void memset(uintptr_t a, uintptr_t b, uintptr_t n) /**#
   ensures t' m' := t' = t /\
        <{ * array (uint 8) \[n] (List.repeatz \[b] \[n]) a
           * R }> m' #**/                                                   /**.
-Derive memset SuchThat (fun_correct! memset) As memset_ok.                      .**/
+Derive Memset SuchThat (fun_correct! Memset) As Memset_ok.                      .**/
 {                                                                          /**. .**/
   uintptr_t i = 0;                                                         /**.
 

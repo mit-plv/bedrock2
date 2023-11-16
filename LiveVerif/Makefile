@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: clean force all noex ex install_noex install_ex install test
+.PHONY: clean force all noex ex install_noex install_ex install c_tests
 
 # absolute paths so that emacs compile mode knows where to find error
 # use cygpath -m because Coq on Windows cannot handle cygwin paths
@@ -45,7 +45,10 @@ ex: Makefile.coq.ex $(VS_EX) noex
 	rm -f .coqdeps.d
 	$(MAKE) -f Makefile.coq.ex
 
-all: noex ex
+c_tests: ex
+	$(MAKE) -C $(EXDIR)
+
+all: noex ex c_tests
 
 COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject -docroot LiveVerif $(COQMF_ARGS)
 
@@ -60,6 +63,7 @@ Makefile.coq.ex: force _CoqProject
 force:
 
 clean:: Makefile.coq.noex Makefile.coq.ex
+	$(MAKE) -C $(EXDIR) clean
 	$(MAKE) -f Makefile.coq.noex clean
 	$(MAKE) -f Makefile.coq.ex clean
 	find . -type f \( -name '*~' -o -name '*.aux' -o -name '.lia.cache' -o -name '.nia.cache' \) -delete

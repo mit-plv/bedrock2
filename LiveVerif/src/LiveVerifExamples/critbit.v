@@ -238,7 +238,7 @@ uintptr_t cbt_init( ) /**#
                           * R }> m' #**/                                   /**.
 Derive cbt_init SuchThat (fun_correct! cbt_init) As cbt_init_ok.                .**/
 {                                                                          /**. .**/
-  return NULL;                                                             /**. .**/
+  return 0;                                                                /**. .**/
 }                                                                          /**.
 unfold cbt. exists (map.empty). exists m. step. apply map.split_empty_l.
 step. step. right. unfold emp. tauto. tauto.
@@ -375,14 +375,11 @@ Proof.
     rewrite E in H0. rewrite <- H0. discriminate.
 Qed.
 
-#[export] Instance spec_of_dummy: fnspec := .**/
-uintptr_t dummy( ) /**#
-  ghost_args := (R: mem -> Prop);
-  requires t m := True;
-                  ensures t' m' res := True #**/ /**. About spec_of_dummy.
-
 (* observation: if A and B both can't be purified, purify_rec fails on sep A B, but
 not on sep A P or sep P B, where P can be purified *)
+
+(* needed because the other notation contains a closing C comment *)
+Notation "a ||| b" := (mmap.du a b) (at level 34, no associativity).
 
 Lemma wand_trans : forall (P Q R : mem -> Prop),
     impl1 <{ * wand P Q * wand Q R }> (wand P R).
@@ -390,7 +387,7 @@ Proof.
   (* Set Printing Coercions. *)
   unfold impl1. intros. unfold wand in *. intros. steps. unfold "|=" in *.
   rewrite mmap.du_assoc in H0. rewrite mmap.du_comm in H0.
-  rewrite mmap.du_assoc in H0. remember (m1 \*/ m0). destruct m.
+  rewrite mmap.du_assoc in H0. remember (m1 ||| m0). destruct m.
   eapply H3. rewrite split_du. eassumption. eapply H2. rewrite split_du.
   symmetry. rewrite mmap.du_comm. eassumption. assumption. discriminate.
 Qed.
@@ -452,9 +449,9 @@ Proof.
 Qed.
 
 Lemma du_def_split : forall (m m1 : mem) (mm: mmap mem),
-    mm \*/ m1 = m -> exists m2 : mem, mm = m2 /\ map.split m m2 m1.
+    mm ||| m1 = m -> exists m2 : mem, mm = m2 /\ map.split m m2 m1.
 Proof.
-  intros. pose proof H. unfold "\*/" in H0. destruct mm eqn:E. exists m0.
+  intros. pose proof H. unfold "|||" in H0. destruct mm eqn:E. exists m0.
   split. reflexivity. apply split_du. assumption. discriminate.
 Qed.
 
@@ -650,7 +647,7 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   step. step. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step. step.
   unfold state_implication.
-  (* ^^ step on state_implication clears c = cL \*/ cR (which we need) *)
+  (* ^^ step on state_implication clears c = cL ||| cR (which we need) *)
   step. destruct H1. step. econstructor. eassumption. apply split_du in H12.
   unfold map.split in H12. destruct H12. subst c. step. step. step.
   destruct (map.get cR retv) eqn:E; [ | congruence ]. intro.
@@ -787,9 +784,8 @@ Derive cbt_best_leaf SuchThat (fun_correct! cbt_best_leaf) As cbt_best_leaf_ok. 
   subst v.
   instantiate (3:=(match sk' with | Leaf => ?[ME1] | _ => ?[ME2] end)).
   destruct sk'; cycle 1. simpl cbt' in *. steps.
-  .**/
-  (* without "== 1", not supported in one of the tactics *)
-    if (((k >> load(p)) & 1) == 1) /* split */ {                           /**. .**/
+  (* without "== 1", not supported in one of the tactics *)                       .**/
+    if (((k >> load(p)) & 1) == 1) /* split */ {                             /**. .**/
       p = load(p + 8);                                                       /**. .**/
     }                                                                        /**.
   unfold canceling. unfold seps. step. step. step. eapply wand_trans.
@@ -896,7 +892,7 @@ uintptr_t cbt_lookup(uintptr_t tp, uintptr_t k, uintptr_t val_out) /**#
                  * R }> m'         #**/                                     /**.
 Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.           .**/
 {                                                                           /**. .**/
-  if (tp == NULL) /* split */ {                                             /**. .**/
+  if (tp == 0) /* split */ {                                                /**. .**/
     return 0;                                                               /**. .**/
   }                                                                         /**.
   destruct H0. steps. apply purify_cbt' in H0. steps. apply purify_emp in H0.
@@ -908,12 +904,12 @@ Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.          
   [ | contradiction ]. .**/
     uintptr_t n = cbt_best_leaf(tp, k);                                     /*?.
   steps. unfold enable_frame_trick.enable_frame_trick. steps. .**/
-    uintptr_t k' = load(n + 4);                                             /*?.
+    uintptr_t kk = load(n + 4);                                             /*?.
   simpl in H1. step. step. step. step. step. step. step.
   match goal with
   | H: map.singleton _ _ = map.singleton _ _ |- _ => apply map_singleton_inj in H
   end. fwd. subst k0. steps. .**/
-    if (k' == k) /* split */ {                                              /**. .**/
+    if (kk == k) /* split */ {                                              /**. .**/
       store(val_out, load(n + 8));                                          /**. .**/
       return 1;                                                             /**. .**/
     }                                                                       /**.
@@ -922,12 +918,12 @@ Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.          
   unfold canceling. step. step. step. apply or1_seps. left. simpl. step.
   step. step. step. instantiate (2:=sk). instantiate (1:=p). step.
   clear D H0 m0.
-  assert ((m11 \*/ (m1 \*/ (m5 \*/ m7))) \*/ m4 = m11 \*/ (((m1 \*/ m4) \*/ m5) \*/ m7)).
+  assert ((m11 ||| (m1 ||| (m5 ||| m7))) ||| m4 = m11 ||| (((m1 ||| m4) ||| m5) ||| m7)).
   rewrite mmap.du_assoc. f_equal. rewrite (mmap.du_assoc _ _ m4).
   rewrite (mmap.du_comm _ m4). repeat rewrite mmap.du_assoc. reflexivity.
-  remember (m1 \*/ m4 \*/ m5) as m0. destruct m0; cycle 1. rewrite D0 in H0.
+  remember (m1 ||| m4 ||| m5) as m0. destruct m0; cycle 1. rewrite D0 in H0.
   simpl in H0. discriminate. rewrite H0. clear H0. assert (cbt' sk p c tp m0).
-  remember (m1 \*/ m4) as ma. destruct ma; [ | discriminate ].
+  remember (m1 ||| m4) as ma. destruct ma; [ | discriminate ].
   symmetry in Heqm0.
   eassert (<{ * ?[P] * (wand ?P ?[Q]) }> m0). eapply manual_du_on_sep. 3: eassumption.
   2: eassumption. unfold cbt'. steps. symmetry in Heqma. steps.
@@ -942,11 +938,11 @@ Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.          
   assert (map.get c k = None). apply H4. congruence. steps. unfold canceling.
   step. step. step. apply or1_seps. left. simpl. step. step. step. step.
   instantiate (2:=sk). instantiate (1:=p). step. clear D H0 H3 m0 m3 m.
-  assert ((m1 \*/ (m5 \*/ (m7 \*/ m9))) \*/ m4 = (m4 \*/ m1 \*/ m5) \*/ (m7 \*/ m9)).
+  assert ((m1 ||| (m5 ||| (m7 ||| m9))) ||| m4 = (m4 ||| m1 ||| m5) ||| (m7 ||| m9)).
   rewrite mmap.du_comm. repeat rewrite mmap.du_assoc. reflexivity.
-  remember (m4 \*/ m1 \*/ m5) as m0. rewrite H0. destruct m0; cycle 1.
+  remember (m4 ||| m1 ||| m5) as m0. rewrite H0. destruct m0; cycle 1.
   rewrite D0 in H0. simpl in H0. discriminate. clear H0. assert (cbt' sk p c tp m).
-  remember (m4 \*/ m1). destruct m0; [ | discriminate ].
+  remember (m4 ||| m1). destruct m0; [ | discriminate ].
   symmetry in Heqm0.
   eassert (<{ * ?[P] * (wand ?P ?[Q]) }> m). eapply manual_du_on_sep.
   3: eassumption. 2: eassumption. unfold cbt'. symmetry in Heqm1. clear D0.
@@ -973,9 +969,9 @@ uintptr_t cbt_alloc_leaf(uintptr_t k, uintptr_t v) /**#
                  * R }> m' #**/                                            /**.
 Derive cbt_alloc_leaf SuchThat (fun_correct! cbt_alloc_leaf) As cbt_alloc_leaf_ok. .**/
 {                                                                          /**. .**/
-  uintptr_t p = malloc(12);                                                /**. .**/
-  if (p == NULL) /* split */ {                                             /**. .**/
-    return NULL;                                                           /**. .**/
+  uintptr_t p = Malloc(12);                                                /**. .**/
+  if (p == 0) /* split */ {                                                /**. .**/
+    return 0;                                                              /**. .**/
   }                                                                        /**.
   assert (\[/[0]] = 0). step. rewrite H3. simpl (_ =? _) in *.
   cbv iota in *. steps. .**/
@@ -989,9 +985,9 @@ Derive cbt_alloc_leaf SuchThat (fun_correct! cbt_alloc_leaf) As cbt_alloc_leaf_o
   replace (\[p] =? 0) with (false) by steps. step. step. unfold canceling.
   step. step. step. apply or1_seps. left. simpl. step. step. step.
   instantiate (2:=Leaf). simpl cbt'. step. step. step. step. step.
-  assert (m7 \*/ (m10 \*/ (m8 \*/ (((m4 \*/ m0) \*/ m1) \*/ m2))) =
-  (m7 \*/ m10 \*/ m8) \*/ (((m4 \*/ m0) \*/ m1) \*/ m2)).
-  repeat rewrite mmap.du_assoc. reflexivity. remember (m7 \*/ m10 \*/ m8) as m11.
+  assert (m7 ||| (m10 ||| (m8 ||| (((m4 ||| m0) ||| m1) ||| m2))) =
+  (m7 ||| m10 ||| m8) ||| (((m4 ||| m0) ||| m1) ||| m2)).
+  repeat rewrite mmap.du_assoc. reflexivity. remember (m7 ||| m10 ||| m8) as m11.
   destruct m11; cycle 1. rewrite D0 in H10. simpl in H10. discriminate.
   rewrite H10. step. step. step.
   instantiate (2:=k). instantiate (1:=v). clear H5 H7.
@@ -999,11 +995,11 @@ Derive cbt_alloc_leaf SuchThat (fun_correct! cbt_alloc_leaf) As cbt_alloc_leaf_o
                           + uintptr k
                           + uintptr v }> p m). symmetry in Heqm11. unfold sepapps.
   simpl. unfold sepapp. steps. clear H2 H8 H11. unfold canceling. step. step.
-  step. unfold seps. remember ((m4 \*/ m0) \*/ m2) as m12. destruct m12; cycle 1.
+  step. unfold seps. remember ((m4 ||| m0) ||| m2) as m12. destruct m12; cycle 1.
   simpl in D0. discriminate. eapply manual_du_on_sep. 3: eassumption. assumption.
   symmetry in Heqm12. step. step. step. step. step. step. unfold canceling.
   step. step. step. simpl. eapply proj2. rewrite <- (sep_emp_l _ R).
-  remember (m4 \*/ m0) as m11. destruct m11; cycle 1. simpl in D0. discriminate.
+  remember (m4 ||| m0) as m11. destruct m11; cycle 1. simpl in D0. discriminate.
   eapply manual_du_on_sep. 3: eassumption. instantiate (1:=True). symmetry in Heqm0.
   unfold anyval in H6. destruct H6. apply array_0_is_emp in H2. unfold emp in H2. fwd.
   unfold anyval in H9. destruct H9. apply array_0_is_emp in H2. unfold emp in H2. fwd.
@@ -1465,16 +1461,16 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   replace (\[retv] =? 0) with false in * by lia. steps. .**/
   }                                                                          /**. .**/
   uintptr_t new_leaf = cbt_alloc_leaf(k, v);                                 /**. .**/
-  if (new_leaf == NULL) /* split */ {                                        /**. .**/
-    return NULL;                                                             /**.
+  if (new_leaf == 0) /* split */ {                                           /**. .**/
+    return 0;                                                                /**.
   change (0 =? 0) with true in H1. cbv iota in H1. .**/
   }                                                                          /**. .**/
   else {                                                                     /**.
   replace (\[new_leaf] =? 0) with false in * by ZnWords. unfold "|=" in H1. .**/
-    uintptr_t new_node = malloc(12);                                         /**. .**/
-    if (new_node == NULL) /* split */ {                                      /**.
+    uintptr_t new_node = Malloc(12);                                         /**. .**/
+    if (new_node == 0) /* split */ {                                         /**.
   change (0 =? 0) with true in *. cbv iota in *. .**/
-      return NULL;                                                           /**. .**/
+      return 0;                                                              /**. .**/
     }                                                                        /**. .**/
     else {                                                                   /**.
   replace (\[new_node] =? 0) with false in * by ZnWords. unfold "|=" in H1.
@@ -1574,7 +1570,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   step. step. step. step. step.
 
   match goal with
-  | H: _ \*/ _ = mmap.Def c |- _ =>  destruct_split H
+  | H: _ ||| _ = mmap.Def c |- _ =>  destruct_split H
   end. subst c.
   assert (is_prefix_key pr k'). apply map_get_putmany_not_None_iff in H8.
   destruct H8. eapply cbt_key_has_prefix in H18. 2: eassumption.
@@ -1708,7 +1704,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   end.
   lia.
   match goal with
-  | H: _ \*/ _ = mmap.Def c |- _ =>  destruct_split H
+  | H: _ ||| _ = mmap.Def c |- _ =>  destruct_split H
   end. subst c.
   pose proof H18 as HcbtL2. apply cbt_nonempty in HcbtL2.
   fwd. eapply H10. apply map_get_putmany_not_None_iff. left. rewrite HcbtL2.
@@ -1788,9 +1784,9 @@ uintptr_t cbt_insert(uintptr_t tp, uintptr_t k, uintptr_t v) /**#
                     * R }> m' #**/                                         /**.
 Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          .**/
 {                                                                          /**. .**/
-  if (tp == NULL) /* split */ {                                            /**. .**/
+  if (tp == 0) /* split */ {                                               /**.
     (* a direct `return cbt_alloc_leaf(k, v);` gives a type error
-       (the assignment_rhs type vs the expr type) *)
+       (the assignment_rhs type vs the expr type) *)                            .**/
     uintptr_t res = cbt_alloc_leaf(k, v);                                  /**. .**/
     return res;                                                            /**. .**/
   }                                                                        /**.
