@@ -294,7 +294,6 @@ Proof. unfold purify. auto. Qed.
 
 Hint Resolve purify_cbt' : purify.
 Hint Resolve purify_wand : purify.
-Print HintDb purify.
 
 Local Hint Extern 1 (PredicateSize (cbt' ?sk)) => exact 12 : typeclass_instances.
 
@@ -381,14 +380,6 @@ uintptr_t dummy( ) /**#
   ghost_args := (R: mem -> Prop);
   requires t m := True;
                   ensures t' m' res := True #**/ /**. About spec_of_dummy.
-
-Check .**/ void dummy( ) /**#
-  ghost_args := (R: mem -> Prop);
-  requires t m := True;
-                  ensures t' m' := True #**/ /**.
-
-Check spec_of_dummy : Semantics.env -> Prop.
-Print spec_of_dummy.
 
 (* observation: if A and B both can't be purified, purify_rec fails on sep A B, but
 not on sep A P or sep P B, where P can be purified *)
@@ -571,22 +562,20 @@ Inductive cbt_subtree :
 
 Lemma map_put_putmany_right : forall (m1 m2: word_map) (k v: word),
   map.put (map.putmany m1 m2) k v = map.putmany m1 (map.put m2 k v).
-Proof.
-  intros. apply map.map_ext. intros. assert (k0 = k \/ k0 <> k). step.
-  destruct H. subst k0. rewrite map.get_put_same. erewrite map.get_putmany_right.
-  reflexivity. rewrite map.get_put_same. reflexivity.
-  rewrite map.get_put_diff; [ | assumption ]. destruct (map.get m2 k0) eqn:E.
-  erewrite map.get_putmany_right; [ | eassumption ].
-  erewrite map.get_putmany_right. reflexivity. rewrite map.get_put_diff.
-  assumption. assumption. rewrite map.get_putmany_left; [ | assumption ].
-  rewrite map.get_putmany_left; [ reflexivity | rewrite map.get_put_diff; assumption ].
-Qed.
+Proof. intros. eapply map.put_putmany_commute. Qed.
 
 Lemma map_put_putmany_left : forall (m1 m2: word_map) (k v: word),
   map.get m2 k = None ->
   map.put (map.putmany m1 m2) k v = map.putmany (map.put m1 k v) m2.
 Proof.
-Admitted.
+  intros. eapply map.map_ext. intros.
+  rewrite ?map.get_put_dec, ?map.get_putmany_dec.
+  destruct_one_match.
+  - rewrite H. rewrite map.get_put_same. reflexivity.
+  - destruct_one_match. 1: reflexivity.
+    rewrite map.get_put_diff by congruence.
+    reflexivity.
+Qed.
 
 Lemma map_get_singleton_same : forall (k v : word),
     map.get (map.singleton k v) k = Some v.
@@ -1249,7 +1238,32 @@ Qed.
 
 Lemma and_1_not_1_0: forall w, word.and w /[1] <> /[1] -> word.and w /[1] = /[0].
 Proof.
-Admitted.
+  intros.
+  (* zify: *)
+  eapply word.unsigned_inj. rewrite word.unsigned_and_nowrap.
+  bottom_up_simpl_in_goal.
+  eapply word.unsigned_inj' in H.
+  rewrite word.unsigned_and_nowrap in H.
+  bottom_up_simpl_in_hyp H.
+  (* proof purely on Z: *)
+  eapply Z.bits_inj'.
+  intros.
+  rewrite Z.testbit_0_l.
+  rewrite Z.land_spec.
+  rewrite testbit_1.
+  destr (Z.eqb n 0).
+  2: eapply Bool.andb_false_r.
+  eapply Bool.andb_false_intro1.
+  destr (Z.testbit \[w] 0). 2: reflexivity.
+  exfalso. apply H. clear H H0.
+  eapply Z.bits_inj'.
+  intros.
+  rewrite Z.land_spec.
+  rewrite testbit_1.
+  destr (Z.eqb n 0).
+  2: eapply Bool.andb_false_r.
+  rewrite E. reflexivity.
+Qed.
 
 Lemma weaken_is_prefix_append_0: forall pr1 pr2,
   0 <= length pr1 < 32 -> 0 <= length pr2 <= 32 ->
