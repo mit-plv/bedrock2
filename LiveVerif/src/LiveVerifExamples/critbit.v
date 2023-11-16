@@ -625,30 +625,16 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   (* setting up the loop precondition *)
   rewrite <- Def0 in H0.
   move t before tp.
-  unfold ready. rewrite <- Def0. rewrite Def0 at 2.
+  rewrite <- Def0. rewrite Def0 at 2.
   delete #(p = ??).
   move sk at bottom.
   move c after Scope1.
   move R after Scope1.
   move pr after Scope1.
   loop invariant above m.
+                                                                                .**/
+  while (load(p) != -1) /* initial_ghosts(p, pr, c, R); decreases sk */ {  /*?.
 
-  (* transform goal here *)
-  lazymatch goal with
-  | |- exec ?fs ?body ?t ?m ?l ?P =>
-      lazymatch eval pattern sk, p, pr, c, R in P with
-      | ?f sk p pr c R =>
-          change (exec fs body t m l ((fun (g: word * prefix * word_map * (mem -> Prop)) (sk: tree_skeleton) =>
-          let (g, R) := g in
-          let (g, c) := g in
-          let (p, pr) := g in
-          f sk p pr c R) (p, pr, c, R) sk))
-      end
-  end.
-  eapply wp_while_tailrec_use_functionpost with (e:=live_expr:(load(p) != -1)).
-  { eauto with wf_of_type. }
-  { package_heapletwise_context. }
-  start_loop_body.
   subst v0.
   instantiate (3:=(match sk with | Leaf => ?[vLeaf] | _ => ?[vNode] end)).
   destruct sk; cycle 1. simpl cbt' in H3. steps. .**/
@@ -1366,31 +1352,16 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   move Htpnn after Scope1.
   rewrite <- Def0 in H2.
   move t before tp.
-  unfold ready. rewrite <- Def0. rewrite Def0 at 2. replace (id p) with tp.
+  rewrite <- Def0. rewrite Def0 at 2. replace (id p) with tp.
   delete #(p = ??).
   move sk at bottom.
   move k' before Scope1.
   move p before Scope1.
   loop invariant above m.
-
-  (* transform goal here *)
-  lazymatch goal with
-  | |- exec ?fs ?body ?t ?m ?l ?P =>
-      lazymatch eval pattern sk, p, pr, total_pr, c, R in P with
-      | ?f sk p pr total_pr c R =>
-          change (exec fs body t m l ((fun (g: word * prefix * prefix * word_map * (mem -> Prop)) (sk: tree_skeleton) =>
-     (*let '(s1, s2, p1, p2, R) := g in f s1 s2 p1 p2 R) (s1, s2, p1, p2, R) (len s1)))*)
-          let (g, R) := g in
-          let (g, c) := g in
-          let (g, total_pr) := g in
-          let (p, pr) := g in
-          f sk p pr total_pr c R) (p, pr, total_pr, c, R) sk))
-      end
-  end.
-  eapply wp_while_tailrec_use_functionpost with (e:=live_expr:(load(p) < cb)).
-  { eauto with wf_of_type. }
-  { package_heapletwise_context. }
-  start_loop_body.
+                                                                                .**/
+  while (load(p) < cb)
+    /* initial_ghosts(p, pr, total_pr, c, R); decreases sk */
+  {                                                                        /*?.
   subst v0.
   repeat heapletwise_step.
 
