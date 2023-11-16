@@ -192,8 +192,7 @@ Derive strCmp SuchThat (fun_correct! strCmp) As strCmp_ok.                      
   solve [step].
 
                                                                                 .**/
-  uintptr_t res = c1 - c2;                                                 /**. .**/
-  return res;                                                              /**. .**/
+  return c1 - c2;                                                          /**. .**/
 }                                                                          /**.
 
   unzify.
@@ -281,8 +280,7 @@ Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      
     steps.
 
                                                                                 .**/
-  uintptr_t res = c1 - c2;                                                 /**. .**/
-  return res;                                                              /**. .**/
+  return c1 - c2;                                                          /**. .**/
 }                                                                          /**.
   unzify.
 
