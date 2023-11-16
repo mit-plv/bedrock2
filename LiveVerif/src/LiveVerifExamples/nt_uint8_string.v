@@ -229,9 +229,9 @@ Abort.
 
 Ltac provide_new_ghosts_hook ::= manual_new_ghosts.
 
-#[export] Instance strcmp_spec: fnspec :=                                       .**/
+#[export] Instance Strcmp_spec: fnspec :=                                       .**/
 
-uintptr_t strcmp(uintptr_t p1, uintptr_t p2) /**#
+uintptr_t Strcmp(uintptr_t p1, uintptr_t p2) /**#
   ghost_args := (s1 s2: list Z) (R: mem -> Prop);
   requires t m := <{ * nt_str s1 p1
                      * nt_str s2 p2
@@ -241,7 +241,7 @@ uintptr_t strcmp(uintptr_t p1, uintptr_t p2) /**#
                        <{ * nt_str s1 p1
                           * nt_str s2 p2
                           * R }> m' #**/                                   /**.
-Derive strcmp SuchThat (fun_correct! strcmp) As strcmp_ok.                      .**/
+Derive Strcmp SuchThat (fun_correct! Strcmp) As Strcmp_ok.                      .**/
 {                                                                          /**. .**/
   uintptr_t c1 = 0;                                                        /**. .**/
   uintptr_t c2 = 0;                                                        /**.

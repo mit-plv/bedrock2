@@ -32,6 +32,12 @@ uintptr_t load(uintptr_t a) {
   return r;
 }
 
+// same runtime behavior, but changes proof automation
+#define deref8 load8
+#define deref16 load16
+#define deref32 load32
+#define deref load
+
 static inline __attribute__((always_inline, unused))
 void store8(uintptr_t a, uintptr_t v) {
   memcpy((void*)a, &v, 1);
