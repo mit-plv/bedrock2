@@ -244,6 +244,11 @@ unfold cbt. exists (map.empty). exists m. step. apply map.split_empty_l.
 step. step. right. unfold emp. tauto. tauto.
 Qed.
 
+Ltac step_hook ::=
+  match goal with
+  | H: ?P |- ?P => exact H
+  end.
+
 Lemma purify_cbt' :
   forall sk p c a, purify (cbt' sk p c a) (a <> /[0] /\ 0 <= length p <= 32).
 Proof.
@@ -292,6 +297,20 @@ Hint Resolve purify_wand : purify.
 Print HintDb purify.
 
 Local Hint Extern 1 (PredicateSize (cbt' ?sk)) => exact 12 : typeclass_instances.
+
+Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
+  lazymatch conclPred with
+  | cbt' ?sk2 ?p2 ?c2 =>
+      lazymatch hypPred with
+      | cbt' ?sk1 ?p1 ?c1 =>
+          (* Note: address has already been checked, and if sk and/or s don't
+             unify, sidecondition solving steps will make them match later,
+             so here, we just need to take care of instantiating evars from conclPred *)
+          try syntactic_unify_only_inst_r p1 p2;
+          try syntactic_unify_only_inst_r c1 c2;
+          try syntactic_unify_only_inst_r sk1 sk2
+      end
+  end.
 
 Lemma cbt_expose_fields (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word):
   impl1 (cbt' sk p c a) (ex1 (fun w1 => ex1 (fun w2 => ex1 (fun w3 =>
@@ -373,9 +392,6 @@ Print spec_of_dummy.
 
 (* observation: if A and B both can't be purified, purify_rec fails on sep A B, but
 not on sep A P or sep P B, where P can be purified *)
-
-
-Require Import bedrock2.PurifySep.
 
 Lemma wand_trans : forall (P Q R : mem -> Prop),
     impl1 <{ * wand P Q * wand Q R }> (wand P R).
@@ -597,6 +613,8 @@ Ltac destruct_split H :=
 Ltac eq_neq_cases k1 k2 :=
   let H := fresh "H" in assert (H: k1 = k2 \/ k1 <> k2); [ step | ]; destruct H.
 
+Ltac provide_new_ghosts_hook ::= manual_new_ghosts.
+
 #[export] Instance spec_of_cbt_update_or_best: fnspec :=                        .**/
 
 uintptr_t cbt_update_or_best(uintptr_t tp, uintptr_t k, uintptr_t v) /**#
@@ -655,10 +673,11 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
                                 + uintptr aL
                                 + uintptr p }> p' }>). instantiate (1:=sk2).
   step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. unfold state_implication.
+  step. step. step. step. step. step. step. step. step. step.
+  unfold state_implication.
   (* ^^ step on state_implication clears c = cL \*/ cR (which we need) *)
   step. destruct H1. step. econstructor. eassumption. apply split_du in H12.
-  unfold map.split in H12. destruct H12. subst c. step. step. step. step.
+  unfold map.split in H12. destruct H12. subst c. step. step. step.
   destruct (map.get cR retv) eqn:E; [ | congruence ]. intro.
   eapply map.get_putmany_right in E. erewrite H1 in E. discriminate.
   step. step. destruct (map.get cR k_q) eqn:E. eapply HPp2. lia. erewrite E.
@@ -683,9 +702,13 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   simpl cbt'. destruct HPp3; [ left | right ]. steps. unfold map.split. step.
   apply map_put_putmany_right. apply map.disjoint_put_r; [ | assumption ].
   destruct (map.get cL k) eqn:E; [ exfalso | trivial ].
-  assert (map.get cL k <> None). congruence. eapply cbt_key_has_prefix in H13.
-  2: eassumption. eapply is_prefix_trans in H13. 5: eassumption.
-  apply append_0_prefix in H13. ZnWords. lia. simpl. lia. lia. simpl. lia.
+  assert (map.get cL k <> None) by congruence.
+  match goal with
+  | H: _ |= cbt' sk1 _ _ _ |- _ => rename H into HcbtL
+  end.
+  eapply cbt_key_has_prefix in HcbtL.
+  2: eassumption. eapply is_prefix_trans in HcbtL. 5: eassumption.
+  apply append_0_prefix in HcbtL. ZnWords. lia. simpl. lia. lia. simpl. lia.
   steps. steps. unfold map.split. steps. .**/
     else {                                                                   /**. .**/
       p = load(p + 4);                                                       /**. .**/
@@ -698,8 +721,9 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
                                 + uintptr aR }> p' }>).
   apply split_du in H12. unfold map.split in H12. destruct H12. subst c.
   step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. unfold state_implication. step.
-  destruct H1. step. econstructor. eassumption. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step.
+  unfold state_implication. step.
+  destruct H1. step. econstructor. eassumption. step. step. step.
   intro. apply map.invert_get_putmany_None in H1. tauto.
   eapply cbt_key_has_prefix in HPp1. 2: eassumption. step. step.
   destruct (map.get (map.putmany cL cR) k_q) eqn:E; [ | congruence ].
@@ -723,14 +747,19 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   assert (map.get cR k = None). (* step.
   apply map_put_putmany_left. *) destruct (map.get cR k) eqn:E;
   [ exfalso | trivial ]. assert (map.get cR k <> None). congruence.
-  eapply cbt_key_has_prefix in H13. 2: eassumption. eapply is_prefix_trans in H13.
-  5: eassumption. apply append_1_prefix in H13. congruence. lia. simpl. lia. lia.
+  match goal with
+  | H: _ |= cbt' sk2 _ _ _ |- _ => rename H into HcbtR
+  end.
+  eapply cbt_key_has_prefix in HcbtR. 2: eassumption. eapply is_prefix_trans in HcbtR.
+  5: eassumption. apply append_1_prefix in HcbtR. congruence. lia. simpl. lia. lia.
   simpl. lia. step. apply map_put_putmany_left. assumption.
   apply map.disjoint_put_l. assumption. assumption.
   step. step. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. apply map.split_disjoint_putmany. assumption. step. step. .**/
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step.
+  apply map.split_disjoint_putmany. assumption. step. step. .**/
   }                                                                         /**.
   simpl cbt' in H3. steps. .**/
   if (load(p + 4) == k) /* split */ {                                       /**. .**/
@@ -739,8 +768,7 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   }                                                                         /**.
   subst c. rewrite map_get_singleton_same. congruence. left. simpl cbt'.
   step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. subst c. apply map_put_singleton_same.
-  step. step. .**/
+  step. step. step. step. step. subst c. steps. apply map_put_singleton_same. .**/
   else {                                                                    /**. .**/
     return load(p + 4);                                                     /**. .**/
   }                                                                         /**.
@@ -790,11 +818,17 @@ Derive cbt_best_leaf SuchThat (fun_correct! cbt_best_leaf) As cbt_best_leaf_ok. 
       p = load(p + 8);                                                       /**. .**/
     }                                                                        /**.
   unfold canceling. unfold seps. step. step. step. eapply wand_trans.
-  apply sep_comm. step. step. unfold canceling. step. step. step. unfold seps.
+  apply sep_comm. step.
+  match goal with
+  | _: _ |= wand ?lhs ?rhs |- context [ wand ?E ?rhs ] => unify E lhs
+  end.
+  step. unfold canceling. step. step. step. unfold seps.
   unfold wand. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step.
   change (cbt' sk'2 pR cR p m4) with (m4 |= cbt' sk'2 pR cR p) in H15.
-  step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step.
   rewrite split_du. assumption. step. step. step. step.
   rewrite <- H4. clear H4 H5.
   apply split_du in H14. unfold map.split in H14. destruct H14.
@@ -803,7 +837,7 @@ Derive cbt_best_leaf SuchThat (fun_correct! cbt_best_leaf) As cbt_best_leaf_ok. 
   apply cbt_key_has_prefix with (k:=k) in H7.
   eapply is_prefix_key_trans in H11. 4: eassumption. apply append_0_prefix in H11.
   rewrite H in H11. ZnWords. step. unfold append_0. simpl. step. step.
-  congruence. step. step. .**/
+  congruence. step. .**/
     else {                                                                   /**. .**/
       p = load(p + 4);                                                       /**. .**/
     }                                                                        /**.
@@ -811,12 +845,19 @@ Derive cbt_best_leaf SuchThat (fun_correct! cbt_best_leaf) As cbt_best_leaf_ok. 
      the then branch, except that we unfold wand a bit later and instead
      apply the wand_ex_r lemma before the unfolding *)
   unfold canceling. unfold seps. step. step. step. eapply wand_trans.
-  unfold seps. apply sep_comm. step. step. unfold canceling. step. step. step.
+  unfold seps. apply sep_comm. step.
+  match goal with
+  | _: _ |= wand ?lhs ?rhs |- context [ wand ?E ?rhs ] => unify E lhs
+  end.
+  step. unfold canceling. step. step. step.
   unfold seps. apply wand_ex_r. step. apply wand_ex_r. step. apply wand_ex_r.
   step. apply wand_ex_r. step. apply wand_ex_r. step. apply wand_ex_r. step.
   unfold wand. intros. step. step. step. step. step. step. step.
   change (cbt' sk'1 pL cL p m4) with (m4 |= cbt' sk'1 pL cL p) in H15. step. step.
-  step. step. step. step. step. step. step. step. step. rewrite <- split_du in H14.
+  step. step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step. step.
+  step.
+  rewrite <- split_du in H14.
   assumption. step. step. step. step. rewrite <- H4. clear H4 H5.
   apply split_du in H14. unfold map.split in H14. destruct H14. subst c'.
   symmetry. apply map.get_putmany_left.
@@ -894,7 +935,9 @@ Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.          
   steps. unfold enable_frame_trick.enable_frame_trick. steps. .**/
     uintptr_t k' = load(n + 4);                                             /*?.
   simpl in H1. step. step. step. step. step. step. step.
-  apply map_singleton_inj in H12. fwd. subst k0. steps. .**/
+  match goal with
+  | H: map.singleton _ _ = map.singleton _ _ |- _ => apply map_singleton_inj in H
+  end. fwd. subst k0. steps. .**/
     if (k' == k) /* split */ {                                              /**. .**/
       store(val_out, load(n + 8));                                          /**. .**/
       return 1;                                                             /**. .**/
@@ -903,24 +946,27 @@ Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.          
   auto. discriminate.
   unfold canceling. step. step. step. apply or1_seps. left. simpl. step.
   step. step. step. instantiate (2:=sk). instantiate (1:=p). step.
-  clear D H0 m0. clear m2 H3 m3.
+  clear D H0 m0.
   assert ((m11 \*/ (m1 \*/ (m5 \*/ m7))) \*/ m4 = m11 \*/ (((m1 \*/ m4) \*/ m5) \*/ m7)).
   rewrite mmap.du_assoc. f_equal. rewrite (mmap.du_assoc _ _ m4).
   rewrite (mmap.du_comm _ m4). repeat rewrite mmap.du_assoc. reflexivity.
   remember (m1 \*/ m4 \*/ m5) as m0. destruct m0; cycle 1. rewrite D0 in H0.
   simpl in H0. discriminate. rewrite H0. clear H0. assert (cbt' sk p c tp m0).
-  remember (m1 \*/ m4) as m2. destruct m2; [ | discriminate ].
+  remember (m1 \*/ m4) as ma. destruct ma; [ | discriminate ].
   symmetry in Heqm0.
   eassert (<{ * ?[P] * (wand ?P ?[Q]) }> m0). eapply manual_du_on_sep. 3: eassumption.
-  2: eassumption. unfold cbt'. steps. symmetry in Heqm2. steps. apply wand_mp in H0.
+  2: eassumption. unfold cbt'. steps. symmetry in Heqma. steps.
+  clear Error. unfold find_hyp_for_range. clear D0. solve [steps].
+  apply wand_mp in H0.
   assumption. hyps_to_with_mem. step. step. step. step. step. step.
-  symmetry in H9. apply H6 in H9. rewrite H9. steps. steps.  .**/
+  replace (map.get c k) with (Some v).
+  2: { subst k. symmetry. eauto. } steps. steps.  .**/
     else {                                                                 /**. .**/
       return 0;                                                            /**. .**/
     }                                                                      /**.
   assert (map.get c k = None). apply H4. congruence. steps. unfold canceling.
   step. step. step. apply or1_seps. left. simpl. step. step. step. step.
-  instantiate (2:=sk). instantiate (1:=p). step. clear D H0 H3 m0 m2 m3 m.
+  instantiate (2:=sk). instantiate (1:=p). step. clear D H0 H3 m0 m3 m.
   assert ((m1 \*/ (m5 \*/ (m7 \*/ m9))) \*/ m4 = (m4 \*/ m1 \*/ m5) \*/ (m7 \*/ m9)).
   rewrite mmap.du_comm. repeat rewrite mmap.du_assoc. reflexivity.
   remember (m4 \*/ m1 \*/ m5) as m0. rewrite H0. destruct m0; cycle 1.
@@ -928,9 +974,11 @@ Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.          
   remember (m4 \*/ m1). destruct m0; [ | discriminate ].
   symmetry in Heqm0.
   eassert (<{ * ?[P] * (wand ?P ?[Q]) }> m). eapply manual_du_on_sep.
-  3: eassumption. 2: eassumption. unfold cbt'. symmetry in Heqm1. steps.
+  3: eassumption. 2: eassumption. unfold cbt'. symmetry in Heqm1. clear D0.
+  solve [steps].
   apply wand_mp in H0. assumption. hyps_to_with_mem. steps.
-  apply not_eq_sym in H9. apply H4 in H9. rewrite H9. steps. steps.
+  replace (map.get c k) with (@None word).
+  2: { intuition congruence. } steps. steps.
  .**/
   }                                                                        /**. .**/
 }                                                                          /**.
@@ -985,8 +1033,7 @@ Derive cbt_alloc_leaf SuchThat (fun_correct! cbt_alloc_leaf) As cbt_alloc_leaf_o
   unfold anyval in H6. destruct H6. apply array_0_is_emp in H2. unfold emp in H2. fwd.
   unfold anyval in H9. destruct H9. apply array_0_is_emp in H2. unfold emp in H2. fwd.
   apply split_du in Heqm0. unfold map.split in Heqm0. fwd. subst m6. unfold emp.
-  split. apply map.empty_putmany. step. step. step. step. step. step. step. step.
-  step. step. step. step. .**/
+  split. apply map.empty_putmany. all: steps. .**/
 }                                                                          /**.
 Qed.
 
@@ -1361,7 +1408,8 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
               + uintptr p }> p'
          * cbt' sk1 pL cL aL }>).
   step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. simpl. step. step. step. step.
+  step. step. step. step. step. step. step. step. simpl. step. step. step.
+  step.
   apply is_prefix_key_extend_1. lia.
   eapply clip_prefix_bits_equality with (n1:=length pr) in H9.
   unfold is_prefix_key. unfold full_prefix. unfold is_prefix. simpl.
@@ -1379,15 +1427,16 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   tauto.
   step. step. step. step. unfold state_implication. clear D m.
   step. destruct H18.
-  econstructor. eassumption. step. step. step. step. step.
+  econstructor. eassumption. step. step. step. step.
   rewrite H18 in *. change (0 =? 0) with true in HPp1. cbv iota in HPp1.
   simpl cbt'. steps. apply split_du in H19. assumption. step.
   replace (\[retv] =? 0) with false in HPp1; [ | lia ]. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step.
   replace (\[retv] =? 0) with false in HPp1 by ZnWords.
   step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. 2: instantiate (2:=Node sk1 sk').
-  2: simpl cbt'. 2: steps. step. destruct_split H19. subst c.
+  step. step. instantiate (1:=pr). step. step. assumption.
+  instantiate (1:=Node sk1 sk').
+  simpl cbt'. steps. destruct_split H19. subst c.
   unfold map.split. step. apply map_put_putmany_right.
   apply map.disjoint_put_r. apply eq_None_by_false. intro.
   eapply cbt_key_has_prefix in H12. 2: eassumption.
@@ -1415,12 +1464,12 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   apply append_1_prefix in H13. congruence. lia. simpl. lia. lia. simpl. lia.
   lia. apply H10. destruct_split H19. subst c. apply map_get_putmany_not_None_iff.
   tauto. step. step. step. unfold state_implication. clear D m. step.
-  destruct H18. econstructor. eassumption. step. step. step. step. step.
+  destruct H18. econstructor. eassumption. step. step. step. step.
   replace (\[retv] =? 0) with true in * by lia. simpl cbt'. steps.
   apply split_du. assumption. replace (\[retv] =? 0) with false in * by lia.
   step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step.
-  2: instantiate (2:=Node sk' sk2). 2: simpl cbt'. 2: steps. step.
+  step. step. step. step. step. instantiate (1:=pr). step.
+  instantiate (1:=Node sk' sk2). simpl cbt'. steps.
   destruct_split H19. subst c.
   assert (map.get cR k = None).
   apply eq_None_by_false. intro. eapply cbt_key_has_prefix in H13.
@@ -1483,14 +1532,16 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   simpl. lia. assumption.
 
   simpl cbt'. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. instantiate (2:=c). instantiate (3:=pr).
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  instantiate (2:=c). instantiate (3:=pr).
   destruct sk; simpl cbt'; unfold "|=" in H18; repeat heapletwise_step.
   step. eassert (Hsepapps:
     <{ + uintptr ?[I1] + uintptr ?[I2] + uintptr ?[I3] }> ?[P] = ?[S]).
   unfold sepapps. simpl. unfold sepapp. reflexivity.
   rewrite Hsepapps. clear Hsepapps. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step.
   unfold is_canonic. unfold canonic_bits. simpl. apply clip_prefix_bits.
   lia. lia. step. step.
 
@@ -1504,54 +1555,77 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   simpl. lia. unfold is_prefix_key. unfold is_prefix. simpl.
   rewrite clip_prefix_bits. step. step. step. step. step. step. simpl. step.
 
-  step. step. pose proof H13. apply cbt_singleton_is_leaf in H27. subst sk0.
+  step. step.
+  match goal with
+  | H: _ |= cbt' ?sk _ (map.singleton _ _) _ |- _ =>
+       pose proof H as Hskleaf; apply cbt_singleton_is_leaf in Hskleaf
+  end.
+  subst sk0.
   simpl (cbt' Leaf) in *. unfold "|=" in H13. repeat heapletwise_step.
-  subst p0. apply map_singleton_inj in H32. fwd. subst k0.
+  subst p0.
+  match goal with
+  | H: map.singleton _ _ = map.singleton _ _ |- _ => apply map_singleton_inj in H
+  end.
+  fwd. subst k0.
   eapply is_prefix_key_extend_1. simpl. lia. unfold is_prefix_key.
   unfold is_prefix. simpl. rewrite clip_prefix_bits. step. step. step. simpl.
   step. step.
 
   step. unfold map.split. step. rewrite map_putmany_singleton_r. step.
   apply map_disjoint_singleton_r. apply eq_None_by_false. intro.
-  apply H10 in H27. congruence.
+  match goal with
+  | H1: _, H2: _ <> None |- _ => specialize H1 with (1:=H2)
+  end.
+  congruence.
   destruct_array_0 H24. rewrite H24 in *.
   destruct_array_0 H21. rewrite H21 in *.
   unfold canceling. step. step. step. simpl. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. apply split_du. assumption.
 
-  eassert (Hsepapps:
-    <{ + uintptr ?[I1] + uintptr ?[I2] + uintptr ?[I3] }> ?[P] = ?[S]).
-  unfold sepapps. simpl. unfold sepapp. reflexivity.
-  rewrite Hsepapps. clear Hsepapps. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. apply split_du. assumption.
   step. step. step. step. step. step. step. step. step.
   unfold is_canonic. unfold canonic_bits. simpl. apply clip_prefix_bits.
   step. step. step. step. step.
 
-  destruct_split H33. subst c.
+  match goal with
+  | H: _ \*/ _ = mmap.Def c |- _ =>  destruct_split H
+  end. subst c.
   assert (is_prefix_key pr k'). apply map_get_putmany_not_None_iff in H8.
   destruct H8. eapply cbt_key_has_prefix in H18. 2: eassumption.
   eapply is_prefix_key_trans. lia. 3: eassumption. lia.
   apply weaken_is_prefix_append_0. lia. lia. assumption.
-  eapply cbt_key_has_prefix in H27. 2: eassumption.
+  match goal with
+  | H: _ |= cbt' _ _ cR _ |- _ =>  rename H into HcbtR
+  end.
+  eapply cbt_key_has_prefix in HcbtR.
+  2: eassumption.
   eapply is_prefix_key_trans. lia. 3: eassumption. lia.
   apply weaken_is_prefix_append_1. lia. lia. assumption.
   assert (Hcmp: \[cb] = length pr \/ \[cb] + 1 <= length pr).
   unzify. ZnWords. destruct Hcmp.
-  exfalso. pose proof H27. apply cbt_nonempty in H27. fwd. eapply H10.
-  rewrite map_get_putmany_not_None_iff. right. rewrite H27. congruence.
+  exfalso.
+  match goal with
+  | H: _ |= cbt' _ _ cR _ |- _ =>  rename H into HcbtR
+  end.
+  pose proof HcbtR as HcbtR2. apply cbt_nonempty in HcbtR. fwd. eapply H10.
+  rewrite map_get_putmany_not_None_iff. right. rewrite HcbtR. congruence.
   eassert (Hlen: \[cb] + 1 = length ?[PR]); cycle 1. rewrite Hlen.
-  eapply same_prefix_bits_equality. eapply cbt_key_has_prefix in H35.
-  2: rewrite H27; congruence. eapply is_prefix_key_trans in H35. 4: eassumption.
+  eapply same_prefix_bits_equality. eapply cbt_key_has_prefix in HcbtR2.
+  2: rewrite HcbtR; congruence. eapply is_prefix_key_trans in HcbtR2. 4: eassumption.
   eassumption. simpl. lia. lia. apply is_prefix_key_extend_1. lia.
   rewrite bits_equality_is_prefix_key_iff. 2: eapply clip_prefix_bits_equality.
-  4: symmetry; eassumption. assumption. lia. lia. rewrite <- H34. unzify.
+  4: symmetry; eassumption. assumption. lia. lia.
+  replace (length pr) with \[cb] by congruence. unzify.
   replace /[\[cb]] with cb by ZnWords. assumption. simpl. lia.
-  rewrite <- H9. epose proof (is_prefix_extend_0_or_1 _ _). destruct H35.
+  rewrite <- H9. epose proof (is_prefix_extend_0_or_1 _ _) as HprefOr.
+  destruct HprefOr.
   4: eassumption. simpl. lia. lia.
-  unfold is_prefix_key in H32. unfold is_prefix in H32. simpl in H32. fwd.
-  epose proof (clip_prefix_bits_equality _ _ _ _). rewrite H32.
+  match goal with
+  | H: is_prefix_key pr k' |- _ => rename H into Hpref
+  end.
+  unfold is_prefix_key in Hpref. unfold is_prefix in Hpref. simpl in Hpref. fwd.
+  epose proof (clip_prefix_bits_equality _ _ _ _) as Hbieq. rewrite Hbieq.
   4: symmetry; eassumption. unfold is_prefix. simpl. step. step.
   apply clip_prefix_bits. step. step. step. step.
   exfalso. eapply H10. eassumption.
@@ -1563,16 +1637,23 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   replace /[\[cb]] with cb by ZnWords. assumption. simpl. lia.
 
   step. step. pose proof H13. apply cbt_singleton_is_leaf in H13. subst sk0.
-  simpl (cbt' Leaf) in *. step. unfold "|=" in H32. step. step. step. step.
-  step. step. step. step. step. subst p0. apply map_singleton_inj in H37. fwd.
+  simpl (cbt' Leaf) in *. step.
+  match goal with
+  | H: context [ <{ * _ * _ }> ] |- _ => unfold "|=" in H
+  end.
+  step. step. step. step.
+  step. step. step. step. step. subst p0.
+  match goal with
+  | H: map.singleton _ _ = map.singleton _ _ |- _ => apply map_singleton_inj in H
+  end. fwd.
   subst k0. apply is_prefix_key_extend_1. simpl. lia. unfold is_prefix_key.
   unfold is_prefix. unfold full_prefix. simpl. step. step.
   apply clip_prefix_bits. step. step. simpl. unzify.
   replace /[\[cb]] with cb by ZnWords. assumption.
 
   step. unfold map.split. step. step. rewrite map_putmany_singleton_r. step.
-  apply map_disjoint_singleton_r. apply eq_None_by_false. intro.
-  apply H10 in H32. congruence.
+  apply map_disjoint_singleton_r. apply eq_None_by_false. intro Hknn.
+  apply H10 in Hknn. congruence.
 
   destruct_array_0 H24. rewrite H24 in *.
   destruct_array_0 H21. rewrite H21 in *.
@@ -1621,8 +1702,12 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
 
   step. step. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. unfold canceling. step. step.
-  step. simpl. apply sep_comm. step. step. step. step. unfold is_canonic.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. unfold canceling. step. step. step.
+  simpl.
+  apply sep_comm. step. step. step. step. unfold is_canonic.
   unfold canonic_bits. simpl. apply clip_prefix_bits. step. step. step.
   apply is_prefix_key_extend_0. simpl. step. unfold is_prefix_key.
   unfold is_prefix. unfold full_prefix. simpl. step. step.
@@ -1632,18 +1717,27 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
 
   assert (Hcmp: \[cb] = length pr \/ \[cb] + 1 <= length pr). lia.
   destruct Hcmp. exfalso. destruct sk; unfold "|=" in H18;
-  repeat heapletwise_step. subst pr. unfold full_prefix in *. simpl in H29.
-  lia. destruct_split H37. subst c. pose proof H18. apply cbt_nonempty in H36.
-  fwd. eapply H10. apply map_get_putmany_not_None_iff. left. rewrite H36.
+  repeat heapletwise_step. subst pr. unfold full_prefix in *.
+  match goal with
+  | H: \[cb] = _ |- _ => simpl in H
+  end.
+  lia.
+  match goal with
+  | H: _ \*/ _ = mmap.Def c |- _ =>  destruct_split H
+  end. subst c.
+  pose proof H18 as HcbtL2. apply cbt_nonempty in HcbtL2.
+  fwd. eapply H10. apply map_get_putmany_not_None_iff. left. rewrite HcbtL2.
   congruence. eassert (Hlen: \[cb] + 1 = length ?[PR]); cycle 1.
   rewrite Hlen. eapply same_prefix_bits_equality.
   eapply cbt_key_has_prefix in H18. eapply is_prefix_key_trans in H18.
   4: eassumption. eassumption. simpl. lia. lia. congruence.
   apply is_prefix_key_extend_0. lia. unfold is_prefix_key. unfold is_prefix.
-  unfold full_prefix. simpl. step. step. rewrite <- H29 at 2. rewrite <- H9.
+  unfold full_prefix. simpl. step. step.
+  replace (length pr) with \[cb] at 2 by congruence. rewrite <- H9.
   unfold is_prefix_key in H24. unfold is_prefix in H24. unfold full_prefix in H24.
-  simpl in H24. fwd. rewrite H29. assumption. apply and_1_not_1_0.
-  rewrite <- H29. unzify. replace /[\[cb]] with cb by ZnWords. assumption.
+  simpl in H24. fwd. replace \[cb] with (length pr) by congruence. assumption.
+  apply and_1_not_1_0. replace (length pr) with \[cb]. unzify.
+  replace /[\[cb]] with cb by ZnWords. assumption.
   simpl. step.
 
   epose proof (is_prefix_extend_0_or_1 _ _) as Hpext. destruct Hpext.
@@ -1675,18 +1769,15 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
     <{ + uintptr ?[I1] + uintptr ?[I2] + uintptr ?[I3] }> ?[P] = ?[S]).
   unfold sepapps. simpl. unfold sepapp. reflexivity.
   rewrite Hsepapps. clear Hsepapps. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. unfold canceling. step. step. step. simpl. step. rewrite <- H30 in *.
+  step. step. step. step. step. step. step. step. step. step.
+  step. unfold canceling. step. step. step. simpl. step.
+  replace m7 with (map.empty : mem) by congruence.
   unfold emp. step. step. step. step. simpl cbt'. step. step. step. step.
-  step. step. step. step. step. step. step. step. step.
-  eassert (Hsepapps:
-    <{ + uintptr ?[I1] + uintptr ?[I2] + uintptr ?[I3] }> ?[P] = ?[S]).
-  unfold sepapps. simpl. unfold sepapp. reflexivity.
-  rewrite Hsepapps. clear Hsepapps. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. apply split_du. assumption. step.
-  unfold canceling. step. step. step. simpl. step. rewrite <- H35 in *.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. apply split_du. assumption. step. unfold canceling. step. step.
+  step. step. simpl. replace m7 with (map.empty : mem) by congruence.
   unfold emp. step. step. step. step. step. step. step. .**/
     }                                                                        /**. .**/
   }                                                                          /**. .**/
@@ -1723,51 +1814,85 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
   unfold "|=" in H1. unfold canceling. steps. apply or1_seps.
   right. simpl. assert (mmap.Def m1 = mmap.Def m1). step. step. step. step.
   step. step. step. step. step. step. step. step. step. step.
-  unfold "|=" in H1. step. destruct H4; cycle 1. step. destruct H2.
-  step. step. apply purify_cbt' in H2. tauto. step. step.
-  replace (\[res] =? 0) with false in H1 by lia. unfold "|=" in H1.
-  step. step. destruct H5. unfold canceling. step. step. step. step. step.
-  apply or1_seps. left. simpl. step. step. step. instantiate (2:=sk).
-  instantiate (1:=p). subst c. unfold map.singleton in H1. step. step.
-  step. step. step. step. subst res. exfalso. ZnWords. .**/
+  match goal with
+  | H: _ |= or1 _ _ |- _ => unfold "|=" in H
+  end. step.
+  replace (\[res] =? 0) with false in * by lia.
+  match goal with
+  | H: _ |= <{ * _ * _ }> |- _ => unfold "|=" in H; step; step
+  end.
+  match goal with
+  | H: _ |= or1 _ _ |- _ => destruct H
+  end; cycle 1. exfalso. step. step. ZnWords.
+  match goal with
+  | H: _ |= or1 _ _ |- _ => destruct H
+  end; cycle 1. step.
+  step. step. step. subst c. unfold canceling. step. step. step. apply or1_seps.
+  left. unfold seps. step. step. step. step. intro. intros. eassumption. step.
+  step. step. unfold canceling. step. step. step. step.
+  match goal with
+  | H: _ |= cbt' _ _ _ tp |- _ => apply purify_cbt' in H
+  end. step. tauto. step. .**/
   else {                                                                   /**.
   destruct H2; cycle 1. step. step. step. contradiction. step. step. .**/
   uintptr_t best_k = cbt_update_or_best(tp, k, v);                         /**.
   unfold enable_frame_trick.enable_frame_trick.
-  clear D H3 H1 H0 m m0 m2 m3. steps. .**/
+  steps. .**/
     if (best_k == k) /* split */ {                                         /**.
-  subst best_k. destruct H0p4; [ | tauto ]. step. unzify. .**/
+  subst best_k.
+  match goal with
+  | H: _ \/ _ |- _ => destruct H; [ | tauto ]
+  end. step. unzify. .**/
       return tp;                                                           /**. .**/
     }                                                                      /**.
   unfold canceling. step. step. step. apply or1_seps. left. simpl.
   steps. steps. .**/
     else {                                                                 /**.
-  destruct H0p4. tauto. fwd. .**/
+  match goal with
+  | H: _ \/ _ |- _ => destruct H; [ tauto | ]
+  end. step. step. step. step. step. step. step. .**/
       uintptr_t cb = critical_bit(k, best_k);                              /**.
   instantiate (3:=emp True). steps.
-  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+  unfold enable_frame_trick.enable_frame_trick. steps.
+  instantiate (2:=<{ * allocator * R }>). unfold canceling.
+  step. step. step. simpl. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. .**/
       uintptr_t result = cbt_insert_at(tp, cb, k, v);                      /**.
   instantiate (1:=empty_prefix). unfold empty_prefix. simpl. step.
   apply empty_is_prefix. step. apply empty_is_prefix. simpl. step.
-  instantiate (1:=best_k). assumption. step. intro. apply H2p5.
-  eapply H0p3 in H2.
+  instantiate (1:=best_k). assumption. step. intro.
+  match goal with
+  | H: prefix_bits (\[cb] + 1) _ <> prefix_bits (\[cb] + 1) _ |- _ => apply H
+  end.
+  match goal with
+  | H1: context [ _ -> _ -> _ -> _ -> _ ], H2: (map.get _ _ <> None) |- _ =>
+      eapply H1 in H2
+  end.
   3: instantiate (1:={|length:=\[cb] + 1; bits:=prefix_bits (\[cb] + 1) k'|}).
-  unfold is_prefix_key in H2. unfold is_prefix in H2. simpl in H2.
-  rewrite clip_prefix_bits in H2. fwd. congruence. step. step. step. step.
-  simpl. step. unfold is_prefix_key. unfold is_prefix. unfold full_prefix.
+  match goal with
+  | H: is_prefix_key _ best_k |- _ =>
+    unfold is_prefix_key in H; unfold is_prefix in H; simpl in H;
+    rewrite clip_prefix_bits in H
+  end. fwd. congruence. lia. lia. simpl. lia. unfold is_prefix_key.
+  unfold is_prefix. unfold full_prefix.
   simpl. step. step. rewrite clip_prefix_bits. step. step. step.
   unfold is_prefix_key. unfold is_prefix. unfold full_prefix. simpl. step.
   step. rewrite clip_prefix_bits. assumption. step. step.
-  unfold enable_frame_trick.enable_frame_trick. steps.
-  clear m2 H3 H5 D. unzify. .**/
+  unfold enable_frame_trick.enable_frame_trick. steps. unzify. .**/
       return result;                                                       /**. .**/
     }                                                                      /**.
-  rewrite H2 in *. change (0 =? 0) with true in H2p2. cbv iota in H2p2.
+  replace \[result] with 0 in * by congruence.
+  change (0 =? 0) with true in *. cbv iota in *.
   steps. unfold canceling. step. step. step. apply or1_seps. left. simpl.
-  steps. steps. steps. replace (\[result] =? 0) with false in H2p2 by lia.
-  step. unfold id in H2p2p0. subst result. step. step. step. step. step.
-  step. step. step. step. unfold canceling. step. step. step.
-  apply or1_seps. left. simpl. steps. steps. .**/
+  steps. steps. steps. replace (\[result] =? 0) with false in * by lia.
+  unfold id in *.
+  match goal with
+  | H: _ \/ _ |- _ => destruct H
+  end. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. unfold canceling. step. step.
+  step. step. apply or1_seps. left. simpl. step. step. step. step. step.
+  step. step. step. .**/
   }                                                                        /**. .**/
 }                                                                          /**.
 Qed.
