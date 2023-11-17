@@ -1,10 +1,19 @@
 # Processes output of `TIMED=1 make`, plain `make` won't work!
+# Need to set
+#   Ltac _stats := print_stats.
+# in LiveProgramLogic.v before.
+
 import sys
 import os
 import re
 
+print_step_count = False
+
 def print_table_line(current_file, func_count, snippet_count, linecount_of_file, step_count, secs, loop_count):
-    print(f"{current_file:<35} & {func_count:>5} & {snippet_count:>8} & {linecount_of_file:>5} & {step_count:>5} & {secs:>7} & {loop_count:>5} \\\\")
+    if print_step_count:
+        print(f"{current_file:<35} & {func_count:>5} & {snippet_count:>8} & {linecount_of_file:>5} & {step_count:>5} & {secs:>7} & {loop_count:>5} \\\\")
+    else:
+        print(f"{current_file:<35} & {func_count:>5} & {snippet_count:>8} & {linecount_of_file:>5} & {secs:>7} & {loop_count:>5} \\\\")
 
 ignored_funcs = {
     'ring_buf_enq',
@@ -15,11 +24,32 @@ ignored_funcs = {
     'malloc_init',
     'malloc_node',
     'swap_16s',
+    'strcmp',
+    'init_baz',
+    'init_sepapps',
+    'init_baz',
+    'init_bar',
+    'strCmp',
+    'swap_barAB',
 }
 
 counted_funcs = {
-    'memset',
-    'swap_barAB',
+    'Malloc_init',
+    'Malloc',
+    'Free',
+    'bst_init',
+    'bst_alloc_node',
+    'bst_add',
+    'Memset',
+    'cbt_init',
+    'cbt_update_or_best',
+    'cbt_best_leaf',
+    'cbt_lookup',
+    'cbt_alloc_leaf',
+    'critical_bit',
+    'cbt_insert_at',
+    'cbt_insert',
+    'Strcmp',
     'sll_reverse',
     'sll_inc',
     'u_min',
@@ -50,9 +80,11 @@ loop_counts = {
     'swap_record_fields': zero_loops,
     'sort3': zero_loops,
     'fibonacci': '1+0',
-    'onesize_malloc': zero_loops,
+    'onesize_malloc': '1+0',
     'linked_list': '1+1',
-    'tree_set': '0+1',
+    'tree_set': '0+2',
+    'critbit': '2+2',
+    'nt_uint8_string': '0+1',
 }
 
 def linecount(path):
