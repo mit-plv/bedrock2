@@ -7,7 +7,7 @@ Require Import Kami.Ex.IsaRv32 riscv.Spec.Decode.
 Require Import riscv.Utility.Encode.
 Require Import coqutil.Word.LittleEndian.
 Require Import coqutil.Word.Properties.
-Require Import coqutil.Word.Bitwidth32.
+Require Export coqutil.Word.Bitwidth32.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.rdelta.

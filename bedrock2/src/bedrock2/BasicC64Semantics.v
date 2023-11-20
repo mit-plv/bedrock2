@@ -1,15 +1,16 @@
 Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth64 coqutil.Map.SortedListWord.
+Require Import coqutil.Word.Interface coqutil.Map.SortedListWord.
 Require coqutil.Word.Naive.
+Require Export coqutil.Word.Bitwidth64.
 
 #[global] Instance word: word.word 64 := Naive.word64.
 #[global] Instance mem: Interface.map.map word Byte.byte := SortedListWord.map _ _.
 #[global] Instance locals: Interface.map.map String.string word := SortedListString.map _.
 #[global] Instance env: Interface.map.map String.string (list String.string * list String.string * cmd) :=
   SortedListString.map _.
-  #[global] Instance ext_spec: ExtSpec := fun _ _ _ _ _ => False.
+#[global] Instance ext_spec: ExtSpec := fun _ _ _ _ _ => False.
 
 Arguments word: simpl never.
 Arguments mem: simpl never.
