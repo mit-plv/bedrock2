@@ -14,6 +14,10 @@ Require Import LiveVerif.LiveVerifLib.
    we never do a search for anything mergeable in the hyps, we only merge back
    stuff that was split before a function call). *)
 
+Local Instance BW: .**/
+ASSERT_BITWIDTH(32);
+/**. constructor. Defined.
+
 Load LiveVerif.
 
 (*

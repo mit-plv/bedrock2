@@ -36,6 +36,10 @@ Proof. unfold safe_implication, tree_skeleton_lt. intros. auto. Qed.
 Definition same_set{A: Type}(s1 s2: set A) := forall x, s1 x <-> s2 x.
 Definition is_empty_set{A: Type}(s: set A) := forall x, ~ s x.
 
+Local Instance BW: .**/
+ASSERT_BITWIDTH(32);
+/**. constructor. Defined.
+
 Load LiveVerif.
 
 Context {consts: malloc_constants}.
@@ -219,7 +223,7 @@ Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
 
 void bst_init(uintptr_t p) /**#
   ghost_args := (R: mem -> Prop);
-  requires t m := <{ * array (uint 8) 4 ? p
+  requires t m := <{ * array (uint 8) bytes_per_word ? p
                      * R }> m;
   ensures t' m' := t' = t /\
                    <{ * bst (fun _ => False) p
@@ -248,7 +252,7 @@ uintptr_t bst_alloc_node( ) /**#
 Derive bst_alloc_node SuchThat (fun_correct! bst_alloc_node)
 As bst_alloc_node_ok.                                                           .**/
 {                                                                          /**. .**/
-  uintptr_t res = Malloc(12);                                              /**. .**/
+  uintptr_t res = Malloc(3 * sizeof(uintptr_t));                           /**. .**/
   return res;                                                              /**. .**/
 }                                                                          /**.
   destruct_one_match_hyp; steps.

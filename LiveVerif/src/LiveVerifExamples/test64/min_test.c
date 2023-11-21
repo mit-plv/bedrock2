@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "min_exported.h"
-#include "testing.h"
+#include "../testing.h"
 
 int main() {
   assert_equal(3, u_min(3, 4));

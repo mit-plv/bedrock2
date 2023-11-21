@@ -30,6 +30,10 @@ Module byte.
     Z.compare (byte.unsigned x) (byte.unsigned y).
 End byte.
 
+Local Instance BW: .**/
+ASSERT_BITWIDTH(32);
+/**. constructor. Defined.
+
 Load LiveVerif.
 
 Definition char(c: byte): word -> mem -> Prop :=

@@ -53,7 +53,7 @@ Ltac create_predicate fields :=
   end
 : typeclass_instances.
 
-Notation sizeof p := ltac:(lazymatch constr:(_: PredicateSize p) with
+Notation SizeOf p := ltac:(lazymatch constr:(_: PredicateSize p) with
                            | ?sz => exact sz
                            end) (only parsing).
 (* alternative that doesn't require a Notation, but needs to be unfolded
@@ -199,7 +199,7 @@ Module Examples_TODO_move.
     Goal (_ : PredicateSize ARPPacket_t) = 28.
     Proof. reflexivity. Abort.
 
-    Goal sizeof ARPPacket_t = 28.
+    Goal SizeOf ARPPacket_t = 28.
     Proof. reflexivity. Abort.
 
     Definition EthernetHeader_t(r: EthernetHeader): word -> mem -> Prop := .**/

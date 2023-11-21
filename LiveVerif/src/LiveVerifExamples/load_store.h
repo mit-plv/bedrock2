@@ -58,4 +58,6 @@ void store(uintptr_t a, uintptr_t v) {
   memcpy((void*)a, &v, sizeof(v));
 }
 
+#define ASSERT_BITWIDTH(w) _Static_assert(sizeof(uintptr_t) * 8 == w || w == 32 /*TODO remove rhs of || !! */, "incompatible bitwidth")
+
 #endif /* LOAD_STORE_H */

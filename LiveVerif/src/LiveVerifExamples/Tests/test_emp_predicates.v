@@ -1,6 +1,10 @@
 (* -*- eval: (load-file "../../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
 
+Local Instance BW: .**/
+ASSERT_BITWIDTH(32);
+/**. constructor. Defined.
+
 Load LiveVerif.
 
 Goal forall (T: Type) (elem: T -> word -> mem -> Prop) (elemSize: PredicateSize elem)

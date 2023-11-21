@@ -36,6 +36,10 @@ Proof. unfold safe_implication, tree_skeleton_lt. intros. auto. Qed.
 
 #[local] Hint Resolve tree_skeleton_lt_l tree_skeleton_lt_r : safe_implication.
 
+Local Instance BW: .**/
+ASSERT_BITWIDTH(32);
+/**. constructor. Defined.
+
 Load LiveVerif.
 
 Context {consts: malloc_constants}.

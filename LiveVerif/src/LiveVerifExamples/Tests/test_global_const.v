@@ -7,6 +7,10 @@ Class my_consts := {
 
 Definition other_const: Z := 42.
 
+Local Instance BW: .**/
+ASSERT_BITWIDTH(32);
+/**. constructor. Defined.
+
 Load LiveVerif.
 
 Context (section_var_const: Z).

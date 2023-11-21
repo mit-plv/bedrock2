@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "memset_exported.h"
-#include "testing.h"
+#include "../testing.h"
 
 int main() {
   char b[10];

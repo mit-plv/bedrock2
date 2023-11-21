@@ -1,5 +1,11 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
-Require Import LiveVerif.LiveVerifLib. Load LiveVerif.
+Require Import LiveVerif.LiveVerifLib.
+
+Local Instance BW: .**/
+ASSERT_BITWIDTH(64);
+/**. constructor. Defined.
+
+Load LiveVerif.
 
 (* TODO support functions that don't access any memory *)
 Definition dummy: mem -> Prop := emp True.

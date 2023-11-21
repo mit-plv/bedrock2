@@ -6,6 +6,10 @@ Class malloc_constants := {
   malloc_block_size: Z;
 }.
 
+Local Instance BW: .**/
+ASSERT_BITWIDTH(32);
+/**. constructor. Defined.
+
 Load LiveVerif.
 
 Record malloc_state := {
@@ -127,7 +131,7 @@ void Malloc_init (uintptr_t p, uintptr_t n) /**#
                   \[n] mod malloc_block_size = 0 /\
                   \[p] + \[n] < 2 ^ 32 /\ (* <-- no wrap around because otherwise
                                              some pointers in free list might be null *)
-                  <{ * array (uint 8) (sizeof malloc_state_t) ? /[malloc_state_ptr]
+                  <{ * array (uint 8) (SizeOf malloc_state_t) ? /[malloc_state_ptr]
                      * array (uint 8) \[n] ? p
                      * R }> m;
   ensures t' m' := t' = t /\

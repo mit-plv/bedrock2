@@ -13,6 +13,10 @@ Record singleton_foo := {
   singleField: Z;
 }.
 
+Local Instance BW: .**/
+ASSERT_BITWIDTH(32); /**.
+constructor. Defined.
+
 Load LiveVerif.
 
 Definition foo_t(r: foo): word -> mem -> Prop := .**/

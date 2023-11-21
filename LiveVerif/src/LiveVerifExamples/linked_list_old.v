@@ -3,6 +3,10 @@ Require Import LiveVerif.LiveVerifLib.
 Require Import coqutil.Tactics.syntactic_unify.
 Require Import Lia.
 
+Local Instance BW: .**/
+ASSERT_BITWIDTH(32);
+/**. constructor. Defined.
+
 Load LiveVerif.
 
 (* TODO support functions that don't access any memory *)

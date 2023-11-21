@@ -2,7 +2,7 @@
 
 Section LiveVerif.
   Import Coq.Strings.String.
-  Context {word: word.word 32} {mem: map.map word Byte.byte}.
+  Context {word: word.word ltac:(exact_bitwidth)} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Local Open Scope word_scope.
   Local Open Scope string_scope. Local Open Scope Z_scope.

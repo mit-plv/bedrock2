@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "nt_uint8_string_exported.h"
-#include "testing.h"
+#include "../testing.h"
 
 const char* s1 = "Hello World";
 const char* s2 = "Hello, World";

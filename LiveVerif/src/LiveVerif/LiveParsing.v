@@ -6,6 +6,7 @@ Require Import LiveVerif.LiveExpr.
 Require Import LiveVerif.LiveSnippet.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.reference_to_string.
+Require Import coqutil.Word.Bitwidth.
 (* TODO consolidate with variants in coqutil: *)
 Require Import LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
@@ -311,3 +312,44 @@ Goal True.
   pose */ store32((x + x) * 4, s-1); /*.
   pose */ store(x+4, s); /*.
 Abort.
+
+(* TODO move somewhere else? Though the reason this additional typeclass exists
+   (instead of just reusing coqutil.Word.Bitwidth) is mostly to get nice parsing
+   that results in a static assertion in C *)
+Inductive LiveBitwidth: Z -> Type :=
+| LiveBitwidth32: LiveBitwidth 32
+| LiveBitwidth64: LiveBitwidth 64.
+Existing Class LiveBitwidth.
+
+Notation ".* */ 'ASSERT_BITWIDTH' ( w ) ; /* *" := (LiveBitwidth w)
+  (at level 200, only parsing).
+
+Ltac exact_bitwidth :=
+  let bw := constr:(_ : LiveBitwidth _) in
+  lazymatch type of bw with
+  | LiveBitwidth ?w => exact w
+  end.
+
+Notation bitwidth := ltac:(exact_bitwidth) (only parsing).
+
+Ltac exact_bytes_per_word :=
+  let bw := constr:(_ : LiveBitwidth _) in
+  lazymatch type of bw with
+  | LiveBitwidth 32 => exact 4
+  | LiveBitwidth 64 => exact 8
+  end.
+
+Notation bytes_per_word := ltac:(exact_bytes_per_word) (only parsing).
+
+Notation "'sizeof' ( 'uintptr_t' ) " := (expr.literal bytes_per_word)
+  (in custom live_expr at level 1, only parsing).
+
+Require coqutil.Word.Bitwidth32 coqutil.Word.Bitwidth64.
+
+#[export] Hint Extern 1 (Bitwidth.Bitwidth _) =>
+  let bw := constr:(_ : LiveBitwidth _) in
+  lazymatch type of bw with
+  | LiveBitwidth 32 => exact Bitwidth32.BW32
+  | LiveBitwidth 64 => exact Bitwidth64.BW64
+  end
+: typeclass_instances.

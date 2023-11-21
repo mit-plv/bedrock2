@@ -3,6 +3,10 @@ Require Import coqutil.Sorting.Permutation.
 Require Import LiveVerif.LiveVerifLib.
 Require Import List Lia.
 
+Local Instance BW: .**/
+ASSERT_BITWIDTH(32);
+/**. constructor. Defined.
+
 Load LiveVerif.
 
 (* Any implementation of `sort` works as long as it is correct. *)

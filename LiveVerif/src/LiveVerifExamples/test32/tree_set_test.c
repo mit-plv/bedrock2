@@ -1,8 +1,8 @@
 #include <stdio.h>
-#include "onesize_malloc_globals.h"
+#include "../onesize_malloc_globals.h"
 #include "onesize_malloc_exported.h"
 #include "tree_set_exported.h"
-#include "testing.h"
+#include "../testing.h"
 
 int main() {
   // TODO (for now, this file just ensures that the GCC parser accepts tree_set_exported.h)

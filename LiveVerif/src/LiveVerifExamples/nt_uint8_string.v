@@ -114,6 +114,10 @@ Module List.
   End Lexicographic.
 End List.
 
+Local Instance BW: .**/
+ASSERT_BITWIDTH(64);
+/**. constructor. Defined.
+
 Load LiveVerif.
 
 Section Array.
@@ -181,8 +185,8 @@ Derive strCmp SuchThat (fun_correct! strCmp) As strCmp_ok.                      
   1: solve [zify_hyps; steps].
 
   (* TODO include in purification of array? *)
-  all: assert (len s1 < 2^32) by admit.
-  all: assert (len s2 < 2^32) by admit.
+  all: assert (len s1 < 2^bitwidth) by admit.
+  all: assert (len s2 < 2^bitwidth) by admit.
 
   { rewrite (List.split_at_index (s1[:\[p1 ^- p1_pre]]) (\[p1' ^- p1_pre])).
     step. step. congruence.
