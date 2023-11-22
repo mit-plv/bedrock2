@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: update_all clone_all coqutil coq-record-update riscv-coq bedrock2_noex bedrock2_ex LiveVerif_noex LiveVerif_ex compiler_noex compiler_ex kami processor end2end all clean_coqutil clean_coq-record-update clean_riscv-coq clean_bedrock2 clean_LiveVerif clean_compiler clean_kami clean_processor clean_end2end clean_manglenames clean install_coqutil install_coq-record-update install_kami install_riscv-coq install_bedrock2 install_bedrock2_ex install_bedrock2_noex install_LiveVerif install_LiveVerif_ex install_LiveVerif_noex install_compiler install_processor install_end2end install
+.PHONY: update_all clone_all coqutil riscv-coq bedrock2_noex bedrock2_ex LiveVerif_noex LiveVerif_ex compiler_noex compiler_ex kami processor end2end all clean_coqutil clean_riscv-coq clean_bedrock2 clean_LiveVerif clean_compiler clean_kami clean_processor clean_end2end clean_manglenames clean install_coqutil install_kami install_riscv-coq install_bedrock2 install_bedrock2_ex install_bedrock2_noex install_LiveVerif install_LiveVerif_ex install_LiveVerif_noex install_compiler install_processor install_end2end install
 
 clone_all:
 	git submodule update --init --recursive
@@ -23,7 +23,6 @@ endif
 
 EXTERNAL_DEPENDENCIES?=
 EXTERNAL_COQUTIL?=
-EXTERNAL_COQ_RECORD_UPDATE?=
 EXTERNAL_RISCV_COQ?=
 EXTERNAL_KAMI?=
 
@@ -33,11 +32,6 @@ ifneq ($(EXTERNAL_COQUTIL),1)
 bedrock2_noex: coqutil
 riscv-coq: coqutil
 install: install_coqutil
-endif
-
-ifneq ($(EXTERNAL_COQ_RECORD_UPDATE),1)
-riscv-coq: coq-record-update
-install: install_coq-record-update
 endif
 
 ifneq ($(EXTERNAL_RISCV_COQ),1)
@@ -70,15 +64,6 @@ clean_coqutil:
 
 install_coqutil:
 	$(MAKE) -C $(DEPS_DIR)/coqutil install
-
-coq-record-update:
-	$(MAKE) NO_TEST=1 -C $(DEPS_DIR)/coq-record-update
-
-clean_coq-record-update:
-	$(MAKE) NO_TEST=1 -C $(DEPS_DIR)/coq-record-update clean
-
-install_coq-record-update:
-	$(MAKE) NO_TEST=1 -C $(DEPS_DIR)/coq-record-update install
 
 kami:
 	$(MAKE) -C $(DEPS_DIR)/kami
@@ -174,7 +159,7 @@ all: bedrock2_ex LiveVerif_ex compiler_ex processor end2end
 
 clean: clean_bedrock2 clean_LiveVerif clean_compiler clean_processor clean_end2end
 
-clean_deps: clean_coqutil clean_coq-record-update clean_kami clean_riscv-coq
+clean_deps: clean_coqutil clean_kami clean_riscv-coq
 
 clean_all: clean_deps clean
 

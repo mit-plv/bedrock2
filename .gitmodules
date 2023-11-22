@@ -4,6 +4,3 @@
 [submodule "deps/coqutil"]
 	path = deps/coqutil
 	url = https://github.com/mit-plv/coqutil.git
-[submodule "deps/coq-record-update"]
-	path = deps/coq-record-update
-	url = https://github.com/tchajed/coq-record-update.git
