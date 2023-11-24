@@ -220,7 +220,6 @@ Section WithArguments1.
         unfold compile_post.
         do 2 eexists; split; [ | eassumption ].
         repeat listset_to_set; agree_on_solve.
-        Print live.
     - intros.
       repeat listset_to_set.
       eapply @exec.stackalloc.
