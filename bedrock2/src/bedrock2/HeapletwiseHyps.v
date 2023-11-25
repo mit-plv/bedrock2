@@ -982,7 +982,7 @@ Ltac destruct_emp_step :=
   | H: with_mem ?m (emp ?P) |- _ => destruct_emp_step0 H m P
   | H: emp ?P ?m            |- _ => destruct_emp_step0 H m P
   end.
-
+Require Import coqutil.Tactics.ident_ops.
 (* usually already done by split_sep_step, but when introducing hyps from the
    frame after a call, separate merging might still be needed: *)
 Ltac merge_du_step :=
@@ -991,7 +991,8 @@ Ltac merge_du_step :=
       let D := fresh "D" in
       pose proof (merge_two_split_equations E1 E2) as D;
       clear E1 E2
-  | H: map.split _ _ _ |- _ => eapply split_du in H
+  | H: map.split ?mm _ _ |- _ =>
+      tryif ident_starts_with m mm then eapply split_du in H else fail
   | E1: ?om1 = @mmap.Def _ _ ?Mem ?m, E2: ?om2 = mmap.Def ?m' |- _ =>
       lazymatch om1 with
       | mmap.du _ _ => idtac
