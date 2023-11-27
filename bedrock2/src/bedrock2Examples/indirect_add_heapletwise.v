@@ -191,7 +191,12 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
   Proof. unfold purify. intros. constructor. Qed.
   Hint Resolve purify_scalar: purify.
 
-  Ltac straightline_stackalloc ::= fail.
+  Ltac straightline_stackalloc ::=
+    lazymatch goal with
+    | Ha : anybytes _ _ ?mStack, Hs : map.split ?mCombined ?m ?mStack |- _ =>
+        eapply split_du in Hs
+    end.
+
   Ltac straightline_stackdealloc ::= fail.
 
   Ltac straightline_call ::=

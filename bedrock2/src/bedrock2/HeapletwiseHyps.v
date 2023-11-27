@@ -994,7 +994,6 @@ Ltac merge_du_step :=
       let D := fresh "D" in
       pose proof (merge_two_split_equations E1 E2) as D;
       clear E1 E2
-  | H: map.split _ _ _ |- _ => eapply split_du in H
   | E1: ?om1 = @mmap.Def _ _ ?Mem ?m, E2: ?om2 = mmap.Def ?m' |- _ =>
       lazymatch om1 with
       | mmap.du _ _ => idtac
