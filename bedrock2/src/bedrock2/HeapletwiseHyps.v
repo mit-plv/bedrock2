@@ -236,11 +236,14 @@ Section HeapletwiseHyps.
     unfold canceling. intros. fwd. eapply Tree.flatten_iff1_to_sep. eauto.
   Qed.
 
-  Lemma canceling_done_nil: forall {Rest: Prop},
+  Lemma canceling_done_nil: forall hs {Rest: Prop},
+      mem_tree_is_empty hs = true ->
       Rest ->
-      canceling nil (mmap.Def map.empty) Rest.
+      canceling nil (interp_mem_tree hs) Rest.
   Proof.
-    unfold canceling. intros. split. 2: assumption. simpl. unfold emp. intros. fwd. auto.
+    unfold canceling. intros. split. 2: assumption. simpl.
+    eapply mem_tree_is_empty_sound in H. rewrite H.
+    unfold emp. intros. fwd. auto.
   Qed.
 
   Lemma canceling_done_anymem: forall {om} {Rest: Prop},
@@ -1043,15 +1046,24 @@ Ltac path_in_mem_tree om m :=
   | _ => fail "Expected a mem_tree, but got" om
   end.
 
+Ltac is_last_canceling_step mempath sepclauses :=
+  lazymatch mempath with
+  | nil => lazymatch sepclauses with
+           | nil => constr:(true)
+           | cons _ _ => constr:(false)
+           end
+  | cons _ _ => constr:(false)
+  end.
+
 Ltac cancel_head_with_hyp H :=
   lazymatch goal with
   | |- canceling (cons _ ?Ps) ?om _ =>
       let m := lazymatch type of H with with_mem ?m _ => m end in
       let hs := reify_mem_tree om in
       let p := path_in_mem_tree hs m in
-      let lem := lazymatch Ps with
-                 | nil => open_constr:(canceling_last_step hs p H)
-                 | cons _ _ => open_constr:(cancel_head hs p H)
+      let lem := lazymatch is_last_canceling_step p Ps with
+                 | true => open_constr:(canceling_last_step hs p H)
+                 | false => open_constr:(cancel_head hs p H)
                  end in
       eapply lem;
       [ lazymatch goal with
@@ -1155,7 +1167,9 @@ Ltac canceling_step :=
                    end
                end
         end
-  | |- canceling nil (mmap.Def map.empty) _ => eapply canceling_done_nil
+  | |- canceling nil ?om _ =>
+      let hs := reify_mem_tree om in
+      eapply (canceling_done_nil hs eq_refl)
   | |- True => constructor
   end.
 
@@ -1394,7 +1408,7 @@ Section HeapletwiseHypsTests.
     intros *. intros ? m ?.
     step. step. step. step. step.
     subst P.
-    step. step.
+    step. step. step.
     (* after removing m2 from ((map.empty \*/ map.empty) \*/ m2), the memory is
        not literally empty, but it's (map.empty \*/ map.empty) *)
     step. step.

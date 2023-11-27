@@ -1757,9 +1757,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   step. step. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step. step. step. step.
-  step. apply split_du. assumption. step. unfold canceling. step. step.
-  step. step. simpl. replace m7 with (map.empty : mem) by congruence.
-  unfold emp. step. step. step. step. step. step. step. .**/
+  step. apply split_du. assumption. step. step. step.                             .**/
     }                                                                        /**. .**/
   }                                                                          /**. .**/
 }                                                                            /**.
