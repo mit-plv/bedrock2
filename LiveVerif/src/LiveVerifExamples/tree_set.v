@@ -46,7 +46,7 @@ Fixpoint bst'(sk: tree_skeleton)(s: set Z)(addr: word){struct sk}: mem -> Prop :
   | Node skL skR => EX (p: word) (v: Z) (q: word),
       <{ * emp (addr <> /[0])
          * emp (s v)
-         * freeable 12 addr
+         * freeable (sizeof uintptr * 2 + 4) addr
          * <{ + uintptr p
               + uint 32 v
               + uintptr q }> addr
@@ -63,7 +63,7 @@ Definition bst(s: set Z)(addr: word): mem -> Prop :=
 Local Hint Extern 1 (PredicateSize (bst' ?sk)) =>
   let r := eval cbv iota in
     (match sk with
-     | Node _ _ => 12
+     | Node _ _ => sizeof uintptr * 2 + 4
      | Leaf => 0
      end) in
   exact r
@@ -99,7 +99,7 @@ Lemma invert_bst'_nonnull{sk s p m}:
     exists skL skR pL v pR,
       sk = Node skL skR /\
       s v /\
-      <{ * freeable 12 p
+      <{ * freeable (sizeof uintptr * 2 + 4) p
          * <{ + uintptr pL
               + uint 32 v
               + uintptr pR }> p
@@ -107,7 +107,7 @@ Lemma invert_bst'_nonnull{sk s p m}:
          * bst' skR (fun x => s x /\ v < x) pR }> m.
 Proof.
   intros.
-  destruct sk; simpl in *|-.
+  destruct sk; simpl in *.
   { exfalso. unfold with_mem, emp in *. intuition idtac. }
   repeat heapletwise_step.
   eexists _, _, p0, v, q. split. 1: reflexivity.
@@ -158,6 +158,8 @@ Ltac zset_solver :=
 Ltac step_hook ::=
   match goal with
   | |- _ => progress cbn [bst']
+  | |- context C[8 * 2 + 4] => let g := context C[20] in change g (* TODO generalize *)
+  | |- context C[4 * 2 + 4] => let g := context C[12] in change g (* TODO generalize *)
   | sk: tree_skeleton |- _ => progress subst sk
   | |- same_set _ _ => reflexivity (* <- might instantiate evars and we're fine with that *)
   | |- same_set _ _ => zset_solver
@@ -219,7 +221,7 @@ Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
 
 void bst_init(uintptr_t p) /**#
   ghost_args := (R: mem -> Prop);
-  requires t m := <{ * array (uint 8) 4 ? p
+  requires t m := <{ * array (uint 8) (sizeof uintptr) ? p
                      * R }> m;
   ensures t' m' := t' = t /\
                    <{ * bst (fun _ => False) p
@@ -237,18 +239,18 @@ uintptr_t bst_alloc_node( ) /**#
   requires t m := <{ * allocator
                      * R }> m;
   ensures t' m' res := t' = t /\
-                       ((\[res] =  0 /\ <{ * allocator_failed_below 12
+                       ((\[res] =  0 /\ <{ * allocator_failed_below (sizeof uintptr * 2 + 4)
                                            * R }> m') \/
                         (\[res] <> 0 /\ <{ * allocator
-                                           * freeable 12 res
+                                           * freeable (sizeof uintptr * 2 + 4) res
                                            * uintptr ? res
-                                           * uint 32 ? (res ^+ /[4])
-                                           * uintptr ? (res ^+ /[8])
+                                           * uint 32 ? (res ^+ /[sizeof uintptr])
+                                           * uintptr ? (res ^+ /[sizeof uintptr + 4])
                                            * R }> m')) #**/                /**.
 Derive bst_alloc_node SuchThat (fun_correct! bst_alloc_node)
 As bst_alloc_node_ok.                                                           .**/
 {                                                                          /**. .**/
-  uintptr_t res = Malloc(12);                                              /**. .**/
+  uintptr_t res = Malloc(sizeof(uintptr_t) + 4 + sizeof(uintptr_t));       /**. .**/
   return res;                                                              /**. .**/
 }                                                                          /**.
   destruct_one_match_hyp; steps.
@@ -259,11 +261,12 @@ Qed.
 
 uintptr_t bst_add(uintptr_t p, uintptr_t vAdd) /**#
   ghost_args := s (R: mem -> Prop);
-  requires t m := <{ * allocator
+  requires t m := \[vAdd] < 2 ^ 32 /\
+                  <{ * allocator
                      * bst s p
                      * R }> m;
   ensures t' m' r := t' = t /\
-                     ((\[r] = 0 /\ <{ * allocator_failed_below 12
+                     ((\[r] = 0 /\ <{ * allocator_failed_below (sizeof uintptr * 2 + 4)
                                       * bst s p
                                       * R }> m') \/
                       (\[r] = 1 /\ <{ * allocator
@@ -289,7 +292,7 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
   while (a && !found)
     /* initial_ghosts(p, s, sk, R); decreases(measure) */
   {                                                                        /**. .**/
-    uintptr_t x = load32(a + 4);                                           /**. .**/
+    uintptr_t x = load32(a + sizeof(uintptr_t));                           /**. .**/
     if (x == vAdd) /* split */ {                                           /**. .**/
       found = 1;                                                           /**. .**/
     }                                                                      /**.
@@ -301,7 +304,7 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
         a = load(p);                                                       /**. .**/
       }                                                                    /**. .**/
       else {                                                               /**. .**/
-        p = a + 8;                                                         /**. .**/
+        p = a + sizeof(uintptr_t) + 4;                                     /**. .**/
         a = load(p);                                                       /**. .**/
       }                                                                    /**. .**/
     }                                                                      /**. .**/
@@ -316,8 +319,8 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
     uintptr_t res = bst_alloc_node();                                      /**. .**/
     if (res) /* split */ {                                                 /**. .**/
       store(res, 0);                                                       /**. .**/
-      store32(res+4, vAdd);                                                /**. .**/
-      store(res+8, 0);                                                     /**. .**/
+      store32(res + sizeof(uintptr_t), vAdd);                              /**. .**/
+      store(res + sizeof(uintptr_t) + 4, 0);                               /**. .**/
       store(p, res);                                                       /**. .**/
       return 1;                                                            /**. .**/
     }                                                                      /**. .**/
@@ -357,14 +360,14 @@ Derive bst_contains SuchThat (fun_correct! bst_contains) As bst_contains_ok.    
   while (!found && a != 0)
     /* initial_ghosts(p, s, sk, R); decreases measure */
   {                                                                        /**. .**/
-    uintptr_t here = load32(a+4);                                          /**. .**/
+    uintptr_t here = load32(a + sizeof(uintptr_t));                        /**. .**/
     if (query < here) /* split */ {                                        /**. .**/
       p = a;                                                               /**. .**/
       a = load(p);                                                         /**. .**/
     }                                                                      /**. .**/
     else {                                                                 /**. .**/
       if (here < query) /* split */ {                                      /**. .**/
-        p = a + 8;                                                         /**. .**/
+        p = a + sizeof(uintptr_t) + 4;                                     /**. .**/
         a = load(p);                                                       /**. .**/
       }                                                                    /**. .**/
       else {                                                               /**. .**/
