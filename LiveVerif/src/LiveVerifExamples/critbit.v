@@ -1042,16 +1042,6 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
 }                                                                           /**.
 Qed.
 
-Import enable_frame_trick.
-
-Ltac instantiate_frame_evar_with_remaining_obligation ::=
-  lazymatch goal with
-  | |- canceling (cons ?R nil) ?om (enable_frame_trick ?P) =>
-      let P := lazymatch eval pattern R in P with ?f _ => f end in
-      eapply (canceling_done_frame_generic om P);
-      [ solve [clear; unfold sep, ex1; repeat decomposing_intro; eauto 40] | ]
-  end.
-
 #[export] Instance spec_of_cbt_lookup_impl: fnspec :=                           .**/
 uintptr_t cbt_lookup_impl(uintptr_t tp, uintptr_t k, uintptr_t val_out) /**#
   ghost_args := (sk: tree_skeleton) (pr: prefix) (c: word_map)
@@ -1706,7 +1696,7 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
   unfold is_prefix_key, is_prefix, full_prefix in Hprkb. cbn in Hprkb.
   rewrite clip_prefix_bits in Hprkb. steps. steps. steps.
 
-  unfold enable_frame_trick. steps. .**/
+  unfold enable_frame_trick.enable_frame_trick. steps. .**/
       return result;                                                       /**. .**/
     }                                                                      /**.
   replace (\[result] =? 0) with false by steps.
