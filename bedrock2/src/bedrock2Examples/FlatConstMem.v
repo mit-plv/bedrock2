@@ -206,7 +206,7 @@ Section WithParameters.
       Declare Scope word_scope.
       Bind Scope word_scope with word.
       Delimit Scope word_scope with word.
-      Local Notation "a + b" := (word.add a b) (at level 50, left associativity, format "a + b") : word_scope.
+      Local Notation "a + b" := (word.add a b) (at level 50, left associativity) : word_scope.
       Local Infix "-" := word.sub : word_scope.
       Local Coercion Z.of_nat : nat >-> Z.
       Local Infix "$+" := putmany (at level 70).

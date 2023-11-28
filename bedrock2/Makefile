@@ -2,8 +2,13 @@ default_target: all
 
 .PHONY: clean force all noex ex install_noex install_ex install test
 
-# absolute paths so that emacs compile mode knows where to find error
-# use cygpath -m because Coq on Windows cannot handle cygwin paths
+# Absolute paths so that emacs compile mode knows where to find the errors.
+# The emacs compile mode considers the 'Entering/Leaving directory ...'
+# message emitted by make, so relative paths should work, but -j mixes
+# the output of several parallel sub-makes, so relative paths can't be
+# used any more (and '--output-sync=recurse' would hold back the output
+# for too long).
+# Using cygpath -m because Coq on Windows cannot handle cygwin paths
 SRCDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/bedrock2
 EXDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/bedrock2Examples
 
@@ -34,33 +39,53 @@ endif
 
 ALLDEPFLAGS=$(subst \n, ,$(ALLDEPFLAGS_NL))
 
-_CoqProject:
-	printf -- '$(ALLDEPFLAGS_NL)' > _CoqProject
+# We auto-update _CoqProject and _CoqProject.noex,
+# but only change their timestamp if the set of files that they list changed
+
+PRINT_DEPFLAGS_NL := printf -- '$(ALLDEPFLAGS_NL)'
+PRINT_VS_NOEX := printf -- '%s\n' $(sort $(VS_NOEX))
+PRINT_VS_EX := printf -- '%s\n' $(sort $(VS_EX))
+PRINT_COQPROJECT_NOEX := { $(PRINT_DEPFLAGS_NL); $(PRINT_VS_NOEX); }
+PRINT_COQPROJECT := { $(PRINT_DEPFLAGS_NL); $(PRINT_VS_NOEX); $(PRINT_VS_EX); }
+OLD_COQPROJECT_NOEX_CONTENTS := $(strip $(shell cat _CoqProject.noex 2>/dev/null))
+NEW_COQPROJECT_NOEX_CONTENTS := $(strip $(shell $(PRINT_COQPROJECT_NOEX)))
+OLD_COQPROJECT_CONTENTS := $(strip $(shell cat _CoqProject 2>/dev/null))
+NEW_COQPROJECT_CONTENTS := $(strip $(shell $(PRINT_COQPROJECT)))
+
+ifneq ($(OLD_COQPROJECT_NOEX_CONTENTS),$(NEW_COQPROJECT_NOEX_CONTENTS))
+_CoqProject.noex: force
+	@echo updating $@
+	@$(PRINT_COQPROJECT_NOEX) > $@
+endif
+
+ifneq ($(OLD_COQPROJECT_CONTENTS),$(NEW_COQPROJECT_CONTENTS))
+_CoqProject: force
+	@echo updating $@
+	@$(PRINT_COQPROJECT) > $@
+endif
 
 noex: Makefile.coq.noex $(VS_NOEX)
-	rm -f .coqdeps.d
-	$(MAKE) -f Makefile.coq.noex
+	$(MAKE) --no-print-directory -f Makefile.coq.noex
 
 ex: Makefile.coq.ex $(VS_EX) noex
-	rm -f .coqdeps.d
-	$(MAKE) -f Makefile.coq.ex
+	$(MAKE) --no-print-directory -f Makefile.coq.ex
 
 all: noex ex test
-test: special/BytedumpTest.out typecheckExprToCString testStackLoop testStackNondet # typecheckExprToCString-32 typecheckExprToCString-64
+test: special/BytedumpTest.out special/stackloop.out special/stacknondet.out special/TypecheckExprToCString.out # special/TypecheckExprToCString-32.out special/TypecheckExprToCString-64.out
 
-COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject -docroot bedrock2 $(COQMF_ARGS)
+COQ_MAKEFILE := $(COQBIN)coq_makefile -docroot bedrock2 $(COQMF_ARGS)
 
-Makefile.coq.noex: force _CoqProject
-	@echo "Generating Makefile.coq.noex"
-	@$(COQ_MAKEFILE) $(VS_NOEX) -o Makefile.coq.noex
+Makefile.coq.noex: _CoqProject.noex
+	$(COQ_MAKEFILE) -f _CoqProject.noex -o Makefile.coq.noex
 
-Makefile.coq.ex: force _CoqProject
-	@echo "Generating Makefile.coq.ex"
-	@$(COQ_MAKEFILE) $(VS_EX) -arg -native-compiler -arg ondemand -o Makefile.coq.ex
+Makefile.coq.ex: _CoqProject
+	$(COQ_MAKEFILE) -f _CoqProject -arg -native-compiler -arg ondemand -o Makefile.coq.ex
 
-BYTEDUMP = COQFLAGS="$(ALLDEPFLAGS)" ../etc/bytedump.py
+BYTEDUMP_DEPS := $(SRCDIR)/PrintListByte.vo ../etc/bytedump.py
+BYTEDUMP := COQFLAGS="$(ALLDEPFLAGS)" ../etc/bytedump.py
 
-special/BytedumpTest.out: special/BytedumpTest.golden.bin noex
+$(SRCDIR)/PrintListByte.vo: | noex
+special/BytedumpTest.out: special/BytedumpTest.golden.bin $(BYTEDUMP_DEPS)
 	$(BYTEDUMP) bedrock2.PrintListByte.allBytes > special/BytedumpTest.out.tmp
 	hexdump < /dev/null && \
 		hexdump -C special/BytedumpTest.golden.bin > special/BytedumpTest.golden.hex && \
@@ -70,28 +95,31 @@ special/BytedumpTest.out: special/BytedumpTest.golden.bin noex
 	diff -u special/BytedumpTest.golden.bin special/BytedumpTest.out.tmp
 	mv special/BytedumpTest.out.tmp special/BytedumpTest.out
 
-special/stackloop.c: noex
+$(SRCDIR)/ToCStringStackallocLoopTest.vo: | noex
+special/stackloop.c: $(SRCDIR)/ToCStringStackallocLoopTest.vo $(BYTEDUMP_DEPS)
 	$(BYTEDUMP) bedrock2.ToCStringStackallocLoopTest.main_cbytes > special/stackloop.c
 special/stackloop: special/stackloop.c
 	$(CC) -O0 special/stackloop.c -o special/stackloop
-testStackLoop: special/stackloop
-	special/stackloop
+special/stackloop.out: special/stackloop
+	special/stackloop > $@
 
-special/stacknondet.c: ex
+$(EXDIR)/stackalloc.vo: | ex
+special/stacknondet.c: $(EXDIR)/stackalloc.vo $(BYTEDUMP_DEPS)
 	$(BYTEDUMP) bedrock2Examples.stackalloc.stacknondet_c > special/stacknondet.c
 special/stacknondet: special/stacknondet.c
 	$(CC) special/stacknondet.c -o special/stacknondet
-testStackNondet: special/stacknondet
-	special/stacknondet
+special/stacknondet.out: special/stacknondet
+	special/stacknondet > $@
 
-special/TypecheckExprToCString.c: noex
+$(SRCDIR)/ToCStringExprTypecheckingTest.vo: | noex
+special/TypecheckExprToCString.c: $(SRCDIR)/ToCStringExprTypecheckingTest.vo $(BYTEDUMP_DEPS)
 	$(BYTEDUMP) bedrock2.ToCStringExprTypecheckingTest.test > special/TypecheckExprToCString.c
-typecheckExprToCString: special/TypecheckExprToCString.c
-	$(CC) -fsyntax-only special/TypecheckExprToCString.c
-typecheckExprToCString-64: special/TypecheckExprToCString.c
-	$(CC) -m64 -fsyntax-only special/TypecheckExprToCString.c
-typecheckExprToCString-32: special/TypecheckExprToCString.c
-	$(CC) -m32 -fsyntax-only special/TypecheckExprToCString.c
+special/TypecheckExprToCString.out: special/TypecheckExprToCString.c
+	$(CC) -fsyntax-only special/TypecheckExprToCString.c > $@
+special/TypecheckExprToCString-64.out: special/TypecheckExprToCString.c
+	$(CC) -m64 -fsyntax-only special/TypecheckExprToCString.c > $@
+special/TypecheckExprToCString-32.out: special/TypecheckExprToCString.c
+	$(CC) -m32 -fsyntax-only special/TypecheckExprToCString.c > $@
 
 force:
 

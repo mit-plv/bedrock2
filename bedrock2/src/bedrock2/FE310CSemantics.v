@@ -2,7 +2,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Import coqutil.Word.Interface.
-Require Import coqutil.Word.Bitwidth32.
+Require Export coqutil.Word.Bitwidth32.
 
 Import String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.

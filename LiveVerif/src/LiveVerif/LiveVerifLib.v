@@ -15,7 +15,7 @@ Require Export bedrock2.Map.DisjointUnion.
 Require Export bedrock2.ZnWords.
 Require Export bedrock2.unzify.
 Require Export bedrock2.ptsto_bytes bedrock2.Scalars.
-Require Export coqutil.Word.Bitwidth32.
+Require Export coqutil.Word.Bitwidth.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Export bedrock2.SepBulletPoints.
 Require Export bedrock2.SepappBulletPoints.

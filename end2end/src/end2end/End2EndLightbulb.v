@@ -1,7 +1,7 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Strings.String.
 Require Import Coq.Lists.List. Import ListNotations.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Interface coqutil.Word.Bitwidth32.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.forward.
 Require Import bedrock2.Syntax.

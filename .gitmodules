@@ -8,6 +8,3 @@
 	path = deps/kami
 	url = https://github.com/mit-plv/kami.git
 	branch = rv32i
-[submodule "deps/coq-record-update"]
-	path = deps/coq-record-update
-	url = https://github.com/tchajed/coq-record-update.git

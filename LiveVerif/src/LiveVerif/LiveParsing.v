@@ -4,6 +4,7 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import bedrock2.Syntax.
 Require Import LiveVerif.LiveExpr.
 Require Import LiveVerif.LiveSnippet.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.reference_to_string.
 (* TODO consolidate with variants in coqutil: *)
@@ -262,6 +263,30 @@ Notation "'do' /* 'initial_ghosts' g0 ; 'decreases' m0 */ {" := (SDoTailrec g0 m
 
 Notation "} 'while' ( e ) ;" := (SEndDo e)
   (in custom snippet at level 0, e custom live_expr).
+
+Ltac exact_bitwidth :=
+  let bw := constr:(_ : Bitwidth _) in
+  lazymatch type of bw with
+  | Bitwidth ?w => exact w
+  end.
+
+Notation bitwidth := ltac:(exact_bitwidth) (only parsing).
+
+Ltac exact_bytes_per_word :=
+  let bw := constr:(_ : Bitwidth _) in
+  lazymatch type of bw with
+  | Bitwidth 32 => exact 4
+  | Bitwidth 64 => exact 8
+  end.
+
+Notation bytes_per_word := ltac:(exact_bytes_per_word) (only parsing).
+
+Notation "'sizeof(uintptr_t)'" := (expr.literal bytes_per_word)
+  (in custom live_expr at level 1, only parsing).
+
+Goal forall (BW: Bitwidth 32),
+    */ uintptr_t v = sizeof(uintptr_t); /* = SAssign true "v" (RExpr (expr.literal 4)).
+Proof. intros. reflexivity. Succeed Qed. Abort.
 
 Goal True.
   pose */ /* hello, world! */ /* as s.

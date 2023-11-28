@@ -31,7 +31,7 @@ Require Import compiler.RiscvWordProperties.
 Require Import riscv.Platform.FE310ExtSpec.
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Datatypes.ListSet.
-Require bedrock2.FE310CSemantics.
+Require Import bedrock2.FE310CSemantics.
 Import ListNotations.
 
 Open Scope ilist_scope.

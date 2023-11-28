@@ -1578,6 +1578,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   2: apply I.
   step. step. apply sep_comm.
   step. step. step. step.
+
   unfold is_canonic. unfold canonic_bits. cbn. rewrite clip_prefix_bits; steps.
   simpl length in *.
   step. apply is_prefix_key_extend_0; steps; cbn; steps.
