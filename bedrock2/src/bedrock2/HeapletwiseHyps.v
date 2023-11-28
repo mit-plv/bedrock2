@@ -985,7 +985,7 @@ Ltac destruct_emp_step :=
   | H: with_mem ?m (emp ?P) |- _ => destruct_emp_step0 H m P
   | H: emp ?P ?m            |- _ => destruct_emp_step0 H m P
   end.
-Require Import coqutil.Tactics.ident_ops.
+
 (* usually already done by split_sep_step, but when introducing hyps from the
    frame after a call, separate merging might still be needed: *)
 Ltac merge_du_step :=
