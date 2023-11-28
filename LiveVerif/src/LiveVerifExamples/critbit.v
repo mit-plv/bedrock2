@@ -3,6 +3,91 @@ Require Import LiveVerif.LiveVerifLib.
 Require Import LiveVerifExamples.onesize_malloc.
 Require Import coqutil.Datatypes.PropSet.
 
+Require Import Coq.Bool.Bool.
+
+Definition prefix := list bool.
+
+Fixpoint pfx_le (p1 p2: prefix) :=
+  match p1 with
+  | nil => True
+  | cons b1 p1' => match p2 with
+                   | nil => False
+                   | cons b2 p2' => if eqb b1 b2 then pfx_le p1' p2' else False
+                   end
+  end.
+
+Definition pfx_len (p: prefix) := Z.of_nat (length p).
+
+Lemma pfx_reflx : forall (p: prefix), pfx_le p p.
+Proof.
+  induction p.
+  - simpl. apply I.
+  - simpl. rewrite eqb_reflx. assumption.
+Qed.
+
+Lemma pfx'_nil_nil : forall (p: prefix), pfx_le p nil -> p = nil.
+Proof.
+  induction p; intros.
+  - reflexivity.
+  - simpl in *. tauto.
+Qed.
+
+Lemma pfx_asym : forall (p1 p2: prefix), pfx_le p1 p2 -> pfx_le p2 p1 -> p1 = p2.
+Proof.
+  induction p1; intros.
+  - destruct p2.
+    + reflexivity.
+    + simpl in *. tauto.
+  - destruct p2; simpl in *.
+    + tauto.
+    + destruct (eqb a b) eqn:E.
+      * apply eqb_prop in E. subst. f_equal. rewrite eqb_reflx in *.
+        match goal with
+        | H: context[_ -> _ = _] |- _ => apply H
+        end; assumption.
+      * tauto.
+Qed.
+
+Lemma pfx_trans : forall (p1 p2 p3: prefix),
+                  pfx_le p1 p2 -> pfx_le p2 p3 -> pfx_le p1 p3.
+Proof.
+  induction p1; intros; simpl.
+  - apply I.
+  - destruct p3.
+    + destruct p2; simpl in *; tauto.
+    + destruct (eqb a b) eqn:E.
+      * apply eqb_prop in E. subst. destruct p2; simpl in *.
+        -- tauto.
+        -- destruct (eqb b b0) eqn:E.
+          ++ apply eqb_prop in E. subst. rewrite eqb_reflx in *.
+             match goal with
+             | H: context[_ -> pfx_le _ _] |- _ => apply H with (p2:=p2)
+             end; assumption.
+          ++ assert (E': eqb b0 b = false) by tauto. rewrite E' in *. tauto.
+      * destruct p2; simpl in *.
+        -- tauto.
+        -- destruct a; destruct b; destruct b0; simpl in *; congruence.
+Qed.
+
+Lemma pfx_le_len : forall (p1 p2: prefix), pfx_le p1 p2 -> pfx_len p1 <= pfx_len p2.
+Proof.
+  induction p1; intros; unfold pfx_len in *.
+  - simpl. lia.
+  - match goal with
+    | H1: pfx_le _ _, H2: forall _, _ |- _ => rename H1 into HH; rename H2 into IH
+    end.
+    simpl length. destruct p2; simpl pfx_le in *; simpl length in *.
+    + tauto.
+    + destruct (eqb a b); [ apply IH in HH | ]; lia.
+Qed.
+
+Lemma pfx_lele_tot : forall (p1 p2 p: prefix),
+                     pfx_le p1 p -> pfx_le p2 p -> pfx_le p1 p2 \/ pfx_le p2 p1.
+Proof.
+Admitted.
+
+Definition word :
+
 (* some parts of this file are based on tree_set.v (binary search trees) *)
 
 Inductive tree_skeleton: Set :=
