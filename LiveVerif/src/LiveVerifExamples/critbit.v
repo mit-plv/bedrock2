@@ -193,17 +193,16 @@ Qed.
 (* no need to use word (record) for ghost: might use positive *)
 Fixpoint cbt' (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word): mem -> Prop :=
   match sk with
-    | Leaf => ex1 (fun k: word => ex1 (fun v: word =>
+    | Leaf => EX (k: word) (v: word),
         <{ * emp (a <> /[0])
            * freeable 12 a
            * <{ + uintptr /[-1] (* uint 32 (2 ^ 32 - 1) *)
                 + uintptr k
                 + uintptr v }> a
            * emp (p = full_prefix k)
-           * emp (c = map.singleton k v) }>))
-  | Node skL skR => ex1 (fun aL: word => ex1 (fun pL: prefix => ex1 (fun cL: word_map =>
-     ex1 (fun aR: word => ex1 (fun pR: prefix => ex1 (fun cR: word_map
-          =>
+           * emp (c = map.singleton k v) }>
+  | Node skL skR => EX (aL: word) (pL: prefix) (cL: word_map)
+                       (aR: word) (pR: prefix) (cR: word_map),
           <{ * emp (a <> /[0])
              * freeable 12 a
              * <{ + uintptr /[p.(length)] (* uint 32 p.(length) *)
@@ -215,11 +214,10 @@ Fixpoint cbt' (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word): mem -> Pr
              * emp (is_canonic p)
              * emp (is_prefix (append_0 p) pL)
              * emp (is_prefix (append_1 p) pR)
-             * emp (map.split c cL cR) }>))))))
+             * emp (map.split c cL cR) }>
   end.
 
-Definition nncbt (c: word_map) (a: word): mem -> Prop :=
-  ex1 (fun sk: tree_skeleton => ex1 (fun p: prefix => cbt' sk p c a)).
+Definition nncbt (c: word_map) (a: word): mem -> Prop := EX sk p, cbt' sk p c a.
 
 (* in full generality, a CBT can be represented as a pointer which is either
    - NULL for an empty CBT, or
@@ -792,7 +790,7 @@ Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
   end.
 
 Lemma cbt_expose_fields (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word):
-  impl1 (cbt' sk p c a) (ex1 (fun w2 => ex1 (fun w3 =>
+  impl1 (cbt' sk p c a) (EX w2 w3,
     <{ * freeable 12 a
        * <{ + uintptr /[match sk with | Leaf => -1 | Node _ _ => length p end]
             + uintptr w2
@@ -801,17 +799,16 @@ Lemma cbt_expose_fields (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word):
        * match sk with
          | Leaf => <{ * emp (p = full_prefix w2)
                       * emp (c = map.singleton w2 w3) }>
-         | Node skL skR => ex1 (fun pL: prefix => ex1 (fun cL: word_map =>
-                           ex1 (fun pR: prefix => ex1 (fun cR: word_map =>
+         | Node skL skR => EX pL cL pR cR,
                          <{ * cbt' skL pL cL w2
                             * cbt' skR pR cR w3
                             * emp (0 <= p.(length) <= 31)
                             * emp (is_canonic p)
                             * emp (is_prefix (append_0 p) pL)
                             * emp (is_prefix (append_1 p) pR)
-                            * emp (map.split c cL cR) }>))))
+                            * emp (map.split c cL cR) }>
          end
-                                                              }> ))).
+                                                              }>).
 Proof.
   unfold impl1. intro m. intros. destruct sk; simpl cbt' in *; steps.
 Qed.
@@ -1269,11 +1266,11 @@ uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /*
                             (* `id` is a hack to identify this occurrence when
                                 rewriting *)
                             res = id tp /\
-                            ex1 (fun sk' => ex1 (fun pr' =>
+                            (EX sk' pr',
                               <{ * allocator
                                  * emp (is_prefix total_pr pr')
                                  * cbt' sk' pr' (map.put c k v) tp
-                                 * R }>)) m' #**/ /**.
+                                 * R }>) m' #**/ /**.
 Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok.  .**/
 {                                                                           /**. .**/
   uintptr_t p = tp;                                                         /**.
