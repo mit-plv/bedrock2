@@ -57,16 +57,16 @@ Ltac unfold_bits_step :=
       let Hb := fresh "Hb" in assert (Hb: 0 <= X < 2 ^ 32); [ lia | ];
                               rewrite (Z.mod_small X (2 ^ 32) Hb); clear Hb
   | H: context[ ?X mod 2 ^ 32 ] |- _ =>
-      let Hb := fresh "Hb" in assert (Hb: 0 <= X < 2 ^ 32); [ ZnWords | ];
+      let Hb := fresh "Hb" in assert (Hb: 0 <= X < 2 ^ 32); [ hwlia | ];
                               rewrite (Z.mod_small X (2 ^ 32) Hb) in H; clear Hb
   | _ => rewrite word.unsigned_and in *
   | _ => rewrite word.unsigned_xor in *
   | _ => rewrite word.unsigned_or in *
   | _ => rewrite word.unsigned_not in *
-  | _ => rewrite word.unsigned_slu; [ | ZnWords ]
-  | _ => rewrite word.unsigned_sru; [ | ZnWords ]
-  | H: context[ \[word.slu _ _] ] |- _ => rewrite word.unsigned_slu in H; [ | ZnWords ]
-  | H: context[ \[word.sru _ _] ] |- _ => rewrite word.unsigned_sru in H; [ | ZnWords ]
+  | _ => rewrite word.unsigned_slu; [ | hwlia ]
+  | _ => rewrite word.unsigned_sru; [ | hwlia ]
+  | H: context[ \[word.slu _ _] ] |- _ => rewrite word.unsigned_slu in H; [ | hwlia ]
+  | H: context[ \[word.sru _ _] ] |- _ => rewrite word.unsigned_sru in H; [ | hwlia ]
   | _ => rewrite word.unsigned_of_Z in *
   | _ => rewrite <- Z.land_ones; [ | lia ]
   | _ => rewrite Z.testbit_ones; [ | lia ]
@@ -93,7 +93,7 @@ Proof.
   intros. assert (n = 32 \/ n < 32).
   lia. destruct H0; unfold prefix_bits;
     [ assert (Hc: n =? 32 = true); [ lia | ] | assert (Hc: n =? 32 = false); [ lia | ] ];
-    rewrite Hc; unfold_bits; (replace (\[w]) with (\[w] mod 2 ^ 32); [ | ZnWords ]);
+    rewrite Hc; unfold_bits; (replace (\[w]) with (\[w] mod 2 ^ 32); [ | hwlia ]);
     unfold_bits; destruct (Z.testbit \[w] n0); lia.
   (* invoking unfold_bits for a second time because that adds the information
      that testbit \[w] is non-zero only for indices 0 to 31 *)
@@ -304,9 +304,9 @@ Qed.
 Ltac my_simpl_step :=
   match goal with
   | |- context [ \[/[0]] ] => rewrite word.unsigned_of_Z_0
-  | H: ?w <> /[0] |- context[ \[?w] =? 0 ] => replace (\[w] =? 0) with false by ZnWords
+  | H: ?w <> /[0] |- context[ \[?w] =? 0 ] => replace (\[w] =? 0) with false by hwlia
   | H1: ?w <> /[0], H2: context[ \[?w] =? 0 ] |- _ =>
-        replace (\[w] =? 0) with false in H2 by ZnWords
+        replace (\[w] =? 0) with false in H2 by hwlia
   | H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
         rewrite map_get_singleton_same_eq in H; [ | solve [ trivial ] ]
   | |- context [ map.get (map.singleton ?k ?v) ?k']  =>
@@ -702,7 +702,7 @@ Ltac step_hook ::=
     |- is_prefix_key (append_1 ?pr) ?k =>
     apply is_prefix_key_extend_1
   | H1: is_prefix_key (append_0 ?pr) ?k, H2: word.and (?k ^>> /[length ?pr]) /[1] = /[1]
-    |- _ => apply append_0_prefix in H1; try lia; rewrite H2 in H1; ZnWords
+    |- _ => apply append_0_prefix in H1; try lia; rewrite H2 in H1; hwlia
   | H1: is_prefix_key (append_1 ?pr) ?k, H2: word.and (?k ^>> /[length ?pr]) /[1] <> /[1]
     |- _ => apply append_1_prefix in H1; try lia; rewrite H1 in H2; contradiction
   | |- context [ length (full_prefix ?k) ] =>
@@ -911,7 +911,7 @@ Proof.
         eapply prefixes_of_same with (p1:=append_1 p) in H2; steps
       end.
       assert (Hhas1: is_prefix_key (append_1 p) k_target) by steps.
-      apply append_1_prefix in Hhas1. ZnWords. (* xlia zchecker doesn't do anything *)
+      apply append_1_prefix in Hhas1. hwlia. (* xlia zchecker doesn't do anything *)
       lia.
     + assert (is_prefix_key p k) by steps. assert (is_prefix pr p) by steps. steps.
 Qed.
@@ -1007,7 +1007,7 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   simpl cbt'. destruct_or; [ left | right ]; steps. unfold map.split. steps.
   apply eq_None_by_false. intro.
   apply_key_prefix_hyp. assert (Hpr: is_prefix_key (append_0 pr) k) by steps.
-  apply append_0_prefix in Hpr. ZnWords. steps. .**/
+  apply append_0_prefix in Hpr. hwlia. steps. .**/
     else {                                                                   /**. .**/
       p = load(p + 4);                                                       /**. .**/
     }                                                                        /**.
@@ -1230,16 +1230,16 @@ Derive critical_bit SuchThat (fun_correct! critical_bit) As critical_bit_ok.    
     i = i + 1;                                                             /**. .**/
   }                                                                        /**.
   subst i. replace (word.opp /[1]) with (/[-1]) in H5.
-  rewrite xor_0_l in H5. assumption. ZnWords. .**/
+  rewrite xor_0_l in H5. assumption. hwlia. .**/
   return i;                                                                /**. .**/
 }                                                                          /**.
   (* TODO: think about the prefix interface more carefully? *)
   unfold prefix_bits. assert (Hi: \[i] =? 32 = false). lia. rewrite Hi.
-  replace /[\[i]] with i. assumption. ZnWords.
+  replace /[\[i]] with i. assumption. hwlia.
   unfold prefix_bits. destruct (\[i] + 1 =? 32) eqn:E. assumption.
-  destruct H. exfalso. ZnWords. replace (word.opp /[1]) with (/[-1]) in H.
+  destruct H. exfalso. hwlia. replace (word.opp /[1]) with (/[-1]) in H.
   rewrite xor_0_l in H. replace (/[\[i] + 1]) with (i ^+ /[1]).
-  assumption. ZnWords. ZnWords.
+  assumption. hwlia. hwlia.
 Qed.
 
 #[export] Instance spec_of_cbt_insert_at: fnspec :=                             .**/
@@ -1491,7 +1491,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
     |- _ => apply H1 with k
   end.
   step.
-  assert (word.and (k ^>> cb) /[1] = /[1]). replace cb with /[length pr] by ZnWords.
+  assert (word.and (k ^>> cb) /[1] = /[1]). replace cb with /[length pr] by hwlia.
   apply_key_prefix_hyp.
   assert (Hprk: is_prefix_key (append_1 pr) k). steps.
   apply append_1_prefix in Hprk. steps. steps.
