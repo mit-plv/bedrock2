@@ -142,16 +142,16 @@ Ltac unfold_bits_step :=
       let Hb := fresh "Hb" in assert (Hb: 0 <= X < 2 ^ 32); [ lia | ];
                               rewrite (Z.mod_small X (2 ^ 32) Hb); clear Hb
   | H: context[ ?X mod 2 ^ 32 ] |- _ =>
-      let Hb := fresh "Hb" in assert (Hb: 0 <= X < 2 ^ 32); [ ZnWords | ];
+      let Hb := fresh "Hb" in assert (Hb: 0 <= X < 2 ^ 32); [ hwlia | ];
                               rewrite (Z.mod_small X (2 ^ 32) Hb) in H; clear Hb
   | _ => rewrite word.unsigned_and in *
   | _ => rewrite word.unsigned_xor in *
   | _ => rewrite word.unsigned_or in *
   | _ => rewrite word.unsigned_not in *
-  | _ => rewrite word.unsigned_slu; [ | ZnWords ]
-  | _ => rewrite word.unsigned_sru; [ | ZnWords ]
-  | H: context[ \[word.slu _ _] ] |- _ => rewrite word.unsigned_slu in H; [ | ZnWords ]
-  | H: context[ \[word.sru _ _] ] |- _ => rewrite word.unsigned_sru in H; [ | ZnWords ]
+  | _ => rewrite word.unsigned_slu; [ | hwlia ]
+  | _ => rewrite word.unsigned_sru; [ | hwlia ]
+  | H: context[ \[word.slu _ _] ] |- _ => rewrite word.unsigned_slu in H; [ | hwlia ]
+  | H: context[ \[word.sru _ _] ] |- _ => rewrite word.unsigned_sru in H; [ | hwlia ]
   | _ => rewrite word.unsigned_of_Z in *
   | _ => rewrite <- Z.land_ones; [ | lia ]
   | _ => rewrite Z.testbit_ones; [ | lia ]
@@ -178,7 +178,7 @@ Proof.
   intros. assert (n = 32 \/ n < 32).
   lia. destruct H0; unfold prefix_bits;
     [ assert (Hc: n =? 32 = true); [ lia | ] | assert (Hc: n =? 32 = false); [ lia | ] ];
-    rewrite Hc; unfold_bits; (replace (\[w]) with (\[w] mod 2 ^ 32); [ | ZnWords ]);
+    rewrite Hc; unfold_bits; (replace (\[w]) with (\[w] mod 2 ^ 32); [ | hwlia ]);
     unfold_bits; destruct (Z.testbit \[w] n0); lia.
   (* invoking unfold_bits for a second time because that adds the information
      that testbit \[w] is non-zero only for indices 0 to 31 *)
@@ -278,17 +278,16 @@ Qed.
 (* no need to use word (record) for ghost: might use positive *)
 Fixpoint cbt' (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word): mem -> Prop :=
   match sk with
-    | Leaf => ex1 (fun k: word => ex1 (fun v: word =>
+    | Leaf => EX (k: word) (v: word),
         <{ * emp (a <> /[0])
            * freeable 12 a
            * <{ + uintptr /[-1] (* uint 32 (2 ^ 32 - 1) *)
                 + uintptr k
                 + uintptr v }> a
            * emp (p = full_prefix k)
-           * emp (c = map.singleton k v) }>))
-  | Node skL skR => ex1 (fun aL: word => ex1 (fun pL: prefix => ex1 (fun cL: word_map =>
-     ex1 (fun aR: word => ex1 (fun pR: prefix => ex1 (fun cR: word_map
-          =>
+           * emp (c = map.singleton k v) }>
+  | Node skL skR => EX (aL: word) (pL: prefix) (cL: word_map)
+                       (aR: word) (pR: prefix) (cR: word_map),
           <{ * emp (a <> /[0])
              * freeable 12 a
              * <{ + uintptr /[p.(length)] (* uint 32 p.(length) *)
@@ -300,11 +299,10 @@ Fixpoint cbt' (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word): mem -> Pr
              * emp (is_canonic p)
              * emp (is_prefix (append_0 p) pL)
              * emp (is_prefix (append_1 p) pR)
-             * emp (map.split c cL cR) }>))))))
+             * emp (map.split c cL cR) }>
   end.
 
-Definition nncbt (c: word_map) (a: word): mem -> Prop :=
-  ex1 (fun sk: tree_skeleton => ex1 (fun p: prefix => cbt' sk p c a)).
+Definition nncbt (c: word_map) (a: word): mem -> Prop := EX sk p, cbt' sk p c a.
 
 (* in full generality, a CBT can be represented as a pointer which is either
    - NULL for an empty CBT, or
@@ -389,9 +387,9 @@ Qed.
 Ltac my_simpl_step :=
   match goal with
   | |- context [ \[/[0]] ] => rewrite word.unsigned_of_Z_0
-  | H: ?w <> /[0] |- context[ \[?w] =? 0 ] => replace (\[w] =? 0) with false by ZnWords
+  | H: ?w <> /[0] |- context[ \[?w] =? 0 ] => replace (\[w] =? 0) with false by hwlia
   | H1: ?w <> /[0], H2: context[ \[?w] =? 0 ] |- _ =>
-        replace (\[w] =? 0) with false in H2 by ZnWords
+        replace (\[w] =? 0) with false in H2 by hwlia
   | H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
         rewrite map_get_singleton_same_eq in H; [ | solve [ trivial ] ]
   | |- context [ map.get (map.singleton ?k ?v) ?k']  =>
@@ -787,7 +785,7 @@ Ltac step_hook ::=
     |- is_prefix_key (append_1 ?pr) ?k =>
     apply is_prefix_key_extend_1
   | H1: is_prefix_key (append_0 ?pr) ?k, H2: word.and (?k ^>> /[length ?pr]) /[1] = /[1]
-    |- _ => apply append_0_prefix in H1; try lia; rewrite H2 in H1; ZnWords
+    |- _ => apply append_0_prefix in H1; try lia; rewrite H2 in H1; hwlia
   | H1: is_prefix_key (append_1 ?pr) ?k, H2: word.and (?k ^>> /[length ?pr]) /[1] <> /[1]
     |- _ => apply append_1_prefix in H1; try lia; rewrite H1 in H2; contradiction
   | |- context [ length (full_prefix ?k) ] =>
@@ -877,7 +875,7 @@ Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
   end.
 
 Lemma cbt_expose_fields (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word):
-  impl1 (cbt' sk p c a) (ex1 (fun w2 => ex1 (fun w3 =>
+  impl1 (cbt' sk p c a) (EX w2 w3,
     <{ * freeable 12 a
        * <{ + uintptr /[match sk with | Leaf => -1 | Node _ _ => length p end]
             + uintptr w2
@@ -886,17 +884,16 @@ Lemma cbt_expose_fields (sk: tree_skeleton) (p: prefix) (c: word_map) (a: word):
        * match sk with
          | Leaf => <{ * emp (p = full_prefix w2)
                       * emp (c = map.singleton w2 w3) }>
-         | Node skL skR => ex1 (fun pL: prefix => ex1 (fun cL: word_map =>
-                           ex1 (fun pR: prefix => ex1 (fun cR: word_map =>
+         | Node skL skR => EX pL cL pR cR,
                          <{ * cbt' skL pL cL w2
                             * cbt' skR pR cR w3
                             * emp (0 <= p.(length) <= 31)
                             * emp (is_canonic p)
                             * emp (is_prefix (append_0 p) pL)
                             * emp (is_prefix (append_1 p) pR)
-                            * emp (map.split c cL cR) }>))))
+                            * emp (map.split c cL cR) }>
          end
-                                                              }> ))).
+                                                              }>).
 Proof.
   unfold impl1. intro m. intros. destruct sk; simpl cbt' in *; steps.
 Qed.
@@ -996,7 +993,7 @@ Proof.
         eapply prefixes_of_same with (p1:=append_1 p) in H2; steps
       end.
       assert (Hhas1: is_prefix_key (append_1 p) k_target) by steps.
-      apply append_1_prefix in Hhas1. ZnWords. (* xlia zchecker doesn't do anything *)
+      apply append_1_prefix in Hhas1. hwlia. (* xlia zchecker doesn't do anything *)
       lia.
     + assert (is_prefix_key p k) by steps. assert (is_prefix pr p) by steps. steps.
 Qed.
@@ -1092,7 +1089,7 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   simpl cbt'. destruct_or; [ left | right ]; steps. unfold map.split. steps.
   apply eq_None_by_false. intro.
   apply_key_prefix_hyp. assert (Hpr: is_prefix_key (append_0 pr) k) by steps.
-  apply append_0_prefix in Hpr. ZnWords. steps. .**/
+  apply append_0_prefix in Hpr. hwlia. steps. .**/
     else {                                                                   /**. .**/
       p = load(p + 4);                                                       /**. .**/
     }                                                                        /**.
@@ -1126,16 +1123,6 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   right. steps. .**/
 }                                                                           /**.
 Qed.
-
-Import enable_frame_trick.
-
-Ltac instantiate_frame_evar_with_remaining_obligation ::=
-  lazymatch goal with
-  | |- canceling (cons ?R nil) ?om (enable_frame_trick ?P) =>
-      let P := lazymatch eval pattern R in P with ?f _ => f end in
-      eapply (canceling_done_frame_generic om P);
-      [ solve [clear; unfold sep, ex1; repeat decomposing_intro; eauto 40] | ]
-  end.
 
 #[export] Instance spec_of_cbt_lookup_impl: fnspec :=                           .**/
 uintptr_t cbt_lookup_impl(uintptr_t tp, uintptr_t k, uintptr_t val_out) /**#
@@ -1325,16 +1312,16 @@ Derive critical_bit SuchThat (fun_correct! critical_bit) As critical_bit_ok.    
     i = i + 1;                                                             /**. .**/
   }                                                                        /**.
   subst i. replace (word.opp /[1]) with (/[-1]) in H5.
-  rewrite xor_0_l in H5. assumption. ZnWords. .**/
+  rewrite xor_0_l in H5. assumption. hwlia. .**/
   return i;                                                                /**. .**/
 }                                                                          /**.
   (* TODO: think about the prefix interface more carefully? *)
   unfold prefix_bits. assert (Hi: \[i] =? 32 = false). lia. rewrite Hi.
-  replace /[\[i]] with i. assumption. ZnWords.
+  replace /[\[i]] with i. assumption. hwlia.
   unfold prefix_bits. destruct (\[i] + 1 =? 32) eqn:E. assumption.
-  destruct H. exfalso. ZnWords. replace (word.opp /[1]) with (/[-1]) in H.
+  destruct H. exfalso. hwlia. replace (word.opp /[1]) with (/[-1]) in H.
   rewrite xor_0_l in H. replace (/[\[i] + 1]) with (i ^+ /[1]).
-  assumption. ZnWords. ZnWords.
+  assumption. hwlia. hwlia.
 Qed.
 
 #[export] Instance spec_of_cbt_insert_at: fnspec :=                             .**/
@@ -1364,11 +1351,11 @@ uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /*
                             (* `id` is a hack to identify this occurrence when
                                 rewriting *)
                             res = id tp /\
-                            ex1 (fun sk' => ex1 (fun pr' =>
+                            (EX sk' pr',
                               <{ * allocator
                                  * emp (is_prefix total_pr pr')
                                  * cbt' sk' pr' (map.put c k v) tp
-                                 * R }>)) m' #**/ /**.
+                                 * R }>) m' #**/ /**.
 Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok.  .**/
 {                                                                           /**. .**/
   uintptr_t p = tp;                                                         /**.
@@ -1586,7 +1573,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
     |- _ => apply H1 with k
   end.
   step.
-  assert (word.and (k ^>> cb) /[1] = /[1]). replace cb with /[length pr] by ZnWords.
+  assert (word.and (k ^>> cb) /[1] = /[1]). replace cb with /[length pr] by hwlia.
   apply_key_prefix_hyp.
   assert (Hprk: is_prefix_key (append_1 pr) k). steps.
   apply append_1_prefix in Hprk. steps. steps.
@@ -1791,7 +1778,7 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
   unfold is_prefix_key, is_prefix, full_prefix in Hprkb. cbn in Hprkb.
   rewrite clip_prefix_bits in Hprkb. steps. steps. steps.
 
-  unfold enable_frame_trick. steps. .**/
+  unfold enable_frame_trick.enable_frame_trick. steps. .**/
       return result;                                                       /**. .**/
     }                                                                      /**.
   replace (\[result] =? 0) with false by steps.
