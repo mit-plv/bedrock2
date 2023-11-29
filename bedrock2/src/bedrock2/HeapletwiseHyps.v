@@ -994,7 +994,6 @@ Ltac merge_du_step :=
       let D := fresh "D" in
       pose proof (merge_two_split_equations E1 E2) as D;
       clear E1 E2
-  | H: map.split _ _ _ |- _ => eapply split_du in H
   | E1: ?om1 = @mmap.Def _ _ ?Mem ?m, E2: ?om2 = mmap.Def ?m' |- _ =>
       lazymatch om1 with
       | mmap.du _ _ => idtac
@@ -1106,7 +1105,7 @@ Ltac instantiate_frame_evar_with_remaining_obligation :=
   | |- canceling (cons ?R nil) ?om (enable_frame_trick ?P) =>
       let P := lazymatch eval pattern R in P with ?f _ => f end in
       eapply (canceling_done_frame_generic om P);
-      [ solve [clear; unfold sep; repeat decomposing_intro; eauto 40] | ]
+      [ solve [clear; unfold sep, ex1; repeat decomposing_intro; eauto 40] | ]
   end.
 
 (* both x and y may contain evars, but only evars in y will be instantiated *)
