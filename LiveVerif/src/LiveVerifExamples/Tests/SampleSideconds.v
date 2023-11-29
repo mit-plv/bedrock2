@@ -385,7 +385,7 @@ Goal forall (fib: word -> word) (n : word),
  \[n] <= \[i] ->
  b = fib n.
 Proof.
-  t name:(fib2). f_equal. ZnWords.
+  t name:(fib2). f_equal. hwlia.
 Qed.
 
 Goal forall (in0 in1 in2 : Z) (w0 : word),
