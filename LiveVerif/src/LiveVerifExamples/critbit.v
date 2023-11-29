@@ -987,15 +987,9 @@ Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.          
   if (tp == 0) /* split */ {                                                /**. .**/
     return 0;                                                               /**. .**/
   }                                                                         /**.
-  subst. steps. subst. steps. cbn. steps. .**/
+  subst. steps. subst. steps. .**/
   else {                                                                    /**. .**/
-    uintptr_t found = 0;  /**.
-    (* can't process the above command because of the error
-       In nested Ltac calls to ".* (constr) *", "next_snippet", "add_snippet",
-"add_regular_snippet" and "isnt_local_var", last call failed.*)
-
-    .**/
-    found = cbt_lookup_impl(tp, k, val_out);                      /**. .**/
+    uintptr_t found = cbt_lookup_impl(tp, k, val_out);                      /**. .**/
     return found;                                                           /**. .**/
   }                                                                         /**. .**/
 }                                                                           /**.
