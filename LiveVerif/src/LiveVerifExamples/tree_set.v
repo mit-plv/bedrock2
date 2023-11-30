@@ -258,28 +258,8 @@ As bst_remove_max_ok.                                                           
       steps.
       { destr (x <=? v). 1: lia. eauto. }
                                                                                 .**/
-    else {                                                                 /**.
-(* bottom_up_simpl_in_hyp fails because it tries to
-   rewrite with (H0 : p = /[0]) in
-
-  H : m |= <{ + uintptr pL
-              + uint 32 v
-              + uintptr p }> p'
-
-  but mk_sized_predicate is too dependently typed for f_equal to work *)
-
-lazymatch goal with
-        | |- wp_cmd _ _ _ _ _ _ =>
-              lazymatch goal with
-              | |- ?G => change (@ready G)
-              end;
-              (* after_command_simpl_hook; <- fails *)
-              unzify;
-              unpurify;
-              set_state displaying
-end.
-
-      (* res = load32(c - 4);     *)                                            .**/
+    else {                                                                 /**. .**/
+      res = load32(c - 4);                                                 /**. .**/
     }                                                                      /**.
 Abort.
 

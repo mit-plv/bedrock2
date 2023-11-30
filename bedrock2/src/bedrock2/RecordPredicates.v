@@ -19,7 +19,7 @@ Arguments mk_record_field_description{width}{BW}{word}{mem}{R}{F}.
 Ltac infer_size r descr :=
   lazymatch descr with
   | mk_record_field_description ?getter ?pred =>
-      constr:(mk_sized_predicate (pred (getter r)) _)
+      constr:(mk_inferred_size_predicate (pred (getter r)))
   end.
 
 Ltac create_predicate fields :=
@@ -52,13 +52,6 @@ Ltac create_predicate fields :=
       end
   end
 : typeclass_instances.
-
-Notation sizeof p := ltac:(lazymatch constr:(_: PredicateSize p) with
-                           | ?sz => exact sz
-                           end) (only parsing).
-(* alternative that doesn't require a Notation, but needs to be unfolded
-   to reveal the constant:
-Definition sizeof{PredTp: Type}(p: PredTp){sz : PredicateSize p}: Z := sz. *)
 
 Notation "'record!' fields" := ltac:(create_predicate fields)
   (at level 10, only parsing).

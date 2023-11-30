@@ -39,13 +39,26 @@ Definition hole{key value}{mem: map.map key value}(n: Z)(addr: key): mem -> Prop
 (* pair of a predicate and its size, used as tree leaves *)
 Inductive sized_predicate{width: Z}{BW: Bitwidth width}{word: word.word width}
   {mem: map.map word Byte.byte}: Type :=
-| mk_sized_predicate(p: word -> mem -> Prop)(sz: PredicateSize p).
+| mk_sized_predicate(p: word -> mem -> Prop)(sz: Z).
+
+(* We could also mark the sz argument of mk_sized_predicate as having type (PredicateSize p),
+   but then mk_sized_predicate looks more dependently-typed than it actually is, and
+   rewriting in its p argument leads to typing problems (eg in using f_equal in
+   bottom_up_simpl). *)
+Notation mk_inferred_size_predicate p := (mk_sized_predicate p (sizeof p%function)).
 
 Section WithParams.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}
     {mem: map.map word byte} {mem_ok: map.ok mem}.
 
   Import List.ListNotations. Local Open Scope list_scope.
+
+  Goal True.
+    pose (mk_inferred_size_predicate (uint 32 42)) as p.
+    lazymatch goal with
+    | _ := mk_sized_predicate _ 4 |- _ => idtac
+    end.
+  Abort.
 
   Lemma sepapp_assoc(P1 P2 P3: word -> mem -> Prop)
     {sz1: PredicateSize P1}{sz2: PredicateSize P2}:
@@ -196,7 +209,7 @@ Section WithParams.
     induction l; cbn; intros.
     - unfold is_emp. reflexivity.
     - rewrite sepapps_cons. destruct a. simpl.
-      fwd. rewrite <- H. specialize IHl with (1 := H0).
+      fwd. specialize IHl with (1 := H0).
       eapply weaken_is_emp; cycle 1.
       + eapply sep_is_emp.
         * unfold hole, is_emp. reflexivity.
