@@ -122,9 +122,11 @@ Lemma pfx_lele_tot : forall (p1 p2 p: prefix),
 Proof.
 Admitted.
 
-(* TODO *)
-Definition bit_at (w: word) (i: Z) := false.
-Opaque bit_at.
+Lemma pfx_lele_len_ord : forall (p1 p2 p: prefix),
+  pfx_le p1 p -> pfx_le p2 p -> pfx_len p1 <= pfx_len p2 -> pfx_le p1 p2.
+Admitted.
+
+Definition bit_at (w: word) (i: Z) := Z.testbit \[w] i.
 
 Fixpoint pfx'_emb_rec (w: word) (remaining: nat) :=
   match remaining with
@@ -133,6 +135,7 @@ Fixpoint pfx'_emb_rec (w: word) (remaining: nat) :=
   end.
 
 Definition pfx_emb (w: word) := pfx'_emb_rec w 32.
+
 
 Lemma pfx_emb_len : forall (w: word), pfx_len (pfx_emb w) = 32.
 Admitted.
@@ -147,8 +150,13 @@ Lemma pfx_bit_not_both :
   forall (p: prefix) (i: Z), pfx_bit p i false -> pfx_bit p i true -> False.
 Admitted.
 
+Lemma pfx_bit_diff_le_len : forall (p p1 p2: prefix) (i: Z) (b1 b2: bool),
+  pfx_le p p1 -> pfx_le p p2 -> pfx_bit p1 i b1 -> pfx_bit p2 i b2 -> b1 <> b2 ->
+  pfx_len p <= i.
+Admitted.
+
 Lemma pfx_bit_or : forall (p: prefix) (i: Z),
-                   0 <= i < len p -> pfx_bit p i false \/ pfx_bit p i true.
+                   0 <= i < pfx_len p -> pfx_bit p i false \/ pfx_bit p i true.
 Admitted.
 
 Lemma pfx_bit_len : forall (p: prefix) (i: Z) (b: bool),
@@ -170,8 +178,17 @@ Admitted.
 Definition pfx_app (p: prefix) (b: bool) := p ++ cons b nil.
 
 Lemma pfx_app_le : forall (p1 p2: prefix) (b: bool),
-                   pfx_le p1 p2 -> pfx_bit p1 (pfx_len p2) b ->
+                   pfx_le p1 p2 -> pfx_bit p2 (pfx_len p1) b ->
                    pfx_le (pfx_app p1 b) p2.
+Admitted.
+
+Lemma pfx_app_bit : forall (p: prefix) (b: bool), pfx_bit (pfx_app p b) (pfx_len p) b.
+Admitted.
+
+Lemma pfx_app_len : forall (p: prefix) (b: bool), pfx_len (pfx_app p b) = pfx_len p + 1.
+Admitted.
+
+Lemma pfx_app_le_self : forall (p: prefix) (b: bool), ~pfx_le (pfx_app p b) p.
 Admitted.
 
 Fixpoint pfx_meet (p1 p2: prefix) :=
@@ -198,6 +215,10 @@ Admitted.
 Lemma pfx_meet_le_l : forall (p1 p2: prefix), pfx_le (pfx_meet p1 p2) p1.
 Admitted.
 
+Lemma pfx_meet_le_meet_l : forall (p1 p2 p: prefix),
+  pfx_le p1 p2 -> pfx_le (pfx_meet p1 p) (pfx_meet p2 p).
+Admitted.
+
 Lemma pfx_meet_le_r : forall (p1 p2: prefix), pfx_le (pfx_meet p1 p2) p2.
 Admitted.
 
@@ -205,11 +226,34 @@ Lemma pfx_meet_le_both : forall (p p1 p2: prefix),
                          pfx_le p p1 -> pfx_le p p2 -> pfx_le p (pfx_meet p1 p2).
 Admitted.
 
+Lemma pfx_meet_bit_diff_len : forall (p1 p2: prefix) (i: Z) (b1 b2: bool),
+  pfx_bit p1 i b1 -> pfx_bit p2 i b2 -> b1 <> b2 -> pfx_len (pfx_meet p1 p2) <= i.
+Admitted.
+
+Lemma pfx_meet_le_eq : forall (p1 p2: prefix),
+  pfx_le p1 p2 -> pfx_meet p1 p2 = p1.
+Admitted.
+
 Lemma pfx_cb_charac : forall (p1 p2: prefix) (n: Z),
   (forall i, 0 <= i < n ->
      exists b, pfx_bit p1 i b /\ pfx_bit p2 i b) ->
   (exists b1 b2, b1 <> b2 /\ pfx_bit p1 n b1 /\ pfx_bit p2 n b2) ->
   pfx_len (pfx_meet p1 p2) = n.
+Admitted.
+
+Lemma pfx_emb_inj : forall (k1 k2: word), pfx_emb k1 = pfx_emb k2 -> k1 = k2.
+Admitted.
+
+Lemma pfx_bit_inj : forall (p1 p2: prefix),
+  pfx_len p1 = pfx_len p2 ->
+  (forall i, 0 <= i < pfx_len p1 ->
+     exists b, pfx_bit p1 i b /\ pfx_bit p2 i b) ->
+  p1 = p2.
+Admitted.
+
+Lemma and_1_not_not_1 : forall w1 w2,
+  word.and w1 /[1] <> /[1] -> word.and w1 /[1] <> word.and w2 /[1] ->
+  word.and w2 /[1] = /[1].
 Admitted.
 
 Context {consts: malloc_constants}.
@@ -499,12 +543,12 @@ Ltac step_hook ::=
   | |- context[ ?n =? ?n ] => rewrite Z.eqb_refl
   | H: context[ ?n =? ?n ] |- _ => rewrite Z.eqb_refl in H
 
-  (* word simplification *)
+  (* words *)
   | |- context[word.eqb ?w ?w] => rewrite word.eqb_eq; [ | reflexivity ]
   | H: ?w1 <> ?w2 |- context[word.eqb ?w1 ?w2] => rewrite word.eqb_ne; [ | assumption ]
   | |- context[/[\[ _ ]]] => rewrite word.of_Z_unsigned
 
-  (* expressions with maps *)
+  (* maps *)
   | H: map.split ?cr ?cl1 ?cl2 |- _ =>
        tryif ident_starts_with c cr then destruct H; subst cr else fail
   | H1: ?w = /[0], H2: ?w = /[1] |- _ =>
@@ -538,6 +582,16 @@ Ltac step_hook ::=
        rewrite map_get_putmany_not_left
   | H: ?k1 <> ?k2 |- context[map.get (map.singleton ?k1 _) ?k2] =>
       rewrite map_get_singleton_diff; [ | congruence ]
+  | H1: map.get ?c2 ?k = None, H2: map.get (map.putmany ?c1 ?c2) ?k <> None
+     |- map.get ?c1 ?k <> None =>
+     rewrite map.get_putmany_left in H2; [ exact H2 | exact H1 ]
+  | |- map.put ?c ?k ?v = map.putmany ?c (map.singleton ?k ?v) =>
+       rewrite map_putmany_singleton_r; reflexivity
+  | |- map.disjoint ?c (map.singleton ?k ?v) => apply map_disjoint_singleton_r
+  | H: map.get ?c ?k = None
+    |- map.put ?c ?k ?v = map.putmany (map.singleton ?k ?v) ?c =>
+    rewrite map_putmany_singleton_l; [ reflexivity | exact H ]
+  | |- map.disjoint (map.singleton ?k ?v) ?c => apply map_disjoint_singleton_l
 
   (* prefixes *)
   | |- pfx_le ?p ?p => apply pfx_le_reflx
@@ -546,86 +600,72 @@ Ltac step_hook ::=
   | H1: pfx_le ?p1 ?p2, H2: pfx_le ?p2 ?p3 |- pfx_le ?p1 ?p3 =>
         apply (pfx_le_trans _ p2 _)
   | |- context[pfx_len (pfx_emb _)] => rewrite pfx_emb_len
+  | H: context[pfx_len (pfx_emb _)] |- _ => rewrite pfx_emb_len in H
   | H1: pfx_le ?p1 ?p2, H2: pfx_len ?p2 <= ?n |- pfx_len ?p1 <= ?n =>
-         apply pfx_le_len in H1
+        apply pfx_le_len in H1
   | H1: pfx_bit ?p1 ?i true, H2: pfx_le ?p1 ?p2, H3: pfx_bit ?p2 ?i false |- _ =>
-        exfalso; apply (pfx_bit_not_both p2 i); [ | apply (pfx_bit_le p1) ]
+       exfalso; apply (pfx_bit_not_both p2 i); [ | apply (pfx_bit_le p1) ]
   | H: word.and (?k ^>> ?n) /[1] = /[1] |- pfx_bit (pfx_emb ?k) \[?n] true =>
        apply pfx_emb_bitop1
   | H: word.and (?k ^>> ?n) /[1] <> /[1] |- pfx_bit (pfx_emb ?k) \[?n] false =>
        apply pfx_emb_bitop0
-(*
-  | H1: is_prefix (append_0 ?p) ?p1, H2: is_prefix_key ?p1 ?k
-          |- is_prefix_key ?p ?k =>
-             apply (is_prefix_key_trans _ p1);
-             [ | | apply (is_prefix_trans _ (append_0 p)) | ]
-  | H1: is_prefix (append_1 ?p) ?p1, H2: is_prefix_key ?p1 ?k
-          |- is_prefix_key ?p ?k =>
-             apply (is_prefix_key_trans _ p1);
-             [ | | apply (is_prefix_trans _ (append_1 p)) | ]
-  | H1: is_prefix ?p1 ?p2, H2: is_prefix_key (append_0 ?p2) ?k
-          |- is_prefix_key ?p1 ?k =>
-             apply (is_prefix_key_trans _ p2)
-  | H1: is_prefix ?p1 ?p2, H2: is_prefix_key (append_1 ?p2) ?k
-          |- is_prefix_key ?p1 ?k =>
-             apply (is_prefix_key_trans _ p2)
-  | H1: is_prefix ?p1 ?p2, H2: is_prefix_key ?p2 ?k |- is_prefix_key ?p1 ?k =>
-          apply (is_prefix_key_trans p1 p2 k)
-  | H: is_prefix (append_0 ?p1) ?p2 |- is_prefix ?p1 ?p2 =>
-          apply weaken_is_prefix_append_0; assumption
-  | H: is_prefix (append_1 ?p1) ?p2 |- is_prefix ?p1 ?p2 =>
-          apply weaken_is_prefix_append_1; assumption
-  | H: is_prefix_key (append_0 ?p) ?k |- is_prefix_key ?p ?k =>
-          apply weaken_is_prefix_key_append_0; assumption
-  | H: is_prefix_key (append_1 ?p) ?k |- is_prefix_key ?p ?k =>
-          apply weaken_is_prefix_key_append_1; assumption
-  | |- is_prefix ?p (append_0 ?p) => apply is_prefix_append_0
-  | |- is_prefix ?p (append_1 ?p) => apply is_prefix_append_1
-  | H1: is_prefix_key ?p1 ?k, H2: is_prefix_key ?p2 ?k, H3: length ?p1 <= length ?p2
-    |- is_prefix ?p1 ?p2 =>
-       apply (prefixes_of_same p1 p2 (full_prefix k))
-  | H1: is_prefix (append_0 ?p1) ?p2, H2: is_prefix_key ?p2 ?k,
-    H3: word.and (?k ^>> /[length ?p1]) /[1] = /[1] |- _ =>
-    enough (is_prefix_key (append_0 p1) k) as Hprex;
-    [ apply append_0_prefix in Hprex | apply (is_prefix_key_trans (append_0 p1) p2 k);
-      try assumption; try lia; simpl; lia ]
-  | H1: is_prefix (append_1 ?p1) ?p2, H2: is_prefix_key ?p2 ?k,
-    H3: word.and (?k ^>> /[length ?p1]) /[1] <> /[1] |- _ =>
-    enough (is_prefix_key (append_1 p1) k) as Hprex;
-    [ apply append_1_prefix in Hprex | apply (is_prefix_key_trans (append_1 p1) p2 k);
-      try assumption; try lia; simpl; lia ]
-  | H1: is_prefix_key ?pr ?k, H2: word.and (?k ^>> /[length ?pr]) /[1] <> /[1]
-    |- is_prefix_key (append_0 ?pr) ?k =>
-    apply and_1_not_1_0 in H2; apply is_prefix_key_extend_0
-  | H1: is_prefix_key ?pr ?k, H2: word.and (?k ^>> /[length ?pr]) /[1] = /[1]
-    |- is_prefix_key (append_1 ?pr) ?k =>
-    apply is_prefix_key_extend_1
-  | H1: is_prefix_key (append_0 ?pr) ?k, H2: word.and (?k ^>> /[length ?pr]) /[1] = /[1]
-    |- _ => apply append_0_prefix in H1; try lia; rewrite H2 in H1; hwlia
-  | H1: is_prefix_key (append_1 ?pr) ?k, H2: word.and (?k ^>> /[length ?pr]) /[1] <> /[1]
-    |- _ => apply append_1_prefix in H1; try lia; rewrite H1 in H2; contradiction
-  | |- context [ length (full_prefix ?k) ] =>
-       change (length (full_prefix k)) with 32
-  | |- context [ length (append_0 ?p) ] =>
-       change (length (append_0 p)) with (length p + 1)
-  | |- context [ length (append_1 ?p) ] =>
-       change (length (append_1 p)) with (length p + 1)
-  | H: word.and ?w /[1] <> /[1] |- word.and ?w /[1] = /[0] =>
-       apply and_1_not_1_0; exact H *)
+  | H1: pfx_bit ?p1 ?n false, H2: pfx_le ?p1 ?p,
+    H3: pfx_bit ?p2 ?n true, H4: pfx_le ?p2 ?p |- _ =>
+    exfalso; apply (pfx_bit_not_both p n);
+    [ exact (pfx_bit_le _ _ _ _ H2 H1) | exact (pfx_bit_le _ _ _ _ H4 H3) ]
+  | |- pfx_le (pfx_meet ?p1 ?p2) ?p1 => apply pfx_meet_le_l
+  | |- pfx_le (pfx_meet ?p1 ?p2) ?p2 => apply pfx_meet_le_r
+  | H1: pfx_le ?p1 ?p2, H2: pfx_bit ?p1 ?n false, H3: pfx_bit ?p3 ?n true |-
+    pfx_len (pfx_meet ?p2 ?p3) <= ?n =>
+      apply (pfx_meet_bit_diff_len _ _ _ false true);
+      [ apply (pfx_bit_le p1); [ exact H1 | exact H2 ] | exact H3 | congruence ]
+  | H1: pfx_le ?p1 ?p2, H2: pfx_bit ?p1 ?n true, H3: pfx_bit ?p3 ?n false |-
+    pfx_len (pfx_meet ?p2 ?p3) <= ?n =>
+      apply (pfx_meet_bit_diff_len _ _ _ true false);
+      [ apply (pfx_bit_le p1); [ exact H1 | exact H2 ] | exact H3 | congruence ]
+  | H1: pfx_le ?p1 ?p2, H2: pfx_le ?p2 ?p3
+    |- pfx_le (pfx_meet ?p1 ?p4) (pfx_meet ?p3 ?p4) =>
+       apply pfx_meet_le_meet_l; apply (pfx_le_trans _ p2); [ exact H1 | exact H2 ]
+  | H1: pfx_le ?p1 ?p2, H2: pfx_bit ?p1 ?n ?b |- pfx_bit ?p2 ?n ?b
+    => exact (pfx_bit_le _ _ _ _ H1 H2)
+  | H1: map.get ?c1 ?k = None, H2: map.get (map.putmany ?c1 ?c2) ?k <> None |-
+    map.get ?c2 ?k <> None =>
+      rewrite (map_get_putmany_not_left _ _ _ H1) in H2; exact H2
+  | H: pfx_le ?p1 (pfx_meet ?p' ?p2) |- pfx_le ?p1 ?p2 =>
+       apply (pfx_le_trans _ (pfx_meet p' p2) _); [ exact H | apply pfx_meet_le_r ]
+  | |- pfx_meet ?p1 ?p2 = ?p1 => apply pfx_meet_le_eq
+  | H: pfx_le ?p1 ?p2 |- pfx_le (pfx_meet ?p1 _) ?p2 =>
+       apply (pfx_le_trans _ p1 _); [ apply pfx_meet_le_l | exact H ]
+  | H: pfx_le (pfx_app ?p1 ?b) ?p2 |- pfx_bit ?p2 (pfx_len ?p1) ?b
+    => exact (pfx_bit_le _ _ _ _ H (pfx_app_bit _ _))
+  | H1: pfx_le ?p1 ?p2, H2: pfx_bit ?p2 (pfx_len ?p1) ?b |- pfx_le (pfx_app ?p1 ?b) ?p2
+   => exact (pfx_app_le _ _ _ H1 H2)
+  | H1: pfx_le ?p1 ?p2, H2: pfx_le ?p0 ?p1, H3: pfx_bit ?p1 (pfx_len ?p0) ?b
+      |- pfx_le (pfx_app ?p0 ?b) ?p2 =>
+      apply (pfx_le_trans _ p1 _);
+      [ apply pfx_app_le; [ exact H2 | exact H3 ] | exact H1 ]
+  | H1: pfx_le ?p ?p1, H2: pfx_len (pfx_meet ?p1 ?p2) = pfx_len ?p
+      |- pfx_le ?p (pfx_meet ?p1 ?p2) =>
+      apply (pfx_lele_len_ord _ _ p1); [ exact H1 | apply pfx_meet_le_l | lia ]
+  | H: pfx_le ?p1 ?p2 |- pfx_le (pfx_meet ?p1 ?p') (pfx_meet ?p2 ?p') =>
+        exact (pfx_meet_le_meet_l _ _ _ H)
+  | |- pfx_le (pfx_meet ?p1 ?p2) ?p2 => apply pfx_meet_le_r
+  | H1: pfx_len (pfx_meet ?p1 ?p2) = ?n,
+    H2: pfx_bit ?p1 ?n ?b, H3: pfx_bit ?p2 ?n ?b |- _ =>
+      apply (pfx_app_le_self (pfx_meet p1 p2) b);
+      apply pfx_meet_le_both; apply pfx_app_le;
+      [ apply pfx_meet_le_l | rewrite H1; exact H2
+      | apply pfx_meet_le_r | rewrite H1; exact H3 ]
+
+  (* misc *)
   | |- /[match ?opt1 with | Some _ => ?vs | None => ?vn end] =
        /[match ?opt2 with | Some _ => ?vs | None => ?vn end] =>
      enough (opt1 = None <-> opt2 = None); [ destruct opt1; destruct opt2;
      intuition congruence | ]
+  | H1: word.and ?w1 /[1] <> /[1], H2: word.and ?w1 /[1] <> word.and ?w2 /[1]
+    |- word.and ?w2 /[1] = /[1] => apply (and_1_not_not_1 w1 w2)
   | |- _ => my_simpl_step
-  | |- map.split _ _ _ => unfold map.split (*
-  | |- is_prefix_key {| length := ?l; bits := prefix_bits ?l ?k |} ?k =>
-     apply record_prefix_is_prefix
-  | H1: prefix_bits \[?l] ?k = prefix_bits \[?l] ?k',
-    H2: word.and (?k ^>> ?l) /[1] = ?b,
-    H3: word.and (?k' ^>> ?l) /[1] = ?b
-    |- prefix_bits (\[?l] + 1) ?k = prefix_bits (\[?l] + 1) ?k' =>
-      apply extend_prefix_bits_eq;
-      [ lia | exact H1 | rewrite H2; rewrite H3; reflexivity ] *)
+  | |- map.split _ _ _ => unfold map.split
 end.
 
 Lemma weak_purify_cbt' :
@@ -811,12 +851,17 @@ Qed.
 Ltac raw_bit_to_pfx :=
   match goal with
   | H: word.and (?k ^>> /[?n]) /[1] = /[1] |- _ => apply pfx_emb_bitop1 in H
+  | H: word.and (?k ^>> ?w) /[1] = /[1] |- _ =>
+    replace w with /[\[w]] in H by hwlia; apply pfx_emb_bitop1 in H
   | H: word.and (?k ^>> /[?n]) /[1] <> /[1] |- _ => apply pfx_emb_bitop0 in H
+  | H: word.and (?k ^>> ?w) /[1] <> /[1] |- _ =>
+    replace w with /[\[w]] in H by hwlia; apply pfx_emb_bitop0 in H
   end.
 
 Ltac apply_key_prefix_hyp :=
   match goal with
-  | Hq: context[ map.get ?c _ <> None -> _ ], Hc: map.get ?c _ <> None |- _ =>
+  | Hq: context[ map.get ?c _ <> None -> pfx_le _ (pfx_emb _) ],
+    Hc: map.get ?c _ <> None |- _ =>
     apply Hq in Hc
   end.
 
@@ -845,7 +890,6 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   loop invariant above m.
                                                                                 .**/
   while (load(p) != -1) /* initial_ghosts(p, pr, c, R); decreases sk */ {  /*?.
-
   subst v0.
   instantiate (3:=(match sk with | Leaf => ?[vLeaf] | _ => ?[vNode] end)).
   destruct sk; cycle 1. simpl cbt' in *. steps. .**/
@@ -857,12 +901,21 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
                            * cbt' sk1 pL cL aL
                            * <{ + uintptr /[pfx_len pr]
                                 + uintptr aL
-                                + uintptr p }> p' }>). steps.
-  unfold closest_key_in in *. steps.
+                                + uintptr p }> p' }>).
+  step. steps. step. steps. step.
+  assert (map.get cL retv = None). { apply eq_None_by_false. intro.
+  unfold closest_key_in in *. fwd. do 2 apply_key_prefix_hyp. steps. }
+  steps. unfold closest_key_in in *. steps.
+  destruct_in_putmany. apply_key_prefix_hyp. steps.
+  apply (pfx_le_trans _ (pfx_meet pr (pfx_emb k)) _).
+  apply pfx_meet_le_both. apply (pfx_lele_len_ord _ _ (pfx_emb k0)); steps.
+  raw_bit_to_pfx. steps. steps. steps. apply_key_prefix_hyp. steps.
+  match goal with
+  | H: forall _, map.get cR _ <> None -> pfx_le (pfx_meet _ _) _ |- _ => apply H
+  end.
+  steps.
   destruct (word.eqb retv k) eqn:E; steps.
-  destruct (word.eqb retv k) eqn:E; steps. apply eq_None_by_false. intro.
-  apply_key_prefix_hyp. raw_bit_to_pfx.
-  steps. steps. .**/
+  destruct (word.eqb retv k) eqn:E; steps; subst; steps. .**/
     else {                                                                   /**. .**/
       p = load(p + 4);                                                       /**. .**/
     }                                                                        /**.
@@ -872,22 +925,30 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
                            * <{ + uintptr /[pfx_len pr]
                                 + uintptr p
                                 + uintptr aR }> p' }>).
-  assert (map.get cR k = None). apply eq_None_by_false. intro.
-  apply_key_prefix_hyp. steps. raw_bit_to_pfx; steps. steps.
-  unfold closest_key_in in *. steps.
-  destruct (word.eqb retv k) eqn:E; steps.
-  destruct (word.eqb retv k) eqn:E; steps. .**/
+  step. steps. step. steps. step.
+  assert (map.get cR retv = None). { apply eq_None_by_false. intro.
+  unfold closest_key_in in *. fwd. do 2 apply_key_prefix_hyp. steps. }
+  steps. unfold closest_key_in in *. steps. destruct_in_putmany. steps.
+  match goal with
+  | H: forall _, map.get cL _ <> None -> pfx_le (pfx_meet _ _) _ |- _ => apply H
+  end. steps.
+  apply_key_prefix_hyp.
+  steps. apply (pfx_le_trans _ (pfx_meet pr (pfx_emb k)) _).
+  apply pfx_meet_le_both. apply (pfx_lele_len_ord _ _ (pfx_emb k0)); steps.
+  raw_bit_to_pfx. steps. steps. steps. apply_key_prefix_hyp. steps.
+  destruct (word.eqb retv k) eqn:E; steps; subst; steps.
+  destruct (word.eqb retv k) eqn:E; steps; subst; steps. .**/
   }                                                                          /**.
   simpl cbt' in *. steps. .**/
     if (load(p + 4) == k) /* split */ {                                       /**. .**/
     store(p + 8, v);                                                        /**. .**/
     return k;                                                               /**. .**/
   }                                                                         /**.
-  unfold closest_key_in. steps; subst. steps. subst. steps. .**/
+  unfold closest_key_in. steps; subst; steps; subst; steps. subst; steps. .**/
   else {                                                                    /**. .**/
     return load(p + 4);                                                     /**. .**/
   }                                                                         /**.
-  unfold closest_key_in. steps; subst. steps. subst. steps. .**/
+  unfold closest_key_in. steps; subst; steps; subst; steps. .**/
 }                                                                           /**.
 Qed.
 
@@ -963,8 +1024,7 @@ Derive cbt_lookup_impl SuchThat (fun_correct! cbt_lookup_impl)
   else {                                                                     /**. .**/
     return 0;                                                                /**. .**/
   }                                                                          /**.
-  subst. steps.
-  subst. steps. .**/
+  subst. steps. subst. steps. .**/
 }                                                                            /**.
 Qed.
 
@@ -1037,29 +1097,9 @@ Proof.
     steps. instantiate (1:=k). steps.
 Qed.
 
-(*
-Lemma xor_0_l: forall w, word.xor /[-1] w = word.not w.
-Proof.
-Admitted.
-(*
-  intros. apply word.unsigned_inj. unfold_bits. apply Z.bits_inj.
-  unfold Z.eqf. intros. unfold_bits. destruct (Z.testbit \[w] n);
-  destruct xorb eqn:E; unfold xorb in E; fwd; lia.
-Qed.
-*)
-
-(* TODO: collect *)
-Lemma shl_zero : forall w, w ^<< /[0] = w.
-Admitted.
-
-(* TODO: collect *)
-Lemma not_m1 : word.not /[-1] = /[0].
-Admitted.
-
-(* TODO: collect *)
-Lemma and_zero_l : forall w, word.and /[0] w = /[0].
-Admitted.
-*)
+Ltac one_not_one_cases w :=
+  let Hmone := fresh "Hmone" in assert (Hmone: w = /[1] \/ w <> /[1]) by hwlia;
+  destruct Hmone.
 
 #[export] Instance spec_of_critical_bit: fnspec :=                              .**/
 
@@ -1069,100 +1109,74 @@ uintptr_t critical_bit(uintptr_t k1, uintptr_t k2) /**#
   requires t m := <{ * R1 * R2 }> m /\ k1 <> k2;
   ensures t' m' res := t = t' /\ <{ * R1 * R2 }> m'
                 /\ 0 <= \[res] < 32
-                /\ \[res] = pfx_len (pfx_meet (pfx_emb k1) (pfx_emb k2)) (*
-                /\ prefix_bits \[res] k1 = prefix_bits \[res] k2
-                /\ prefix_bits (\[res] + 1) k1 <> prefix_bits (\[res] + 1) k2*) #**/  /**.
+                /\ \[res] = pfx_len (pfx_meet (pfx_emb k1) (pfx_emb k2)) #**/
+/**.
 Derive critical_bit SuchThat (fun_correct! critical_bit) As critical_bit_ok.    .**/
 {                                                                          /**. .**/
   uintptr_t i = 0;                                                         /**.
   prove (0 <= \[i] < 32).
-  prove (forall n, 0 <= n < \[i] ->
+  assert (forall n, 0 <= n < \[i] ->
            exists b, pfx_bit (pfx_emb k1) n b /\ pfx_bit (pfx_emb k2) n b).
-  (*prove (word.and (word.not (/[-1] ^<< i)) k1 = word.and (word.not (/[-1] ^<< i)) k2).
-  subst i.
-  (* TODO: collect *)
-  match goal with
-  | |- context[_ ^<< /[0]] => rewrite shl_zero
-  end.
-  (* TODO: collect *)
-  match goal with
-  | |- context[word.not /[-1]] => rewrite not_m1
-  end.
-  (* TODO: collect *)
-  repeat match goal with
-  | |- context[word.and /[0] _] => rewrite and_zero_l
-  end.
-  steps.
-  *)
-  (*
-  replace (word.not (/[-1] ^<< /[0])) with /[0]. apply word.unsigned_inj.
-  unfold_bits. repeat rewrite Z.land_0_r. reflexivity. apply word.unsigned_inj.
-  unfold_bits. simpl. reflexivity.*)
+  intros. hwlia.
   delete #(i = /[0]).
   loop invariant above H.
   move i at bottom. .**/
   while (i < 31 && ((k1 >> i & 1) == ((k2 >> i & 1))))
-    /* decreases (32 - \[i]) */ { (*
-  while (i < 31 && ((-1 ^ (-1 << (i + 1))) & k1) == ((-1 ^ (-1 << (i + 1))) & k2))
-    /* decreases (32 - \[i]) */ {   *)                                     /**. .**/
+    /* decreases (32 - \[i]) */ {                                          /**. .**/
     i = i + 1;                                                             /**. .**/
   }                                                                        /*?.
   step. step. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step.
   assert (Hcmp: n = \[i'] \/ n < \[i']) by hwlia. destruct Hcmp.
-  assert (Hmone: word.and (k1 ^>> i') /[1] = /[1] \/ word.and (k1 ^>> i') /[1] <> /[1])
-  by hwlia. destruct Hmone. exists true. steps. subst. steps. subst. steps.
-  assert (word.and (k2 ^>> i') /[1] = /[1]) by congruence. subst.
-  match goal with
-  | H: word.and (?k ^>> ?n) /[1] = /[1] |- pfx_bit (pfx_emb ?k) \[?n] true =>
-       apply pfx_emb_bitop1
-  end. steps. subst. steps.
-  exists false. steps. subst. steps. subst. steps.
-  assert (word.and (k2 ^>> i') /[1] <> /[1]) by congruence. subst. steps
+  one_not_one_cases (word.and (k1 ^>> i') /[1]).
+  exists true. steps. subst. steps. subst. steps.
+  assert (word.and (k2 ^>> i') /[1] = /[1]) by congruence. steps. subst.
+  exists false. steps.
+  assert (word.and (k2 ^>> i') /[1] <> /[1]) by congruence. steps.
   match goal with
   | H: forall _, _ |- _ => apply H
   end.
-  steps. steps. steps. (*
-  mat
-  rewrite word.of_Z_unsigned.
-  match goal with
-  |
-  match goal with
-  | H: word.and _ _ = word
-  subst i. replace (word.opp /[1]) with (/[-1]) in * by hwlia.
-  rewrite xor_0_l in H5. assumption. hwlia.*) .**/
+  steps. steps. steps. .**/
   return i;                                                                /**. .**/
 }                                                                          /**.
+  assert (word.and (k1 ^>> i) /[1] <> word.and (k2 ^>> i) /[1]).
+  unzify. destruct_or; [ | assumption ]. assert (Hui: \[i] = 31) by lia.
+  rewrite Hui in *. intro.
+  match goal with
+  | H: k1 <> k2 |- _ => apply H
+  end.
+  apply pfx_emb_inj. apply pfx_bit_inj. steps. intros. step.
+  assert (Hcmp: i0 = 31 \/ i0 < 31) by lia. destruct Hcmp. subst.
+  one_not_one_cases (word.and (k1 ^>> i) /[1]); rewrite <- Hui.
+  exists true. steps. assert (word.and (k2 ^>> i) /[1] = /[1]) by congruence. steps.
+  exists false. steps. assert (word.and (k2 ^>> i) /[1] <> /[1]) by congruence. steps.
+  match goal with
+  | H: forall _, _ |- _ => apply H
+  end.
+  steps.
   symmetry. apply pfx_cb_charac. steps.
-  assert (Hmone: word.and (k1 ^>> i) /[1] = /[1] \/ word.and (k1 ^>> i) /[1] <> /[1])
-    by hwlia.
-  destruct Hmone. exists true. exists false. steps.
-  (* TODO: think about the prefix interface more carefully? *)
-  unfold prefix_bits. assert (Hi: \[i] =? 32 = false). lia. rewrite Hi.
-  replace /[\[i]] with i. assumption. hwlia.
-  unfold prefix_bits. destruct (\[i] + 1 =? 32) eqn:E. assumption.
-  destruct H. exfalso. hwlia. replace (word.opp /[1]) with (/[-1]) in H.
-  rewrite xor_0_l in H. replace (/[\[i] + 1]) with (i ^+ /[1]).
-  assumption. hwlia. hwlia.
+  one_not_one_cases (word.and (k1 ^>> i) /[1]).
+  exists true. exists false. steps.
+  assert (word.and (k2 ^>> i) /[1] <> /[1]) by congruence. steps.
+  exists false. exists true. steps.
+  assert (word.and (k2 ^>> i) /[1] = /[1]).
+  steps. steps.
 Qed.
 
 #[export] Instance spec_of_cbt_insert_at: fnspec :=                             .**/
 
 uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /**#
-  ghost_args := (sk: tree_skeleton) (total_pr: prefix) (pr: prefix) (c: word_map)
-                (R: mem -> Prop);
+  ghost_args := (sk: tree_skeleton) (pr: prefix) (c: word_map) (R: mem -> Prop);
   requires t m := <{ * allocator
                      * cbt' sk pr c tp
                      * R }> m
-                  /\ 0 <= length total_pr
-                  /\ is_prefix total_pr pr /\ is_prefix_key total_pr k
                   /\ 0 <= \[cb] < 32
                   /\ exists k',
-                       (map.get c k' <> None
-                         /\ prefix_bits \[cb] k' = prefix_bits \[cb] k)
+                       (map.get c k' <> None /\
+                           pfx_len (pfx_meet (pfx_emb k') (pfx_emb k)) = \[cb])
                   /\ forall k',
                        (map.get c k' <> None ->
-                         prefix_bits (\[cb] + 1) k' <> prefix_bits (\[cb] + 1) k);
+                           pfx_len (pfx_meet (pfx_emb k') (pfx_emb k)) <= \[cb]);
   ensures t' m' res := t' = t
                        /\ if \[res] =? 0 then
                             <{ * allocator_failed_below 12
@@ -1173,15 +1187,18 @@ uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /*
                             (* `id` is a hack to identify this occurrence when
                                 rewriting *)
                             res = id tp /\
-                            (EX sk' pr',
+                            (EX sk',
                               <{ * allocator
-                                 * emp (is_prefix total_pr pr')
-                                 * cbt' sk' pr' (map.put c k v) tp
+                                 * cbt' sk' (pfx_meet pr (pfx_emb k)) (map.put c k v) tp
                                  * R }>) m' #**/ /**.
 Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok.  .**/
 {                                                                           /**. .**/
   uintptr_t p = tp;                                                         /**.
-  assert (Htpnn: tp <> /[0]). apply purify_cbt' in H2. tauto.
+  assert (Htpnn: tp <> /[0]).
+  (* would move to the step hook, but purify_cbt' not available there yet *)
+  match goal with
+  | H: _ |= cbt' _ _ _ ?tp |- ?tp <> /[0] => apply purify_cbt' in H; tauto
+  end.
   move Htpnn after Scope1.
   rewrite <- Def0 in H2.
   move t before tp.
@@ -1193,109 +1210,108 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   loop invariant above m.
                                                                                 .**/
   while (load(p) < cb)
-    /* initial_ghosts(p, pr, total_pr, c, R); decreases sk */
+    /* initial_ghosts(p, pr, c, R); decreases sk */
   {                                                                        /*?.
   subst v0.
   repeat heapletwise_step.
-  apply cbt_expose_fields in H13. steps.
+  match goal with
+  | H: _ |= cbt' _ _ _ _ |- _ => apply cbt_expose_fields in H
+  end. steps.
   destruct sk; [ exfalso | ]. steps.
   .**/
     if (((k >> load(p)) & 1) == 1) /* split */ {                            /**. .**/
       p = load(p + 8);                                                      /**. .**/
     }                                                                       /**.
-  new_ghosts(p, pR, append_1 pr, cR, <{ * R
-                                        * freeable 12 p'
-                                        * cbt' sk1 pL cL w2
-                                        * <{ + uintptr /[length pr]
-                                             + uintptr w2
-                                             + uintptr p }> p' }>).
+  new_ghosts(p, pR, cR, <{ * R
+                           * freeable 12 p'
+                           * cbt' sk1 pL cL w2
+                           * <{ + uintptr /[pfx_len pr]
+                                + uintptr w2
+                                + uintptr p }> p' }>).
   instantiate (1:=sk2). step. step. steps.
-  enough (is_prefix_key pr k).
-  steps.
-  enough (is_prefix_key pr k') as Hprk'.
-  unfold is_prefix_key. unfold is_prefix. unfold full_prefix.
-  unfold is_prefix_key in Hprk'. unfold is_prefix in Hprk'. unfold full_prefix in Hprk'.
-  cbn in Hprk'. fwd. step. step. step. rewrite Hprk'p1.
-  eapply clip_prefix_bits_equality with (n2:=\[cb]). step. step. step.
-  destruct_in_putmany; apply_key_prefix_hyp; steps. steps.
-  destruct_in_putmany; [ exfalso | ]. apply_key_prefix_hyp.
-  assert (Hprk': is_prefix_key (append_0 pr) k'). steps.
-  assert (is_prefix_key (append_0 pr) k).
-  unfold is_prefix_key. unfold is_prefix. unfold full_prefix.
-  unfold is_prefix_key in Hprk'. unfold is_prefix in Hprk'. unfold full_prefix in Hprk'.
-  cbn in Hprk'. cbn. fwd. step. step. rewrite Hprk'p1.
-  eapply clip_prefix_bits_equality with (n2:=\[cb]). steps. steps. steps.
-  steps. steps. steps.
+  assert (map.get cL k' = None). { apply eq_None_by_false. intro.
+  enough (\[cb] <= pfx_len pr) by hwlia.
   match goal with
-  | H: context[(_ <> None) -> (prefix_bits (\[cb] + 1) _ <> _)] |- _ => apply H
+  | H: _ = \[cb] |- _ => rewrite <- H
   end.
-  steps. step. steps. unfold state_implication. steps.
+  apply_key_prefix_hyp. raw_bit_to_pfx. subst.
+  assert (pfx_bit (pfx_emb k') (pfx_len pr) false) by steps. steps. steps. }
+  steps.
+  match goal with
+  | H: forall _, _ -> pfx_len _ <= \[cb] |- _ => apply H
+  end. steps.
+  step. steps. unfold state_implication. steps.
   match goal with
   | H: context[expect_1expr_return] |- _ => destruct H
   end.
   steps.
-  econstructor. eassumption.
-  step. step. steps. step. simpl cbt'. step. steps. step. step.
-  repeat heapletwise_step. step. step. steps. step. step.
-  instantiate (1:=pr). instantiate (1:=Node sk1 sk'). simpl cbt'.
-  steps. apply eq_None_by_false. intro. apply_key_prefix_hyp.
-  steps. .**/
+  assert (pfx_le pr (pfx_emb k)). {
+  assert (pfx_le pr (pfx_emb k')).
+  destruct_in_putmany; apply_key_prefix_hyp; steps.
+  assert (pfx_le pr (pfx_meet (pfx_emb k') (pfx_emb k))).
+  apply (pfx_lele_len_ord _ _ (pfx_emb k')); steps. steps. }
+  assert (Hnewpr: pfx_meet pr (pfx_emb k) = pr) by steps.
+  econstructor. eassumption. simpl cbt' in *. step. step. steps. step. steps.
+  step. step. step. step. step. step. step. step. step. step. steps. step.
+  instantiate (1:=Node sk1 sk'). simpl cbt'. steps. rewrite Hnewpr. steps.
+  rewrite Hnewpr. enough (pfx_le (pfx_app pr true) (pfx_meet pR (pfx_emb k))).
+  steps. apply pfx_meet_le_both. steps. raw_bit_to_pfx. steps. steps.
+  apply eq_None_by_false. intro. steps. apply_key_prefix_hyp. raw_bit_to_pfx. steps.
+  steps. rewrite Hnewpr. steps. .**/
     else {                                                                    /**. .**/
       p = load(p + 4);                                                        /**. .**/
     }                                                                         /**.
-  new_ghosts (p, pL, append_0 pr, cL,
+  new_ghosts (p, pL, cL,
       <{ * R
          * freeable 12 p'
-         * <{ + uintptr /[length pr]
+         * <{ + uintptr /[pfx_len pr]
               + uintptr p
               + uintptr w3 }> p'
          * cbt' sk2 pR cR w3 }>).
   instantiate (1:=sk1). step. step. steps.
-  enough (is_prefix_key pr k). steps.
-  enough (is_prefix_key pr k') as Hprk'.
-  unfold is_prefix_key. unfold is_prefix. unfold full_prefix.
-  unfold is_prefix_key in Hprk'. unfold is_prefix in Hprk'. unfold full_prefix in Hprk'.
-  cbn in Hprk'. fwd. step. step. step. rewrite Hprk'p1.
-  eapply clip_prefix_bits_equality with (n2:=\[cb]). step. step. step.
-  destruct_in_putmany; apply_key_prefix_hyp; steps. steps.
-  destruct_in_putmany; cycle 1; [ exfalso | ]. apply_key_prefix_hyp.
-  assert (Hprk': is_prefix_key (append_1 pr) k'). steps.
-  assert (is_prefix_key (append_1 pr) k).
-  unfold is_prefix_key. unfold is_prefix. unfold full_prefix.
-  unfold is_prefix_key in Hprk'. unfold is_prefix in Hprk'. unfold full_prefix in Hprk'.
-  cbn in Hprk'. cbn. fwd. step. step. rewrite Hprk'p1.
-  eapply clip_prefix_bits_equality with (n2:=\[cb]). steps. steps. steps.
-  steps. steps. steps.
+  assert (map.get cR k' = None). { apply eq_None_by_false. intro.
+  enough (\[cb] <= pfx_len pr) by hwlia.
   match goal with
-  | H: context[(_ <> None) -> (prefix_bits (\[cb] + 1) _ <> _)] |- _ => apply H
+  | H: _ = \[cb] |- _ => rewrite <- H
   end.
-  steps. step. steps. unfold state_implication. steps.
+  apply_key_prefix_hyp. raw_bit_to_pfx. subst.
+  assert (pfx_bit (pfx_emb k') (pfx_len pr) true) by steps. steps. steps. }
+  steps. steps.
+  match goal with
+  | H: forall _, _ -> pfx_len _ <= \[cb] |- _ => apply H
+  end. steps.
+  step. steps. unfold state_implication. steps.
   match goal with
   | H: context[expect_1expr_return] |- _ => destruct H
   end.
   steps.
-  econstructor. eassumption.
-  step. step. steps. step. simpl cbt'. step. steps. step. step.
-  repeat heapletwise_step. step. step. steps. step. step.
-  instantiate (1:=pr). instantiate (1:=Node sk' sk2). simpl cbt'.
-  steps. steps. apply eq_None_by_false. intro. apply_key_prefix_hyp.
-  steps. apply eq_None_by_false. intro. apply_key_prefix_hyp.
-  steps. .**/
+  assert (pfx_le pr (pfx_emb k)). {
+  assert (pfx_le pr (pfx_emb k')).
+  destruct_in_putmany; apply_key_prefix_hyp; steps.
+  assert (pfx_le pr (pfx_meet (pfx_emb k') (pfx_emb k))).
+  apply (pfx_lele_len_ord _ _ (pfx_emb k')); steps. steps. }
+  assert (Hnewpr: pfx_meet pr (pfx_emb k) = pr) by steps.
+  assert (map.get cR k = None). { apply eq_None_by_false. intro. steps.
+  apply_key_prefix_hyp. raw_bit_to_pfx. steps. steps. }
+  steps.
+  econstructor. eassumption. simpl cbt' in *. step. step. steps. step. steps.
+  step. step. step. step. step. step. step. step. step. step. steps. step.
+  instantiate (1:=Node sk' sk2). simpl cbt'. steps. rewrite Hnewpr.
+  enough (pfx_le (pfx_app pr false) (pfx_meet pL (pfx_emb k))).
+  steps. apply pfx_meet_le_both. steps. raw_bit_to_pfx. steps. steps.
+  rewrite Hnewpr. steps. rewrite Hnewpr. steps. .**/
   }                                                                          /**. .**/
   uintptr_t new_leaf = cbt_alloc_leaf(k, v);                                 /**. .**/
   if (new_leaf == 0) /* split */ {                                           /**. .**/
-    return 0;                                                                /**.
-  change (0 =? 0) with true in H1. cbv iota in H1. .**/
+    return 0;                                                                /**. .**/
   }                                                                          /*?.
-  step. step. steps. step. step. step. destruct sk; simpl cbt' in *; steps.
-  steps. .**/
+  step. step. steps. step. step. destruct sk; simpl cbt' in *; steps. .**/
   else {                                                                     /**. .**/
     uintptr_t new_node = Malloc(12);                                         /**. .**/
-    if (new_node == 0) /* split */ {                                         /**.
-  change (0 =? 0) with true in *. cbv iota in *. .**/
+    if (new_node == 0) /* split */ {                                         /**. .**/
       return 0;                                                              /**. .**/
     }                                                                        /*?.
-  step. step. step. steps. step. destruct sk; simpl cbt' in *; steps. steps. .**/
+  step. step. step. step. step. steps. step. destruct sk; simpl cbt' in *; steps. .**/
     else {                                                                   /**. .**/
       store(new_node, load(p));                                              /**. .**/
       store(new_node + 4, load(p + 4));                                      /**. .**/
@@ -1306,234 +1322,126 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
         store(p + 8, new_leaf);                                              /**. .**/
         return tp;                                                           /**. .**/
       }                                                                      /*?.
-  step. step. step. step. step. steps. step. step. step. step.
-  instantiate (2:=Node sk Leaf). simpl cbt'.
-  instantiate (1:={|length:=\[cb]; bits:=prefix_bits \[cb] k|}). step.
-  enough (length total_pr <= \[cb]).
-  unfold is_prefix. step. step. step. rewrite clip_prefix_bits.
-  match goal with
-  | H: is_prefix_key total_pr k |- _ =>
-    unfold is_prefix_key, is_prefix in H; simpl in H
-  end. step. assumption. lia. lia.
-  assert (length total_pr <= 32).
-  match goal with
-  | H: is_prefix_key total_pr k |- _ =>
-    unfold is_prefix_key, full_prefix, is_prefix in H; simpl in H
-  end. lia.
-  assert (Hcmp: length total_pr <= \[cb] \/ \[cb] + 1 <= length total_pr). lia.
-  destruct Hcmp; [ assumption | exfalso ].
-  match goal with
-  | H: context[_ -> prefix_bits (\[cb] + 1) _ <> _] |- _ => apply H with k'
-  end. step.
-  apply clip_prefix_bits_equality with (length total_pr). lia. lia.
-  apply same_prefix_bits_equality. 2: assumption.
-  enough (is_prefix_key pr k'). steps.
-  apply_key_prefix_hyp. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. instantiate (2:=c). instantiate (3:=pr).
-  repeat clear_array_0.
-  simpl cbt' in *. instantiate (2:=full_prefix k). instantiate (1:=map.singleton k v).
-  destruct sk; simpl cbt'; steps; cbn; steps. subst. steps.
-  unfold is_canonic. unfold canonic_bits. cbn. rewrite clip_prefix_bits; steps.
-  subst. assert (w2 = k'). steps. subst.
-  match goal with
-  | H: prefix_bits \[cb] k' = prefix_bits \[cb] k0 |- _ => rewrite <- H
-  end.
-  apply is_prefix_key_extend_0; steps.
-  assert (prefix_bits (\[cb] + 1) k' <> prefix_bits (\[cb] + 1) k0).
-  match goal with
-  | H: context[_ -> prefix_bits (\[cb] + 1) _ <> _] |- _ => apply H
-  end.
-  steps.
-  assert (word.and (k' ^>> cb) /[1] <> /[1]). intro.
-  match goal with
-  | H: prefix_bits (\[cb] + 1) k' <> prefix_bits _ _ |- _ => apply H
-  end.
-  change (\[cb] + 1)
-    with (length (append_1 {| length := \[cb]; bits := k0 |})).
-  eapply same_prefix_bits_equality. apply is_prefix_key_extend_1. step.
-  unfold is_prefix_key, full_prefix, is_prefix. cbn. steps. steps.
-  apply is_prefix_key_extend_1; steps.
-  (* TODO: automate *)
-  unfold is_prefix_key, full_prefix, is_prefix;
-  cbn; steps. steps. apply is_prefix_key_extend_1; steps.
-  (* TODO: automate *)
-  rewrite map_putmany_singleton_r. steps.
-  apply map_disjoint_singleton_r. apply eq_None_by_false. intro.
-  apply_key_prefix_hyp. subst. step. step. assert (w2 = k0). steps.
-  match goal with
-  | H: is_prefix_key (full_prefix _) _ |- _ =>
-    unfold is_prefix_key, is_prefix, full_prefix in H; cbn in H
-  end. steps. subst. step.
-  match goal with
-  | H: context[_ -> prefix_bits (\[cb] + 1) _ <> _] |- _ => specialize (H k0); apply H
-  end.
-  steps. steps. subst. steps.
-  (* TODO automate *)
-  match goal with
-  | |- is_canonic {| length := ?l; bits := prefix_bits ?l ?k |} =>
-    unfold is_canonic, canonic_bits; cbn; rewrite clip_prefix_bits; try lia
-  end.
-  steps. subst. step.
-  assert (Hcbp1: prefix_bits (\[cb] + 1) k' <> prefix_bits (\[cb] + 1) k0).
-  match goal with
-  | H: context[_ -> prefix_bits (\[cb] + 1) _ <> _] |- _ => apply H
-  end.
-  steps.
-  apply_key_prefix_hyp.
-  assert (Hcmp: \[cb] = length pr \/ \[cb] < length pr). step.
-  destruct Hcmp.
-  exfalso.
-  match goal with
-  | H: _ |= cbt' _ pR _ _ |- _ => apply cbt_nonempty in H
-  end.
-  steps.
-  match goal with
-  | H1: context[_ -> prefix_bits (\[cb] + 1) _ <> _],
-    H2: map.get cR ?k <> None
-    |- _ => apply H1 with k
-  end.
-  step.
-  assert (word.and (k ^>> cb) /[1] = /[1]). replace cb with /[length pr] by hwlia.
-  apply_key_prefix_hyp.
-  assert (Hprk: is_prefix_key (append_1 pr) k). steps.
-  apply append_1_prefix in Hprk. steps. steps.
-  assert (prefix_bits \[cb] k = prefix_bits \[cb] k0).
-  assert (is_prefix_key pr k). apply_key_prefix_hyp. steps.
-  assert (prefix_bits (length pr) k = prefix_bits (length pr) k').
-  apply same_prefix_bits_equality; steps. congruence. steps.
-  edestruct is_prefix_extend_0_or_1; [ | | |  eassumption | ]; cbn; steps.
-  assert (prefix_bits (length pr) (bits pr) = prefix_bits (length pr) k').
-  match goal with
-  | H: is_prefix_key pr k' |- _ => unfold is_prefix_key, is_prefix, full_prefix in H
-  end.
-  step. step.
-  match goal with
-  | H: (prefix_bits (length pr) _ = prefix_bits (length pr) _) |- _ =>
-    apply clip_prefix_bits_equality with (n1:=\[cb]) in H
-  end.
-  replace (prefix_bits \[cb] k0) with (prefix_bits \[cb] (bits pr)) by congruence.
-  unfold is_prefix. cbn. step. step. apply clip_prefix_bits. steps. steps.
-  steps. steps.
-  exfalso.
-  assert (Hprfk': is_prefix_key (append_1 {| length := \[cb]; bits := prefix_bits \[cb] k0 |}) k'). steps. cbn. steps.
-  apply append_1_prefix in Hprfk'. cbn in Hprfk'.
-  (* TODO: automate *)
-  match goal with
-  | H: context[ /[\[ _ ]] ] |- _ => rewrite word.of_Z_unsigned in H
-  end.
-  apply Hcbp1. steps. cbn. steps. steps. apply is_prefix_key_extend_1; cbn; steps.
-  (* TODO: automate *)
-  rewrite map_putmany_singleton_r. steps.
-  apply map_disjoint_singleton_r. apply eq_None_by_false. intro.
-  match goal with
-  | H: context[_ -> prefix_bits (\[cb] + 1) _ <> _] |- _ => apply H with k
-  end; steps. .**/
+  assert (Hcbpr: \[cb] < pfx_len pr). {
+    destruct sk. steps.
+    assert (Hcmp: \[cb] < pfx_len pr \/ \[cb] = pfx_len pr) by hwlia.
+    destruct Hcmp; [ assumption | exfalso ]. steps. subst.
+    match goal with
+    | H: _ |= cbt' _ _ cR _ |- _ => apply cbt_nonempty in H
+    end. fwd.
+    assert (pfx_len (pfx_meet (pfx_emb k0) (pfx_emb k)) <= \[cb]). {
+    match goal with
+    | H: forall _, map.get _ _ <> None -> _ <= _ |- _ => apply H
+    end. steps. }
+    enough (Hlem: pfx_le (pfx_app pr true) (pfx_meet (pfx_emb k0) (pfx_emb k))).
+    apply pfx_le_len in Hlem. rewrite pfx_app_len in Hlem. lia.
+    do 2 apply_key_prefix_hyp.
+    apply pfx_meet_le_both. steps. raw_bit_to_pfx.
+    match goal with
+    | H: \[cb] = _ |- _ => rewrite H in *
+    end.
+    assert (pfx_le pr (pfx_emb k)). {
+    assert (pfx_le pr (pfx_meet (pfx_emb k') (pfx_emb k))). steps. steps. }
+    steps. steps.
+  }
+  assert (pfx_le pr (pfx_emb k')). {
+    destruct sk; steps; subst; steps; subst; steps.
+    destruct_in_putmany; apply_key_prefix_hyp; steps.
+  }
+  assert (Hprmk: pfx_len (pfx_meet pr (pfx_emb k)) = \[cb]). {
+    match goal with
+    | H: _ = \[cb] |- _ => rewrite <- H
+    end.
+    f_equal. apply pfx_le_asym. steps.
+    apply pfx_meet_le_both. apply (pfx_lele_len_ord _ _ (pfx_emb k')); steps.
+    steps.
+  }
+  assert (Hcknone: map.get c k = None). {
+    apply eq_None_by_false. intro. do 2 apply_key_prefix_hyp.
+    assert (Hprk: pfx_meet pr (pfx_emb k) = pr). steps. rewrite <- Hprk in Hcbpr.
+    lia. }
+  step. step. step. step. step. steps. step. steps. step.
+  instantiate (1:=Node sk Leaf). simpl cbt'. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. instantiate (2:=c). instantiate (4:=pr).
+  repeat clear_array_0. simpl cbt' in *. repeat heapletwise_step.
+  unfold canceling. unfold seps. split; [ | apply I]. intros.
+  apply sep_comm. step. step. step. step. step. step. instantiate (5:=k0).
+  instantiate (4:=v0). step. step. step. step. step. step. step. step.
+  instantiate (1:=pfx_emb k). step. instantiate (1:=map.singleton k v).
+  step. step. step. step. step. step. step. subst.
+  rewrite Hprmk. raw_bit_to_pfx.
+  destruct (pfx_bit_or pr \[cb]). steps. steps. exfalso.
+  steps. steps. step. steps. step. rewrite Hprmk. raw_bit_to_pfx.
+  steps. steps. step. steps. step.
+  clear D. (* without clearing D, some heaplets appear in multiple equations,
+              which the canceling tactics don't like
+
+              (I think that my `unfold state_implication` could be the root cause *)
+  destruct sk; simpl cbt' in *; steps. .**/
 
       else {                                                                  /**. .**/
         store(p + 4, new_leaf);                                               /**. .**/
         store(p + 8, new_node);                                               /**. .**/
         return tp;                                                            /**. .**/
       }                                                                       /*?.
-  step. step. step. step. step. step. step. step. instantiate (2:=Node Leaf sk).
-  simpl cbt'. instantiate (1:={|length:=\[cb]; bits:=prefix_bits \[cb] k|}).
-  steps. 2: instantiate (8:=k). 2: instantiate (7:=v).
-  2: instantiate (4:=full_prefix k). 2: instantiate (1:=c).
-  2: instantiate (1:=map.singleton k v). 2: instantiate (1:=pr).
-  enough (length total_pr <= \[cb]).
-  unfold is_prefix. step. step. step. rewrite clip_prefix_bits.
-  match goal with
-  | H: is_prefix_key total_pr k |- _ =>
-    unfold is_prefix_key, is_prefix in H; simpl in H
-  end. step. assumption. lia. lia.
-  assert (length total_pr <= 32).
-  match goal with
-  | H: is_prefix_key total_pr k |- _ =>
-    unfold is_prefix_key, full_prefix, is_prefix in H; simpl in H
-  end. lia.
-  assert (Hcmp: length total_pr <= \[cb] \/ \[cb] + 1 <= length total_pr). lia.
-  destruct Hcmp; [ assumption | exfalso ].
-  match goal with
-  | H: context[_ -> prefix_bits (\[cb] + 1) _ <> _] |- _ => apply H with k'
-  end. step.
-  apply clip_prefix_bits_equality with (length total_pr). lia. lia.
-  apply same_prefix_bits_equality. 2: assumption.
-  enough (is_prefix_key pr k'). steps.
-  apply_key_prefix_hyp. step. simpl cbt' in *. simpl length.
-  step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step.
-  repeat match goal with
-  | H: _ /\ _ |- _ => destruct H; idtac H
-  end. subst. step. step.
-  step. step. step. step. step. step. step.
-  step. step. step. step. step. step.
-  step. unfold canceling. unfold seps. step. step.
-  2: apply I.
-  step. step. apply sep_comm.
-  step. step. step. step.
-
-  unfold is_canonic. unfold canonic_bits. cbn. rewrite clip_prefix_bits; steps.
-  simpl length in *.
-  step. apply is_prefix_key_extend_0; steps; cbn; steps.
-  assert (Hprn1:
-     ~is_prefix (append_0 {| length := \[cb]; bits := prefix_bits \[cb] k0 |}) pr).
-  intro Hprpr. assert (map.get c k' <> None) by assumption. apply_key_prefix_hyp.
-  eapply is_prefix_key_trans in Hprpr; [ | cbn; steps | steps | eassumption ].
-  match goal with
-  | H: context[_ -> prefix_bits (\[cb] + 1) _ <> prefix_bits (\[cb] + 1) _]
-       |- _ => apply H with k'
-  end. steps. apply append_0_prefix in Hprpr. cbn in Hprpr.
-  match goal with
-  | H: context[/[\[ _ ]]] |- _ => rewrite word.of_Z_unsigned in H
-  end.
-  assert (word.and (k0 ^>> cb) /[1] = /[0]) by steps. steps. cbn. steps.
-  assert (\[cb] < length pr).
-  assert (\[cb] <= length pr). destruct sk; steps; subst; steps.
-  assert (Hcmp: \[cb] < length pr \/ \[cb] = length pr) by lia.
-  destruct Hcmp; [ assumption | exfalso ].
-  { destruct sk; steps; subst.
-  - simpl length in *. steps.
-  - match goal with
-    | H: _ |= cbt' _ pL _ _ |- _ => apply cbt_nonempty in H
-    end. steps.
+  assert (Hcbpr: \[cb] < pfx_len pr). {
+    destruct sk. steps.
+    assert (Hcmp: \[cb] < pfx_len pr \/ \[cb] = pfx_len pr) by hwlia.
+    destruct Hcmp; [ assumption | exfalso ]. steps. subst.
     match goal with
-    | H: context[_ -> prefix_bits (\[cb] + 1) _ <> prefix_bits (\[cb] + 1) _]
-         |- _ => apply H with k
-    end. steps. repeat apply_key_prefix_hyp.
-    assert (word.and (k0 ^>> cb) /[1] = /[0]). steps.
-    assert (word.and (k ^>> cb) /[1] = /[0]).
-    assert (Hprk: is_prefix_key (append_0 pr) k) by steps.
-    apply append_0_prefix in Hprk. replace /[length pr] with cb in Hprk; steps. steps.
-    assert (prefix_bits \[cb] k = prefix_bits \[cb] k0).
-    assert (Hprk': is_prefix_key pr k) by steps.
-    eapply same_prefix_bits_equality with (k1:=k') in Hprk'. 2: assumption.
-    replace (length pr) with \[cb] in Hprk' by steps. congruence. steps. }
-  assert (is_prefix {| length := \[cb]; bits := prefix_bits \[cb] k0 |} pr).
-  apply_key_prefix_hyp.
-  match goal with
-  | H: is_prefix_key pr k' |- _ =>
-       unfold is_prefix_key, is_prefix, full_prefix in H; cbn in H
-  end. steps.
-  match goal with
-  | H: prefix_bits (length pr) _ = prefix_bits (length pr) _ |- _ =>
-       apply clip_prefix_bits_equality with (n1:=\[cb]) in H
-  end.
-  unfold is_prefix. cbn. step. step. rewrite clip_prefix_bits. congruence.
-  steps. steps. steps. steps.
-  step. edestruct is_prefix_extend_0_or_1; [ | | | exfalso | eassumption ]; cbn; steps.
-  step.
-  assert (map.get c k0 = None). { apply eq_None_by_false. intro Hprk0.
-  apply_key_prefix_hyp. apply same_prefix_bits_equality with (k1:=k') in Hprk0.
-  match goal with
-  | H: context[_ -> prefix_bits (\[cb] + 1) _ <> prefix_bits (\[cb] + 1) _]
-       |- _ => apply H with k'
-  end; steps. eapply clip_prefix_bits_equality; [ | | eassumption ]; steps.
-  apply_key_prefix_hyp. steps. }
-  steps. symmetry. apply map_putmany_singleton_l. steps.
-  apply map_disjoint_singleton_l. steps.
-  step. destruct sk; simpl cbt'; repeat clear_array_0; steps;
-  unfold canceling, seps, emp; steps. .**/
+    | H: _ |= cbt' _ _ cL _ |- _ => apply cbt_nonempty in H
+    end. fwd.
+    assert (pfx_len (pfx_meet (pfx_emb k0) (pfx_emb k)) <= \[cb]). {
+    match goal with
+    | H: forall _, map.get _ _ <> None -> _ <= _ |- _ => apply H
+    end. steps. }
+    enough (Hlem: pfx_le (pfx_app pr false) (pfx_meet (pfx_emb k0) (pfx_emb k))).
+    apply pfx_le_len in Hlem. rewrite pfx_app_len in Hlem. lia.
+    do 2 apply_key_prefix_hyp.
+    apply pfx_meet_le_both. steps. raw_bit_to_pfx.
+    match goal with
+    | H: \[cb] = _ |- _ => rewrite H in *
+    end.
+    assert (pfx_le pr (pfx_emb k)). {
+    assert (pfx_le pr (pfx_meet (pfx_emb k') (pfx_emb k))). steps. steps. }
+    steps. steps.
+  }
+  assert (pfx_le pr (pfx_emb k')). {
+    destruct sk; steps; subst; steps; subst; steps.
+    destruct_in_putmany; apply_key_prefix_hyp; steps.
+  }
+  assert (Hprmk: pfx_len (pfx_meet pr (pfx_emb k)) = \[cb]). {
+    match goal with
+    | H: _ = \[cb] |- _ => rewrite <- H
+    end.
+    f_equal. apply pfx_le_asym. steps.
+    apply pfx_meet_le_both. apply (pfx_lele_len_ord _ _ (pfx_emb k')); steps.
+    steps.
+  }
+  assert (Hcknone: map.get c k = None). {
+    apply eq_None_by_false. intro. do 2 apply_key_prefix_hyp.
+    assert (Hprk: pfx_meet pr (pfx_emb k) = pr). steps. rewrite <- Hprk in Hcbpr.
+    lia. }
+  step. step. step. step. step. steps. step. steps. step.
+  instantiate (1:=Node Leaf sk). simpl cbt'. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step.
+  instantiate (7:=c). instantiate (6:=pr).
+  step. step. step. step. step. steps. step.
+  repeat clear_array_0. simpl cbt' in *. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step.
+  instantiate (1:=k). step. step. step. instantiate (1:=v). step. step.
+  unfold canceling. unfold seps. split; [ | apply I]. intros. apply sep_comm.
+  step. step. steps. step. rewrite Hprmk. steps. rewrite Hprmk. subst.
+  raw_bit_to_pfx. step. steps. step.
+  destruct (pfx_bit_or pr \[cb]). steps. exfalso.
+  steps. steps. step. steps. step.
+  clear D. destruct sk; simpl cbt' in *; steps. steps. steps. steps. .**/
     }                                                                         /**. .**/
   }                                                                           /**. .**/
 }                                                                             /**.
@@ -1564,50 +1472,32 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
     uintptr_t res = cbt_alloc_leaf(k, v);                                  /**. .**/
     return res;                                                            /**. .**/
   }                                                                        /**.
-  subst. steps. simpl (0 =? 0) in *. steps. subst. unfold map.singleton. steps.
-  simpl (0 =? 0) in *. cbv iota in *. steps. .**/
+  subst. steps. subst. unfold map.singleton. steps. .**/
   else {                                                                   /**. .**/
   uintptr_t best_k = cbt_update_or_best(tp, k, v);                         /**. .**/
-    if (best_k == k) /* split */ {                                         /**.
-  subst best_k.
-  match goal with
-  | H: _ \/ _ |- _ => destruct H; [ | tauto ]
-  end. step. unzify. .**/
+    if (best_k == k) /* split */ {                                         /**. .**/
       return tp;                                                           /**. .**/
-    }                                                                      /**. .**/
-    else {                                                                 /**.
-  match goal with
-  | H: _ \/ _ |- _ => destruct H; [ tauto | ]
-  end. steps. .**/
+    }                                                                      /**.
+  subst. steps. .**/
+    else {                                                                 /**. .**/
       uintptr_t cb = critical_bit(k, best_k);                              /**.
   instantiate (3:=emp True). steps.
-  unfold enable_frame_trick.enable_frame_trick. steps.
-  instantiate (2:=<{ * allocator * R }>). unfold canceling. steps. simpl. steps. .**/
-      uintptr_t result = cbt_insert_at(tp, cb, k, v);                      /**.
-  instantiate (1:=empty_prefix). unfold empty_prefix. cbn. step.
-  apply empty_is_prefix. step. apply empty_is_prefix. cbn. step.
-  instantiate (1:=best_k). unfold closest_key_in in *. steps. symmetry.
-  steps. unfold closest_key_in in *. steps.
-  intro Hprkk'.
-  match goal with
-  | H: prefix_bits _ _ <> prefix_bits _ _ |- _ => apply H
-  end.
-  assert (Hprkb: is_prefix_key {| length := \[cb] + 1; bits := prefix_bits (\[cb] + 1) k' |} best_k).
-  match goal with
-  | H: context[map.get c _ <> None -> (is_prefix_key _ _ -> _ )] |- _ => eapply H
-  end.
-  2: eassumption. cbn. steps. steps. rewrite Hprkk'. steps.
-  unfold is_prefix_key, is_prefix, full_prefix in Hprkb. cbn in Hprkb.
-  rewrite clip_prefix_bits in Hprkb. steps. steps. steps.
-
   unfold enable_frame_trick.enable_frame_trick. steps. .**/
+      uintptr_t result = cbt_insert_at(tp, cb, k, v);                      /**.
+  instantiate (1:=best_k). unfold closest_key_in in *. steps.
+  unfold closest_key_in in *. rewrite pfx_meet_comm. steps. steps.
+  unfold closest_key_in in *. fwd.
+  match goal with
+  | H: \[cb] = _ |- _ => rewrite pfx_meet_comm in H; rewrite H
+  end.
+  apply pfx_le_len.
+  match goal with
+  | H: forall _, map.get _ _ <> None -> pfx_le _ _ |- _ => apply H
+  end.
+  steps. unfold enable_frame_trick.enable_frame_trick. steps. .**/
       return result;                                                       /**. .**/
     }                                                                      /**.
-  replace (\[result] =? 0) with false by steps.
-  match goal with
-  | H: (_ \/ _) |- _ => destruct H; [steps; tauto | ]
-  end.
-  fwd. unfold id in *. subst. steps. .**/
+  replace (\[result] =? 0) with false by steps. unfold id in *. steps. .**/
   }                                                                        /**. .**/
 }                                                                          /**.
 Qed.
