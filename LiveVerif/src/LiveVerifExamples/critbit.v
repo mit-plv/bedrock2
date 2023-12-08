@@ -140,6 +140,7 @@ Definition pfx_emb (w: word) := pfx'_emb_rec w 32.
 Lemma pfx_emb_len : forall (w: word), pfx_len (pfx_emb w) = 32.
 Admitted.
 
+(* TODO: use List.get instead of Znth *)
 Definition pfx_bit (p: prefix) (i: Z) (b: bool) :=
   0 <= i < len p /\ List.Znth i p b = b.
 
@@ -174,7 +175,7 @@ Admitted.
 Lemma pfx_emb_bitop1 : forall (w: word) (i: Z), 0 <= i < 32 ->
     word.and (w ^>> /[i]) /[1] = /[1] <-> pfx_bit (pfx_emb w) i true.
 Admitted.
-
+(* rename to pfx_snoc *)
 Definition pfx_app (p: prefix) (b: bool) := p ++ cons b nil.
 
 Lemma pfx_app_le : forall (p1 p2: prefix) (b: bool),
@@ -781,6 +782,8 @@ Proof.
     steps.
 Qed.
 
+
+
 Lemma purify_cbt' :
   forall sk p c a, purify (cbt' sk p c a)
                    (a <> /[0] /\
@@ -865,6 +868,7 @@ Ltac apply_key_prefix_hyp :=
     apply Hq in Hc
   end.
 
+(*
 #[export] Instance spec_of_cbt_update_or_best: fnspec :=                        .**/
 
 uintptr_t cbt_update_or_best(uintptr_t tp, uintptr_t k, uintptr_t v) /**#
@@ -1501,5 +1505,175 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
   }                                                                        /**. .**/
 }                                                                          /**.
 Qed.
+*)
+
+#[export] Instance spec_of_cbt_delete_from_nonleaf: fnspec :=                          .**/
+
+uintptr_t cbt_delete_from_nonleaf(uintptr_t tp, uintptr_t k) /**#
+  ghost_args := (skL skR: tree_skeleton) (pr: prefix) (c: word_map)
+                (R: mem -> Prop);
+  requires t m := <{ * allocator
+                     * cbt' (Node skL skR) pr c tp
+                     * R }> m;
+  ensures t' m' res := t' = t
+                /\ if word.eqb res /[0] then
+                      map.get c k = None
+                   else
+                      map.get c k <> None
+                /\ <{ * allocator
+                      * (EX sk' pr', cbt' sk' pr' (map.remove c k) tp)
+                      * R }> m' #**/                                       /**.
+Derive cbt_delete_from_nonleaf SuchThat
+  (fun_correct! cbt_delete_from_nonleaf) As cbt_delete_from_nonelaf_ok.         .**/
+{                                                                          /**. .**/
+  uintptr_t cur = 0;                                                       /**. .**/
+  uintptr_t sib = 0;                                                       /**. .**/
+  uintptr_t par = tp;                                                   /**.
+  simpl cbt' in *. repeat heapletwise_step.
+  (* context packaging fails if we don't `simpl cbt'` before the `if`
+     because of variables being introduced too late *) .**/
+  if (((k >> load(par)) & 1) == 1) {                                       /**. .**/
+    sib = load(par + 4);                                                   /**. .**/
+    cur = load(par + 8);                                                   /**. .**/
+  } else {                                                                 /**. .**/
+    cur = load(par + 4);                                                   /**. .**/
+    sib = load(par + 8);                                                   /**. .**/
+  }                                                                        /**. merge.
+  (* shouldn't merge_step disappear? *)
+  loop invariant above cR. (* move cR after Scope2. *)
+  remember (if c then skR else skL) as skC. (* move skC after Scope2. *)
+  remember (if c then skL else skR) as skS. move skS after Scope2.
+  remember (if c then pR else pL) as pC. move pC after Scope2.
+  remember (if c then pL else pR) as pS. move pS after Scope2.
+  remember (if c then cR else cL) as cC. move cC after Scope2.
+  remember (if c then cL else cR) as cS. move cS after Scope2.
+  move cur after Scope2. move sib after Scope2. move pr before Scope2.
+  move R before Scope2.
+
+  match goal with
+  | H: _ |= cbt' skL ?pp ?cc ?aa |- _ =>
+       replace (cbt' skL pp cc aa)
+         with (if c then cbt' skS pS cS sib else cbt' skC pC cC cur: mem -> Prop)
+         in H
+         by (destruct c; congruence)
+  end.
+  match goal with
+  | H: _ |= cbt' skR ?pp ?cc ?aa |- _ =>
+       replace (cbt' skR pp cc aa)
+         with (if c then cbt' skC pC cC cur else cbt' skS pS cS sib: mem -> Prop)
+         in H
+         by (destruct c; congruence)
+  end.
+  match goal with
+  | H: _ |= <{ + _ + uintptr aL + uintptr aR }> ?pp |- _ =>
+       replace aL with (if c then sib else cur) in H by (destruct c; congruence);
+       replace aR with (if c then cur else sib) in H by (destruct c; congruence);
+       replace pp with par in H by congruence
+  end.
+  Ltac purge x := repeat match goal with
+                         | H: context[ x ] |- _ => clear H
+                         end; clear x.
+  purge aL. purge aR. purge pL. purge pR. purge skL. purge skR.
+  replace (map.putmany cL cR) with (map.putmany cC cS).
+  2: {
+  subst cC cS. destruct c; steps.
+  (* TODO: collect *)
+  match goal with
+  | H: map.disjoint ?c1 ?c2 |- map.putmany ?c2 ?c1 = map.putmany ?c1 ?c2 =>
+       symmetry; apply map.putmany_comm; exact H
+  end.
+  }
+  purge cL. purge cR.
+  match goal with
+  | H: merge_step _ |- _ => clear H
+  end.
+  match goal with
+  | H: par = tp |- _ => rewrite <- H in *; rewrite H at 2; clear H
+  end.
+  delete #(0 <= pfx_len pr < 32).
+  .**/
+  (* TODO: define a current sk/pr/c and sibling sk/pr/c ? *)
+  while (load(cur) != -1) /* initial_ghosts(pC, cC, cur, skS, pS, cS, sib, pr, par, R);
+    decreases skC */ {  /**.
+
+  clear Error.
+  (* rename par' into par. *)
+  split.
+  destruct c;
+  match goal with
+  | H: _ |= cbt' _ _ _ cur |- _ => apply cbt_expose_fields in H
+  end;
+  steps; unfold seps; steps.
+  steps. destruct skC; [ exfalso; hwlia | ]. .**/
+    par = cur;                                                             /**. .**/
+    if (((k >> load(cur)) & 1) == 1) /* split */ {                         /**.
+  clear Error.
+  split.
+  destruct c;
+  match goal with
+  | H: _ |= cbt' _ _ _ cur |- _ => simpl cbt' in H (* apply cbt_expose_fields in H *)
+  end;
+  steps; unfold seps; steps. steps.
+  match goal with
+  | H1: ?ma |= (if c then cbt' _ _ _ sib else _),
+    H2: ?mb |= (if c then cbt' ?skcur _ _ cur else _)
+    |- _ =>
+    let Hcur := fresh "Hcur" in
+    assert (Hcur: (if c then mb else ma) |= cbt' skcur pC cC cur)
+      by (destruct c; congruence);
+    assert (Hsib: (if c then ma else mb) |= cbt' skS pS cS sib)
+      by (destruct c; congruence);
+    clear H1 H2;
+    simpl cbt' in Hcur  (*
+    apply cbt_expose_fields in Hcur *)
+  end.
+  repeat heapletwise_step.
+  (* assert (c=true). subst c. apply word.eqb_eq. steps. *)
+  .**/
+      sib = load(cur + 4);                                                 /**.
+  clear Error. split. instantiate (1:=aL).
+  destruct c; steps; unfold seps; steps. steps. .**/
+      cur = load(cur + 8);                                                 /**.
+  clear Error. split. instantiate (1:=aR).
+  destruct c; steps; unfold seps; steps. steps. .**/
+    }                                                                      /**.
+  new_ghosts(_, _, _, _, _, _, _, pC, _, <{ * R
+                                            * freeable 12 par'
+                                            * <{ + uintptr _
+                                                 + uintptr (if c then _ else _)
+                                                 + uintptr (if c then _ else _) }> par'
+                                            * cbt' _ _ _ sib' }>).
+  (* TODO: collect *)
+  match goal with
+  | H: ?a = ?b |- context[ word.eqb ?a ?b ] =>
+      replace (word.eqb a b) with true by (symmetry; apply word.eqb_eq; exact H)
+  end. steps. destruct c; steps. destruct c; steps. destruct c; steps.
+
+  Search cS. (* <-- processing this causes
+  Backtrace:
+
+  Anomaly "Uncaught exception Not_found." Please report at http://coq.inria.fr/bugs/.
+  *)
+
+
+  step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step.
+; steps. subst
+  step. step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step.
+ steps. step. step. step. step. step. step. step. step. step. steps.
+    else {                                                                 /**.
+
+  match goal with
+  | H: _ |= cbt' _ _ cL _ |- _ => apply cbt_expose_fields in H
+  end.
+  match goal with
+  | H: _ |= cbt' _ _ cR _ |- _ => apply cbt_expose_fields in H
+  end.
+
+
 
 End LiveVerif. Comments .**/ //.
