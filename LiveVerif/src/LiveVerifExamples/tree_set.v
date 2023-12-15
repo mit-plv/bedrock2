@@ -217,6 +217,52 @@ Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
       end
   end.
 
+Ltac provide_new_ghosts_hook ::= manual_new_ghosts.
+
+#[export] Instance spec_of_bst_remove_max: fnspec :=                              .**/
+
+uintptr_t bst_remove_max(uintptr_t c) /**#
+  ghost_args := p s sk (R: mem -> Prop);
+  requires t m := p <> /[0] /\
+                  <{ * allocator
+                     * uintptr p c
+                     * bst' sk s p
+                     * R }> m;
+  ensures t' m' r := t' = t /\ exists sk' q,
+                     s \[r] /\
+                     (forall x, s x -> x <= \[r]) /\
+                     <{ * allocator
+                        * uintptr q c
+                        * bst' sk' (fun x => s x /\ x < \[r]) q
+                        * R }> m' #**/                                     /**.
+Derive bst_remove_max SuchThat (fun_correct! bst_remove_max)
+As bst_remove_max_ok.                                                           .**/
+{                                                                          /**. .**/
+  uintptr_t p = load(c);                                                   /**. .**/
+  uintptr_t res = 0;                                                       /**.
+  (* Local Arguments ready : clear implicits. *)
+  loop invariant above p.
+  delete #(res = ??).
+  move skR before t.
+                                                                                .**/
+  do /* initial_ghosts(s, c, skR, R); decreases skR */ {                   /**. .**/
+    c = p + sizeof(uintptr_t) + 4;                                         /**. .**/
+    p = load(c);                                                           /**. .**/
+    if (p) /* split */ {                                                   /**. .**/
+      /* nothing to do */                                                  /**. .**/
+    }                                                                      /**.
+      instantiate (3 := expr.var "p"). (* <-- need to give loop termination cond
+                                          already here... *)
+      steps.
+      new_ghosts((fun x => (s x /\ v < x)), c, skR, _).
+      steps.
+      { destr (x <=? v). 1: lia. eauto. }
+                                                                                .**/
+    else {                                                                 /**. .**/
+      res = load32(c - 4);                                                 /**. .**/
+    }                                                                      /**.
+Abort.
+
 #[export] Instance spec_of_bst_init: fnspec :=                              .**/
 
 void bst_init(uintptr_t p) /**#
@@ -256,6 +302,7 @@ As bst_alloc_node_ok.                                                           
   destruct_one_match_hyp; steps.
 Qed.
 
+Ltac provide_new_ghosts_hook ::= guess_new_ghosts.
 
 #[export] Instance spec_of_bst_add: fnspec :=                              .**/
 

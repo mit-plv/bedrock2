@@ -30,6 +30,13 @@ Ltac can_have_PredicateSize PredTp :=
   end
 : typeclass_instances.
 
+Notation invisible_cast T x :=
+  match Set return T with
+  | _ => x
+  end.
+
+Notation sizeof p := (invisible_cast (PredicateSize p) _).
+
 Definition array{width}{BW: Bitwidth width}{word: word width}
   {mem: map.map word Byte.byte}[T: Type]
   (elem: T -> word -> mem -> Prop){elemSize: PredicateSize elem}

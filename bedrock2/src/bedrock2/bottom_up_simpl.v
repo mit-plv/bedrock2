@@ -2186,6 +2186,24 @@ Section Tests.
       w2 = /[1].
   Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
+  Goal forall (hprop: Type),
+       let PS := fun (dummy: hprop) => Z in
+       forall (mk: forall p, PS p -> Prop) (uintptr: Z -> hprop) x y,
+       mk (uintptr x) y ->
+       x = 0 ->
+       True.
+  Proof.
+    intros.
+    Fail bottom_up_simpl_in_hyps ().
+    (* as excepted, but not experienced until now,
+       dependent types break bottom_up_simpl! *)
+    pose proof (f_equal uintptr H0) as A.
+    pose proof (@f_equal hprop (Z -> Prop) mk (uintptr x) (uintptr 0) A).
+    epose proof (@f_equal _ _ _ (uintptr x) (uintptr 0) A).
+    Fail epose proof (@f_equal _ _ mk (uintptr x) (uintptr 0) A).
+    pose proof (@f_equal _ _ (mk: hprop -> Z -> Prop) (uintptr x) (uintptr 0) A).
+  Abort.
+
   Goal forall a b, /[\[a ^+ b]] = a ^+ b.
   Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 

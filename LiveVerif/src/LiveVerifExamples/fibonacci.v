@@ -25,12 +25,12 @@ Lemma fib_recursion: forall n,
     fib (n ^+ /[1]) = fib (n ^- /[1]) ^+ fib n.
 Proof.
   unfold fib. intros.
-  replace (Z.to_nat \[n ^+ /[1]]) with (S (S (pred (Z.to_nat \[n])))) by ZnWords.
-  replace (Z.to_nat \[n ^- /[1]]) with (pred (Z.to_nat \[n])) by ZnWords.
-  replace (Z.to_nat \[n]) with (S (pred (Z.to_nat \[n]))) at 3 by ZnWords.
+  replace (Z.to_nat \[n ^+ /[1]]) with (S (S (pred (Z.to_nat \[n])))) by ZnWords.ZnWords.
+  replace (Z.to_nat \[n ^- /[1]]) with (pred (Z.to_nat \[n])) by ZnWords.ZnWords.
+  replace (Z.to_nat \[n]) with (S (pred (Z.to_nat \[n]))) at 3 by ZnWords.ZnWords.
   forget (pred (Z.to_nat \[n])) as m.
   change (fib_nat (S (S m))) with (fib_nat m + fib_nat (S m))%nat.
-  ZnWords.
+  ZnWords.ZnWords.
 Qed.
 
 Lemma fib_f_equal: forall x y, safe_implication (x = y) (fib x = fib y).
