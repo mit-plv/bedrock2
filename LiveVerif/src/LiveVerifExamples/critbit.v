@@ -1422,9 +1422,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   apply same_prefix_bits_equality. 2: assumption.
   enough (is_prefix_key pr k'). steps.
   apply_key_prefix_hyp. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. instantiate (2:=c). instantiate (3:=pr).
+  steps. unfold split_concl_at. instantiate (2:=c). instantiate (3:=pr).
   repeat clear_array_0.
   simpl cbt' in *. instantiate (2:=full_prefix k). instantiate (1:=map.singleton k v).
   destruct sk; simpl cbt'; steps; cbn; steps. subst. steps.
@@ -1558,12 +1556,10 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   step. step. step. step. step. step. step. step. step. step. step.
   repeat match goal with
   | H: _ /\ _ |- _ => destruct H; idtac H
-  end. subst. step. step.
-  step. step. step. step. step. step. step.
-  step. step. step. step. step. step.
-  step. unfold canceling. unfold seps. step. step.
+  end. subst. steps. unfold split_concl_at.
+  unfold canceling. unfold seps. step. step.
   2: apply I.
-  step. step. apply sep_comm.
+  step. apply sep_comm.
   step. step. step. step.
 
   unfold is_canonic. unfold canonic_bits. cbn. rewrite clip_prefix_bits; steps.
@@ -1626,7 +1622,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   steps. symmetry. apply map_putmany_singleton_l. steps.
   apply map_disjoint_singleton_l. steps.
   step. destruct sk; simpl cbt'; repeat clear_array_0; steps;
-  unfold canceling, seps, emp; steps. .**/
+  unfold canceling, seps, emp; steps. steps. .**/
     }                                                                         /**. .**/
   }                                                                           /**. .**/
 }                                                                             /**.

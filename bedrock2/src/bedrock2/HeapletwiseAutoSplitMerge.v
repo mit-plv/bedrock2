@@ -357,7 +357,6 @@ Section SepLog.
 End SepLog.
 
 
-Definition find_hyp_for_range{word: Type}(start: word)(size: Z)(tGoal: Prop) := tGoal.
 Definition split_range_from_hyp{word: Type}(start: word)(size: Z)(tHyp: Prop)
   (H: tHyp)(tGoal: Prop) := tGoal.
 Definition split_concl_at{word: Type}(addr: word)(g: Prop) := g.
@@ -620,11 +619,8 @@ Ltac split_step :=
   lazymatch goal with
   | |- canceling (cons (?P ?start) _) ?m _ =>
       with_PredicateSize_of P (fun size =>
-        let g := lazymatch goal with |- ?x => x end in
-        change (find_hyp_for_range start size g))
-  | |- find_hyp_for_range ?start ?size ?g =>
       match goal with
-      | H: with_mem ?mH (?P' ?start') |- _ =>
+      | H: with_mem ?mH (?P' ?start') |- ?g =>
           with_PredicateSize_of P' (fun size' =>
               is_subrange start size start' size';
               tryif assert_succeeds (idtac; assert (size = size') by
@@ -634,7 +630,6 @@ Ltac split_step :=
                        several singleton-field records *)
                     assert_fails (idtac; is_singleton_record_predicate P')
               then (
-                change g;
                 let P := lazymatch goal with | |- canceling (cons ?P _) _ _ => P end in
                 first
                 [ eapply (rew_with_mem (P' start') P mH) in H;
@@ -656,11 +651,11 @@ Ltac split_step :=
                 | pose_err Error:("Cannot cancel" P "with" (P' start')
                        "even though both span the same range:" size "bytes from" start) ]
               ) else change (split_range_from_hyp start size _ H g))
-      | H: with_mem ?mH (?P' ?start') |- _ =>
+      | H: with_mem ?mH (?P' ?start') |- ?g =>
           is_inside_range start' start size;
           change (split_concl_at start' g)
       | _ => gather_is_subrange_claims_into_error start size
-      end
+      end)
   | |- split_range_from_hyp ?start ?size ?tH ?H ?g => split_range_from_hyp_hook
   | |- split_concl_at ?s ?g => split_concl_at_hook
   end.
