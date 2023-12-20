@@ -637,8 +637,21 @@ Ltac split_step :=
                 change g;
                 let P := lazymatch goal with | |- canceling (cons ?P _) _ _ => P end in
                 first
-                [ eapply (rew_with_mem (P' start') P mH) in H;
+                [ let A := fresh in
+                  enough (impl1 (P' start') P) as A;
                   [ (* main goal *)
+                    let Hf := fresh in
+                    (* We use `pose proof` instead of `eapply ... in ...` because
+                       `eapply ... in ...` does an implicit `cbv iota` on the type of the
+                       new hypothesis, which might undo exactly what we wanted to achieve
+                       (note: if the sep clause in the conclusion is a bit more complicated
+                        than the sep clause in a hyp, we actually make the hyp similarly
+                        more complicated because we always modify the hyp, even though that's
+                        not always the simplest way...) *)
+                    pose proof (rew_with_mem (P' start') P mH A H) as Hf;
+                    move Hf before H;
+                    clear A H;
+                    rename Hf into H
                   | (* sidecondition: (impl1 (P' start') P) *)
                     first [ solve [repeat sepclause_impl_step_hook]
                           | (* If we can't solve it right away, we need to be careful
