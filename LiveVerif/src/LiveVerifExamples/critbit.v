@@ -235,6 +235,10 @@ Lemma pfx_meet_le_meet_l : forall (p1 p2 p: prefix),
   pfx_le p1 p2 -> pfx_le (pfx_meet p1 p) (pfx_meet p2 p).
 Admitted.
 
+Lemma pfx_meet_le_meet_r : forall (p1 p2 p: prefix),
+  pfx_le p1 p2 -> pfx_le (pfx_meet p p1) (pfx_meet p p2).
+Admitted.
+
 Lemma pfx_meet_le_r : forall (p1 p2: prefix), pfx_le (pfx_meet p1 p2) p2.
 Admitted.
 
@@ -244,6 +248,10 @@ Admitted.
 
 Lemma pfx_meet_bit_diff_len : forall (p1 p2: prefix) (i: Z) (b1 b2: bool),
   pfx_bit p1 i b1 -> pfx_bit p2 i b2 -> b1 <> b2 -> pfx_len (pfx_meet p1 p2) <= i.
+Admitted.
+
+Lemma pfx_meet_len_same_bit_false : forall (p1 p2: prefix) (l: Z) (b: bool),
+  pfx_len (pfx_meet p1 p2) = l -> pfx_bit p1 l b -> pfx_bit p2 l b -> False.
 Admitted.
 
 Lemma pfx_meet_le_eq : forall (p1 p2: prefix),
@@ -613,14 +621,28 @@ Lemma pfx_mmeet_key_le : forall c k,
 Admitted.
 
 Lemma half_subcontent_put_incl : forall c k v b,
-  pfx_bit (pfx_emb k) (pfx_len (pfx_mmeet c)) b ->
+  pfx_le (pfx_mmeet c) (pfx_emb k) -> pfx_bit (pfx_emb k) (pfx_len (pfx_mmeet c)) b ->
   half_subcontent (map.put c k v) b = map.put (half_subcontent c b) k v.
 Admitted.
 
+Lemma half_subcontent_put_excl_key : forall c k v b,
+  pfx_len (pfx_meet (pfx_emb k) (pfx_mmeet c)) < pfx_len (pfx_mmeet c) ->
+  bit_at k (pfx_len (pfx_meet (pfx_emb k) (pfx_mmeet c))) = b ->
+  half_subcontent (map.put c k v) b = map.singleton k v.
+Admitted.
+
+Lemma half_subcontent_put_excl_bulk : forall c k v b,
+  pfx_len (pfx_meet (pfx_emb k) (pfx_mmeet c)) < pfx_len (pfx_mmeet c) ->
+  bit_at k (pfx_len (pfx_meet (pfx_emb k) (pfx_mmeet c))) = negb b ->
+  half_subcontent (map.put c k v) b = c.
+Admitted.
+
+(*
 Lemma half_subcontent_put_excl : forall c k v b1 b2,
   pfx_bit (pfx_emb k) (pfx_len (pfx_mmeet c)) b1 -> b1 <> b2 ->
   half_subcontent (map.put c k v) b2 = half_subcontent c b2.
 Admitted.
+*)
 
 Lemma half_subcontent_put : forall c k v b,
   half_subcontent (map.put c k v) b =
@@ -628,6 +650,14 @@ Lemma half_subcontent_put : forall c k v b,
        map.put (half_subcontent c b) k v
     else
        half_subcontent c b.
+Admitted.
+
+Lemma half_subcontent_in_bit : forall c k b,
+  map.get (half_subcontent c b) k <> None -> bit_at k (pfx_len (pfx_mmeet c)) = b.
+Admitted.
+
+Lemma pfx_mmeet_put : forall c k v,
+  c <> map.empty -> pfx_mmeet (map.put c k v) = pfx_meet (pfx_emb k) (pfx_mmeet c).
 Admitted.
 
 Lemma pfx_mmeet_put_incl : forall c k v,
@@ -640,6 +670,10 @@ Lemma acbt_prefix_length : forall (tree: tree_skeleton) (c: word_map),
                    | Leaf => pfx_len (pfx_mmeet c) = 32
                    end.
 Proof.
+Admitted.
+
+Lemma acbt_nonempty : forall tree c,
+  acbt tree c -> c <> map.empty.
 Admitted.
 
 Ltac raw_bit_to_pfx_impl Hresult :=
@@ -903,7 +937,7 @@ Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
   end.
 
 Lemma cbt_expose_fields (tree: tree_skeleton) (c: word_map) (a: word):
-  impl1 (cbt' tree c a) (EX w2 w3,
+  iff1 (cbt' tree c a) (EX w2 w3,
     <{ * freeable 12 a
        * <{ + uintptr /[pfx_len (pfx_mmeet c)]
             + uintptr w2
@@ -916,8 +950,10 @@ Lemma cbt_expose_fields (tree: tree_skeleton) (c: word_map) (a: word):
                       * cbt' treeR (half_subcontent c true) w3 }>
          end }>).
 Proof.
-  unfold impl1. intro m. intros. destruct tree; simpl cbt' in *; steps.
-  subst c. steps.
+  unfold iff1. intro m.
+  split; intros; destruct tree; simpl cbt' in *; steps; subst c; steps.
+  (*  unfold impl1. intro m. intros. destruct tree; simpl cbt' in *; steps.
+  subst c. steps. *)
 Qed.
 
 Ltac destruct_in_putmany :=
@@ -1339,101 +1375,80 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
                            * <{ + uintptr /[pfx_len (pfx_mmeet c)]
                                 + uintptr w2
                                 + uintptr p }> p' }>).
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step.
-  (* HERE, processing the following command seems to cause an infinite loop
-     (discovered because part of my step_hook)
-
+  remember (cbt_best_lookup (Node sk1 sk2) c k) as k'.
+  assert (pfx_le (pfx_mmeet c) (pfx_emb k)).
+  { apply pfx_le_trans with (p2:=pfx_meet (pfx_emb k) (pfx_emb k')).
+    { apply pfx_lele_len_ord with (pfx_emb k'). apply pfx_mmeet_key_le.
+      subst k'. apply cbt_best_lookup_in. steps. steps.
+      match goal with | H: ?rhs = _ |- _ <= ?rhs => rewrite H end.
+      match goal with (* where does the mod come from in the first place? *)
+      | H: pfx_len _ mod _ < _ |- _ => rewrite Zmod_small in H
+      end.
+      steps.
+      pose proof (pfx_len_nneg (pfx_mmeet c)). pose proof (pfx_mmeet_len c). steps. }
+    { steps. } }
+  simpl cbt_best_lookup in *. simpl cbt' in *. raw_bit_to_bit_at.
   match goal with
-  | H: ?P |- ?P => exact H
+  | H1: bit_at ?k ?i = _, H2: context[ if bit_at ?k ?i then _ else _ ] |- _ =>
+    rewrite H1 in H2; cbv iota in H2
   end.
-  *)
-
-  steps.
-  instantiate (1:=sk2). step. step. steps.
-  assert (map.get cL k' = None). { apply eq_None_by_false. intro.
-  enough (\[cb] <= pfx_len pr) by hwlia.
+  subst k'. steps. instantiate (1:=Node sk1 sk'). simpl cbt'. clear Error. steps.
+  rewrite pfx_mmeet_put.
+  replace (pfx_meet (pfx_emb k) (pfx_mmeet c)) with (pfx_mmeet c). steps. symmetry.
+  steps. rewrite pfx_meet_comm. steps.
+  (* TODO: collect *)
   match goal with
-  | H: _ = \[cb] |- _ => rewrite <- H
+  | H: acbt _ ?c |- ?c <> map.empty => apply acbt_nonempty in H; exact H
   end.
-  apply_key_prefix_hyp. raw_bit_to_pfx. subst.
-  assert (pfx_bit (pfx_emb k') (pfx_len pr) false) by steps. steps. steps. }
-  steps.
-  match goal with
-  | H: forall _, _ -> pfx_len _ <= \[cb] |- _ => apply H
-  end. steps.
-  step. steps. unfold state_implication. steps.
-  match goal with
-  | H: context[expect_1expr_return] |- _ => destruct H
-  end.
-  steps.
-  assert (pfx_le pr (pfx_emb k)). {
-  assert (pfx_le pr (pfx_emb k')).
-  destruct_in_putmany; apply_key_prefix_hyp; steps.
-  assert (pfx_le pr (pfx_meet (pfx_emb k') (pfx_emb k))).
-  apply (pfx_lele_len_ord _ _ (pfx_emb k')); steps. steps. }
-  assert (Hnewpr: pfx_meet pr (pfx_emb k) = pr) by steps.
-  econstructor. eassumption. simpl cbt' in *. step. step. steps. step. steps.
-  step. step. step. step. step. step. step. step. step. step. steps. step.
-  instantiate (1:=Node sk1 sk'). simpl cbt'. steps. rewrite Hnewpr. steps.
-  rewrite Hnewpr. enough (pfx_le (pfx_app pr true) (pfx_meet pR (pfx_emb k))).
-  steps. apply pfx_meet_le_both. steps. raw_bit_to_pfx. steps. steps.
-  apply eq_None_by_false. intro. steps. apply_key_prefix_hyp. raw_bit_to_pfx. steps.
-  steps. rewrite Hnewpr. steps. .**/
+  steps. .**/
     else {                                                                    /**. .**/
       p = load(p + 4);                                                        /**. .**/
     }                                                                         /**.
-  new_ghosts (p, pL, cL,
+  new_ghosts (p, half_subcontent c false,
       <{ * R
          * freeable 12 p'
-         * <{ + uintptr /[pfx_len pr]
+         * <{ + uintptr /[pfx_len (pfx_mmeet c)]
               + uintptr p
               + uintptr w3 }> p'
-         * cbt' sk2 pR cR w3 }>).
-  instantiate (1:=sk1). step. step. steps.
-  assert (map.get cR k' = None). { apply eq_None_by_false. intro.
-  enough (\[cb] <= pfx_len pr) by hwlia.
+         * cbt' sk2 (half_subcontent c true) w3 }>).
+  remember (cbt_best_lookup (Node sk1 sk2) c k) as k'.
+  assert (pfx_le (pfx_mmeet c) (pfx_emb k)).
+  { apply pfx_le_trans with (p2:=pfx_meet (pfx_emb k) (pfx_emb k')).
+    { apply pfx_lele_len_ord with (pfx_emb k'). apply pfx_mmeet_key_le.
+      subst k'. apply cbt_best_lookup_in. steps. steps.
+      match goal with | H: ?rhs = _ |- _ <= ?rhs => rewrite H end.
+      match goal with (* where does the mod come from in the first place? *)
+      | H: pfx_len _ mod _ < _ |- _ => rewrite Zmod_small in H
+      end.
+      steps.
+      pose proof (pfx_len_nneg (pfx_mmeet c)). pose proof (pfx_mmeet_len c). steps. }
+    { steps. } }
+  simpl cbt_best_lookup in *. simpl cbt' in *. raw_bit_to_bit_at.
   match goal with
-  | H: _ = \[cb] |- _ => rewrite <- H
+  | H1: bit_at ?k ?i = _, H2: context[ if bit_at ?k ?i then _ else _ ] |- _ =>
+    rewrite H1 in H2; cbv iota in H2
   end.
-  apply_key_prefix_hyp. raw_bit_to_pfx. subst.
-  assert (pfx_bit (pfx_emb k') (pfx_len pr) true) by steps. steps. steps. }
-  steps. steps.
+  subst k'. steps. instantiate (1:=Node sk' sk2). simpl cbt'. clear Error. steps.
+  rewrite pfx_mmeet_put.
+  replace (pfx_meet (pfx_emb k) (pfx_mmeet c)) with (pfx_mmeet c). steps. symmetry.
+  steps. rewrite pfx_meet_comm. steps.
+  (* already COLLECTED *)
   match goal with
-  | H: forall _, _ -> pfx_len _ <= \[cb] |- _ => apply H
-  end. steps.
-  step. steps. unfold state_implication. steps.
-  match goal with
-  | H: context[expect_1expr_return] |- _ => destruct H
+  | H: acbt _ ?c |- ?c <> map.empty => apply acbt_nonempty in H; exact H
   end.
-  steps.
-  assert (pfx_le pr (pfx_emb k)). {
-  assert (pfx_le pr (pfx_emb k')).
-  destruct_in_putmany; apply_key_prefix_hyp; steps.
-  assert (pfx_le pr (pfx_meet (pfx_emb k') (pfx_emb k))).
-  apply (pfx_lele_len_ord _ _ (pfx_emb k')); steps. steps. }
-  assert (Hnewpr: pfx_meet pr (pfx_emb k) = pr) by steps.
-  assert (map.get cR k = None). { apply eq_None_by_false. intro. steps.
-  apply_key_prefix_hyp. raw_bit_to_pfx. steps. steps. }
-  steps.
-  econstructor. eassumption. simpl cbt' in *. step. step. steps. step. steps.
-  step. step. step. step. step. step. step. step. step. step. steps. step.
-  instantiate (1:=Node sk' sk2). simpl cbt'. steps. rewrite Hnewpr.
-  enough (pfx_le (pfx_app pr false) (pfx_meet pL (pfx_emb k))).
-  steps. apply pfx_meet_le_both. steps. raw_bit_to_pfx. steps. steps.
-  rewrite Hnewpr. steps. rewrite Hnewpr. steps. .**/
+  steps. .**/
   }                                                                          /**. .**/
   uintptr_t new_leaf = cbt_alloc_leaf(k, v);                                 /**. .**/
   if (new_leaf == 0) /* split */ {                                           /**. .**/
     return 0;                                                                /**. .**/
-  }                                                                          /*?.
-  step. step. steps. step. step. destruct sk; simpl cbt' in *; steps. .**/
+  }                                                                          /**.
+  clear Error. destruct sk; simpl cbt' in *; steps. subst. steps. .**/
   else {                                                                     /**. .**/
     uintptr_t new_node = Malloc(12);                                         /**. .**/
     if (new_node == 0) /* split */ {                                         /**. .**/
       return 0;                                                              /**. .**/
-    }                                                                        /*?.
-  step. step. step. step. step. steps. step. destruct sk; simpl cbt' in *; steps. .**/
+    }                                                                        /**.
+  clear Error. destruct sk; simpl cbt' in *; steps. subst. steps. .**/
     else {                                                                   /**. .**/
       store(new_node, load(p));                                              /**. .**/
       store(new_node + 4, load(p + 4));                                      /**. .**/
@@ -1444,126 +1459,138 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
         store(p + 8, new_leaf);                                              /**. .**/
         return tp;                                                           /**. .**/
       }                                                                      /*?.
-  assert (Hcbpr: \[cb] < pfx_len pr). {
-    destruct sk. steps.
-    assert (Hcmp: \[cb] < pfx_len pr \/ \[cb] = pfx_len pr) by hwlia.
-    destruct Hcmp; [ assumption | exfalso ]. steps. subst.
-    match goal with
-    | H: _ |= cbt' _ _ cR _ |- _ => apply cbt_nonempty in H
-    end. fwd.
-    assert (pfx_len (pfx_meet (pfx_emb k0) (pfx_emb k)) <= \[cb]). {
-    match goal with
-    | H: forall _, map.get _ _ <> None -> _ <= _ |- _ => apply H
-    end. steps. }
-    enough (Hlem: pfx_le (pfx_app pr true) (pfx_meet (pfx_emb k0) (pfx_emb k))).
-    apply pfx_le_len in Hlem. rewrite pfx_app_len in Hlem. lia.
-    do 2 apply_key_prefix_hyp.
-    apply pfx_meet_le_both. steps. raw_bit_to_pfx.
-    match goal with
-    | H: \[cb] = _ |- _ => rewrite H in *
-    end.
-    assert (pfx_le pr (pfx_emb k)). {
-    assert (pfx_le pr (pfx_meet (pfx_emb k') (pfx_emb k))). steps. steps. }
-    steps. steps.
+  repeat clear_array_0. subst. steps.
+  clear Error. instantiate (1:=Node sk Leaf). simpl cbt'.
+  repeat match goal with
+  | H: merge_step _ |- _ => clear H
+  end.
+  match goal with (* where does the mod come from in the first place? *)
+  | H: _ <= pfx_len _ mod _ |- _ => rewrite Zmod_small in H
+  end.
+  2: { pose proof (pfx_len_nneg (pfx_mmeet c)). pose proof (pfx_mmeet_len c). steps. }
+  assert (pfx_len (pfx_meet (pfx_emb k) (pfx_mmeet c)) = \[cb]). {
+    assert (pfx_meet (pfx_emb k) (pfx_mmeet c)
+            = pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k))). {
+      apply pfx_le_asym. apply pfx_meet_le_meet_r. apply pfx_mmeet_key_le.
+      (* TODO: collect *)
+      match goal with
+      | H: acbt ?sk ?c |- map.get ?c (cbt_best_lookup ?sk ?c _) <> None =>
+        apply cbt_best_lookup_in; exact H
+      end.
+      apply pfx_meet_le_both. steps.
+      apply pfx_lele_len_ord with (pfx_emb (cbt_best_lookup sk c k)). steps.
+      apply pfx_mmeet_key_le.
+      (* already COLLECTED *)
+      match goal with
+      | H: acbt ?sk ?c |- map.get ?c (cbt_best_lookup ?sk ?c _) <> None =>
+        apply cbt_best_lookup_in; exact H
+      end. lia.
+    }
+    congruence.
   }
-  assert (pfx_le pr (pfx_emb k')). {
-    destruct sk; steps; subst; steps; subst; steps.
-    destruct_in_putmany; apply_key_prefix_hyp; steps.
-  }
-  assert (Hprmk: pfx_len (pfx_meet pr (pfx_emb k)) = \[cb]). {
-    match goal with
-    | H: _ = \[cb] |- _ => rewrite <- H
-    end.
-    f_equal. apply pfx_le_asym. steps.
-    apply pfx_meet_le_both. apply (pfx_lele_len_ord _ _ (pfx_emb k')); steps.
-    steps.
-  }
-  assert (Hcknone: map.get c k = None). {
-    apply eq_None_by_false. intro. do 2 apply_key_prefix_hyp.
-    assert (Hprk: pfx_meet pr (pfx_emb k) = pr). steps. rewrite <- Hprk in Hcbpr.
-    lia. }
-  step. step. step. step. step. steps. step. steps. step.
-  instantiate (1:=Node sk Leaf). simpl cbt'. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. instantiate (2:=c). instantiate (4:=pr).
-  repeat clear_array_0. simpl cbt' in *. repeat heapletwise_step.
-  unfold canceling. unfold seps. split; [ | apply I]. intros.
-  apply sep_comm. step. step. step. step. step. step. instantiate (5:=k0).
-  instantiate (4:=v0). step. step. step. step. step. step. step. step.
-  instantiate (1:=pfx_emb k). step. instantiate (1:=map.singleton k v).
-  step. step. step. step. step. step. step. subst.
-  rewrite Hprmk. raw_bit_to_pfx.
-  destruct (pfx_bit_or pr \[cb]). steps. steps. exfalso.
-  steps. steps. step. steps. step. rewrite Hprmk. raw_bit_to_pfx.
-  steps. steps. step. steps. step.
-  clear D. (* without clearing D, some heaplets appear in multiple equations,
-              which the canceling tactics don't like
-
-              (I think that my `unfold state_implication` could be the root cause *)
-  destruct sk; simpl cbt' in *; steps. .**/
-
+  assert (\[cb] < pfx_len (pfx_mmeet c)). {
+    enough (pfx_len (pfx_mmeet c) <> \[cb]) by lia. intro.
+    destruct sk.
+    - simpl (acbt Leaf _) in *. steps. subst. steps.
+    - steps. raw_bit_to_bit_at. simpl cbt_best_lookup in *.
+      match goal with
+      | H: context [ if bit_at ?k ?i then _ else _ ] |- _ =>
+        replace (bit_at k i) with true in H by congruence; cbv iota in H
+      end.
+      eapply pfx_meet_len_same_bit_false.
+      instantiate (2:=pfx_emb (cbt_best_lookup _ _ _)).
+      eassumption. instantiate (1:=true).
+      (* TODO: collect *)
+      match goal with
+      | H: bit_at ?k ?i = ?b |- pfx_bit (pfx_emb ?k) ?i ?b =>
+        rewrite <- H; apply pfx_bit_bit_at_emb
+      end. steps.
+      replace \[cb] with (pfx_len (pfx_mmeet c)) by congruence.
+      eassert (Hbtrue: bit_at _ _ = true); cycle 1. rewrite <- Hbtrue at 2.
+      eapply pfx_bit_bit_at_emb. steps. apply half_subcontent_in_bit.
+      (* TODO: collect *)
+      match goal with
+      | |- map.get ?c (cbt_best_lookup _ ?c _) <> None => apply cbt_best_lookup_in
+      end.
+      steps. steps. }
+  replace (half_subcontent (map.put c k v) false) with c. steps.
+  unfold split_concl_at, canceling. simpl seps. split; [ | apply I ]. intros.
+  apply sep_comm. clear D. (* TODO: investigate why this D appears *)
+  simpl cbt' in *. steps. subst. apply half_subcontent_put_excl_key. lia.
+  raw_bit_to_bit_at. congruence. steps. unfold split_concl_at.
+  destruct sk; simpl cbt' in *; steps. subst. steps. rewrite pfx_mmeet_put.
+  steps. eapply acbt_nonempty. eassumption. symmetry.
+  apply half_subcontent_put_excl_bulk. lia. simpl negb.
+  raw_bit_to_bit_at. congruence. steps.
+   (* TODO: investigate why many duplicated hypotheses *)
+   (* TODO (not local to here): remove/modify the application of
+      half_subcontent_put_incl in step_hook because of the added hypothesis *) .**/
       else {                                                                  /**. .**/
         store(p + 4, new_leaf);                                               /**. .**/
         store(p + 8, new_node);                                               /**. .**/
         return tp;                                                            /**. .**/
       }                                                                       /*?.
-  assert (Hcbpr: \[cb] < pfx_len pr). {
-    destruct sk. steps.
-    assert (Hcmp: \[cb] < pfx_len pr \/ \[cb] = pfx_len pr) by hwlia.
-    destruct Hcmp; [ assumption | exfalso ]. steps. subst.
-    match goal with
-    | H: _ |= cbt' _ _ cL _ |- _ => apply cbt_nonempty in H
-    end. fwd.
-    assert (pfx_len (pfx_meet (pfx_emb k0) (pfx_emb k)) <= \[cb]). {
-    match goal with
-    | H: forall _, map.get _ _ <> None -> _ <= _ |- _ => apply H
-    end. steps. }
-    enough (Hlem: pfx_le (pfx_app pr false) (pfx_meet (pfx_emb k0) (pfx_emb k))).
-    apply pfx_le_len in Hlem. rewrite pfx_app_len in Hlem. lia.
-    do 2 apply_key_prefix_hyp.
-    apply pfx_meet_le_both. steps. raw_bit_to_pfx.
-    match goal with
-    | H: \[cb] = _ |- _ => rewrite H in *
-    end.
-    assert (pfx_le pr (pfx_emb k)). {
-    assert (pfx_le pr (pfx_meet (pfx_emb k') (pfx_emb k))). steps. steps. }
-    steps. steps.
+  repeat clear_array_0. subst. steps.
+  clear Error. instantiate (1:=Node Leaf sk). simpl cbt'.
+  repeat match goal with
+  | H: merge_step _ |- _ => clear H
+  end.
+  match goal with (* where does the mod come from in the first place? *)
+  | H: _ <= pfx_len _ mod _ |- _ => rewrite Zmod_small in H
+  end.
+  2: { pose proof (pfx_len_nneg (pfx_mmeet c)). pose proof (pfx_mmeet_len c). steps. }
+  assert (pfx_len (pfx_meet (pfx_emb k) (pfx_mmeet c)) = \[cb]). {
+    assert (pfx_meet (pfx_emb k) (pfx_mmeet c)
+            = pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k))). {
+      apply pfx_le_asym. apply pfx_meet_le_meet_r. apply pfx_mmeet_key_le.
+      (* already COLLECTED *)
+      match goal with
+      | H: acbt ?sk ?c |- map.get ?c (cbt_best_lookup ?sk ?c _) <> None =>
+        apply cbt_best_lookup_in; exact H
+      end.
+      apply pfx_meet_le_both. steps.
+      apply pfx_lele_len_ord with (pfx_emb (cbt_best_lookup sk c k)). steps.
+      apply pfx_mmeet_key_le.
+      (* already COLLECTED *)
+      match goal with
+      | H: acbt ?sk ?c |- map.get ?c (cbt_best_lookup ?sk ?c _) <> None =>
+        apply cbt_best_lookup_in; exact H
+      end. lia.
+    }
+    congruence.
   }
-  assert (pfx_le pr (pfx_emb k')). {
-    destruct sk; steps; subst; steps; subst; steps.
-    destruct_in_putmany; apply_key_prefix_hyp; steps.
-  }
-  assert (Hprmk: pfx_len (pfx_meet pr (pfx_emb k)) = \[cb]). {
-    match goal with
-    | H: _ = \[cb] |- _ => rewrite <- H
-    end.
-    f_equal. apply pfx_le_asym. steps.
-    apply pfx_meet_le_both. apply (pfx_lele_len_ord _ _ (pfx_emb k')); steps.
-    steps.
-  }
-  assert (Hcknone: map.get c k = None). {
-    apply eq_None_by_false. intro. do 2 apply_key_prefix_hyp.
-    assert (Hprk: pfx_meet pr (pfx_emb k) = pr). steps. rewrite <- Hprk in Hcbpr.
-    lia. }
-  step. step. step. step. step. steps. step. steps. step.
-  instantiate (1:=Node Leaf sk). simpl cbt'. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step.
-  instantiate (7:=c). instantiate (6:=pr).
-  step. step. step. step. step. steps. step.
-  repeat clear_array_0. simpl cbt' in *. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step.
-  instantiate (1:=k). step. step. step. instantiate (1:=v). step. step.
-  unfold canceling. unfold seps. split; [ | apply I]. intros. apply sep_comm.
-  step. step. steps. step. rewrite Hprmk. steps. rewrite Hprmk. subst.
-  raw_bit_to_pfx. step. steps. step.
-  destruct (pfx_bit_or pr \[cb]). steps. exfalso.
-  steps. steps. step. steps. step.
-  clear D. destruct sk; simpl cbt' in *; steps. steps. steps. steps. .**/
+  assert (\[cb] < pfx_len (pfx_mmeet c)). {
+    enough (pfx_len (pfx_mmeet c) <> \[cb]) by lia. intro.
+    destruct sk.
+    - simpl (acbt Leaf _) in *. steps. subst. steps.
+    - steps. raw_bit_to_bit_at. simpl cbt_best_lookup in *.
+      match goal with
+      | H: context [ if bit_at ?k ?i then _ else _ ] |- _ =>
+        replace (bit_at k i) with false in H by congruence; cbv iota in H
+      end.
+      (* TODO (not really local here) rename to _False *)
+      eapply pfx_meet_len_same_bit_false.
+      instantiate (2:=pfx_emb (cbt_best_lookup _ _ _)).
+      eassumption. instantiate (1:=false).
+      (* already COLLECTED *)
+      match goal with
+      | H: bit_at ?k ?i = ?b |- pfx_bit (pfx_emb ?k) ?i ?b =>
+        rewrite <- H; apply pfx_bit_bit_at_emb
+      end. steps.
+      replace \[cb] with (pfx_len (pfx_mmeet c)) by congruence.
+      eassert (Hbfalse: bit_at _ _ = false); cycle 1. rewrite <- Hbfalse at 2.
+      eapply pfx_bit_bit_at_emb. steps. apply half_subcontent_in_bit.
+      (* already COLLECTED *)
+      match goal with
+      | |- map.get ?c (cbt_best_lookup _ ?c _) <> None => apply cbt_best_lookup_in
+      end.
+      steps. steps. }
+  replace (half_subcontent (map.put c k v) true) with c. simpl cbt' in *. steps.
+  subst. apply half_subcontent_put_excl_key. lia. raw_bit_to_bit_at. congruence.
+  steps. unfold split_concl_at. destruct sk; simpl cbt' in *; steps. subst. steps.
+  rewrite pfx_mmeet_put. steps. eapply acbt_nonempty. eassumption. symmetry.
+  apply half_subcontent_put_excl_bulk. lia. simpl negb. raw_bit_to_bit_at.
+  congruence. steps. .**/
     }                                                                         /**. .**/
   }                                                                           /**. .**/
 }                                                                             /**.
