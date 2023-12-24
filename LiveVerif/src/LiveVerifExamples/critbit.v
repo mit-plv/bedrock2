@@ -60,7 +60,8 @@ Definition pfx_len (p: prefix) := len p.
 
 Lemma pfx_len_nneg : forall (p: prefix), 0 <= pfx_len p.
 Proof.
-  intros. unfold pfx_len. lia.
+  intros.
+  unfold pfx_len. lia.
 Qed.
 
 Lemma pfx_le_reflx : forall (p: prefix), pfx_le p p.
@@ -1212,6 +1213,143 @@ Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.          
 }                                                                           /**.
 Qed.
 
+#[export] Instance spec_of_cbt_raw_node_alloc: fnspec :=                        .**/
+
+uintptr_t cbt_raw_node_alloc(uintptr_t w1, uintptr_t w2, uintptr_t w3) /**#
+  ghost_args := (R: mem -> Prop);
+  requires t m := <{ * allocator * R }> m;
+  ensures t' m' res := t' = t
+           /\ <{ * (if \[res] =? 0 then
+                     allocator_failed_below 12
+                    else
+                     <{ * allocator
+                        * freeable 12 res
+                        * <{ + uintptr w1
+                             + uintptr w2
+                             + uintptr w3 }> res }>)
+                 * R }> m' #**/                                            /**.
+Derive cbt_raw_node_alloc SuchThat (fun_correct! cbt_raw_node_alloc)
+  As cbt_raw_node_alloc_ok.                                                     .**/
+{                                                                          /**. .**/
+  uintptr_t p = Malloc(12);                                                /**. .**/
+  if (p == 0) /* split */ {                                                /**. .**/
+    return 0;                                                              /**. .**/
+  }                                                                        /**. .**/
+  else {                                                                   /**. .**/
+    store(p, w1);                                                          /**. .**/
+    store(p + 4, w2);                                                      /**. .**/
+    store(p + 8, w3);                                                      /**. .**/
+    return p;                                                              /**. .**/
+  }                                                                        /*?.
+  repeat clear_array_0. steps. .**/
+}                                                                          /**.
+Qed.
+
+#[export] Instance spec_of_cbt_raw_node_free: fnspec :=                         .**/
+
+void cbt_raw_node_free(uintptr_t node) /**#
+  ghost_args := (R: mem -> Prop);
+  requires t m := <{ * allocator
+                     * freeable 12 node
+                     * (EX w1 w2 w3, <{ + uintptr w1
+                                        + uintptr w2
+                                        + uintptr w3 }> node)
+                     * R }> m;
+  ensures t' m' := t' = t /\ <{ * allocator * R }> m' #**/                 /**.
+Derive cbt_raw_node_free SuchThat (fun_correct! cbt_raw_node_free)
+  As cbt_raw_node_free_ok.                                                      .**/
+{                                                                          /**. .**/
+  Free(node);                                                              /*?.
+  instantiate (5:=/[12]).
+  (* TODO: move to `step_hook` (?) *) replace \[/[12]] with 12 by hwlia.
+  steps. .**/
+}                                                                          /**.
+
+  (* FIXME: this should probably be done more automatically *)
+  unfold impl1. intro m'. steps.
+  eapply cast_to_anybytes.
+  replace 12 with (4 + (4 + (4 + 0))).
+  eapply sepapps_cons_contiguous.
+  instantiate (1:=uintptr w1).
+  pose proof uintptr_contiguous as Hcntg.
+  eassert (Hw: 4 = _); cycle 1. rewrite Hw. apply Hcntg.
+  compute. steps.
+
+  eapply sepapps_cons_contiguous.
+  instantiate (1:=uintptr w2).
+  pose proof uintptr_contiguous as Hcntg.
+  eassert (Hw: 4 = _); cycle 1. rewrite Hw. apply Hcntg.
+  compute. steps.
+
+  eapply sepapps_cons_contiguous.
+  instantiate (1:=uintptr w3).
+  pose proof uintptr_contiguous as Hcntg.
+  eassert (Hw: 4 = _); cycle 1. rewrite Hw. apply Hcntg.
+  compute. steps.
+
+  eapply sepapps_nil_contiguous.
+
+  steps. steps.
+Qed.
+
+#[export] Instance spec_of_cbt_raw_node_copy_new: fnspec :=                     .**/
+
+uintptr_t cbt_raw_node_copy_new(uintptr_t src) /**#
+  ghost_args := (R: mem -> Prop) (w1 w2 w3: word);
+  requires t m := <{ * allocator
+                     * <{ + uintptr w1
+                          + uintptr w2
+                          + uintptr w3 }> src
+                     * R }> m;
+  ensures t' m' res := t' = t
+           /\ <{ * (if \[res] =? 0 then
+                     allocator_failed_below 12
+                    else
+                     <{ * allocator
+                        * freeable 12 res
+                        * <{ + uintptr w1
+                             + uintptr w2
+                             + uintptr w3 }> res }>)
+                 * <{ + uintptr w1
+                      + uintptr w2
+                      + uintptr w3 }> src
+                 * R }> m' #**/                                            /**.
+Derive cbt_raw_node_copy_new SuchThat (fun_correct! cbt_raw_node_copy_new)
+  As cbt_raw_node_copy_new_ok. .**/
+{                                                                          /**. .**/
+  uintptr_t p = cbt_raw_node_alloc(load(src), load(src + 4), load(src + 8)); /**. .**/
+  return p;                                                                /**. .**/
+}                                                                          /**.
+Qed.
+
+#[export] Instance spec_of_cbt_raw_node_copy_replace: fnspec :=                 .**/
+
+void cbt_raw_node_copy_replace(uintptr_t dst, uintptr_t src) /**#
+  ghost_args := (R: mem -> Prop) (w1 w2 w3: word);
+  requires t m := <{ * <{ + uintptr w1
+                          + uintptr w2
+                          + uintptr w3 }> src
+                     * (EX w1' w2' w3', <{ + uintptr w1'
+                                           + uintptr w2'
+                                           + uintptr w3' }> dst)
+                     * R }> m;
+  ensures t' m' := t' = t
+           /\ <{ * <{ + uintptr w1
+                      + uintptr w2
+                      + uintptr w3 }> src
+                 * <{ + uintptr w1
+                      + uintptr w2
+                      + uintptr w3 }> dst
+                 * R }> m' #**/                                            /**.
+Derive cbt_raw_node_copy_replace SuchThat (fun_correct! cbt_raw_node_copy_replace)
+  As cbt_raw_node_copy_replace_ok. .**/
+{                                                                          /**. .**/
+  store(dst, load(src));                                                   /**. .**/
+  store(dst + 4, load(src + 4));                                           /**. .**/
+  store(dst + 8, load(src + 8));                                           /**. .**/
+}                                                                          /**.
+Qed.
+
 #[export] Instance spec_of_cbt_alloc_leaf: fnspec :=                            .**/
 
 uintptr_t cbt_alloc_leaf(uintptr_t k, uintptr_t v) /**#
@@ -1226,18 +1364,10 @@ uintptr_t cbt_alloc_leaf(uintptr_t k, uintptr_t v) /**#
                  * R }> m' #**/                                            /**.
 Derive cbt_alloc_leaf SuchThat (fun_correct! cbt_alloc_leaf) As cbt_alloc_leaf_ok. .**/
 {                                                                          /**. .**/
-  uintptr_t p = Malloc(12);                                                /**. .**/
-  if (p == 0) /* split */ {                                                /**. .**/
-    return 0;                                                              /**. .**/
-  }                                                                        /**. .**/
-  else {                                                                   /**. .**/
-    store(p, 32);                                                          /**. .**/
-    store(p + 4, k);                                                       /**. .**/
-    store(p + 8, v);                                                       /**. .**/
-    return p;                                                              /**. .**/
-  }                                                                        /*?.
-  repeat clear_array_0. simpl cbt'. steps. .**/
+  uintptr_t p = cbt_raw_node_alloc(32, k, v);                              /**. .**/
+  return p;                                                                /**. .**/
 }                                                                          /**.
+  simpl cbt'. destruct (\[p] =? 0) eqn:E; steps.
 Qed.
 
 (*
@@ -1623,42 +1753,92 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
   }                                                                        /**.
   subst. steps. subst. unfold map.singleton. steps. .**/
   else {                                                                   /**. .**/
-  uintptr_t best_k = cbt_update_or_best(tp, k, v);                         /**. .**/
+    uintptr_t best_k = cbt_update_or_best(tp, k, v);                       /**. .**/
     if (best_k == k) /* split */ {                                         /**. .**/
       return tp;                                                           /**. .**/
     }                                                                      /**.
-  subst. steps. .**/
+  subst. steps.
+  (* TODO: collect *)
+  match goal with
+  | H: ?w1 = ?w2 |- context [ word.eqb ?w1 ?w2 ] =>
+    replace (word.eqb w1 w2) with true by (symmetry; apply word.eqb_eq; exact H)
+  end.
+  steps.
+  .**/
     else {                                                                 /**. .**/
       uintptr_t cb = critical_bit(k, best_k);                              /**.
   instantiate (3:=emp True). steps.
   unfold enable_frame_trick.enable_frame_trick. steps. .**/
       uintptr_t result = cbt_insert_at(tp, cb, k, v);                      /**.
-  instantiate (1:=best_k). unfold closest_key_in in *. steps.
-  unfold closest_key_in in *. rewrite pfx_meet_comm. steps. steps.
-  unfold closest_key_in in *. fwd.
-  match goal with
-  | H: \[cb] = _ |- _ => rewrite pfx_meet_comm in H; rewrite H
-  end.
-  apply pfx_le_len.
-  match goal with
-  | H: forall _, map.get _ _ <> None -> pfx_le _ _ |- _ => apply H
-  end.
-  steps. unfold enable_frame_trick.enable_frame_trick. steps. .**/
+  subst. steps. unfold enable_frame_trick.enable_frame_trick. steps. .**/
       return result;                                                       /**. .**/
     }                                                                      /**.
   replace (\[result] =? 0) with false by steps. unfold id in *. steps. .**/
   }                                                                        /**. .**/
 }                                                                          /**.
 Qed.
-*)
+
+(* NOTE: the three lemmas below have the exact same assumptions
+         (the idea is that we are removing key `k` from content `c` and the
+          lemmas are only valid if
+          `half_subcontent c (bit_at k (pfx_len (pfx_mmeet c)))` contains other
+          keys than just `k`) *)
+
+(* TODO: collect *)
+Lemma pfx_mmeet_remove_unchanged : forall c k b,
+  bit_at k (pfx_len (pfx_mmeet c)) = b ->
+  map.remove (half_subcontent c b) k <> map.empty ->
+  pfx_mmeet (map.remove c k) = pfx_mmeet c.
+Admitted.
+
+(* TODO: collect *)
+Lemma half_subcontent_remove_same : forall c k b,
+  bit_at k (pfx_len (pfx_mmeet c)) = b ->
+  map.remove (half_subcontent c b) k <> map.empty ->
+  half_subcontent (map.remove c k) b = map.remove (half_subcontent c b) k.
+Admitted.
+
+(* TODO: collect *)
+Lemma half_subcontent_remove_other : forall c k b,
+  bit_at k (pfx_len (pfx_mmeet c)) = b ->
+  map.remove (half_subcontent c b) k <> map.empty ->
+  half_subcontent (map.remove c k) (negb b) = half_subcontent c (negb b).
+Admitted.
+
+(* TODO: collect *)
+Lemma map_extends_remove_in_both : forall (cbig clittle: word_map) k,
+  map.extends cbig clittle -> map.extends (map.remove cbig k) (map.remove clittle k).
+Proof.
+  unfold map.extends. intros. eq_neq_cases k x.
+  - subst. rewrite map.get_remove_same in *. discriminate.
+  - rewrite map.get_remove_diff in *. auto. congruence. congruence.
+Qed.
+
+(* TODO: collect *)
+Lemma map_extends_nonempty : forall (cbig clittle: word_map),
+  map.extends cbig clittle -> clittle <> map.empty -> cbig <> map.empty.
+Proof.
+  unfold map.extends. intros. intro.
+  match goal with
+  | H: clittle <> map.empty |- _ => apply H
+  end. apply map.map_ext. steps. destruct (map.get clittle k) eqn:E;
+  [ exfalso | reflexivity ].
+  match goal with
+  | H: forall _, _ |- _ => apply H in E
+  end.
+  match goal with
+  | H: cbig = map.empty |- _ => rewrite H in E
+  end.
+  rewrite map.get_empty in E. discriminate.
+Qed.
 
 #[export] Instance spec_of_cbt_delete_from_nonleaf: fnspec :=                          .**/
 
 uintptr_t cbt_delete_from_nonleaf(uintptr_t tp, uintptr_t k) /**#
-  ghost_args := (skL skR: tree_skeleton) (pr: prefix) (c: word_map)
+  ghost_args := (skL skR: tree_skeleton) (c: word_map)
                 (R: mem -> Prop);
   requires t m := <{ * allocator
-                     * cbt' (Node skL skR) pr c tp
+                     * cbt' (Node skL skR) c tp
                      * R }> m;
   ensures t' m' res := t' = t
                 /\ if word.eqb res /[0] then
@@ -1666,14 +1846,15 @@ uintptr_t cbt_delete_from_nonleaf(uintptr_t tp, uintptr_t k) /**#
                    else
                       map.get c k <> None
                 /\ <{ * allocator
-                      * (EX sk' pr', cbt' sk' pr' (map.remove c k) tp)
+                      * (EX sk', cbt' sk' (map.remove c k) tp)
                       * R }> m' #**/                                       /**.
 Derive cbt_delete_from_nonleaf SuchThat
   (fun_correct! cbt_delete_from_nonleaf) As cbt_delete_from_nonelaf_ok.         .**/
 {                                                                          /**. .**/
   uintptr_t cur = 0;                                                       /**. .**/
   uintptr_t sib = 0;                                                       /**. .**/
-  uintptr_t par = tp;                                                   /**.
+  uintptr_t par = tp;                                                      /**.
+  assert (0 <= pfx_len (pfx_mmeet c) < 32) by steps.
   simpl cbt' in *. repeat heapletwise_step.
   (* context packaging fails if we don't `simpl cbt'` before the `if`
      because of variables being introduced too late *) .**/
@@ -1684,141 +1865,332 @@ Derive cbt_delete_from_nonleaf SuchThat
     cur = load(par + 4);                                                   /**. .**/
     sib = load(par + 8);                                                   /**. .**/
   }                                                                        /**. merge.
-  (* shouldn't merge_step disappear? *)
-  loop invariant above cR. (* move cR after Scope2. *)
-  remember (if c then skR else skL) as skC. (* move skC after Scope2. *)
-  remember (if c then skL else skR) as skS. move skS after Scope2.
-  remember (if c then pR else pL) as pC. move pC after Scope2.
-  remember (if c then pL else pR) as pS. move pS after Scope2.
-  remember (if c then cR else cL) as cC. move cC after Scope2.
-  remember (if c then cL else cR) as cS. move cS after Scope2.
-  move cur after Scope2. move sib after Scope2. move pr before Scope2.
+  rename c0 into brc.
+  loop invariant above cur.
+  remember (if brc then skR else skL) as skC.
+  remember (if brc then skL else skR) as skS. move skS after Scope2.
+  move c before Scope2.
+  move cur after Scope2. move sib after Scope2.
   move R before Scope2.
 
   match goal with
-  | H: _ |= cbt' skL ?pp ?cc ?aa |- _ =>
-       replace (cbt' skL pp cc aa)
-         with (if c then cbt' skS pS cS sib else cbt' skC pC cC cur: mem -> Prop)
-         in H
-         by (destruct c; congruence)
+  | H1: ?mL |= cbt' skL _ _,
+    H2: ?mR |= cbt' skR _ _ |- _ =>
+    remember (if brc then mR else mL) as mcur;
+    remember (if brc then mL else mR) as msib;
+    assert (mcur |= cbt' skC (half_subcontent c brc) cur) by (destruct brc; congruence);
+    assert (msib |= cbt' skS (half_subcontent c (negb brc)) sib)
+       by (destruct brc; simpl negb; congruence)
   end.
+
   match goal with
-  | H: _ |= cbt' skR ?pp ?cc ?aa |- _ =>
-       replace (cbt' skR pp cc aa)
-         with (if c then cbt' skC pC cC cur else cbt' skS pS cS sib: mem -> Prop)
-         in H
-         by (destruct c; congruence)
-  end.
-  match goal with
-  | H: _ |= <{ + _ + uintptr aL + uintptr aR }> ?pp |- _ =>
-       replace aL with (if c then sib else cur) in H by (destruct c; congruence);
-       replace aR with (if c then cur else sib) in H by (destruct c; congruence);
+  | H: _ |= sepapps _ ?pp |- _ =>
+       replace aL with (if brc then sib else cur) in H by (destruct brc; congruence);
+       replace aR with (if brc then cur else sib) in H by (destruct brc; congruence);
        replace pp with par in H by congruence
   end.
   Ltac purge x := repeat match goal with
                          | H: context[ x ] |- _ => clear H
                          end; clear x.
-  purge aL. purge aR. purge pL. purge pR. purge skL. purge skR.
-  replace (map.putmany cL cR) with (map.putmany cC cS).
-  2: {
-  subst cC cS. destruct c; steps.
-  (* TODO: collect *)
-  match goal with
-  | H: map.disjoint ?c1 ?c2 |- map.putmany ?c2 ?c1 = map.putmany ?c1 ?c2 =>
-       symmetry; apply map.putmany_comm; exact H
-  end.
-  }
-  purge cL. purge cR.
+  purge aL. purge aR. purge skL. purge skR.
+
+  rewrite mmap.du_comm in D. rewrite <- mmap.du_assoc in D.
+  rewrite <- mmap.du_assoc in D.
+  replace ((m2 ||| m1) ||| m3) with (m2 ||| mcur ||| msib) in D; cycle 1.
+  do 2 rewrite mmap.du_assoc. f_equal. subst mcur. subst msib.
+  destruct brc. apply mmap.du_comm. reflexivity.
+  purge m1. purge m3.
+
   match goal with
   | H: merge_step _ |- _ => clear H
   end.
   match goal with
   | H: par = tp |- _ => rewrite <- H in *; rewrite H at 2; clear H
   end.
-  delete #(0 <= pfx_len pr < 32).
-  .**/
-  (* TODO: define a current sk/pr/c and sibling sk/pr/c ? *)
-  while (load(cur) != -1) /* initial_ghosts(pC, cC, cur, skS, pS, cS, sib, pr, par, R);
-    decreases skC */ {  /**.
-
-  clear Error.
-  (* rename par' into par. *)
-  split.
-  destruct c;
   match goal with
-  | H: _ |= cbt' _ _ _ cur |- _ => apply cbt_expose_fields in H
-  end;
-  steps; unfold seps; steps.
-  steps. destruct skC; [ exfalso; hwlia | ]. .**/
-    par = cur;                                                             /**. .**/
-    if (((k >> load(cur)) & 1) == 1) /* split */ {                         /**.
-  clear Error.
-  split.
-  destruct c;
-  match goal with
-  | H: _ |= cbt' _ _ _ cur |- _ => simpl cbt' in H (* apply cbt_expose_fields in H *)
-  end;
-  steps; unfold seps; steps. steps.
-  match goal with
-  | H1: ?ma |= (if c then cbt' _ _ _ sib else _),
-    H2: ?mb |= (if c then cbt' ?skcur _ _ cur else _)
-    |- _ =>
-    let Hcur := fresh "Hcur" in
-    assert (Hcur: (if c then mb else ma) |= cbt' skcur pC cC cur)
-      by (destruct c; congruence);
-    assert (Hsib: (if c then ma else mb) |= cbt' skS pS cS sib)
-      by (destruct c; congruence);
-    clear H1 H2;
-    simpl cbt' in Hcur  (*
-    apply cbt_expose_fields in Hcur *)
+  | H1: par <> /[0], H2: 0 <= pfx_len (pfx_mmeet c) < 32 |- _ =>
+    move H1 at bottom; move H2 at bottom
   end.
-  repeat heapletwise_step.
-  (* assert (c=true). subst c. apply word.eqb_eq. steps. *)
   .**/
-      sib = load(cur + 4);                                                 /**.
-  clear Error. split. instantiate (1:=aL).
-  destruct c; steps; unfold seps; steps. steps. .**/
-      cur = load(cur + 8);                                                 /**.
-  clear Error. split. instantiate (1:=aR).
-  destruct c; steps; unfold seps; steps. steps. .**/
+  while (load(cur) != 32) /* initial_ghosts(c, cur, skS, sib, par, R);
+    decreases skC */ {  /*?.
+  repeat heapletwise_step.
+  match goal with
+  | H: _ |= cbt' _ _ cur |- _ => apply cbt_expose_fields in H
+  end.
+  steps.
+  destruct skC; repeat heapletwise_step. { exfalso.
+  match goal with
+  | H: half_subcontent c brc = _ |- _ => rewrite H in *
+  end.
+  unfold ready. (* `unfold ready` so that `steps` doesn't finish immediately *)
+  steps. } .**/
+    par = cur;                                                             /**. .**/
+    if (((k >> load(par)) & 1) == 1) /* split */ {                         /**. .**/
+      sib = load(par + 4);                                                 /**. .**/
+      cur = load(par + 8);                                                 /**. .**/
     }                                                                      /**.
-  new_ghosts(_, _, _, _, _, _, _, pC, _, <{ * R
-                                            * freeable 12 par'
-                                            * <{ + uintptr _
-                                                 + uintptr (if c then _ else _)
-                                                 + uintptr (if c then _ else _) }> par'
-                                            * cbt' _ _ _ sib' }>).
+  new_ghosts(half_subcontent c brc, _, _, _, _, <{ * R
+                                                    * freeable 12 par'
+                                                    * <{ + uintptr _
+                                                         + uintptr _
+                                                         + uintptr _ }> par'
+                                                    * cbt' _ _ sib' }>).
+
+  steps.
+  (* TODO: formulate as step_hook rule and collect
+           specifically, detect that we should do the `rewrite H` *)
+  rewrite H. steps. rewrite H. steps. simpl negb. steps. rewrite H. steps.
+  rewrite H. steps.
   (* TODO: collect *)
   match goal with
-  | H: ?a = ?b |- context[ word.eqb ?a ?b ] =>
-      replace (word.eqb a b) with true by (symmetry; apply word.eqb_eq; exact H)
-  end. steps. destruct c; steps. destruct c; steps. destruct c; steps.
+  | H: context[ word.eqb ?w ?w ] |- _ => rewrite word.eqb_eq in H; [ | reflexivity ]
+  end.
+  apply eq_None_by_false. intro HnN. apply half_subcontent_get_nNone in HnN.
+  apply HnN. rewrite bit_at_raw. subst brc. steps. steps.
+  (* TODO: collect *)
+  match goal with
+  | H1: context[ word.eqb ?w1 ?w2 ], H2: ?w1 <> ?w2 |- _ =>
+    replace (word.eqb w1 w2) with false in H1 by (symmetry; apply word.eqb_ne; exact H2)
+  end.
+  steps.
+  match goal with
+  | H1: context[ word.eqb ?w1 ?w2 ], H2: ?w1 <> ?w2 |- _ =>
+    replace (word.eqb w1 w2) with false in H1 by (symmetry; apply word.eqb_ne; exact H2)
+  end.
+  steps. clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
+  destruct brc eqn:E. simpl cbt'.
+  step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. simpl negb.
+  (* TODO: below, more or less the same proof is repeated several (6) times.
+           Simplify? *)
+  pose proof (half_subcontent_remove_other c k true) as Hhcr. simpl negb in Hhcr.
+  rewrite Hhcr. steps. rewrite bit_at_raw. steps. steps. steps.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
+  raw_bit_to_bit_at.
+  (* TODO: collect (in some better form) *)
+  match goal with
+  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
+  end.
+  simpl Bool.eqb. cbv iota. steps. steps. steps.
+  rewrite half_subcontent_remove_same. steps. rewrite bit_at_raw. steps. steps.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
+  raw_bit_to_bit_at.
+  (* already COLLECTED *)
+  match goal with
+  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
+  end. simpl Bool.eqb. cbv iota. steps. steps. erewrite pfx_mmeet_remove_unchanged.
+  steps. rewrite bit_at_raw. instantiate (1:=true). steps. steps.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
+  raw_bit_to_bit_at.
+  (* already COLLECTED *)
+  match goal with
+  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
+  end. simpl Bool.eqb. cbv iota. steps. steps.
+  simpl cbt'. steps.
 
-  Search cS. (* <-- processing this causes
-  Backtrace:
+  erewrite half_subcontent_remove_same. steps. rewrite bit_at_raw. steps. steps.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
+  raw_bit_to_bit_at.
+  (* already COLLECTED *)
+  match goal with
+  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
+  end. simpl Bool.eqb. cbv iota. steps. steps.
+  simpl negb.
 
-  Anomaly "Uncaught exception Not_found." Please report at http://coq.inria.fr/bugs/.
+  pose proof (half_subcontent_remove_other c k false) as Hhcr. simpl negb in Hhcr.
+  rewrite Hhcr. steps. rewrite bit_at_raw. steps. steps.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
+  raw_bit_to_bit_at.
+  (* already COLLECTED *)
+  match goal with
+  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
+  end. simpl Bool.eqb. cbv iota. steps. steps.
+
+  erewrite pfx_mmeet_remove_unchanged. steps. rewrite bit_at_raw.
+  instantiate (1:=false). steps. steps.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
+  raw_bit_to_bit_at.
+  (* already COLLECTED *)
+  match goal with
+  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
+  end. simpl Bool.eqb. cbv iota. steps. steps. .**/
+    else {                                                                 /**. .**/
+      cur = load(par + 4);                                                 /**. .**/
+      sib = load(par + 8);                                                 /**. .**/
+    }                                                                      /**.
+  new_ghosts(half_subcontent c brc, _, _, _, _, <{ * R
+                                                    * freeable 12 par'
+                                                    * <{ + uintptr _
+                                                         + uintptr _
+                                                         + uintptr _ }> par'
+                                                    * cbt' _ _ sib' }>).
+  (*
+  Set Ltac Profiling.
+  Reset Ltac Profile.
   *)
 
-
-  step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step.
-; steps. subst
-  step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step.
- steps. step. step. step. step. step. step. step. step. step. steps.
-    else {                                                                 /**.
-
+  steps. simpl negb. steps.
   match goal with
-  | H: _ |= cbt' _ _ cL _ |- _ => apply cbt_expose_fields in H
+  | H: context[ word.eqb ?w ?w ] |- _ => rewrite word.eqb_eq in H; [ | reflexivity ]
   end.
+  apply eq_None_by_false. intro HnN. apply half_subcontent_get_nNone in HnN.
+  apply HnN. rewrite bit_at_raw. subst brc. steps. steps.
+  (* already COLLECTED *)
   match goal with
-  | H: _ |= cbt' _ _ cR _ |- _ => apply cbt_expose_fields in H
+  | H1: context[ word.eqb ?w1 ?w2 ], H2: ?w1 <> ?w2 |- _ =>
+    replace (word.eqb w1 w2) with false in H1 by (symmetry; apply word.eqb_ne; exact H2)
   end.
+  steps.
+  (* already COLLECTED *)
+  match goal with
+  | H1: context[ word.eqb ?w1 ?w2 ], H2: ?w1 <> ?w2 |- _ =>
+    replace (word.eqb w1 w2) with false in H1 by (symmetry; apply word.eqb_ne; exact H2)
+  end.
+  steps. clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
+  destruct brc eqn:E. simpl cbt'.
 
+  (* added `try tauto` to be able to derive `acbt` predicates *)
+  Ltac clear_pure_hyp_if_derivable h tp ::=
+  tryif ident_starts_with __pure_ h then
+    try (clear h; assert_succeeds (idtac; assert tp
+      by (try tauto; zify_goal; xlia zchecker)))
+  else idtac.
+
+  unpurify.
+
+  (*
+  Show Ltac Profile.
+  Reset Ltac Profile.
+  *)
+
+  steps.
+  (* this `steps.` takes very long
+     measurement 1: with `unpurify.` before the `steps.`   26 s
+     measurement 2: without unpurify                       55 s
+     measurement 3: with unpurify                           9 s
+     measurement 4: without unpurify                       55 s
+
+     profiling shows that most time is spent on `xlia`
+   *)
+
+  (* Show Ltac Profile. *)
+
+  simpl negb.
+  (* TODO: below, more or less the same proof is repeated several (6) times.
+           Simplify? (as before) *)
+
+  pose proof (half_subcontent_remove_other c k true) as Hhcr. simpl negb in Hhcr.
+  rewrite Hhcr. steps. rewrite bit_at_raw. steps. steps.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
+  raw_bit_to_bit_at.
+  (* already COLLECTED *)
+  match goal with
+  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
+  end. simpl Bool.eqb. cbv iota. steps. steps.
+
+  erewrite half_subcontent_remove_same. steps. rewrite bit_at_raw. steps. steps.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
+  raw_bit_to_bit_at.
+  (* already COLLECTED *)
+  match goal with
+  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
+  end. simpl Bool.eqb. cbv iota. steps. steps.
+
+  erewrite pfx_mmeet_remove_unchanged. steps. rewrite bit_at_raw.
+  instantiate (1:=true). steps. steps.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
+  raw_bit_to_bit_at.
+  (* already COLLECTED *)
+  match goal with
+  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
+  end. simpl Bool.eqb. cbv iota. steps. steps.
+
+  unpurify.
+
+  (* Reset Ltac Profile. *)
+
+  simpl cbt'. steps. (* this `steps.` ran for ~7 minutes :( *)
+  (* takes over 40 s even with the `unpurify.` above *)
+
+  (* Show Ltac Profile. *)
+
+  erewrite half_subcontent_remove_same. steps. rewrite bit_at_raw. steps. steps.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
+  raw_bit_to_bit_at.
+  (* already COLLECTED *)
+  match goal with
+  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
+  end. simpl Bool.eqb. cbv iota. steps. steps.
+  simpl negb.
+
+  pose proof (half_subcontent_remove_other c k false) as Hhcr. simpl negb in Hhcr.
+  rewrite Hhcr. steps. rewrite bit_at_raw. steps. steps.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
+  raw_bit_to_bit_at.
+  (* already COLLECTED *)
+  match goal with
+  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
+  end. simpl Bool.eqb. cbv iota. steps. steps.
+
+  erewrite pfx_mmeet_remove_unchanged. steps. rewrite bit_at_raw.
+  instantiate (1:=false). steps. steps.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
+  raw_bit_to_bit_at.
+  (* already COLLECTED *)
+  match goal with
+  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
+  end. simpl Bool.eqb. cbv iota. steps. steps. .**/
+  }                                                                        /**. .**/
+  if (load(cur + 4) == k) /* split */ {                                    /**.
+  match goal with
+  | H: _ |= cbt' _ _ sib |- _ => apply cbt_expose_fields in H
+  end. repeat heapletwise_step.
+  .**/
+    cbt_raw_node_free(cur);                                                /**. (*
+  repeat match goal with
+  | H: merge_step _ |- _ => clear H
+  end.
+  match type of H19 with
+  | ?m |= _ => idtac m
+  end. (*
+  match goal with
+  | H: context[hole 4] |- _ => match type of H with
+                               | ?m |= _ => assert (m = map.empty)
+                               end
+  end. *) steps. unfold sepapps in H19. simpl in H19. unfold sepapp in H19.
+  unfold "|=" in H19. steps. *) .**/
+    store(par, load(sib));                                                 /**. .**/
+    store(par + 4, load(sib + 4));                                         /**. .**/
+    store(par + 8, load(sib + 8));                                         /**. .**/
+    cbt_raw_node_free(sib);                                                /**. .**/
+    return 1;                                                              /**. .**/
+  }                                                                        /**.
 
 
 End LiveVerif. Comments .**/ //.
