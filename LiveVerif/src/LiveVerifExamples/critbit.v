@@ -1806,6 +1806,12 @@ Lemma half_subcontent_remove_other : forall c k b,
 Admitted.
 
 (* TODO: collect *)
+Lemma half_subcontent_removed_half_leaf : forall c k v b,
+  half_subcontent c b = map.singleton k v ->
+  half_subcontent c (negb b) = map.remove c k.
+Admitted.
+
+(* TODO: collect *)
 Lemma map_extends_remove_in_both : forall (cbig clittle: word_map) k,
   map.extends cbig clittle -> map.extends (map.remove cbig k) (map.remove clittle k).
 Proof.
@@ -1930,12 +1936,16 @@ Derive cbt_delete_from_nonleaf SuchThat
       sib = load(par + 4);                                                 /**. .**/
       cur = load(par + 8);                                                 /**. .**/
     }                                                                      /**.
-  new_ghosts(half_subcontent c brc, _, _, _, _, <{ * R
-                                                    * freeable 12 par'
-                                                    * <{ + uintptr _
-                                                         + uintptr _
-                                                         + uintptr _ }> par'
-                                                    * cbt' _ _ sib' }>).
+  new_ghosts(half_subcontent c brc, _, _, _, _,
+              <{ * R
+                 * freeable 12 par'
+                   (* FIXME: replacing the values of the `uintptr`s with the
+                             '_' placeholder leads to incomplete shelved goals
+                             at the end of this proof. Why? *)
+                 * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+                      + uintptr (if brc then sib' else par)
+                      + uintptr (if brc then par else sib') }> par'
+                 * cbt' _ _ sib' }>).
 
   steps.
   (* TODO: formulate as step_hook rule and collect
@@ -2032,12 +2042,13 @@ Derive cbt_delete_from_nonleaf SuchThat
       cur = load(par + 4);                                                 /**. .**/
       sib = load(par + 8);                                                 /**. .**/
     }                                                                      /**.
-  new_ghosts(half_subcontent c brc, _, _, _, _, <{ * R
-                                                    * freeable 12 par'
-                                                    * <{ + uintptr _
-                                                         + uintptr _
-                                                         + uintptr _ }> par'
-                                                    * cbt' _ _ sib' }>).
+  new_ghosts(half_subcontent c brc, _, _, _, _,
+                  <{ * R
+                     * freeable 12 par'
+                     * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+                          + uintptr (if brc then sib' else par)
+                          + uintptr (if brc then par else sib') }> par'
+                     * cbt' _ _ sib' }>).
   (*
   Set Ltac Profiling.
   Reset Ltac Profile.
@@ -2166,31 +2177,56 @@ Derive cbt_delete_from_nonleaf SuchThat
   match goal with
   | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
   end. simpl Bool.eqb. cbv iota. steps. steps. .**/
-  }                                                                        /**. .**/
+  }                                                                        /**.
+  destruct skC; cycle 1. { exfalso.
+  repeat match goal with
+  | H: acbt (Node _ _) _ |- _ => apply acbt_prefix_length in H
+  end. pose proof (pfx_len_nneg (pfx_mmeet (half_subcontent c brc))). hwlia. } .**/
   if (load(cur + 4) == k) /* split */ {                                    /**.
   match goal with
   | H: _ |= cbt' _ _ sib |- _ => apply cbt_expose_fields in H
   end. repeat heapletwise_step.
   .**/
-    cbt_raw_node_free(cur);                                                /**. (*
-  repeat match goal with
-  | H: merge_step _ |- _ => clear H
-  end.
-  match type of H19 with
-  | ?m |= _ => idtac m
-  end. (*
-  match goal with
-  | H: context[hole 4] |- _ => match type of H with
-                               | ?m |= _ => assert (m = map.empty)
-                               end
-  end. *) steps. unfold sepapps in H19. simpl in H19. unfold sepapp in H19.
-  unfold "|=" in H19. steps. *) .**/
+    cbt_raw_node_free(cur);                                                /**. .**/
     store(par, load(sib));                                                 /**. .**/
     store(par + 4, load(sib + 4));                                         /**. .**/
     store(par + 8, load(sib + 8));                                         /**. .**/
     cbt_raw_node_free(sib);                                                /**. .**/
     return 1;                                                              /**. .**/
+  }                                                                        /*?.
+  steps. hwlia.
+  eapply map_get_extends_nNone. apply half_subcontent_extends.
+  match goal with
+  | H: half_subcontent _ _ = map.singleton _ _ |- _ => rewrite H
+  end. steps.
+  clear Error. instantiate (1:=skS).
+  replace (map.remove c k) with (half_subcontent c (negb brc)); cycle 1.
+  { eapply half_subcontent_removed_half_leaf. eassumption. }
+  repeat match goal with
+  | H: merge_step _ |- _ => clear H
+  end.
+  repeat match goal with
+  | H: context[hole 4] |- _ => match type of H with
+                               | ?m |= _ => unfold sepapps in H; simpl in H;
+                                            unfold sepapp in H; unfold "|=", hole in H
+                               end
+  end. repeat heapletwise_step.
+  destruct skS; simpl cbt'; steps.
+  match goal with
+  | H: half_subcontent c (negb brc) = map.singleton _ _ |- _ => rewrite H
+  end. steps. .**/
+  else {                                                                   /**. .**/
+    return 0;                                                              /**. .**/
   }                                                                        /**.
-
+  apply eq_None_by_false. intro HnN. apply half_subcontent_get_nNone in HnN.
+  rewrite bit_at_raw in HnN.
+  match goal with
+  | H: brc = word.eqb _ _ |- _ => rewrite <- H in HnN
+  end.
+  match goal with
+  | H: half_subcontent c brc = map.singleton _ _ |- _ => rewrite H in HnN
+  end. steps. steps. Show Existentials. .**/
+}                                                                          /**.
+Qed.
 
 End LiveVerif. Comments .**/ //.
