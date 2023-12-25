@@ -2229,4 +2229,110 @@ Derive cbt_delete_from_nonleaf SuchThat
 }                                                                          /**.
 Qed.
 
+(* TODO: collect *)
+Lemma map_remove_singleton_same : forall k v : word,
+  map.remove (map.singleton k v) k = map.empty.
+Proof.
+  intros. unfold map.singleton. rewrite map.remove_put_same.
+  rewrite map.remove_empty. reflexivity.
+Qed.
+
+(* TODO: collect *)
+Lemma map_remove_singleton_diff : forall k k' v : word,
+  k' <> k -> map.remove (map.singleton k v) k' = map.singleton k v.
+Proof.
+  intros. unfold map.singleton. rewrite map.remove_put_diff.
+  rewrite map.remove_empty. reflexivity. congruence.
+Qed.
+
+#[export] Instance spec_of_cbt_delete: fnspec :=                          .**/
+
+uintptr_t cbt_delete(uintptr_t tpp, uintptr_t k) /**#
+  ghost_args := (c: word_map) (tp: word) (R: mem -> Prop);
+  requires t m := <{ * allocator
+                     * uintptr tp tpp
+                     * cbt c tp
+                     * R }> m;
+  ensures t' m' res := t' = t
+                    (* TODO: make this more specific to guarantee more
+                             1 instead of just a non-zero *)
+                /\ if word.eqb res /[0] then
+                      map.get c k = None
+                   else
+                      map.get c k <> None
+                /\ <{ * allocator
+                      * (EX tp', <{ * uintptr tp' tpp
+                                    * cbt (map.remove c k) tp' }>)
+                      * R }> m' #**/                                       /**.
+Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          .**/
+{                                                                          /**. .**/
+  uintptr_t tp = load(tpp);                                                /**. .**/
+  if (tp == 0) /* split */ {                                               /**. .**/
+    return 0;                                                              /**. .**/
+  }                                                                        /**.
+  subst. steps. .**/
+  else {                                                                   /**.
+  (* TODO: create a tactic which applies cbt_expose_fields to the
+           correct hypothesis given the addr of the CBT *)
+  match goal with
+  | H: _ |= cbt' _ _ tp |- _ => pose proof (purify_cbt' _ _ _ _ H);
+                                apply cbt_expose_fields in H
+  end. repeat heapletwise_step. .**/
+    if (load(tp) == 32) /* split */ {                                      /**.
+  destruct tree; cycle 1. { exfalso.
+  match goal with
+  | H: acbt _ _ |- _ => apply acbt_prefix_length in H
+  end.
+  pose proof (pfx_len_nneg (pfx_mmeet c)). hwlia. } .**/
+      if (load(tp + 4) == k) /* split */ {                                 /**. .**/
+        cbt_raw_node_free(tp);                                             /**. .**/
+        store(tpp, 0);                                                     /**. .**/
+        return 1;                                                          /**. .**/
+      }                                                                    /**.
+  hwlia. subst. steps. subst.
+  (* TODO: collect *)
+  match goal with
+  | |- context[map.remove (map.singleton ?k _ ) ?k] => rewrite map_remove_singleton_same
+  end.
+  steps.
+  (* TODO: move this into a tactic *)
+  repeat match goal with
+  | H: context[hole 4] |- _ => match type of H with
+                               | ?m |= _ => unfold sepapps in H; simpl in H;
+                                            unfold sepapp in H; unfold "|=", hole in H
+                               end
+  end. steps. .**/
+      else {                                                               /**. .**/
+        return 0;                                                          /**. .**/
+      }                                                                    /**.
+  subst. steps. .**/
+    }                                                                      /**. .**/
+    else {                                                                 /**.
+  destruct tree. { exfalso. steps. subst. steps. } .**/
+      uintptr_t ret = cbt_delete_from_nonleaf(tp, k);                      /**.
+  simpl cbt'. clear Error. steps. unfold enable_frame_trick.enable_frame_trick.
+  steps. .**/
+      return ret;                                                          /**. .**/
+    }                                                                      /**.
+  (* TODO: collect (if not already collected (?)) *)
+  match goal with
+  | H: context [word.eqb ?w ?w] |- _ =>
+     replace (word.eqb w w) with true in H by (rewrite word.eqb_eq; reflexivity)
+  end. steps.
+  (* TODO: collect (if not already collected (?)) *)
+  match goal with
+  | H1: context [word.eqb ?w1 ?w2], H2: ?w1 <> ?w2 |- _ =>
+     replace (word.eqb w1 w2) with false in H1 by (rewrite word.eqb_ne; congruence)
+  end.
+  steps.
+  (* TODO: already collected *)
+  match goal with
+  | H1: context [word.eqb ?w1 ?w2], H2: ?w1 <> ?w2 |- _ =>
+     replace (word.eqb w1 w2) with false in H1 by (rewrite word.eqb_ne; congruence)
+  end.
+  steps. .**/
+  }                                                                        /**. .**/
+}                                                                          /**.
+Qed.
+
 End LiveVerif. Comments .**/ //.
