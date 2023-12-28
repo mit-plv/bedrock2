@@ -138,11 +138,15 @@ Ltac misc_simpl_step :=
   | |- context [ /[\[ _ ]] ] => rewrite word.of_Z_unsigned
   end.
 
+(* substitute a variable if it is equal to one of several selected expressions *)
 Ltac subst_step :=
   match goal with
   | H: ?c = map.empty |- _ => is_var c; subst c
   | H: ?c = map.singleton _ _ |- _ => is_var c; subst c
-  | H: ?x = ?y |- _ => is_var x; is_var y; subst y
+
+  (* TODO: consider (try) enabling this --> problematic when we assign
+           .**/ a = b; /**. *)
+  (* | H: ?x = ?y |- _ => is_var x; is_var y; subst y *)
   end.
 
 (* needed because the other notation contains a closing C comment *)
@@ -400,6 +404,145 @@ Admitted.
 Context {word_map: map.map word word}.
 Context {word_map_ok: map.ok word_map}.
 
+(* lemmas about map operations on singletons *)
+
+Lemma map_get_singleton_same : forall (k v: word),
+  map.get (map.singleton k v) k = Some v.
+Proof.
+  intros. unfold map.singleton. apply map.get_put_same.
+Qed.
+
+Lemma map_get_singleton_same_eq : forall k v k': word,
+  k = k' -> map.get (map.singleton k v) k' = Some v.
+Proof.
+  intros. subst. apply map_get_singleton_same.
+Qed.
+
+Lemma map_get_singleton_diff : forall k v k' : word,
+  k <> k' -> map.get (map.singleton k v) k' = None.
+Proof.
+  intros. unfold map.singleton. rewrite map.get_put_diff. apply map.get_empty.
+  congruence.
+Qed.
+
+Lemma map_put_singleton_same : forall k v v': word,
+  map.put (map.singleton k v) k v' = map.singleton k v'.
+Proof.
+  intros. unfold map.singleton. apply map.put_put_same.
+Qed.
+
+Lemma map_put_singleton_same_eq : forall k v k' v': word,
+  k = k' -> map.put (map.singleton k v) k' v' = map.singleton k v'.
+Proof.
+  intros. subst. apply map_put_singleton_same.
+Qed.
+
+Lemma map_remove_singleton_same : forall k v : word,
+  map.remove (map.singleton k v) k = map.empty.
+Proof.
+  intros. unfold map.singleton. rewrite map.remove_put_same.
+  rewrite map.remove_empty. reflexivity.
+Qed.
+
+Lemma map_remove_singleton_same_eq : forall k v k' : word,
+  k = k' -> map.remove (map.singleton k v) k' = map.empty.
+Proof.
+  intros. subst. apply map_remove_singleton_same.
+Qed.
+
+Lemma map_remove_singleton_diff : forall k v k' : word,
+  k <> k' -> map.remove (map.singleton k v) k' = map.singleton k v.
+Proof.
+  intros. unfold map.singleton. rewrite map.remove_put_diff.
+  rewrite map.remove_empty. reflexivity. congruence.
+Qed.
+
+(* simplify basic map operations (get, put, remove) operating on
+   map.empty or map.singleton *)
+Ltac small_map_basic_op_simpl_step :=
+  match goal with
+  (* map.get *)
+  | H: context [ map.get map.empty _ ] |- _ => rewrite map.get_empty in H
+  | |- context [ map.get map.empty _ ] => rewrite map.get_empty
+
+  | H: context [ map.get (map.singleton ?k ?v) ?k ] |- _ =>
+      rewrite map_get_singleton_same in H
+  | |- context [ map.get (map.singleton ?k ?v) ?k ] =>
+      rewrite map_get_singleton_same
+
+  | Heq: ?k = ?k', H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
+      rewrite (map_get_singleton_same_eq k v k') in H by (exact Heq)
+  | Heq: ?k = ?k' |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
+      rewrite (map_get_singleton_same_eq k v k') by (exact Heq)
+
+  | Heq: ?k' = ?k, H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
+      rewrite (map_get_singleton_same_eq k v k') in H by (symmetry; exact Heq)
+  | Heq: ?k' = ?k |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
+      rewrite (map_get_singleton_same_eq k v k') by (symmetry; exact Heq)
+
+  | Hne: ?k <> ?k', H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
+      rewrite (map_get_singleton_diff k v k') in H by (exact Hne)
+  | Hne: ?k <> ?k' |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
+      rewrite (map_get_singleton_diff k v k') by (exact Hne)
+
+  | Hne: ?k' <> ?k, H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
+      rewrite (map_get_singleton_diff k v k') in H by (symmetry; exact Hne)
+  | Hne: ?k' <> ?k |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
+      rewrite (map_get_singleton_diff k v k') by (symmetry; exact Hne)
+
+  (* map.put *)
+  | H: context [ map.put map.empty ?k ?v ] |- _ =>
+      change (map.put map.empty k v) with (map.singleton k v) in H
+  | |- context [ map.put map.empty ?k ?v ] =>
+      change (map.put map.empty k v) with (map.singleton k v)
+
+  | H: context [ map.put (map.singleton ?k ?v) ?k ?v' ] |- _ =>
+      rewrite map_put_singleton_same in H
+  | |- context [ map.put (map.singleton ?k ?v) ?k ?v' ] =>
+      rewrite map_put_singleton_same
+
+  | Heq: ?k = ?k', H: context [ map.put (map.singleton ?k ?v) ?k' ?v' ] |- _ =>
+      rewrite (map_put_singleton_same_eq k v k' v') in H by (exact Heq)
+  | Heq: ?k = ?k' |- context [ map.put (map.singleton ?k ?v) ?k' ?v' ] =>
+      rewrite (map_put_singleton_same_eq k v k' v') by (exact Heq)
+
+  | Heq: ?k' = ?k, H: context [ map.put (map.singleton ?k ?v) ?k' ?v' ] |- _ =>
+      rewrite (map_put_singleton_same_eq k v k' v') in H by (symmetry; exact Heq)
+  | Heq: ?k' = ?k |- context [ map.put (map.singleton ?k ?v) ?k' ?v' ] =>
+      rewrite (map_put_singleton_same_eq k v k' v') by (symmetry; exact Heq)
+
+  (* map.remove *)
+  | H: context [ map.remove map.empty _ ] |- _ =>
+      rewrite map.remove_empty in H
+  | |- context [ map.remove map.empty _ ] =>
+      rewrite map.remove_empty
+
+  | H: context [ map.remove (map.singleton ?k ?v) ?k ] |- _ =>
+      rewrite map_remove_singleton_same in H
+  | |- context [ map.remove (map.singleton ?k ?v) ?k ] =>
+      rewrite map_remove_singleton_same
+
+  | Heq: ?k = ?k', H: context [ map.remove (map.singleton ?k ?v) ?k' ] |- _ =>
+      rewrite (map_remove_singleton_same_eq k v k') in H by (exact Heq)
+  | Heq: ?k = ?k' |- context [ map.remove (map.singleton ?k ?v) ?k' ] =>
+      rewrite (map_remove_singleton_same_eq k v k') by (exact Heq)
+
+  | Heq: ?k' = ?k, H: context [ map.remove (map.singleton ?k ?v) ?k' ] |- _ =>
+      rewrite (map_remove_singleton_same_eq k v k') in H by (symmetry; exact Heq)
+  | Heq: ?k' = ?k |- context [ map.remove (map.singleton ?k ?v) ?k' ] =>
+      rewrite (map_remove_singleton_same_eq k v k') by (symmetry; exact Heq)
+
+  | Hne: ?k <> ?k', H: context [ map.remove (map.singleton ?k ?v) ?k' ] |- _ =>
+      rewrite (map_remove_singleton_diff k v k') in H by (exact Hne)
+  | Hne: ?k <> ?k' |- context [ map.remove (map.singleton ?k ?v) ?k' ] =>
+      rewrite (map_remove_singleton_diff k v k') by (exact Hne)
+
+  | Hne: ?k' <> ?k, H: context [ map.remove (map.singleton ?k ?v) ?k' ] |- _ =>
+      rewrite (map_remove_singleton_diff k v k') in H by (symmetry; exact Hne)
+  | Hne: ?k' <> ?k |- context [ map.remove (map.singleton ?k ?v) ?k' ] =>
+      rewrite (map_remove_singleton_diff k v k') by (symmetry; exact Hne)
+  end.
+
 Definition pfx_mmeet (c: word_map) :=
   let r := map.fold (fun state k v => match state with
                                       | Some p => Some (pfx_meet (pfx_emb k) p)
@@ -467,25 +610,6 @@ Proof.
   intros. tauto.
 Qed.
 
-Lemma map_get_singleton_same : forall (k v: word),
-  map.get (map.singleton k v) k = Some v.
-Proof.
-  intros. unfold map.singleton. apply map.get_put_same.
-Qed.
-
-Lemma map_get_singleton_same_eq : forall (k v k': word),
-  k' = k -> map.get (map.singleton k v) k' = Some v.
-Proof.
-  intros. subst k'. apply map_get_singleton_same.
-Qed.
-
-Lemma map_get_singleton_diff : forall (k k' v : word),
-  k' <> k -> map.get (map.singleton k v) k' = None.
-Proof.
-  intros. unfold map.singleton. rewrite map.get_put_diff. apply map.get_empty.
-  assumption.
-Qed.
-
 Ltac eq_neq_cases k1 k2 :=
   let H := fresh "H" in assert (H: k1 = k2 \/ k1 <> k2) by solve [ steps ]; destruct H.
 
@@ -499,12 +623,6 @@ Lemma map_get_singleton_not_None : forall (k v k': word),
 Proof.
   intros. eq_neq_cases k k'; [ trivial | exfalso ].
   rewrite map_get_singleton_diff in H; congruence.
-Qed.
-
-Lemma map_put_singleton_same_eq : forall (k v k' v': word),
-  k' = k -> map.put (map.singleton k v) k' v' = map.singleton k v'.
-Proof.
-  intros. unfold map.singleton. subst k'. apply map.put_put_same.
 Qed.
 
 Lemma map_singleton_inj : forall (k1 k2 v1 v2 : word),
@@ -593,20 +711,6 @@ Ltac my_simpl_step :=
   | H: ?w <> /[0] |- context[ \[?w] =? 0 ] => replace (\[w] =? 0) with false by hwlia
   | H1: ?w <> /[0], H2: context[ \[?w] =? 0 ] |- _ =>
         replace (\[w] =? 0) with false in H2 by hwlia
-  | H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
-        rewrite map_get_singleton_same_eq in H; [ | solve [ trivial ] ]
-  | |- context [ map.get (map.singleton ?k ?v) ?k']  =>
-        rewrite map_get_singleton_same_eq; [ | solve [ trivial ] ]
-  | H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
-        rewrite map_get_singleton_diff in H; [ | solve [ trivial ] ]
-  | |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
-        rewrite map_get_singleton_diff; [ | solve [ trivial ] ]
-  | H: context [ map.put (map.singleton ?k ?v) ?k' ?v' ] |- _ =>
-        rewrite map_put_singleton_same_eq in H; [ | solve [ trivial ] ]
-  | |- context [ map.put (map.singleton ?k ?v) ?k' ?v' ] =>
-        rewrite map_put_singleton_same_eq; [ | solve [ trivial ] ]
-  | H: context [ map.get map.empty ?k ] |- _ => rewrite map.get_empty in H
-  | |- context [ map.get map.empty ?k ] => rewrite map.get_empty
   | H: map.get (map.singleton ?k ?v) ?k' <> None |- _ =>
         apply map_get_singleton_not_None in H
   | H: map.singleton ?k1 ?v1 = map.singleton ?k2 ?v2 |- _ =>
@@ -842,6 +946,8 @@ Ltac step_hook ::=
 
   | |- _ => comparison_simpl_step
   | |- _ => misc_simpl_step
+  | |- _ => subst_step
+  | |- _ => small_map_basic_op_simpl_step
 
   (* maps *)
   | H: map.split ?cr ?cl1 ?cl2 |- _ =>
@@ -875,8 +981,6 @@ Ltac step_hook ::=
     erewrite map.get_putmany_left
   | |- map.get ?c2 ?k = None <-> map.get (map.putmany ?c1 ?c2) ?k = None =>
        rewrite map_get_putmany_not_left
-  | H: ?k1 <> ?k2 |- context[map.get (map.singleton ?k1 _) ?k2] =>
-      rewrite map_get_singleton_diff; [ | congruence ]
   | H1: map.get ?c2 ?k = None, H2: map.get (map.putmany ?c1 ?c2) ?k <> None
      |- map.get ?c1 ?k <> None =>
      rewrite map.get_putmany_left in H2; [ exact H2 | exact H1 ]
@@ -1171,7 +1275,7 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   match goal with
   | H: _ |= cbt' _ _ _ |- _ => apply cbt_expose_fields in H
   end.
-  steps. destruct tree. { exfalso. steps. subst. steps. }
+  steps. destruct tree. { exfalso. steps. }
   rename w2 into aL. rename w3 into aR. .**/
     if (((k >> load(p)) & 1) == 1) /* split */ {                             /**. .**/
       p = load(p + 8);                                                       /**. .**/
@@ -1224,12 +1328,11 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
     store(p + 8, v);                                                        /**. .**/
     return k;                                                               /**. .**/
   }                                                                         /**.
-  subst. simpl. apply map_some_key_singleton. clear Error. simpl cbt'. steps.
-  subst. steps. .**/
+  simpl. apply map_some_key_singleton. clear Error. simpl cbt'. steps. .**/
   else {                                                                    /**. .**/
     return load(p + 4);                                                     /**. .**/
   }                                                                         /**.
-  simpl. subst. apply map_some_key_singleton. clear Error. simpl cbt'. steps. .**/
+  simpl. apply map_some_key_singleton. clear Error. simpl cbt'. steps. .**/
 }                                                                           /**.
 Qed.
 
@@ -1272,7 +1375,7 @@ Derive cbt_lookup_impl SuchThat (fun_correct! cbt_lookup_impl)
   match goal with
   | H: _ |= cbt' _ _ _ |- _ => apply cbt_expose_fields in H
   end. steps.
-  destruct sk. { exfalso. steps. subst. steps. }
+  destruct sk. { exfalso. steps. }
   rename w2 into aL. rename w3 into aR. .**/
     if (((k >> load(p)) & 1) == 1) /* split */ {                             /**. .**/
       p = load(p + 8);                                                       /**. .**/
@@ -1301,12 +1404,10 @@ Derive cbt_lookup_impl SuchThat (fun_correct! cbt_lookup_impl)
   if (load(p + 4) == k) /* split */ {                                        /**. .**/
     store(val_out, load(p + 8));                                             /**. .**/
     return 1;                                                                /**. .**/
-  }                                                                          /**.
-  subst. steps. subst. steps. .**/
+  }                                                                          /**. .**/
   else {                                                                     /**. .**/
     return 0;                                                                /**. .**/
-  }                                                                          /**.
-  subst. steps. subst. steps. .**/
+  }                                                                          /**. .**/
 }                                                                            /**.
 Qed.
 
@@ -1328,8 +1429,7 @@ Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.          
 {                                                                           /**. .**/
   if (tp == 0) /* split */ {                                                /**. .**/
     return 0;                                                               /**. .**/
-  }                                                                         /**.
-  subst. steps. subst. steps. .**/
+  }                                                                         /**. .**/
   else {                                                                    /**. .**/
     uintptr_t found = cbt_lookup_impl(tp, k, val_out);                      /**. .**/
     return found;                                                           /**. .**/
@@ -1441,7 +1541,9 @@ uintptr_t cbt_raw_node_copy_new(uintptr_t src) /**#
 Derive cbt_raw_node_copy_new SuchThat (fun_correct! cbt_raw_node_copy_new)
   As cbt_raw_node_copy_new_ok. .**/
 {                                                                          /**. .**/
-  uintptr_t p = cbt_raw_node_alloc(load(src), load(src + 4), load(src + 8)); /**. .**/
+  uintptr_t p = cbt_raw_node_alloc(load(src),
+                                   load(src + 4),
+                                   load(src + 8));                         /**. .**/
   return p;                                                                /**. .**/
 }                                                                          /**.
 Qed.
@@ -1618,7 +1720,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   match goal with
   | H: _ |= cbt' _ _ _ |- _ => apply cbt_expose_fields in H
   end.
-  steps. destruct sk. { exfalso. steps. subst. steps. }
+  steps. destruct sk. { exfalso. steps. }
   .**/
     if (((k >> load(p)) & 1) == 1) /* split */ {                            /**. .**/
       p = load(p + 8);                                                      /**. .**/
@@ -1696,13 +1798,13 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   if (new_leaf == 0) /* split */ {                                           /**. .**/
     return 0;                                                                /**. .**/
   }                                                                          /**.
-  clear Error. destruct sk; simpl cbt' in *; steps. subst. steps. .**/
+  clear Error. destruct sk; simpl cbt' in *; steps. .**/
   else {                                                                     /**. .**/
     uintptr_t new_node = Malloc(12);                                         /**. .**/
     if (new_node == 0) /* split */ {                                         /**. .**/
       return 0;                                                              /**. .**/
     }                                                                        /**.
-  clear Error. destruct sk; simpl cbt' in *; steps. subst. steps. .**/
+  clear Error. destruct sk; simpl cbt' in *; steps. .**/
     else {                                                                   /**. .**/
       store(new_node, load(p));                                              /**. .**/
       store(new_node + 4, load(p + 4));                                      /**. .**/
@@ -1745,7 +1847,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   assert (\[cb] < pfx_len (pfx_mmeet c)). {
     enough (pfx_len (pfx_mmeet c) <> \[cb]) by lia. intro.
     destruct sk.
-    - simpl (acbt Leaf _) in *. steps. subst. steps.
+    - simpl (acbt Leaf _) in *. steps.
     - steps. raw_bit_to_bit_at. simpl cbt_best_lookup in *.
       match goal with
       | H: context [ if bit_at ?k ?i then _ else _ ] |- _ =>
@@ -1816,7 +1918,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   assert (\[cb] < pfx_len (pfx_mmeet c)). {
     enough (pfx_len (pfx_mmeet c) <> \[cb]) by lia. intro.
     destruct sk.
-    - simpl (acbt Leaf _) in *. steps. subst. steps.
+    - simpl (acbt Leaf _) in *. steps.
     - steps. raw_bit_to_bit_at. simpl cbt_best_lookup in *.
       match goal with
       | H: context [ if bit_at ?k ?i then _ else _ ] |- _ =>
@@ -1843,7 +1945,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   subst. apply half_subcontent_put_excl_key. lia. raw_bit_to_bit_at. congruence.
   steps. unfold split_concl_at. destruct sk; simpl cbt' in *; steps. subst. steps.
   rewrite pfx_mmeet_put. steps. eapply acbt_nonempty. eassumption. symmetry.
-  apply half_subcontent_put_excl_bulk. lia. simpl negb. raw_bit_to_bit_at.
+  apply half_subcontent_put_excl_bulk. lia. steps. raw_bit_to_bit_at.
   congruence. steps. .**/
     }                                                                         /**. .**/
   }                                                                           /**. .**/
@@ -1875,7 +1977,7 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
     uintptr_t res = cbt_alloc_leaf(k, v);                                  /**. .**/
     return res;                                                            /**. .**/
   }                                                                        /**.
-  subst. steps. subst. unfold map.singleton. steps. .**/
+  subst. unfold map.singleton. steps. .**/
   else {                                                                   /**. .**/
     uintptr_t best_k = cbt_update_or_best(tp, k, v);                       /**. .**/
     if (best_k == k) /* split */ {                                         /**. .**/
@@ -1948,10 +2050,7 @@ Proof.
   match goal with
   | H: forall _, _ |- _ => apply H in E
   end.
-  match goal with
-  | H: cbig = map.empty |- _ => rewrite H in E
-  end.
-  rewrite map.get_empty in E. discriminate.
+  steps. discriminate.
 Qed.
 
 #[export] Instance spec_of_cbt_delete_from_nonleaf: fnspec :=                          .**/
@@ -2064,15 +2163,6 @@ Derive cbt_delete_from_nonleaf SuchThat
                  * cbt' _ _ sib' }>).
 
   steps.
-  (*
-  (* TODO: formulate as step_hook rule and collect
-           specifically, detect that we should do the `rewrite H` *)
-  rewrite H. steps. rewrite H. steps. simpl negb. steps. rewrite H. steps.
-  rewrite H. steps.
-  (* TODO: collect *)
-  match goal with
-  | H: context[ word.eqb ?w ?w ] |- _ => rewrite word.eqb_eq in H; [ | reflexivity ]
-  end. *)
   apply eq_None_by_false. intro HnN. apply half_subcontent_get_nNone in HnN.
   apply HnN. rewrite bit_at_raw. subst brc. steps. steps.
   clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
@@ -2251,24 +2341,8 @@ Derive cbt_delete_from_nonleaf SuchThat
   end.
   match goal with
   | H: half_subcontent c brc = map.singleton _ _ |- _ => rewrite H in HnN
-  end. steps. steps. Show Existentials. .**/
+  end. steps. steps. .**/
 }                                                                          /**.
-Qed.
-
-(* TODO: collect *)
-Lemma map_remove_singleton_same : forall k v : word,
-  map.remove (map.singleton k v) k = map.empty.
-Proof.
-  intros. unfold map.singleton. rewrite map.remove_put_same.
-  rewrite map.remove_empty. reflexivity.
-Qed.
-
-(* TODO: collect *)
-Lemma map_remove_singleton_diff : forall k k' v : word,
-  k' <> k -> map.remove (map.singleton k v) k' = map.singleton k v.
-Proof.
-  intros. unfold map.singleton. rewrite map.remove_put_diff.
-  rewrite map.remove_empty. reflexivity. congruence.
 Qed.
 
 #[export] Instance spec_of_cbt_delete: fnspec :=                          .**/
@@ -2295,8 +2369,7 @@ Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          
   uintptr_t tp = load(tpp);                                                /**. .**/
   if (tp == 0) /* split */ {                                               /**. .**/
     return 0;                                                              /**. .**/
-  }                                                                        /**.
-  subst. steps. .**/
+  }                                                                        /**. .**/
   else {                                                                   /**.
   (* TODO: create a tactic which applies cbt_expose_fields to the
            correct hypothesis given the addr of the CBT *)
@@ -2315,12 +2388,7 @@ Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          
         store(tpp, 0);                                                     /**. .**/
         return 1;                                                          /**. .**/
       }                                                                    /**.
-  hwlia. subst. steps. subst.
-  (* TODO: collect *)
-  match goal with
-  | |- context[map.remove (map.singleton ?k _ ) ?k] => rewrite map_remove_singleton_same
-  end.
-  steps.
+  hwlia.
   (* TODO: move this into a tactic *)
   repeat match goal with
   | H: context[hole 4] |- _ => match type of H with
@@ -2330,11 +2398,10 @@ Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          
   end. steps. .**/
       else {                                                               /**. .**/
         return 0;                                                          /**. .**/
-      }                                                                    /**.
-  subst. steps. .**/
+      }                                                                    /**. .**/
     }                                                                      /**. .**/
     else {                                                                 /**.
-  destruct tree. { exfalso. steps. subst. steps. } .**/
+  destruct tree. { exfalso. steps. } .**/
       uintptr_t ret = cbt_delete_from_nonleaf(tp, k);                      /**.
   simpl cbt'. clear Error. steps. unfold enable_frame_trick.enable_frame_trick.
   steps. .**/
