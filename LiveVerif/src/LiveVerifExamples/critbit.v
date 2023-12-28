@@ -7,6 +7,144 @@ Require Coq.Bool.Bool.
 
 Load LiveVerif.
 
+(* an obvious finishing step that `steps` doesn't do *)
+Ltac simple_finish_step :=
+  solve [match goal with
+  | H: ?P |- ?P => exact H
+  | |- ?P <-> ?P => reflexivity
+  | H1: ?P, H2: ~?P |- _ => apply H2 in H1; destruct H1
+  | H: ?x <> ?x |- _ => exfalso; apply (H (eq_refl x))
+  | |- Some _ <> None => let H := fresh "H" in intro H; discriminate H
+  | |- None <> Some _ => let H := fresh "H" in intro H; discriminate H
+  end].
+
+(* replacing Bool.eqb _ _, word.eqb _ _, or _ =? _ with true or false
+   when it's clear that that's what it evaluates to;
+   should replace in all the hyps the same way it does in the goal *)
+Ltac comparison_simpl_step :=
+  match goal with
+  (* _ =? _ *)
+  | H: context[ ?n =? ?n ] |- _ => rewrite Z.eqb_refl in H
+  | |- context[ ?n =? ?n ] => rewrite Z.eqb_refl
+
+  | Heq: ?n = ?m, H: context con [ ?n =? ?m ] |- _ =>
+      let cnvrt := context con [ n =? m ] in change cnvrt in H;
+      replace (n =? m) with true in H by (rewrite Heq; rewrite Z.eqb_refl; reflexivity)
+  | Heq: ?n = ?m |- context con [ ?n =? ?m ] =>
+      let cnvrt := context con [ n =? m ] in change cnvrt;
+      replace (n =? m) with true by (rewrite Heq; rewrite Z.eqb_refl; reflexivity)
+
+  | Heq: ?n = ?m, H: context con [ ?m =? ?n ] |- _ =>
+      let cnvrt := context con [ m =? n ] in change cnvrt in H;
+      replace (m =? n) with true in H by (rewrite Heq; rewrite Z.eqb_refl; reflexivity)
+  | Heq: ?n = ?m |- context con [ ?m =? ?n ] =>
+      let cnvrt := context con [ m =? n ] in change cnvrt;
+      replace (m =? n) with true by (rewrite Heq; rewrite Z.eqb_refl; reflexivity)
+
+  | Hne: ?n <> ?m, H: context con [ ?n =? ?m ] |- _ =>
+      let cnvrt := context con [ n =? m ] in change cnvrt in H;
+      replace (n =? m) with false in H by (symmetry; apply Z.eqb_neq; exact Hne)
+  | Hne: ?n <> ?m |- context con [ ?n =? ?m ] =>
+      let cnvrt := context con [ n =? m ] in change cnvrt;
+      replace (n =? m) with false by (symmetry; apply Z.eqb_neq; exact Hne)
+
+  | Hne: ?n <> ?m, H: context con [ ?m =? ?n ] |- _ =>
+      let cnvrt := context con [ m =? n ] in change cnvrt in H;
+      replace (m =? n) with false in H
+        by (symmetry; apply Z.eqb_neq; symmetry; exact Hne)
+  | Hne: ?n <> ?m |- context con [ ?m =? ?n ] =>
+      let cnvrt := context con [ m =? n ] in change cnvrt;
+      replace (m =? n) with false
+        by (symmetry; apply Z.eqb_neq; symmetry; exact Hne)
+
+  (* Bool.eqb _ _ *)
+  | H: context[ Bool.eqb ?b ?b ] |- _ => rewrite Bool.eqb_reflx in H
+  | |- context[ Bool.eqb ?b ?b ] => rewrite Bool.eqb_reflx
+
+  | H: context[ Bool.eqb false true ] |- _ => simpl Bool.eqb in H
+  | |- context[ Bool.eqb false true ] => simpl Bool.eqb
+  | H: context[ Bool.eqb true false ] |- _ => simpl Bool.eqb in H
+  | |- context[ Bool.eqb true false ] => simpl Bool.eqb
+
+  | Heq: ?b1 = ?c1, H: context con [ Bool.eqb ?b1 ?c2 ] |- _ =>
+      is_constructor c1; is_constructor c2;
+      let cnvrt := context con [ Bool.eqb b1 c2 ] in change cnvrt in H;
+      replace (Bool.eqb b1 c2) with (Bool.eqb c1 c2) in H
+        by (rewrite Heq; reflexivity)
+  | Heq: ?b1 = ?c1 |- context con [ Bool.eqb ?b1 ?c2 ] =>
+      is_constructor c1; is_constructor c2;
+      let cnvrt := context con [ Bool.eqb b1 c2 ] in change cnvrt;
+      replace (Bool.eqb b1 c2) with (Bool.eqb c1 c2)
+        by (rewrite Heq; reflexivity)
+
+  | Heq: ?b1 = ?c1, H: context con [ Bool.eqb ?c2 ?b1 ] |- _ =>
+      is_constructor c1; is_constructor c2;
+      let cnvrt := context con [ Bool.eqb c2 b1 ] in change cnvrt in H;
+      replace (Bool.eqb c2 b1) with (Bool.eqb c2 c1) in H
+        by (rewrite Heq; reflexivity)
+  | Heq: ?b1 = ?c1 |- context con [ Bool.eqb ?c2 ?b1 ] =>
+      is_constructor c1; is_constructor c2;
+      let cnvrt := context con [ Bool.eqb c2 b1 ] in change cnvrt;
+      replace (Bool.eqb c2 b1) with (Bool.eqb c2 c1)
+        by (rewrite Heq; reflexivity)
+
+  (* word.eqb _ _ *)
+  | H: context[ word.eqb ?w ?w ] |- _ => rewrite word.eqb_eq in H by reflexivity
+  | |- context[ word.eqb ?w ?w ] => rewrite word.eqb_eq by reflexivity
+
+  | Heq: ?w1 = ?w2, H: context con [ word.eqb ?w1 ?w2 ] |- _ =>
+      let cnvrt := context con [ word.eqb w1 w2 ] in change cnvrt in H;
+      replace (word.eqb w1 w2) with true in H
+        by (symmetry; apply word.eqb_eq; exact Heq)
+  | Heq: ?w1 = ?w2 |- context con [ word.eqb ?w1 ?w2 ] =>
+      let cnvrt := context con [ word.eqb w1 w2 ] in change cnvrt;
+      replace (word.eqb w1 w2) with true
+        by (symmetry; apply word.eqb_eq; exact Heq)
+
+  | Heq: ?w1 = ?w2, H: context con [ word.eqb ?w2 ?w1 ] |- _ =>
+      let cnvrt := context con [ word.eqb w2 w1 ] in change cnvrt in H;
+      replace (word.eqb w2 w1) with true in H
+        by (symmetry; apply word.eqb_eq; symmetry; exact Heq)
+  | Heq: ?w1 = ?w2 |- context con [ word.eqb ?w2 ?w1 ] =>
+      let cnvrt := context con [ word.eqb w2 w1 ] in change cnvrt;
+      replace (word.eqb w2 w1) with true
+        by (symmetry; apply word.eqb_eq; symmetry; exact Heq)
+
+  | Hne: ?w1 <> ?w2, H: context con [ word.eqb ?w1 ?w2 ] |- _ =>
+      let cnvrt := context con [ word.eqb w1 w2 ] in change cnvrt in H;
+      replace (word.eqb w1 w2) with false in H
+        by (symmetry; apply word.eqb_ne; exact Hne)
+  | Hne: ?w1 <> ?w2 |- context con [ word.eqb ?w1 ?w2 ] =>
+      let cnvrt := context con [ word.eqb w1 w2 ] in change cnvrt;
+      replace (word.eqb w1 w2) with false
+        by (symmetry; apply word.eqb_ne; exact Hne)
+
+  | Hne: ?w1 <> ?w2, H: context con [ word.eqb ?w2 ?w1 ] |- _ =>
+      let cnvrt := context con [ word.eqb w2 w1 ] in change cnvrt in H;
+      replace (word.eqb w2 w1) with false in H
+        by (symmetry; apply word.eqb_ne; symmetry; exact Hne)
+  | Hne: ?w1 <> ?w2 |- context con [ word.eqb ?w2 ?w1 ] =>
+      let cnvrt := context con [ word.eqb w2 w1 ] in change cnvrt;
+      replace (word.eqb w2 w1) with false
+        by (symmetry; apply word.eqb_ne; symmetry; exact Hne)
+end.
+
+Ltac misc_simpl_step :=
+  match goal with
+  | H: context [ negb ?c ] |- _ => is_constructor c; simpl negb in H
+  | |- context [ negb ?c ] => is_constructor c; simpl negb
+
+  | H: context [ /[\[ _ ]] ] |- _ => rewrite word.of_Z_unsigned in H
+  | |- context [ /[\[ _ ]] ] => rewrite word.of_Z_unsigned
+  end.
+
+Ltac subst_step :=
+  match goal with
+  | H: ?c = map.empty |- _ => is_var c; subst c
+  | H: ?c = map.singleton _ _ |- _ => is_var c; subst c
+  | H: ?x = ?y |- _ => is_var x; is_var y; subst y
+  end.
+
 (* needed because the other notation contains a closing C comment *)
 Notation "a ||| b" := (mmap.du a b) (at level 34, no associativity).
 
@@ -407,7 +545,6 @@ Proof.
 Qed.
 
 Lemma pfx_bit_bit_at_emb : forall w i, 0 <= i < 32 -> pfx_bit (pfx_emb w) i (bit_at w i).
-Proof.
 Admitted.
 
 Lemma pfx_bit_emb_bit_at : forall w i b, pfx_bit (pfx_emb w) i b -> bit_at w i = b.
@@ -675,6 +812,7 @@ Admitted.
 
 Lemma acbt_nonempty : forall tree c,
   acbt tree c -> c <> map.empty.
+Proof.
 Admitted.
 
 Ltac raw_bit_to_pfx_impl Hresult :=
@@ -696,26 +834,14 @@ Ltac raw_bit_to_bit_at :=
 
 Ltac step_hook ::=
   match goal with
+  | |- _ => simple_finish_step
 
-  (* simple logic / equalities *)
-  | H: ?P |- ?P => exact H
-  | |- ?P <-> ?P => reflexivity
-  | H1: ?P, H2: ~?P |- _ => apply H2 in H1; destruct H1
-  | H: ?x <> ?x |- _ => exfalso; apply (H (eq_refl x))
+  (* simple logic *)
   | H: ?Q, H2: ?Q -> ?P |- _ => specialize (H2 H)
   | H: ?b = ?a, H2: ?a = ?b -> ?P |- _ => specialize (H2 (eq_sym H))
-  | |- Some ?v <> None => congruence
-  | H1: ?n = 0, H2: context[ ?n =? 0 ] |- _ =>
-    replace (n =? 0) with true in H2 by lia
-  | H1: ?n <> 0, H2: context[ ?n =? 0 ] |- _ =>
-    replace (n =? 0) with false in H2 by lia
-  | |- context[ ?n =? ?n ] => rewrite Z.eqb_refl
-  | H: context[ ?n =? ?n ] |- _ => rewrite Z.eqb_refl in H
 
-  (* words *)
-  | |- context[word.eqb ?w ?w] => rewrite word.eqb_eq; [ | reflexivity ]
-  | H: ?w1 <> ?w2 |- context[word.eqb ?w1 ?w2] => rewrite word.eqb_ne; [ | assumption ]
-  | |- context[/[\[ _ ]]] => rewrite word.of_Z_unsigned
+  | |- _ => comparison_simpl_step
+  | |- _ => misc_simpl_step
 
   (* maps *)
   | H: map.split ?cr ?cl1 ?cl2 |- _ =>
@@ -846,10 +972,6 @@ Ltac step_hook ::=
   | H: pfx_bit (pfx_emb ?k) (pfx_len (pfx_mmeet ?c)) _ |-
     context[ half_subcontent (map.put ?c ?k _) _ ] =>
       rewrite half_subcontent_put; apply pfx_bit_emb_bit_at in H; rewrite H
-  | |- context[ Bool.eqb false false ] => simpl Bool.eqb
-  | |- context[ Bool.eqb true false ] => simpl Bool.eqb
-  | |- context[ Bool.eqb false true ] => simpl Bool.eqb
-  | |- context[ Bool.eqb true true ] => simpl Bool.eqb
   | |- context[ if false then _ else _ ] => cbv iota
   | |- context[ if true then _ else _ ] => cbv iota
   | H: bit_at ?k (pfx_len (pfx_mmeet ?c)) = _ |-
@@ -953,8 +1075,6 @@ Lemma cbt_expose_fields (tree: tree_skeleton) (c: word_map) (a: word):
 Proof.
   unfold iff1. intro m.
   split; intros; destruct tree; simpl cbt' in *; steps; subst c; steps.
-  (*  unfold impl1. intro m. intros. destruct tree; simpl cbt' in *; steps.
-  subst c. steps. *)
 Qed.
 
 Ltac destruct_in_putmany :=
@@ -1020,6 +1140,9 @@ Proof.
   intros. destruct o. exfalso. apply H. congruence. congruence.
 Qed.
 
+Set Ltac Profiling.
+Reset Ltac Profile.
+
 #[export] Instance spec_of_cbt_update_or_best: fnspec :=                        .**/
 
 uintptr_t cbt_update_or_best(uintptr_t tp, uintptr_t k, uintptr_t v) /**#
@@ -1044,7 +1167,6 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
                                                                                 .**/
   while (load(p) != 32) /* initial_ghosts(p, c, R); decreases tree */ {  /*?.
   subst v0.
-  (* instantiate (3:=(match tree with | Leaf _ _ => ?[vLeaf] | _ => ?[vNode] end)). *)
   repeat heapletwise_step.
   match goal with
   | H: _ |= cbt' _ _ _ |- _ => apply cbt_expose_fields in H
@@ -1110,6 +1232,8 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   simpl. subst. apply map_some_key_singleton. clear Error. simpl cbt'. steps. .**/
 }                                                                           /**.
 Qed.
+
+Show Ltac Profile.
 
 #[export] Instance spec_of_cbt_lookup_impl: fnspec :=                           .**/
 uintptr_t cbt_lookup_impl(uintptr_t tp, uintptr_t k, uintptr_t val_out) /**#
@@ -1756,15 +1880,7 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
     uintptr_t best_k = cbt_update_or_best(tp, k, v);                       /**. .**/
     if (best_k == k) /* split */ {                                         /**. .**/
       return tp;                                                           /**. .**/
-    }                                                                      /**.
-  subst. steps.
-  (* TODO: collect *)
-  match goal with
-  | H: ?w1 = ?w2 |- context [ word.eqb ?w1 ?w2 ] =>
-    replace (word.eqb w1 w2) with true by (symmetry; apply word.eqb_eq; exact H)
-  end.
-  steps.
-  .**/
+    }                                                                      /**. .**/
     else {                                                                 /**. .**/
       uintptr_t cb = critical_bit(k, best_k);                              /**.
   instantiate (3:=emp True). steps.
@@ -1773,7 +1889,7 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
   subst. steps. unfold enable_frame_trick.enable_frame_trick. steps. .**/
       return result;                                                       /**. .**/
     }                                                                      /**.
-  replace (\[result] =? 0) with false by steps. unfold id in *. steps. .**/
+  clear Error. unfold id in *. subst. instantiate (1:=sk'). steps. .**/
   }                                                                        /**. .**/
 }                                                                          /**.
 Qed.
@@ -1948,6 +2064,7 @@ Derive cbt_delete_from_nonleaf SuchThat
                  * cbt' _ _ sib' }>).
 
   steps.
+  (*
   (* TODO: formulate as step_hook rule and collect
            specifically, detect that we should do the `rewrite H` *)
   rewrite H. steps. rewrite H. steps. simpl negb. steps. rewrite H. steps.
@@ -1955,89 +2072,49 @@ Derive cbt_delete_from_nonleaf SuchThat
   (* TODO: collect *)
   match goal with
   | H: context[ word.eqb ?w ?w ] |- _ => rewrite word.eqb_eq in H; [ | reflexivity ]
-  end.
+  end. *)
   apply eq_None_by_false. intro HnN. apply half_subcontent_get_nNone in HnN.
   apply HnN. rewrite bit_at_raw. subst brc. steps. steps.
-  (* TODO: collect *)
-  match goal with
-  | H1: context[ word.eqb ?w1 ?w2 ], H2: ?w1 <> ?w2 |- _ =>
-    replace (word.eqb w1 w2) with false in H1 by (symmetry; apply word.eqb_ne; exact H2)
-  end.
-  steps.
-  match goal with
-  | H1: context[ word.eqb ?w1 ?w2 ], H2: ?w1 <> ?w2 |- _ =>
-    replace (word.eqb w1 w2) with false in H1 by (symmetry; apply word.eqb_ne; exact H2)
-  end.
-  steps. clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
-  destruct brc eqn:E. simpl cbt'.
-  step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. simpl negb.
+  clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
+  destruct brc eqn:E; simpl cbt'; steps.
   (* TODO: below, more or less the same proof is repeated several (6) times.
            Simplify? *)
-  pose proof (half_subcontent_remove_other c k true) as Hhcr. simpl negb in Hhcr.
-  rewrite Hhcr. steps. rewrite bit_at_raw. steps. steps. steps.
+  pose proof (half_subcontent_remove_other c k true) as Hhcr. steps.
+  rewrite Hhcr. steps. rewrite bit_at_raw. steps. steps.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at.
-  (* TODO: collect (in some better form) *)
-  match goal with
-  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
-  end.
-  simpl Bool.eqb. cbv iota. steps. steps. steps.
+  raw_bit_to_bit_at. steps. steps.
   rewrite half_subcontent_remove_same. steps. rewrite bit_at_raw. steps. steps.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at.
-  (* already COLLECTED *)
-  match goal with
-  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
-  end. simpl Bool.eqb. cbv iota. steps. steps. erewrite pfx_mmeet_remove_unchanged.
+  raw_bit_to_bit_at. steps. steps. erewrite pfx_mmeet_remove_unchanged.
   steps. rewrite bit_at_raw. instantiate (1:=true). steps. steps.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at.
-  (* already COLLECTED *)
-  match goal with
-  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
-  end. simpl Bool.eqb. cbv iota. steps. steps.
-  simpl cbt'. steps.
+  raw_bit_to_bit_at. steps. steps.
 
   erewrite half_subcontent_remove_same. steps. rewrite bit_at_raw. steps. steps.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at.
-  (* already COLLECTED *)
-  match goal with
-  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
-  end. simpl Bool.eqb. cbv iota. steps. steps.
-  simpl negb.
+  raw_bit_to_bit_at. steps. steps.
 
-  pose proof (half_subcontent_remove_other c k false) as Hhcr. simpl negb in Hhcr.
+  pose proof (half_subcontent_remove_other c k false) as Hhcr. steps.
   rewrite Hhcr. steps. rewrite bit_at_raw. steps. steps.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at.
-  (* already COLLECTED *)
-  match goal with
-  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
-  end. simpl Bool.eqb. cbv iota. steps. steps.
+  raw_bit_to_bit_at. steps. steps.
 
   erewrite pfx_mmeet_remove_unchanged. steps. rewrite bit_at_raw.
   instantiate (1:=false). steps. steps.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at.
-  (* already COLLECTED *)
-  match goal with
-  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
-  end. simpl Bool.eqb. cbv iota. steps. steps. .**/
+  raw_bit_to_bit_at. steps. steps. .**/
     else {                                                                 /**. .**/
       cur = load(par + 4);                                                 /**. .**/
       sib = load(par + 8);                                                 /**. .**/
@@ -2054,25 +2131,9 @@ Derive cbt_delete_from_nonleaf SuchThat
   Reset Ltac Profile.
   *)
 
-  steps. simpl negb. steps.
-  match goal with
-  | H: context[ word.eqb ?w ?w ] |- _ => rewrite word.eqb_eq in H; [ | reflexivity ]
-  end.
-  apply eq_None_by_false. intro HnN. apply half_subcontent_get_nNone in HnN.
+  steps. apply eq_None_by_false. intro HnN. apply half_subcontent_get_nNone in HnN.
   apply HnN. rewrite bit_at_raw. subst brc. steps. steps.
-  (* already COLLECTED *)
-  match goal with
-  | H1: context[ word.eqb ?w1 ?w2 ], H2: ?w1 <> ?w2 |- _ =>
-    replace (word.eqb w1 w2) with false in H1 by (symmetry; apply word.eqb_ne; exact H2)
-  end.
-  steps.
-  (* already COLLECTED *)
-  match goal with
-  | H1: context[ word.eqb ?w1 ?w2 ], H2: ?w1 <> ?w2 |- _ =>
-    replace (word.eqb w1 w2) with false in H1 by (symmetry; apply word.eqb_ne; exact H2)
-  end.
-  steps. clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
-  destruct brc eqn:E. simpl cbt'.
+  clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
 
   (* added `try tauto` to be able to derive `acbt` predicates *)
   Ltac clear_pure_hyp_if_derivable h tp ::=
@@ -2081,14 +2142,14 @@ Derive cbt_delete_from_nonleaf SuchThat
       by (try tauto; zify_goal; xlia zchecker)))
   else idtac.
 
-  unpurify.
+  destruct brc eqn:E; simpl cbt'; unpurify; steps.
 
   (*
   Show Ltac Profile.
   Reset Ltac Profile.
   *)
 
-  steps.
+  (* steps. (* this `steps.` is now a few lines above *)*)
   (* this `steps.` takes very long
      measurement 1: with `unpurify.` before the `steps.`   26 s
      measurement 2: without unpurify                       55 s
@@ -2100,83 +2161,48 @@ Derive cbt_delete_from_nonleaf SuchThat
 
   (* Show Ltac Profile. *)
 
-  simpl negb.
-  (* TODO: below, more or less the same proof is repeated several (6) times.
+    (* TODO: below, more or less the same proof is repeated several (6) times.
            Simplify? (as before) *)
 
-  pose proof (half_subcontent_remove_other c k true) as Hhcr. simpl negb in Hhcr.
+  pose proof (half_subcontent_remove_other c k true) as Hhcr. steps.
   rewrite Hhcr. steps. rewrite bit_at_raw. steps. steps.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at.
-  (* already COLLECTED *)
-  match goal with
-  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
-  end. simpl Bool.eqb. cbv iota. steps. steps.
+  raw_bit_to_bit_at. steps. steps.
 
   erewrite half_subcontent_remove_same. steps. rewrite bit_at_raw. steps. steps.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at.
-  (* already COLLECTED *)
-  match goal with
-  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
-  end. simpl Bool.eqb. cbv iota. steps. steps.
+  raw_bit_to_bit_at. steps. steps.
 
   erewrite pfx_mmeet_remove_unchanged. steps. rewrite bit_at_raw.
   instantiate (1:=true). steps. steps.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at.
-  (* already COLLECTED *)
-  match goal with
-  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
-  end. simpl Bool.eqb. cbv iota. steps. steps.
-
-  unpurify.
-
-  (* Reset Ltac Profile. *)
-
-  simpl cbt'. steps. (* this `steps.` ran for ~7 minutes :( *)
-  (* takes over 40 s even with the `unpurify.` above *)
-
-  (* Show Ltac Profile. *)
+  raw_bit_to_bit_at. steps. steps.
 
   erewrite half_subcontent_remove_same. steps. rewrite bit_at_raw. steps. steps.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at.
-  (* already COLLECTED *)
-  match goal with
-  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
-  end. simpl Bool.eqb. cbv iota. steps. steps.
-  simpl negb.
+  raw_bit_to_bit_at. steps. steps.
 
-  pose proof (half_subcontent_remove_other c k false) as Hhcr. simpl negb in Hhcr.
+  pose proof (half_subcontent_remove_other c k false) as Hhcr. steps.
   rewrite Hhcr. steps. rewrite bit_at_raw. steps. steps.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at.
-  (* already COLLECTED *)
-  match goal with
-  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
-  end. simpl Bool.eqb. cbv iota. steps. steps.
+  raw_bit_to_bit_at. steps. steps.
 
   erewrite pfx_mmeet_remove_unchanged. steps. rewrite bit_at_raw.
   instantiate (1:=false). steps. steps.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at.
-  (* already COLLECTED *)
-  match goal with
-  | H: ?b1 = _ |- context [Bool.eqb ?b1 _] => rewrite H
-  end. simpl Bool.eqb. cbv iota. steps. steps. .**/
+  raw_bit_to_bit_at. steps. steps. .**/
   }                                                                        /**.
   destruct skC; cycle 1. { exfalso.
   repeat match goal with
@@ -2193,8 +2219,8 @@ Derive cbt_delete_from_nonleaf SuchThat
     store(par + 8, load(sib + 8));                                         /**. .**/
     cbt_raw_node_free(sib);                                                /**. .**/
     return 1;                                                              /**. .**/
-  }                                                                        /*?.
-  steps. hwlia.
+  }                                                                        /**.
+  hwlia.
   eapply map_get_extends_nNone. apply half_subcontent_extends.
   match goal with
   | H: half_subcontent _ _ = map.singleton _ _ |- _ => rewrite H
@@ -2313,24 +2339,7 @@ Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          
   simpl cbt'. clear Error. steps. unfold enable_frame_trick.enable_frame_trick.
   steps. .**/
       return ret;                                                          /**. .**/
-    }                                                                      /**.
-  (* TODO: collect (if not already collected (?)) *)
-  match goal with
-  | H: context [word.eqb ?w ?w] |- _ =>
-     replace (word.eqb w w) with true in H by (rewrite word.eqb_eq; reflexivity)
-  end. steps.
-  (* TODO: collect (if not already collected (?)) *)
-  match goal with
-  | H1: context [word.eqb ?w1 ?w2], H2: ?w1 <> ?w2 |- _ =>
-     replace (word.eqb w1 w2) with false in H1 by (rewrite word.eqb_ne; congruence)
-  end.
-  steps.
-  (* TODO: already collected *)
-  match goal with
-  | H1: context [word.eqb ?w1 ?w2], H2: ?w1 <> ?w2 |- _ =>
-     replace (word.eqb w1 w2) with false in H1 by (rewrite word.eqb_ne; congruence)
-  end.
-  steps. .**/
+    }                                                                      /**. .**/
   }                                                                        /**. .**/
 }                                                                          /**.
 Qed.
