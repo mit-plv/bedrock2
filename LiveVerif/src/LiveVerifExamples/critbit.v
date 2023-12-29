@@ -24,7 +24,9 @@ Ltac simple_finish_step :=
   | |- ?P <-> ?P => reflexivity
   | H1: ?P, H2: ~?P |- _ => apply H2 in H1; destruct H1
   | H: ?x <> ?x |- _ => exfalso; apply (H (eq_refl x))
-  | H: ?a = ?b |- ?b = ?a => symmetry; exact H
+  (* | H: ?a = ?b |- ?b = ?a => symmetry; exact H *) (* <- we want this,
+  but it seems to cause the Coq unification algorithm to go into an infinite loop
+  at at least one place in this file *)
   | H: Some _ = None |- _ => discriminate H
   | H: None = Some _ |- _ => discriminate H
   | |- Some _ <> None => let H := fresh "H" in intro H; discriminate H
@@ -2070,15 +2072,7 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
       uintptr_t cb = critical_bit(k, best_k);                              /**.
   instantiate (3:=emp True). steps.
   unfold enable_frame_trick.enable_frame_trick. steps. .**/
-      uintptr_t result = cbt_insert_at(tp, cb, k, v);                      /*?.
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step.
-
-  (* HERE: processing the following command seems to throw Coq into an infinite loop *)
-
-  unify (pfx_len (pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup tree c k))))
-        (pfx_len (pfx_meet (pfx_emb k) (pfx_emb best_k))).
-
+      uintptr_t result = cbt_insert_at(tp, cb, k, v);                      /**.
   subst. steps. unfold enable_frame_trick.enable_frame_trick. steps. .**/
       return result;                                                       /**. .**/
     }                                                                      /**.
@@ -2271,36 +2265,30 @@ Derive cbt_delete_from_nonleaf SuchThat
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
   eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
 
-  rewrite half_subcontent_remove_same. steps. steps. congruence
+  rewrite half_subcontent_remove_same. steps. congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at. steps. steps. erewrite pfx_mmeet_remove_unchanged.
-  steps. rewrite bit_at_raw. instantiate (1:=true). steps. steps.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at. steps. steps.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
 
-  erewrite half_subcontent_remove_same. steps. rewrite bit_at_raw. steps. steps.
+  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at. steps. steps.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
+
+  erewrite half_subcontent_remove_same. steps. congruence.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
 
   pose proof (half_subcontent_remove_other c k false) as Hhcr. steps.
-  rewrite Hhcr. steps. rewrite bit_at_raw. steps. steps.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at. steps. steps.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
 
-  erewrite pfx_mmeet_remove_unchanged. steps. rewrite bit_at_raw.
-  instantiate (1:=false). steps. steps.
+  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at. steps. steps. .**/
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps. .**/
     else {                                                                 /**. .**/
       cur = load(par + 4);                                                 /**. .**/
       sib = load(par + 8);                                                 /**. .**/
@@ -2317,8 +2305,8 @@ Derive cbt_delete_from_nonleaf SuchThat
   Reset Ltac Profile.
   *)
 
-  steps. apply eq_None_by_false. intro HnN. apply half_subcontent_get_nNone in HnN.
-  apply HnN. rewrite bit_at_raw. subst brc. steps. steps.
+  steps. apply eq_None_by_false. intro HnN.
+  apply half_subcontent_get_nNone in HnN. apply HnN. subst brc. steps.
   clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
 
   destruct brc eqn:E; simpl cbt'; unpurify; steps.
@@ -2344,44 +2332,34 @@ Derive cbt_delete_from_nonleaf SuchThat
            Simplify? (as before) *)
 
   pose proof (half_subcontent_remove_other c k true) as Hhcr. steps.
-  rewrite Hhcr. steps. rewrite bit_at_raw. steps. steps.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at. steps. steps.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
 
-  erewrite half_subcontent_remove_same. steps. rewrite bit_at_raw. steps. steps.
+  erewrite half_subcontent_remove_same. steps. congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at. steps. steps.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
 
-  erewrite pfx_mmeet_remove_unchanged. steps. rewrite bit_at_raw.
-  instantiate (1:=true). steps. steps.
+  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at. steps. steps.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
 
-  erewrite half_subcontent_remove_same. steps. rewrite bit_at_raw. steps. steps.
+  erewrite half_subcontent_remove_same. steps. congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at. steps. steps.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
 
   pose proof (half_subcontent_remove_other c k false) as Hhcr. steps.
-  rewrite Hhcr. steps. rewrite bit_at_raw. steps. steps.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at. steps. steps.
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
 
-  erewrite pfx_mmeet_remove_unchanged. steps. rewrite bit_at_raw.
-  instantiate (1:=false). steps. steps.
+  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get.
-  raw_bit_to_bit_at. steps. steps. .**/
+  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps. .**/
   }                                                                        /**.
   destruct skC; cycle 1. { exfalso.
   repeat match goal with
@@ -2424,13 +2402,12 @@ Derive cbt_delete_from_nonleaf SuchThat
     return 0;                                                              /**. .**/
   }                                                                        /**.
   apply eq_None_by_false. intro HnN. apply half_subcontent_get_nNone in HnN.
-  rewrite bit_at_raw in HnN.
   match goal with
-  | H: brc = word.eqb _ _ |- _ => rewrite <- H in HnN
+  | H: brc = bit_at _ _ |- _ => rewrite <- H in HnN
   end.
   match goal with
   | H: half_subcontent c brc = map.singleton _ _ |- _ => rewrite H in HnN
-  end. steps. steps. .**/
+  end. steps. .**/
 }                                                                          /**.
 Qed.
 
