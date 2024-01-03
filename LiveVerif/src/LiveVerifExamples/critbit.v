@@ -77,9 +77,7 @@ Ltac simple_finish_step :=
   | |- ?P <-> ?P => reflexivity
   | H1: ?P, H2: ~?P |- _ => apply H2 in H1; destruct H1
   | H: ?x <> ?x |- _ => exfalso; apply (H (eq_refl x))
-  | H: ?a = ?b |- ?b = ?a => symmetry; exact H (* <- we want this,
-  but it seems to cause the Coq unification algorithm to go into an infinite loop
-  at at least one place in this file *)
+  | H: ?a = ?b |- ?b = ?a => symmetry; exact H
   | H: Some _ = None |- _ => discriminate H
   | H: None = Some _ |- _ => discriminate H
   | |- Some _ <> None => let H := fresh "H" in intro H; discriminate H
@@ -201,16 +199,6 @@ Ltac comparison_simpl_step :=
         by (symmetry; apply word.eqb_ne; symmetry; exact Hne)
 end.
 
-(*
-Lemma match_option_0_1 : forall T, forall o1 o2 : option T,
-  (o1 <> None <-> o2 <> None) ->
-    (match o1 with | Some _ => 1 | None => 0 end
-     = match o2 with | Some _ => 1 | None => 0 end).
-Proof.
-  steps. destruct o1; destruct o2; steps; intuition congruence.
-Qed.
-*)
-
 Ltac misc_simpl_step :=
   match goal with
   | H: context [ negb ?c ] |- _ => is_constructor c; simpl negb in H
@@ -229,14 +217,6 @@ Ltac misc_simpl_step :=
   | |- context[ if true then _ else _ ] => cbv iota
 
   | |- impl1 (uintptr ?w1 ?a) (uintptr ?w2 ?a) => replace w2 with w1; [ reflexivity | ]
-  (*
-  | |- /[match _ with | Some _ => 1 | None => 0 end]
-       = /[match _ with | Some _ => 1 | None => 0 end] =>
-       f_equal
-  | |- match ?o1 with | Some _ => 1 | None => 0 end
-       = match ?o2 with | Some _ => 1 | None => 0 end =>
-       apply (match_option_0_1 _ o1 o2)
-  *)
 
   | H: ?Q, H2: ?Q -> ?P |- _ => specialize (H2 H)
   | H: ?b = ?a, H2: ?a = ?b -> ?P |- _ => specialize (H2 (eq_sym H))
@@ -390,13 +370,12 @@ Class pfx := {
   pfx_bit_or : forall p i, 0 <= i < pfx_len p -> pfx_bit p i false \/ pfx_bit p i true;
   pfx_bit_len : forall p i b, pfx_bit p i b -> 0 <= i < pfx_len p;
   pfx_bit_le : forall p1 p2 i b, pfx_le p1 p2 -> pfx_bit p1 i b -> pfx_bit p2 i b;
-  (* rename to pfx_snoc *)
-  pfx_app : prefix -> bool -> prefix;
-  pfx_app_le : forall p1 p2 b,
-                  pfx_le p1 p2 -> pfx_bit p2 (pfx_len p1) b -> pfx_le (pfx_app p1 b) p2;
-  pfx_app_bit : forall p b, pfx_bit (pfx_app p b) (pfx_len p) b;
-  pfx_app_len : forall p b, pfx_len (pfx_app p b) = pfx_len p + 1;
-  pfx_app_le_self : forall p b, ~pfx_le (pfx_app p b) p;
+  pfx_snoc : prefix -> bool -> prefix;
+  pfx_snoc_le : forall p1 p2 b,
+                  pfx_le p1 p2 -> pfx_bit p2 (pfx_len p1) b -> pfx_le (pfx_snoc p1 b) p2;
+  pfx_snoc_bit : forall p b, pfx_bit (pfx_snoc p b) (pfx_len p) b;
+  pfx_snoc_len : forall p b, pfx_len (pfx_snoc p b) = pfx_len p + 1;
+  pfx_snoc_le_self : forall p b, ~pfx_le (pfx_snoc p b) p;
   pfx_meet : prefix -> prefix -> prefix;
   pfx_meet_id : forall p, pfx_meet p p = p;
   pfx_meet_comm : forall p1 p2, pfx_meet p1 p2 = pfx_meet p2 p1;
@@ -566,20 +545,20 @@ Lemma pfx_bit_le : forall (p1 p2: prefix) (i: Z) (b: bool),
 Admitted.
 
 (* rename to pfx_snoc *)
-Definition pfx_app (p: prefix) (b: bool) := p ++ cons b nil.
+Definition pfx_snoc (p: prefix) (b: bool) := p ++ cons b nil.
 
-Lemma pfx_app_le : forall (p1 p2: prefix) (b: bool),
+Lemma pfx_snoc_le : forall (p1 p2: prefix) (b: bool),
                    pfx_le p1 p2 -> pfx_bit p2 (pfx_len p1) b ->
-                   pfx_le (pfx_app p1 b) p2.
+                   pfx_le (pfx_snoc p1 b) p2.
 Admitted.
 
-Lemma pfx_app_bit : forall (p: prefix) (b: bool), pfx_bit (pfx_app p b) (pfx_len p) b.
+Lemma pfx_snoc_bit : forall (p: prefix) (b: bool), pfx_bit (pfx_snoc p b) (pfx_len p) b.
 Admitted.
 
-Lemma pfx_app_len : forall (p: prefix) (b: bool), pfx_len (pfx_app p b) = pfx_len p + 1.
+Lemma pfx_snoc_len : forall (p: prefix) (b: bool), pfx_len (pfx_snoc p b) = pfx_len p + 1.
 Admitted.
 
-Lemma pfx_app_le_self : forall (p: prefix) (b: bool), ~pfx_le (pfx_app p b) p.
+Lemma pfx_snoc_le_self : forall (p: prefix) (b: bool), ~pfx_le (pfx_snoc p b) p.
 Admitted.
 
 Fixpoint pfx_meet (p1 p2: prefix) :=
@@ -937,34 +916,6 @@ Definition map_filter (c: word_map) (f: word -> bool) :=
 Definition half_subcontent c b :=
   map_filter c (fun k => Bool.eqb (bit_at k (pfx_len (pfx_mmeet c))) b).
 
-(*
-Lemma map_get_putmany_not_None_iff: forall (m1 m2: word_map) (k: word),
-  map.get (map.putmany m1 m2) k <> None <->
-  (map.get m1 k <> None \/ map.get m2 k <> None).
-Proof.
-  intros. destruct (map.get m2 k) eqn:E.
-  - erewrite map.get_putmany_right. 2: eassumption. split. right. tauto. congruence.
-  - erewrite map.get_putmany_left. 2: eassumption. tauto.
-Qed.
-
-Lemma map_put_putmany_right : forall (m1 m2: word_map) (k v: word),
-  map.put (map.putmany m1 m2) k v = map.putmany m1 (map.put m2 k v).
-Proof. intros. eapply map.put_putmany_commute. Qed.
-
-Lemma map_put_putmany_left : forall (m1 m2: word_map) (k v: word),
-  map.get m2 k = None ->
-  map.put (map.putmany m1 m2) k v = map.putmany (map.put m1 k v) m2.
-Proof.
-  intros. eapply map.map_ext. intros.
-  rewrite ?map.get_put_dec, ?map.get_putmany_dec.
-  destruct_one_match.
-  - rewrite H. rewrite map.get_put_same. reflexivity.
-  - destruct_one_match. 1: reflexivity.
-    rewrite map.get_put_diff by congruence.
-    reflexivity.
-Qed.
-*)
-
 Lemma map_filter_extends : forall c f,
   map.extends c (map_filter c f).
 Proof.
@@ -1008,13 +959,6 @@ Lemma half_subcontent_put_excl_bulk : forall c k v b,
   half_subcontent (map.put c k v) b = c.
 Admitted.
 
-(*
-Lemma half_subcontent_put_excl : forall c k v b1 b2,
-  pfx_bit (pfx_emb k) (pfx_len (pfx_mmeet c)) b1 -> b1 <> b2 ->
-  half_subcontent (map.put c k v) b2 = half_subcontent c b2.
-Admitted.
-*)
-
 Lemma half_subcontent_put_has_prefix : forall c k v b,
   pfx_le (pfx_mmeet c) (pfx_emb k) ->
   half_subcontent (map.put c k v) b =
@@ -1032,17 +976,6 @@ Lemma half_subcontent_put_update : forall c k v b,
     else
        half_subcontent c b.
 Admitted.
-
-(*
-(* this is actually false *)
-Lemma half_subcontent_put : forall c k v b,
-  half_subcontent (map.put c k v) b =
-    if Bool.eqb (bit_at k (pfx_len (pfx_mmeet c))) b then
-       map.put (half_subcontent c b) k v
-    else
-       half_subcontent c b.
-Admitted.
-*)
 
 Lemma half_subcontent_in_bit : forall c k b,
   map.get (half_subcontent c b) k <> None -> bit_at k (pfx_len (pfx_mmeet c)) = b.
@@ -1220,21 +1153,6 @@ Definition nncbt (c: word_map) (a: word): mem -> Prop := EX tree, cbt' tree c a.
 Definition cbt (c: word_map) (a: word): mem -> Prop :=
   if \[a] =? 0 then emp (c = map.empty) else nncbt c a.
 
-(*
-Ltac my_simpl_step :=
-  match goal with
-  | H: ?w <> /[0] |- context[ \[?w] =? 0 ] => replace (\[w] =? 0) with false by hwlia
-  | H1: ?w <> /[0], H2: context[ \[?w] =? 0 ] |- _ =>
-        replace (\[w] =? 0) with false in H2 by hwlia
-  | H: map.get (map.singleton ?k ?v) ?k' <> None |- _ =>
-        apply map_get_singleton_not_None in H
-  | H: map.singleton ?k1 ?v1 = map.singleton ?k2 ?v2 |- _ =>
-        apply map_singleton_inj in H
-  end.
-
-Ltac my_simpl := cbn; repeat (my_simpl_step; cbn).
-*)
-
 Ltac to_with_mem_hyps := repeat
   match goal with
   | H: ?P ?m |- _ => match type of m with
@@ -1315,194 +1233,6 @@ Lemma acbt_nonempty : forall tree c,
 Proof.
 Admitted.
 
-(*
-Ltac raw_bit_to_pfx_impl Hresult :=
-  match goal with
-  | H: word.and (?k ^>> /[?n]) /[1] = /[1] |- _ => apply pfx_emb_bitop1 in H as Hresult
-  | H: word.and (?k ^>> ?w) /[1] = /[1] |- _ =>
-    replace w with /[\[w]] in H by hwlia; apply pfx_emb_bitop1 in H as Hresult
-  | H: word.and (?k ^>> /[?n]) /[1] <> /[1] |- _ => apply pfx_emb_bitop0 in H as Hresult
-  | H: word.and (?k ^>> ?w) /[1] <> /[1] |- _ =>
-    replace w with /[\[w]] in H by hwlia; apply pfx_emb_bitop0 in H as Hresult
-  end.
-
-Ltac raw_bit_to_pfx :=
-  let Hresult := fresh "H" in raw_bit_to_pfx_impl Hresult.
-
-Ltac raw_bit_to_bit_at :=
-  let Hresult := fresh "H" in
-    (raw_bit_to_pfx_impl Hresult; [ apply pfx_bit_emb_bit_at in Hresult | ]).
-*)
-
-(*
-Ltac step_hook ::=
-  match goal with
-  | |- _ => simple_finish_step
-
-  (* simple logic *)
-
-  | |- _ => comparison_simpl_step
-  | |- _ => misc_simpl_step
-  | |- _ => subst_step
-  | |- _ => small_map_basic_op_simpl_step
-  | |- _ => bit_at_step
-  | |- _ => pfx_simpl_step
-
-  (* maps *)
-  | H: map.split ?cr ?cl1 ?cl2 |- _ =>
-       tryif ident_starts_with c cr then destruct H; subst cr else fail
-  | H1: ?w = /[0], H2: ?w = /[1] |- _ =>
-    rewrite H2 in H1; apply word.of_Z_inj_small in H1
-  | |- map.split (map.putmany ?c1 ?c2) ?c1 ?c2 =>
-       unfold map.split; split; [ reflexivity | ]
-  | H: map.get ?c ?k <> None |- map.get (map.putmany ?c ?c') ?k <> None =>
-       apply map_get_putmany_not_None_iff; left; exact H
-  | H: map.get ?c ?k <> None |- map.get (map.putmany ?c' ?c) ?k <> None =>
-       apply map_get_putmany_not_None_iff; right; exact H
-  | |- map.put (map.putmany ?m1 ?m2) ?k ?v = map.putmany ?m1 (map.put ?m2 ?k ?v) =>
-       eapply map.put_putmany_commute
-  | |- map.put (map.putmany ?m1 ?m2) ?k ?v = map.putmany (map.put ?m1 ?k ?v) ?m2 =>
-       eapply map_put_putmany_left
-  | H: map.get (map.putmany ?c1 ?c2) ?k = None |- map.get ?c2 ?k = None =>
-       eapply map.invert_get_putmany_None; exact H
-  | H: map.get (map.putmany ?c1 ?c2) ?k = None |- map.get ?c1 ?k = None =>
-       apply map.invert_get_putmany_None in H
-  | H: map.disjoint ?c1 ?c2 |- map.disjoint (map.put ?c1 ?k ?v) ?c2 =>
-       eapply map.disjoint_put_l
-  | H: map.disjoint ?c1 ?c2 |- map.disjoint ?c1 (map.put ?c2 ?k ?v) =>
-       eapply map.disjoint_put_r
-  | H: map.get ?c2 ?k = None |- map.get (map.putmany ?c1 ?c2) ?k = None =>
-       enough (map.get c1 k = None) as Hleftn;
-       [ rewrite <- Hleftn; apply map.get_putmany_left; assumption | ]
-  | H: map.get ?c1 ?k = None |- context[ map.get (map.putmany ?c1 ?c2) ?k ] =>
-    erewrite map_get_putmany_not_left
-  | H: map.get ?c2 ?k = None |- context[ map.get (map.putmany ?c1 ?c2) ?k ] =>
-    erewrite map.get_putmany_left
-  | |- map.get ?c2 ?k = None <-> map.get (map.putmany ?c1 ?c2) ?k = None =>
-       rewrite map_get_putmany_not_left
-  | H1: map.get ?c2 ?k = None, H2: map.get (map.putmany ?c1 ?c2) ?k <> None
-     |- map.get ?c1 ?k <> None =>
-     rewrite map.get_putmany_left in H2; [ exact H2 | exact H1 ]
-  | |- map.put ?c ?k ?v = map.putmany ?c (map.singleton ?k ?v) =>
-       rewrite map_putmany_singleton_r; reflexivity
-  | |- map.disjoint ?c (map.singleton ?k ?v) => apply map_disjoint_singleton_r
-  | H: map.get ?c ?k = None
-    |- map.put ?c ?k ?v = map.putmany (map.singleton ?k ?v) ?c =>
-    rewrite map_putmany_singleton_l; [ reflexivity | exact H ]
-  | |- map.disjoint (map.singleton ?k ?v) ?c => apply map_disjoint_singleton_l
-
-  (* prefixes *)
-  | |- pfx_le ?p ?p => apply pfx_le_reflx
-  | H1: pfx_bit ?p1 ?i false, H2: pfx_le ?p1 ?p2, H3: pfx_bit ?p2 ?i true |- _ =>
-        exfalso; apply (pfx_bit_not_both p2 i); [ apply (pfx_bit_le p1) | ]
-  | H1: pfx_le ?p1 ?p2, H2: pfx_le ?p2 ?p3 |- pfx_le ?p1 ?p3 =>
-        apply (pfx_le_trans _ p2 _)
-  | |- context[pfx_len (pfx_emb _)] => rewrite pfx_emb_len
-  | H: context[pfx_len (pfx_emb _)] |- _ => rewrite pfx_emb_len in H
-  | H1: pfx_le ?p1 ?p2, H2: pfx_len ?p2 <= ?n |- pfx_len ?p1 <= ?n =>
-        apply pfx_le_len in H1
-  | H1: pfx_bit ?p1 ?i true, H2: pfx_le ?p1 ?p2, H3: pfx_bit ?p2 ?i false |- _ =>
-       exfalso; apply (pfx_bit_not_both p2 i); [ | apply (pfx_bit_le p1) ]
-  (*
-  | H: word.and (?k ^>> ?n) /[1] = /[1] |- pfx_bit (pfx_emb ?k) \[?n] true =>
-       apply pfx_emb_bitop1
-  | H: word.and (?k ^>> ?n) /[1] <> /[1] |- pfx_bit (pfx_emb ?k) \[?n] false =>
-       apply pfx_emb_bitop0
-  *)
-  | H1: pfx_bit ?p1 ?n false, H2: pfx_le ?p1 ?p,
-    H3: pfx_bit ?p2 ?n true, H4: pfx_le ?p2 ?p |- _ =>
-    exfalso; apply (pfx_bit_not_both p n);
-    [ exact (pfx_bit_le _ _ _ _ H2 H1) | exact (pfx_bit_le _ _ _ _ H4 H3) ]
-  | |- pfx_le (pfx_meet ?p1 ?p2) ?p1 => apply pfx_meet_le_l
-  | |- pfx_le (pfx_meet ?p1 ?p2) ?p2 => apply pfx_meet_le_r
-  | H1: pfx_le ?p1 ?p2, H2: pfx_bit ?p1 ?n false, H3: pfx_bit ?p3 ?n true |-
-    pfx_len (pfx_meet ?p2 ?p3) <= ?n =>
-      apply (pfx_meet_bit_diff_len _ _ _ false true);
-      [ apply (pfx_bit_le p1); [ exact H1 | exact H2 ] | exact H3 | congruence ]
-  | H1: pfx_le ?p1 ?p2, H2: pfx_bit ?p1 ?n true, H3: pfx_bit ?p3 ?n false |-
-    pfx_len (pfx_meet ?p2 ?p3) <= ?n =>
-      apply (pfx_meet_bit_diff_len _ _ _ true false);
-      [ apply (pfx_bit_le p1); [ exact H1 | exact H2 ] | exact H3 | congruence ]
-  | H1: pfx_le ?p1 ?p2, H2: pfx_le ?p2 ?p3
-    |- pfx_le (pfx_meet ?p1 ?p4) (pfx_meet ?p3 ?p4) =>
-       apply pfx_meet_le_meet_l; apply (pfx_le_trans _ p2); [ exact H1 | exact H2 ]
-  | H1: pfx_le ?p1 ?p2, H2: pfx_bit ?p1 ?n ?b |- pfx_bit ?p2 ?n ?b
-    => exact (pfx_bit_le _ _ _ _ H1 H2)
-  | H1: map.get ?c1 ?k = None, H2: map.get (map.putmany ?c1 ?c2) ?k <> None |-
-    map.get ?c2 ?k <> None =>
-      rewrite (map_get_putmany_not_left _ _ _ H1) in H2; exact H2
-  | H: pfx_le ?p1 (pfx_meet ?p' ?p2) |- pfx_le ?p1 ?p2 =>
-       apply (pfx_le_trans _ (pfx_meet p' p2) _); [ exact H | apply pfx_meet_le_r ]
-  | |- pfx_meet ?p1 ?p2 = ?p1 => apply pfx_meet_le_eq
-  | H: pfx_le ?p1 ?p2 |- pfx_le (pfx_meet ?p1 _) ?p2 =>
-       apply (pfx_le_trans _ p1 _); [ apply pfx_meet_le_l | exact H ]
-  | H: pfx_le (pfx_app ?p1 ?b) ?p2 |- pfx_bit ?p2 (pfx_len ?p1) ?b
-    => exact (pfx_bit_le _ _ _ _ H (pfx_app_bit _ _))
-  | H1: pfx_le ?p1 ?p2, H2: pfx_bit ?p2 (pfx_len ?p1) ?b |- pfx_le (pfx_app ?p1 ?b) ?p2
-   => exact (pfx_app_le _ _ _ H1 H2)
-  | H1: pfx_le ?p1 ?p2, H2: pfx_le ?p0 ?p1, H3: pfx_bit ?p1 (pfx_len ?p0) ?b
-      |- pfx_le (pfx_app ?p0 ?b) ?p2 =>
-      apply (pfx_le_trans _ p1 _);
-      [ apply pfx_app_le; [ exact H2 | exact H3 ] | exact H1 ]
-  | H1: pfx_le ?p ?p1, H2: pfx_len (pfx_meet ?p1 ?p2) = pfx_len ?p
-      |- pfx_le ?p (pfx_meet ?p1 ?p2) =>
-      apply (pfx_lele_len_ord _ _ p1); [ exact H1 | apply pfx_meet_le_l | lia ]
-  | H: pfx_le ?p1 ?p2 |- pfx_le (pfx_meet ?p1 ?p') (pfx_meet ?p2 ?p') =>
-        exact (pfx_meet_le_meet_l _ _ _ H)
-  | |- pfx_le (pfx_meet ?p1 ?p2) ?p2 => apply pfx_meet_le_r
-  | H1: pfx_len (pfx_meet ?p1 ?p2) = ?n,
-    H2: pfx_bit ?p1 ?n ?b, H3: pfx_bit ?p2 ?n ?b |- _ =>
-      apply (pfx_app_le_self (pfx_meet p1 p2) b);
-      apply pfx_meet_le_both; apply pfx_app_le;
-      [ apply pfx_meet_le_l | rewrite H1; exact H2
-      | apply pfx_meet_le_r | rewrite H1; exact H3 ]
-
-  (* content, TODO: sort better *)
-  | H: map.get (half_subcontent ?c ?b) ?k <> None |- map.get ?c ?k <> None =>
-    exact (map_get_extends_nNone c
-                                 (half_subcontent c b)
-                                 k
-                                 (half_subcontent_extends _ _)
-                                 H)
-  | |- context[ pfx_mmeet (map.singleton _ _) ] => rewrite pfx_mmeet_singleton
-  | |- pfx_bit (pfx_emb ?k) ?i (bit_at ?k ?i) => apply pfx_bit_bit_at_emb
-  | H: acbt (Node _ _) ?c |- 0 <= pfx_len (pfx_mmeet ?c) < 32 =>
-    apply acbt_prefix_length in H; pose proof (pfx_len_nneg (pfx_mmeet c)); lia
-  | H: map.get ?c ?k <> None |- pfx_le (pfx_mmeet ?c) (pfx_emb ?k) =>
-    apply pfx_mmeet_key_le; exact H
-  | H1: pfx_bit ?p1 ?i false, H2: pfx_bit ?p2 ?i true
-    |- pfx_len (pfx_meet ?p1 ?p2) <= ?i
-       => apply pfx_meet_bit_diff_len with (b1:=false) (b2:=true);
-          [ exact H1 | exact H2 | congruence ]
-  | H: pfx_bit (pfx_emb ?k) (pfx_len (pfx_mmeet ?c)) _ |-
-    context[ half_subcontent (map.put ?c ?k _) _ ] =>
-      rewrite half_subcontent_put; apply pfx_bit_emb_bit_at in H; rewrite H
-  | |- context[ if false then _ else _ ] => cbv iota
-  | |- context[ if true then _ else _ ] => cbv iota
-  | H: bit_at ?k (pfx_len (pfx_mmeet ?c)) = _ |-
-    context[ half_subcontent (map.put ?c ?k _) _] =>
-      rewrite half_subcontent_put; rewrite H
-  | H: map.get ?c ?k <> None |- context[ pfx_mmeet (map.put ?c ?k _) ] =>
-       rewrite (pfx_mmeet_put_incl _ _ _ H)
-  | H: context[ pfx_mmeet (map.singleton _ _) ] |- _ => rewrite pfx_mmeet_singleton in H
-  | H: bit_at ?k (pfx_len (pfx_mmeet ?c)) = _
-    |- context[ map.get (half_subcontent ?c _) ?k ] =>
-      rewrite half_subcontent_get; rewrite H
-  | H1: acbt (Node _ _) ?c, H2: /[pfx_len (pfx_mmeet ?c)] = /[32] |- _ =>
-    apply acbt_prefix_length in H1; pose proof (pfx_len_nneg (pfx_mmeet c)); hwlia
-
-  (* misc *)
-  | |- /[match ?opt1 with | Some _ => ?vs | None => ?vn end] =
-       /[match ?opt2 with | Some _ => ?vs | None => ?vn end] =>
-     enough (opt1 = None <-> opt2 = None); [ destruct opt1; destruct opt2;
-     intuition congruence | ]
-  | H1: word.and ?w1 /[1] <> /[1], H2: word.and ?w1 /[1] <> word.and ?w2 /[1]
-    |- word.and ?w2 /[1] = /[1] => apply (and_1_not_not_1 w1 w2)
-  | |- _ => my_simpl_step
-  | |- map.split _ _ _ => unfold map.split
-end.
-*)
-
 Lemma purify_cbt' :
   forall tree c a, purify (cbt' tree c a) (a <> /[0] /\ acbt tree c).
 Proof.
@@ -1534,34 +1264,6 @@ Proof.
   unfold iff1. intro m.
   split; intros; destruct tree; simpl cbt' in *; steps.
 Qed.
-
-(*
-Ltac destruct_in_putmany :=
-  match goal with
-  | H: map.get (map.putmany _ _) _ <> None |- _ =>
-       apply map_get_putmany_not_None_iff in H; destruct H
-  end.
-*)
-
-(*
-Lemma du_def_split : forall (m m1 : mem) (mm: mmap mem),
-    mm ||| m1 = m -> exists m2 : mem, mm = m2 /\ map.split m m2 m1.
-Proof.
-  intros. pose proof H. unfold "|||" in H0. destruct mm eqn:E. exists m0.
-  split. reflexivity. apply split_du. assumption. discriminate.
-Qed.
-
-Lemma manual_du_on_sep : forall (m m1 m2: mem) (P Q : mem -> Prop),
-    P m1 -> Q m2 -> mmap.du m1 m2 = m -> sep P Q m.
-Proof.
-  steps. change (P m1) with (m1 |= P) in H.
-  change (Q m2) with (m2 |= Q) in H0. steps.
-Qed.
-
-Ltac destruct_split H :=
-  try apply split_du in H; unfold map.split in H; destruct H.
-*)
-
 
 Fixpoint cbt_best_lookup tree c k :=
   match tree with
@@ -1641,9 +1343,9 @@ Proof.
     { apply pfx_meet_le_both; steps. apply pfx_mmeet_key_le. steps. }
     match goal with
     | |- _ < pfx_len ?rhs =>
-      assert (Hlp: pfx_le (pfx_app (pfx_mmeet c) (bit_at k (pfx_len (pfx_mmeet c)))) rhs)
+      assert (Hlp: pfx_le (pfx_snoc (pfx_mmeet c) (bit_at k (pfx_len (pfx_mmeet c)))) rhs)
     end.
-    { apply pfx_app_le. steps. apply pfx_bit_meet. steps.
+    { apply pfx_snoc_le. steps. apply pfx_bit_meet. steps.
     eassert (Hpb: pfx_bit _ _ _). {
       apply (pfx_bit_bit_at_emb (cbt_best_lookup (Node sk1 sk2) c k)
                                 (pfx_len (pfx_mmeet c))).
@@ -1651,7 +1353,7 @@ Proof.
     simpl acbt in *. steps. destruct (bit_at k (pfx_len (pfx_mmeet c))) eqn:E;
     (eassert (Hbeq: bit_at _ _ = _); [ | rewrite Hbeq in Hpb; exact Hpb ];
     apply half_subcontent_in_bit; steps). }
-    apply pfx_le_len in Hlp. rewrite pfx_app_len in Hlp. lia.
+    apply pfx_le_len in Hlp. rewrite pfx_snoc_len in Hlp. lia.
 Qed.
 
 (* END CBT STRUCTURES *)
@@ -2073,12 +1775,6 @@ Derive cbt_alloc_leaf SuchThat (fun_correct! cbt_alloc_leaf) As cbt_alloc_leaf_o
   simpl cbt'. destruct (\[p] =? 0) eqn:E; steps.
 Qed.
 
-(*
-Ltac one_not_one_cases w :=
-  let Hmone := fresh "Hmone" in assert (Hmone: w = /[1] \/ w <> /[1]) by hwlia;
-  destruct Hmone.
-*)
-
 #[export] Instance spec_of_critical_bit: fnspec :=                              .**/
 
 uintptr_t critical_bit(uintptr_t k1, uintptr_t k2) /**#
@@ -2163,7 +1859,6 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   rewrite <- Def0. rewrite Def0 at 2. replace (id p) with tp.
   delete #(p = ??).
   move sk at bottom.
-  (* move k' before Scope1. *)
   move p before Scope1.
   loop invariant above m.
                                                                                 .**/
