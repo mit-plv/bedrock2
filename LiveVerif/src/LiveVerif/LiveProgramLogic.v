@@ -1079,6 +1079,16 @@ Ltac predicates_safe_to_cancel hypPred conclPred :=
                                                        by (zify_goal; xlia zchecker));
                                     tryif is_evar vs2 then unify vs1 vs2 else idtac
                                 end
+      | sepapps nil => lazymatch hypPred with
+                       | sepapps nil => idtac
+                       end
+      | sepapps (cons (mk_sized_predicate ?P2 ?Psize2) ?rest2) =>
+            lazymatch hypPred with
+            | sepapps (cons (mk_sized_predicate ?P1 ?Psize1) ?rest1) =>
+               unify Psize1 Psize2;
+               predicates_safe_to_cancel P1 P2;
+               predicates_safe_to_cancel (sepapps rest1) (sepapps rest2)
+            end
       end ].
 
 (* can instantiate evars in goalClause *)
