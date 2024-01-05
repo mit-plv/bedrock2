@@ -9,8 +9,11 @@ Require Import coqutil.Tactics.ident_ops.
 Require Import bedrock2.bottom_up_simpl.
 Require Import bedrock2.unzify.
 
+Ltac split_and_solve_trivial :=
+  repeat match goal with | |- _ /\ _ => split end; try assumption.
+
 Ltac fail_if_too_trivial t :=
-  assert_fails (idtac; assert t by xlia zchecker).
+  assert_fails (idtac; assert t by (split_and_solve_trivial; xlia zchecker)).
 
 Ltac puri_simpli_zify_hyp fastMode h t :=
   let pure := purified_hyp h t in
@@ -48,7 +51,8 @@ Inductive derivability_test_marker: Prop := mk_derivability_test_marker.
 
 Ltac clear_pure_hyp_if_derivable h tp :=
   tryif ident_starts_with __pure_ h then
-    try (clear h; assert_succeeds (idtac; assert tp by (zify_goal; xlia zchecker)))
+    try (clear h; assert_succeeds (idtac; assert tp by
+      (split_and_solve_trivial; zify_goal; xlia zchecker)))
   else idtac.
 
 Ltac clear_upto_marker marker :=
