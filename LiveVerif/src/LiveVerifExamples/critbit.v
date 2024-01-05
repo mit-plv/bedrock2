@@ -1621,13 +1621,6 @@ Opaque bit_at.
 
 Ltac provide_new_ghosts_hook ::= manual_new_ghosts.
 
-(* added `try tauto` to be able to derive `acbt` predicates *)
-Ltac clear_pure_hyp_if_derivable h tp ::=
-  tryif ident_starts_with __pure_ h then
-    try (clear h; assert_succeeds (idtac; assert tp
-        by (try tauto; zify_goal; xlia zchecker)))
-    else idtac.
-
 (* END FRAMEWORK SETUP *)
 (* BEGIN CBT NODE MEM IMPL *)
 
