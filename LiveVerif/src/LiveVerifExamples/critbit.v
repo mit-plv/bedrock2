@@ -955,7 +955,8 @@ Qed.
 
 Ltac apply_key_prefix_hyp :=
   match goal with
-  | Hq: context[ map.get ?c _ <> None -> _ ], Hc: map.get ?c _ <> None |- _ =>
+  | Hq: context[ map.get ?c _ <> None -> is_prefix_key _ _ ],
+    Hc: map.get ?c _ <> None |- _ =>
     apply Hq in Hc
   end.
 
@@ -1290,7 +1291,10 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   {                                                                        /*?.
   subst v0.
   repeat heapletwise_step.
-  apply cbt_expose_fields in H13. steps.
+  match goal with
+  | H: _ |= cbt' _ _ _ _ |- _ => apply cbt_expose_fields in H
+  end.
+  steps.
   destruct sk; [ exfalso | ]. steps.
   .**/
     if (((k >> load(p)) & 1) == 1) /* split */ {                            /**. .**/
@@ -1494,9 +1498,9 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   apply append_1_prefix in Hprk. steps. steps.
   assert (prefix_bits \[cb] k = prefix_bits \[cb] k0).
   assert (is_prefix_key pr k). apply_key_prefix_hyp. steps.
-  assert (prefix_bits (length pr) k = prefix_bits (length pr) k').
-  apply same_prefix_bits_equality; steps. congruence. steps.
-  edestruct is_prefix_extend_0_or_1; [ | | |  eassumption | ]; cbn; steps.
+  assert (prefix_bits (length pr) k = prefix_bits (length pr) k')
+    by (apply same_prefix_bits_equality; steps). congruence. steps.
+  edestruct is_prefix_extend_0_or_1; [ | | | eassumption | ]; cbn; steps.
   assert (prefix_bits (length pr) (bits pr) = prefix_bits (length pr) k').
   match goal with
   | H: is_prefix_key pr k' |- _ => unfold is_prefix_key, is_prefix, full_prefix in H
