@@ -243,7 +243,12 @@ Ltac misc_simpl_step :=
   | H: context[ if ?b then ?v else ?v ] |- _ => rewrite identical_if_branches in H
   | |- context[ if ?b then ?v else ?v ]  => rewrite identical_if_branches
 
-  | |- impl1 (uintptr ?w1 ?a) (uintptr ?w2 ?a) => replace w2 with w1; [ reflexivity | ]
+  | |- impl1 (uintptr ?w1 ?a) (uintptr ?w2 ?a) =>
+       (* using `set` because replace-ing (or also rewrite-ing) can
+          instantiate evars (unexpectedly)
+          see also https://github.com/coq/coq/issues/2072 *)
+       let w1' := fresh in let w2' := fresh in set (w1' := w1); set (w2' := w2);
+       replace w2' with w1'; [ reflexivity | subst w1' w2' ]
 
   | H: ?Q, H2: ?Q -> ?P |- _ => specialize (H2 H)
   | H: ?b = ?a, H2: ?a = ?b -> ?P |- _ => specialize (H2 (eq_sym H))
@@ -2118,26 +2123,19 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   }                                                                          /**.
   clear Error. destruct sk; simpl cbt' in *; steps. .**/
   else {                                                                     /**. .**/
-    uintptr_t new_node = Malloc(12);                                         /**. .**/
+    uintptr_t new_node = cbt_raw_node_copy_new(p);                           /**. .**/
     if (new_node == 0) /* split */ {                                         /**. .**/
       return 0;                                                              /**. .**/
     }                                                                        /**.
   clear Error. destruct sk; simpl cbt' in *; steps. .**/
     else {                                                                   /**. .**/
-      store(new_node, load(p));                                              /**. .**/
-      store(new_node + 4, load(p + 4));                                      /**. .**/
-      store(new_node + 8, load(p + 8));                                      /**. .**/
       store(p, cb);                                                          /**. .**/
       if (((k >> cb) & 1) == 1) /* split */ {                                /**. .**/
         store(p + 4, new_node);                                              /**. .**/
         store(p + 8, new_leaf);                                              /**. .**/
         return tp;                                                           /**. .**/
-      }                                                                      /*?.
-  repeat clear_array_0. subst. steps.
+      }                                                                      /**.
   clear Error. instantiate (1:=Node sk Leaf). simpl cbt'.
-  repeat match goal with
-  | H: merge_step _ |- _ => clear H
-  end.
   assert (pfx_len (pfx_meet (pfx_emb k) (pfx_mmeet c)) = \[cb]). {
     assert (pfx_meet (pfx_emb k) (pfx_mmeet c)
             = pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k))). {
@@ -2158,25 +2156,21 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
         apply pfx_le_asym; steps. apply pfx_lele_len_ord with (pfx_mmeet c); steps. }
       rewrite Hpeq. steps. }
     lia. }
-  replace (half_subcontent (map.put c k v) false) with c. steps.
-  unfold split_concl_at, canceling. simpl seps. split; [ | apply I ]. intros.
-  apply sep_comm. clear D. (* TODO: investigate why this D appears *)
-  simpl cbt' in *. steps. subst. apply half_subcontent_put_excl_key. lia.
-  congruence. steps. unfold split_concl_at.
-  destruct sk; simpl cbt' in *; steps. subst. steps. rewrite pfx_mmeet_put.
-  steps. eapply acbt_nonempty. eassumption. symmetry.
+  replace (half_subcontent (map.put c k v) false) with c. steps. clear Error.
+  unfold canceling. simpl seps. split; [ | apply I ]. intros.
+  apply sep_comm. clear D. simpl cbt' in *. steps.
+  subst. apply half_subcontent_put_excl_key. lia.
+  congruence. clear Error. steps. clear Error.
+  destruct sk; simpl cbt' in *; steps. rewrite pfx_mmeet_put.
+  steps. steps. symmetry.
   apply half_subcontent_put_excl_bulk. lia. steps. congruence.
    (* TODO: investigate why many duplicated hypotheses *) .**/
       else {                                                                  /**. .**/
         store(p + 4, new_leaf);                                               /**. .**/
         store(p + 8, new_node);                                               /**. .**/
         return tp;                                                            /**. .**/
-      }                                                                       /*?.
-  repeat clear_array_0. subst. steps.
+      }                                                                       /**.
   clear Error. instantiate (1:=Node Leaf sk). simpl cbt'.
-  repeat match goal with
-  | H: merge_step _ |- _ => clear H
-  end.
   assert (pfx_len (pfx_meet (pfx_emb k) (pfx_mmeet c)) = \[cb]). {
     assert (pfx_meet (pfx_emb k) (pfx_mmeet c)
             = pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k))). {
@@ -2199,7 +2193,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
     lia. }
   replace (half_subcontent (map.put c k v) true) with c. simpl cbt' in *. steps.
   subst. apply half_subcontent_put_excl_key. lia. congruence.
-  unfold split_concl_at. destruct sk; simpl cbt' in *; steps. subst. steps.
+  clear Error. destruct sk; simpl cbt' in *; steps. subst.
   rewrite pfx_mmeet_put. steps. steps. symmetry.
   apply half_subcontent_put_excl_bulk. steps. steps. congruence. .**/
     }                                                                         /**. .**/
@@ -2476,9 +2470,7 @@ Derive cbt_delete_from_nonleaf SuchThat
   end. repeat heapletwise_step.
   .**/
     cbt_raw_node_free(cur);                                                /**. .**/
-    store(par, load(sib));                                                 /**. .**/
-    store(par + 4, load(sib + 4));                                         /**. .**/
-    store(par + 8, load(sib + 8));                                         /**. .**/
+    cbt_raw_node_copy_replace(par, sib);                                   /**. .**/
     cbt_raw_node_free(sib);                                                /**. .**/
     return 1;                                                              /**. .**/
   }                                                                        /**.
@@ -2490,15 +2482,6 @@ Derive cbt_delete_from_nonleaf SuchThat
   clear Error. instantiate (1:=skS).
   replace (map.remove c k) with (half_subcontent c (negb brc)); cycle 1.
   { eapply half_subcontent_removed_half_leaf. eassumption. }
-  repeat match goal with
-  | H: merge_step _ |- _ => clear H
-  end.
-  repeat match goal with
-  | H: context[hole 4] |- _ => match type of H with
-                               | ?m |= _ => unfold sepapps in H; simpl in H;
-                                            unfold sepapp in H; unfold "|=", hole in H
-                               end
-  end. repeat heapletwise_step.
   destruct skS; simpl cbt'; steps.
   match goal with
   | H: half_subcontent c (negb brc) = map.singleton _ _ |- _ => rewrite H
@@ -2559,14 +2542,7 @@ Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          
         store(tpp, 0);                                                     /**. .**/
         return 1;                                                          /**. .**/
       }                                                                    /**.
-  hwlia.
-  (* TODO: move this into a tactic *)
-  repeat match goal with
-  | H: context[hole 4] |- _ => match type of H with
-                               | ?m |= _ => unfold sepapps in H; simpl in H;
-                                            unfold sepapp in H; unfold "|=", hole in H
-                               end
-  end. steps. .**/
+  hwlia. .**/
       else {                                                               /**. .**/
         return 0;                                                          /**. .**/
       }                                                                    /**. .**/
@@ -2574,8 +2550,8 @@ Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          
     else {                                                                 /**.
   destruct tree. { exfalso. steps. } .**/
       uintptr_t ret = cbt_delete_from_nonleaf(tp, k);                      /**.
-  simpl cbt'. clear Error. steps. unfold enable_frame_trick.enable_frame_trick.
-  steps. .**/
+  simpl cbt'. clear Error. steps.
+  unfold enable_frame_trick.enable_frame_trick. steps. .**/
       return ret;                                                          /**. .**/
     }                                                                      /**. .**/
   }                                                                        /**. .**/
