@@ -1085,8 +1085,8 @@ Ltac predicates_safe_to_cancel hypPred conclPred :=
       | sepapps (cons (mk_sized_predicate ?P2 ?Psize2) ?rest2) =>
             lazymatch hypPred with
             | sepapps (cons (mk_sized_predicate ?P1 ?Psize1) ?rest1) =>
-               unify Psize1 Psize2;
-               predicates_safe_to_cancel P1 P2;
+               constr_eq Psize1 Psize2;
+               tryif constr_eq P1 P2 then idtac else predicates_safe_to_cancel P1 P2;
                predicates_safe_to_cancel (sepapps rest1) (sepapps rest2)
             end
       end ].
