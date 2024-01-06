@@ -2345,7 +2345,8 @@ Derive cbt_delete_from_nonleaf SuchThat
   apply HnN. subst brc. steps.
   clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
   unpurify. destruct brc eqn:E; simpl cbt'; steps.
-  (* TODO: more at least some of the steps in the proof code below into step_hook *)
+
+  (* TODO: move at least some of the steps in the proof code below into step_hook *)
   pose proof (half_subcontent_remove_other c k true) as Hhcr. steps. rewrite Hhcr.
   steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
