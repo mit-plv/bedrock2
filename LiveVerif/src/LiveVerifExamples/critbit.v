@@ -2263,7 +2263,7 @@ Derive cbt_delete_from_nonleaf SuchThat
   simpl cbt' in *. repeat heapletwise_step.
   (* context packaging fails if we don't `simpl cbt'` before the `if`
      because of variables being introduced too late *) .**/
-  if (((k >> load(par)) & 1) == 1) {                                       /**. .**/
+  if (((k >> deref(par)) & 1) == 1) {                                      /**. .**/
     sib = load(par + 4);                                                   /**. .**/
     cur = load(par + 8);                                                   /**. .**/
   } else {                                                                 /**. .**/
@@ -2307,9 +2307,6 @@ Derive cbt_delete_from_nonleaf SuchThat
   purge m1. purge m3.
 
   match goal with
-  | H: merge_step _ |- _ => clear H
-  end.
-  match goal with
   | H: par = tp |- _ => rewrite <- H in *; rewrite H at 2; clear H
   end.
   match goal with
@@ -2327,9 +2324,7 @@ Derive cbt_delete_from_nonleaf SuchThat
   destruct skC; repeat heapletwise_step. { exfalso.
   match goal with
   | H: half_subcontent c brc = _ |- _ => rewrite H in *
-  end.
-  unfold ready. (* `unfold ready` so that `steps` doesn't finish immediately *)
-  steps. } .**/
+  end. steps. } .**/
     par = cur;                                                             /**. .**/
     if (((k >> load(par)) & 1) == 1) /* split */ {                         /**. .**/
       sib = load(par + 4);                                                 /**. .**/
@@ -2350,37 +2345,36 @@ Derive cbt_delete_from_nonleaf SuchThat
   apply HnN. subst brc. steps.
   clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
   unpurify. destruct brc eqn:E; simpl cbt'; steps.
-  (* TODO: below, more or less the same proof is repeated several (6) times.
-           Simplify? *)
+  (* TODO: more at least some of the steps in the proof code below into step_hook *)
   pose proof (half_subcontent_remove_other c k true) as Hhcr. steps. rewrite Hhcr.
   steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps.
 
   rewrite half_subcontent_remove_same. steps. congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps.
 
   erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps.
 
   erewrite half_subcontent_remove_same. steps. congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps.
 
   pose proof (half_subcontent_remove_other c k false) as Hhcr. steps.
   rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps.
 
   erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps. .**/
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps. .**/
     else {                                                                 /**. .**/
       cur = load(par + 4);                                                 /**. .**/
       sib = load(par + 8);                                                 /**. .**/
@@ -2392,71 +2386,46 @@ Derive cbt_delete_from_nonleaf SuchThat
                           + uintptr (if brc then sib' else par)
                           + uintptr (if brc then par else sib') }> par'
                      * cbt' _ _ sib' }>).
-  (*
-  Set Ltac Profiling.
-  Reset Ltac Profile.
-  *)
-
   steps. apply eq_None_by_false. intro HnN.
   apply half_subcontent_get_nNone in HnN. apply HnN. subst brc. steps.
   clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
 
   destruct brc eqn:E; simpl cbt'; unpurify; steps.
 
-  (*
-  Show Ltac Profile.
-  Reset Ltac Profile.
-  *)
-
-  (* steps. (* this `steps.` is now a few lines above *)*)
-  (* this `steps.` takes very long
-     measurement 1: with `unpurify.` before the `steps.`   26 s
-     measurement 2: without unpurify                       55 s
-     measurement 3: with unpurify                           9 s
-     measurement 4: without unpurify                       55 s
-
-     profiling shows that most time is spent on `xlia`
-   *)
-
-  (* Show Ltac Profile. *)
-
-    (* TODO: below, more or less the same proof is repeated several (6) times.
-           Simplify? (as before) *)
-
   pose proof (half_subcontent_remove_other c k true) as Hhcr. steps.
   rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps.
 
   erewrite half_subcontent_remove_same. steps. congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps.
 
   erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps.
 
   erewrite half_subcontent_remove_same. steps. congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps.
 
   pose proof (half_subcontent_remove_other c k false) as Hhcr. steps.
   rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps.
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps.
 
   erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in.
-  eapply acbt_nonempty. eassumption. rewrite half_subcontent_get. steps. .**/
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps. .**/
   }                                                                        /**.
   destruct skC; cycle 1. { exfalso.
   repeat match goal with
   | H: acbt (Node _ _) _ |- _ => apply acbt_prefix_length in H
-  end. pose proof (pfx_len_nneg (pfx_mmeet (half_subcontent c brc))). hwlia. } .**/
+  end. pose proof (pfx_len_nneg (pfx_mmeet (half_subcontent c brc))). hwlia. }  .**/
   if (load(cur + 4) == k) /* split */ {                                    /**.
   match goal with
   | H: _ |= cbt' _ _ sib |- _ => apply cbt_expose_fields in H
