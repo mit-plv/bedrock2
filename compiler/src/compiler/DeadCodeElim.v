@@ -92,7 +92,6 @@ Section WithArguments1.
     | H: map.agree_on (diff (of_list ?x) (singleton_set ?y)) ?l ?lL |-
         map.agree_on (of_list ?x) (map.put ?l ?y ?v) (map.put ?lL ?y ?v)
       => eapply agree_on_diff_put; [ eapply String.eqb_spec | eassumption | eapply H ]
-
     | _ => idtac
     end.
 
@@ -397,5 +396,5 @@ Section WithArguments1.
     - intros.
       eapply @exec.skip.
       unfold compile_post. do 2 eexists; split; eassumption.
-Qed.
-  End WithArguments1.
+  Qed.
+End WithArguments1.

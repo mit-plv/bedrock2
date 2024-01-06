@@ -24,7 +24,7 @@ Section WithArguments1.
   Context {mem: map.map word (Init.Byte.byte : Type) } {mem_ok : map.ok mem } .
   Context {locals: map.map string word } {locals_ok : map.ok locals }.
   Context {ext_spec : Semantics.ExtSpec } {ext_spec_ok: Semantics.ext_spec.ok ext_spec } .
-   Ltac subset_union_solve :=
+  Ltac subset_union_solve :=
     match goal  with
     | |- subset (union _ _) _  => eapply subset_union_l; subset_union_solve
     | |- subset _ (union _ _)  =>
@@ -138,6 +138,7 @@ Section WithArguments1.
         propositional idtac.
         reflexivity.
   Qed.
+  
   Fixpoint fixpoint_inc'
     (fuel: nat)
     (x: list var)
@@ -275,7 +276,6 @@ Section WithArguments1.
         { rewrite of_list_removeb in H. unfold diff in *.
           fwd. eapply Hp0.
         }
-
         eapply IHs in H0.
         repeat rewrite of_list_list_union.
         unfold elem_of in *.
