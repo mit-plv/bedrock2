@@ -3,14 +3,6 @@ Require Import LiveVerif.LiveVerifLib.
 
 Load LiveVerif.
 
-(*
-Ltac log_packaged_context P ::=
-  lazymatch P with
-  | ?f _ _ _ _ => let c := eval cbv beta in (fun measure ti mi li => f measure ti mi li) in
-                  idtac c
-  end.
-*)
-
 #[export] Instance spec_of_Memset: fnspec :=                                    .**/
 
 void Memset(uintptr_t a, uintptr_t b, uintptr_t n) /**#
