@@ -359,8 +359,6 @@ Section WithArguments1.
       let l' := live (SLoop s1 c s2) l in
       subset (of_list (live s1
                          (list_union eqb
-
-
                             (live s2 l')
                             (list_union eqb (accessed_vars_bcond c) l)))) (of_list l').
   Proof.
@@ -416,6 +414,7 @@ Section WithArguments1.
        repeat rewrite of_list_list_union.
        subset_union_solve.
   Qed.
+  
   Fixpoint dce(s: stmt var)(u: list var)  : stmt var :=
     match s with
     | SInteract _ _ _ => s
