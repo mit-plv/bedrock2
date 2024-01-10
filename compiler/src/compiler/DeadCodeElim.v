@@ -69,7 +69,7 @@ Section WithArguments1.
     | H: map.agree_on (diff (of_list ?x) (singleton_set ?y)) ?l ?lL,
         H1: existsb (eqb ?y) ?x = false
       |- map.agree_on (of_list ?x) (map.put ?l ?y _) ?lL =>
-        idtac 2013; eapply agree_on_put_existsb_false; solve [eauto]
+        eapply agree_on_put_existsb_false; solve [eauto]
     | H: map.agree_on ?s ?x ?y |-
         map.agree_on _ ?x ?y =>
         eapply agree_on_subset with (ks := s);

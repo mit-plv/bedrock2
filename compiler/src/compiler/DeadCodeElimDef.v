@@ -420,13 +420,13 @@ Section WithArguments1.
     match s with
     | SInteract _ _ _ => s
     | SCall _ _ _ => s
-    | SLoad _ x _ _ => (* maybe unsound optimization? *)
+    | SLoad _ x _ _ =>
         if (existsb (eqb x) u) then
           s
         else
           SSkip
     | SStore _ _ _ _ => s
-    | SInlinetable _ x _ _ => (* maybe unsound? *)
+    | SInlinetable _ x _ _ =>
         if (existsb (eqb x) u) then
           s
         else

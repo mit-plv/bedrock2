@@ -23,29 +23,11 @@ Section WithArguments0.
     intros.
     unfold iff.
     split.
-    - intros.
-      induction l.
-      + simpl in *.
-        auto.
-      + simpl.
-        eapply in_inv in H.
-        destr H.
-        * rewrite H in *. rewrite eqb_refl. eapply Bool.orb_true_l.
-        * eapply IHl in H.
-          rewrite H. eapply Bool.orb_true_r.
-    - intros.
-      induction l.
-      + simpl in *.
-        inversion H.
-      + simpl in H.
-        eapply Bool.orb_prop in H.
-        destr H.
-        * eapply eqb_eq in H.
-          rewrite H in *.
-          eapply in_eq.
-        * eapply IHl in H.
-          eapply in_cons.
-          assumption.
+    - intros. eapply List.existsb_exists. exists x; split.
+      + assumption.
+      + eapply eqb_refl.
+    - intros. apply List.existsb_exists in H.
+      fwd. assumption.
   Qed.
 
   Lemma subset_of_list_cons:
