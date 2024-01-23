@@ -47,7 +47,17 @@ Ltac destruct_or :=
 
 Ltac apply_ne :=
   match goal with
-  | H: _ <> _ |- False => apply H
+  | H: _ <> _ |- False => apply H; clear H
+  end.
+
+Ltac apply_neg :=
+  match goal with
+  | H: ~_ |- False => apply H; clear H
+  end.
+
+Ltac apply_forall :=
+  match goal with
+  | H: forall _, _ |- _ => apply H
   end.
 
 Ltac f_apply f H :=
@@ -55,6 +65,11 @@ Ltac f_apply f H :=
   | ?lhs = ?rhs =>
       let h := fresh "H" in assert (h: f lhs = f rhs); [ rewrite H; reflexivity | ];
                             cbv beta in h; clear H; rename h into H
+  end.
+
+Ltac prove_ante H :=
+  match type of H with
+  | ?A -> ?C => let HA := fresh in assert (HA: A); [ | specialize (H HA); clear HA ]
   end.
 
 Ltac purge x := repeat match goal with
@@ -288,6 +303,15 @@ Ltac misc_simpl_step :=
   | H: negb ?b = ?b |- _ => destruct (Bool.no_fixpoint_negb b H)
   | H: ?b1 <> negb ?b2 |- _ => apply neq_negb_eq in H
 
+  | H: context [ false && ?b ] |- _ => rewrite Bool.andb_false_l in H
+  | |- context [ false && ?b ] => rewrite Bool.andb_false_l
+  | H: context [ ?b && false ] |- _ => rewrite Bool.andb_false_r in H
+  | |- context [ ?b && false ] => rewrite Bool.andb_false_r
+  | H: context [ true && ?b ] |- _ => rewrite Bool.andb_true_l in H
+  | |- context [ true && ?b ] => rewrite Bool.andb_true_l
+  | H: context [ ?b && true ] |- _ => rewrite Bool.andb_true_r in H
+  | |- context [ ?b && true ] => rewrite Bool.andb_true_r
+
   | H: context [ /[\[ _ ]] ] |- _ => rewrite word.of_Z_unsigned in H
   | |- context [ /[\[ _ ]] ] => rewrite word.of_Z_unsigned
   | H: context [ \[/[0]] ] |- _ => rewrite word.unsigned_of_Z_0 in H
@@ -321,10 +345,6 @@ Ltac subst_step :=
   match goal with
   | H: ?c = map.empty |- _ => is_var c; subst c
   | H: ?c = map.singleton _ _ |- _ => is_var c; subst c
-
-  (* TODO: consider (try) enabling this --> problematic when we assign
-           .** / a = b; / **. *)
-  (* | H: ?x = ?y |- _ => is_var x; is_var y; subst y *)
   end.
 
 Lemma Bool_neq_eq_negb : forall b1 b2, b1 <> b2 -> b1 = negb b2.
@@ -388,7 +408,6 @@ Proof.
   rewrite Z.land_spec.
   destruct (n0 =? 0) eqn:E; steps; destruct (Z.testbit n 0) eqn:E2; steps.
   - tauto.
-  - rewrite Z.bits_0. tauto.
   - rewrite Z_bits_1. steps.
   - rewrite Z_bits_1. rewrite Z.bits_0. steps.
 Qed.
@@ -479,314 +498,433 @@ Opaque bit_at.
 
 Class pfx := {
   prefix : Type;
-  pfx_nil : prefix;
+
   pfx_len : prefix -> Z;
   pfx_len_nneg : forall p, 0 <= pfx_len p;
+
+  pfx_bit : prefix -> Z -> option bool;
+  pfx_bit_len : forall p i, 0 <= i < pfx_len p <-> pfx_bit p i <> None;
+  pfx_bit_ext : forall p1 p2, (forall i, pfx_bit p1 i = pfx_bit p2 i) -> p1 = p2;
+
+  (* all further operations are axiomatized in terms of pfx_len and pfx_bit *)
+
+  (* pfx_nil *)
+  pfx_nil : prefix;
   pfx_nil_len : pfx_len pfx_nil = 0;
+
+  (* pfx_le *)
   pfx_le : prefix -> prefix -> Prop;
-  pfx_le_reflx : forall p, pfx_le p p;
-  pfx_le_asym : forall p1 p2, pfx_le p1 p2 -> pfx_le p2 p1 -> p1 = p2;
-  pfx_le_trans : forall p1 p2 p3, pfx_le p1 p2 -> pfx_le p2 p3 -> pfx_le p1 p3;
-  pfx_le_len : forall p1 p2, pfx_le p1 p2 -> pfx_len p1 <= pfx_len p2;
-  pfx_lele_tot : forall p1 p2 p,
-                     pfx_le p1 p -> pfx_le p2 p -> pfx_le p1 p2 \/ pfx_le p2 p1;
-  pfx_lele_len_ord : forall p1 p2 p,
-            pfx_le p1 p -> pfx_le p2 p -> pfx_len p1 <= pfx_len p2 -> pfx_le p1 p2;
+  pfx_le_spec : forall p1 p2,
+    (forall i, 0 <= i < pfx_len p1 -> pfx_bit p1 i = pfx_bit p2 i) <-> pfx_le p1 p2;
+
+  (* pfx_meet *)
+  pfx_meet : prefix -> prefix -> prefix;
+  pfx_meet_spec : forall p1 p2 p,
+    pfx_le p (pfx_meet p1 p2) <-> pfx_le p p1 /\ pfx_le p p2;
+
+  (* we use snoc to prove that given a set of prefixes, they cannot all have the same
+     bit at the index equal to the length of their meet *)
+  (* for pfx_meet (meet of just two prefixes), we could just prove this fact as a lemma
+     (without explicitly using pfx_snoc). However, pfx_snoc makes the reasoning easier
+     especially for pfx_mmeet (meet of many prefixes) -- mostly because at the time we
+     introduce pfx_mmeet, we don't want to directly reasons about prefixes using raw
+     bits anymore *)
+  (* pfx_snoc *)
+  pfx_snoc : prefix -> bool -> prefix;
+  pfx_snoc_len : forall p b, pfx_len (pfx_snoc p b) = pfx_len p + 1;
+  pfx_snoc_le : forall p b, pfx_le p (pfx_snoc p b);
+  pfx_snoc_bit : forall p b, pfx_bit (pfx_snoc p b) (pfx_len p) = Some b;
+
+  (* pfx_emb *)
   pfx_emb : word -> prefix;
   pfx_emb_len : forall w, pfx_len (pfx_emb w) = 32;
-  (* probably would be better as prefix -> Z -> option bool *)
-  pfx_bit : prefix -> Z -> bool -> Prop;
-  pfx_bit_excl : forall p i, ~pfx_bit p i false \/ ~pfx_bit p i true;
-  pfx_bit_not_both : forall p i, pfx_bit p i false -> pfx_bit p i true -> False;
-  pfx_bit_diff_le_len : forall p p1 p2 i b1 b2,
-       pfx_le p p1 -> pfx_le p p2 -> pfx_bit p1 i b1 -> pfx_bit p2 i b2 -> b1 <> b2 ->
-       pfx_len p <= i;
-  pfx_bit_or : forall p i, 0 <= i < pfx_len p -> pfx_bit p i false \/ pfx_bit p i true;
-  pfx_bit_len : forall p i b, pfx_bit p i b -> 0 <= i < pfx_len p;
-  pfx_bit_le : forall p1 p2 i b, pfx_le p1 p2 -> pfx_bit p1 i b -> pfx_bit p2 i b;
-  pfx_snoc : prefix -> bool -> prefix;
-  pfx_snoc_le : forall p1 p2 b,
-                  pfx_le p1 p2 -> pfx_bit p2 (pfx_len p1) b -> pfx_le (pfx_snoc p1 b) p2;
-  pfx_snoc_bit : forall p b, pfx_bit (pfx_snoc p b) (pfx_len p) b;
-  pfx_snoc_len : forall p b, pfx_len (pfx_snoc p b) = pfx_len p + 1;
-  pfx_snoc_le_self : forall p b, ~pfx_le (pfx_snoc p b) p;
-  pfx_meet : prefix -> prefix -> prefix;
-  pfx_meet_id : forall p, pfx_meet p p = p;
-  pfx_meet_comm : forall p1 p2, pfx_meet p1 p2 = pfx_meet p2 p1;
-  pfx_meet_assoc : forall p1 p2 p3,
-                     pfx_meet (pfx_meet p1 p2) p3 = pfx_meet p1 (pfx_meet p2 p3);
-  pfx_meet_nil_l : forall p, pfx_meet pfx_nil p = pfx_nil;
-  pfx_meet_nil_r : forall p, pfx_meet p pfx_nil = pfx_nil;
-  pfx_meet_le_l : forall p1 p2, pfx_le (pfx_meet p1 p2) p1;
-  pfx_meet_le_meet_l : forall p1 p2 p,
-                          pfx_le p1 p2 -> pfx_le (pfx_meet p1 p) (pfx_meet p2 p);
-  pfx_meet_le_meet_r : forall p1 p2 p,
-                          pfx_le p1 p2 -> pfx_le (pfx_meet p p1) (pfx_meet p p2);
-  pfx_meet_le_r : forall p1 p2, pfx_le (pfx_meet p1 p2) p2;
-  pfx_meet_le_both : forall p p1 p2,
-                         pfx_le p p1 -> pfx_le p p2 -> pfx_le p (pfx_meet p1 p2);
-  pfx_meet_emb_bit_at_len : forall w1 w2,
-    w1 <> w2 ->
-    bit_at w1 (pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2))) <>
-    bit_at w2 (pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2)));
-  pfx_meet_neq_emb_len : forall w1 w2,
-    w1 <> w2 -> pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2)) < 32;
-  pfx_meet_bit_diff_len : forall p1 p2 i b1 b2,
-    pfx_bit p1 i b1 -> pfx_bit p2 i b2 -> b1 <> b2 -> pfx_len (pfx_meet p1 p2) <= i;
-  pfx_meet_len_same_bit_false : forall p1 p2 l b,
-    pfx_len (pfx_meet p1 p2) = l -> pfx_bit p1 l b -> pfx_bit p2 l b -> False;
-  pfx_meet_le_eq : forall p1 p2, pfx_le p1 p2 -> pfx_meet p1 p2 = p1;
-  pfx_meet_le_eq' : forall p1 p2, pfx_le p1 p2 -> pfx_meet p2 p1 = p1;
-  pfx_cb_charac : forall p1 p2 n,
-    (forall i, 0 <= i < n ->
-       exists b, pfx_bit p1 i b /\ pfx_bit p2 i b) ->
-    (exists b1 b2, b1 <> b2 /\ pfx_bit p1 n b1 /\ pfx_bit p2 n b2) ->
-    pfx_len (pfx_meet p1 p2) = n;
-  pfx_emb_inj : forall k1 k2, pfx_emb k1 = pfx_emb k2 -> k1 = k2;
-  pfx_bit_inj : forall p1 p2,
-    pfx_len p1 = pfx_len p2 ->
-    (forall i, 0 <= i < pfx_len p1 -> exists b, pfx_bit p1 i b /\ pfx_bit p2 i b) ->
-    p1 = p2;
-  pfx_bit_bit_at_emb : forall w i, 0 <= i < 32 -> pfx_bit (pfx_emb w) i (bit_at w i);
-  pfx_bit_emb_bit_at : forall w i b, pfx_bit (pfx_emb w) i b -> bit_at w i = b;
-  pfx_bit_meet : forall p1 p2 i b,
-    pfx_bit p1 i b /\ pfx_bit p2 i b <-> pfx_bit (pfx_meet p1 p2) i b (* false *)
+  pfx_emb_spec : forall w i,
+    0 <= i < 32 -> pfx_bit (pfx_emb w) i = Some (bit_at w i)
 }.
 
-Context (pfx_impl : pfx).
-
-(*
-Definition prefix := list bool.
-
-Fixpoint pfx_le (p1 p2: prefix) :=
-  match p1 with
+Fixpoint pfx'_le (l1 l2: list bool) :=
+  match l1 with
   | nil => True
-  | cons b1 p1' => match p2 with
+  | cons b1 l1' => match l2 with
                    | nil => False
-                   | cons b2 p2' => if Bool.eqb b1 b2 then pfx_le p1' p2' else False
+                   | cons b2 l2' => if Bool.eqb b1 b2 then pfx'_le l1' l2' else False
                    end
   end.
 
-Definition pfx_len (p: prefix) := len p.
+Fixpoint pfx'_meet (l1 l2: list bool) :=
+  match l1 with
+  | nil => nil
+  | cons b1 l1' => match l2 with
+                   | nil => nil
+                   | cons b2 l2' => if Bool.eqb b1 b2 then
+                                      cons b1 (pfx'_meet l1' l2')
+                                    else nil
+                   end
+  end.
 
-Lemma pfx_len_nneg : forall (p: prefix), 0 <= pfx_len p.
-Proof.
-  intros.
-  unfold pfx_len. lia.
-Qed.
-
-Lemma pfx_le_reflx : forall (p: prefix), pfx_le p p.
-Proof.
-  induction p.
-  - simpl. apply I.
-  - simpl. rewrite Bool.eqb_reflx. assumption.
-Qed.
-
-Lemma pfx'_nil_nil : forall (p: prefix), pfx_le p nil -> p = nil.
-Proof.
-  induction p; intros.
-  - reflexivity.
-  - simpl in *. tauto.
-Qed.
-
-Lemma pfx_le_asym : forall (p1 p2: prefix), pfx_le p1 p2 -> pfx_le p2 p1 -> p1 = p2.
-Proof.
-  induction p1; intros.
-  - destruct p2.
-    + reflexivity.
-    + simpl in *. tauto.
-  - destruct p2; simpl in *.
-    + tauto.
-    + destruct (Bool.eqb a b) eqn:E.
-      * apply Bool.eqb_prop in E. subst. f_equal. rewrite Bool.eqb_reflx in *.
-        match goal with
-        | H: context[_ -> _ = _] |- _ => apply H
-        end; assumption.
-      * tauto.
-Qed.
-
-Lemma pfx_le_trans : forall (p1 p2 p3: prefix),
-                  pfx_le p1 p2 -> pfx_le p2 p3 -> pfx_le p1 p3.
-Proof.
-  induction p1; intros; simpl.
-  - apply I.
-  - destruct p3.
-    + destruct p2; simpl in *; tauto.
-    + destruct (Bool.eqb a b) eqn:E.
-      * apply Bool.eqb_prop in E. subst. destruct p2; simpl in *.
-        -- tauto.
-        -- destruct (Bool.eqb b b0) eqn:E.
-          ++ apply Bool.eqb_prop in E. subst. rewrite Bool.eqb_reflx in *.
-             match goal with
-             | H: context[_ -> pfx_le _ _] |- _ => apply H with (p2:=p2)
-             end; assumption.
-          ++ assert (E': Bool.eqb b0 b = false) by tauto. rewrite E' in *. tauto.
-      * destruct p2; simpl in *.
-        -- tauto.
-        -- destruct a; destruct b; destruct b0; simpl in *; congruence.
-Qed.
-
-Lemma pfx_le_len : forall (p1 p2: prefix), pfx_le p1 p2 -> pfx_len p1 <= pfx_len p2.
-Proof.
-  induction p1; intros; unfold pfx_len in *.
-  - simpl. lia.
-  - match goal with
-    | H1: pfx_le _ _, H2: forall _, _ |- _ => rename H1 into HH; rename H2 into IH
-    end.
-    simpl len. destruct p2; simpl pfx_le in *; simpl len in *.
-    + tauto.
-    + destruct (Bool.eqb a b); [ apply IH in HH | ]; lia.
-Qed.
-
-Lemma pfx_lele_tot : forall (p1 p2 p: prefix),
-                     pfx_le p1 p -> pfx_le p2 p -> pfx_le p1 p2 \/ pfx_le p2 p1.
-Proof.
-Admitted.
-
-Lemma pfx_lele_len_ord : forall (p1 p2 p: prefix),
-  pfx_le p1 p -> pfx_le p2 p -> pfx_len p1 <= pfx_len p2 -> pfx_le p1 p2.
-Admitted.
-
-
-Fixpoint pfx'_emb_rec (w: word) (remaining: nat) :=
+Fixpoint pfx'_emb_rec (w: word) (remaining: nat): list bool :=
   match remaining with
   | O => nil
   | S n => cons (bit_at w (32 - Z.of_nat remaining)) (pfx'_emb_rec w n)
   end.
 
-Definition pfx_emb (w: word) := pfx'_emb_rec w 32.
-
-Lemma pfx_emb_len : forall (w: word), pfx_len (pfx_emb w) = 32.
-Admitted.
-
-Definition pfx_bit (p: prefix) (i: Z) (b: bool) :=
-  0 <= i < len p /\ List.get p i = b.
-
-Lemma pfx_bit_excl : forall (p: prefix) (i: Z), ~pfx_bit p i false \/ ~pfx_bit p i true.
-Admitted.
-
-Lemma pfx_bit_not_both :
-  forall (p: prefix) (i: Z), pfx_bit p i false -> pfx_bit p i true -> False.
-Admitted.
-
-Lemma pfx_bit_diff_le_len : forall (p p1 p2: prefix) (i: Z) (b1 b2: bool),
-  pfx_le p p1 -> pfx_le p p2 -> pfx_bit p1 i b1 -> pfx_bit p2 i b2 -> b1 <> b2 ->
-  pfx_len p <= i.
-Admitted.
-
-Lemma pfx_bit_or : forall (p: prefix) (i: Z),
-                   0 <= i < pfx_len p -> pfx_bit p i false \/ pfx_bit p i true.
-Admitted.
-
-Lemma pfx_bit_len : forall (p: prefix) (i: Z) (b: bool),
-                   pfx_bit p i b -> 0 <= i < pfx_len p.
-Admitted.
-
-Lemma pfx_bit_le : forall (p1 p2: prefix) (i: Z) (b: bool),
-                   pfx_le p1 p2 -> pfx_bit p1 i b -> pfx_bit p2 i b.
-Admitted.
-
-(* rename to pfx_snoc *)
-Definition pfx_snoc (p: prefix) (b: bool) := p ++ cons b nil.
-
-Lemma pfx_snoc_le : forall (p1 p2: prefix) (b: bool),
-                   pfx_le p1 p2 -> pfx_bit p2 (pfx_len p1) b ->
-                   pfx_le (pfx_snoc p1 b) p2.
-Admitted.
-
-Lemma pfx_snoc_bit : forall (p: prefix) (b: bool), pfx_bit (pfx_snoc p b) (pfx_len p) b.
-Admitted.
-
-Lemma pfx_snoc_len : forall (p: prefix) (b: bool), pfx_len (pfx_snoc p b) = pfx_len p + 1.
-Admitted.
-
-Lemma pfx_snoc_le_self : forall (p: prefix) (b: bool), ~pfx_le (pfx_snoc p b) p.
-Admitted.
-
-Fixpoint pfx_meet (p1 p2: prefix) :=
-  match p1 with
-  | nil => nil
-  | cons b1 p1' => match p2 with
-                   | nil => nil
-                   | cons b2 p2' => if Bool.eqb b1 b2 then
-                                      cons b1 (pfx_meet p1' p2')
-                                    else nil
-                   end
-  end.
-
-Lemma pfx_meet_id : forall (p: prefix), pfx_meet p p = p.
-Admitted.
-
-Lemma pfx_meet_comm : forall (p1 p2: prefix), pfx_meet p1 p2 = pfx_meet p2 p1.
-Admitted.
-
-Lemma pfx_meet_assoc : forall (p1 p2 p3: prefix),
-                  pfx_meet (pfx_meet p1 p2) p3 = pfx_meet p1 (pfx_meet p2 p3).
-Admitted.
-
-Lemma pfx_meet_le_l : forall (p1 p2: prefix), pfx_le (pfx_meet p1 p2) p1.
-Admitted.
-
-Lemma pfx_meet_le_meet_l : forall (p1 p2 p: prefix),
-  pfx_le p1 p2 -> pfx_le (pfx_meet p1 p) (pfx_meet p2 p).
-Admitted.
-
-Lemma pfx_meet_le_meet_r : forall (p1 p2 p: prefix),
-  pfx_le p1 p2 -> pfx_le (pfx_meet p p1) (pfx_meet p p2).
-Admitted.
-
-Lemma pfx_meet_le_r : forall (p1 p2: prefix), pfx_le (pfx_meet p1 p2) p2.
-Admitted.
-
-Lemma pfx_meet_le_both : forall (p p1 p2: prefix),
-                         pfx_le p p1 -> pfx_le p p2 -> pfx_le p (pfx_meet p1 p2).
-Admitted.
-
-Lemma pfx_meet_bit_diff_len : forall (p1 p2: prefix) (i: Z) (b1 b2: bool),
-  pfx_bit p1 i b1 -> pfx_bit p2 i b2 -> b1 <> b2 -> pfx_len (pfx_meet p1 p2) <= i.
-Admitted.
-
-Lemma pfx_meet_len_same_bit_false : forall (p1 p2: prefix) (l: Z) (b: bool),
-  pfx_len (pfx_meet p1 p2) = l -> pfx_bit p1 l b -> pfx_bit p2 l b -> False.
-Admitted.
-
-Lemma pfx_meet_le_eq : forall (p1 p2: prefix),
-  pfx_le p1 p2 -> pfx_meet p1 p2 = p1.
-Admitted.
-
-Lemma pfx_meet_le_eq' : forall (p1 p2: prefix),
-  pfx_le p1 p2 -> pfx_meet p2 p1 = p1.
+Lemma pfx'_emb_rec_bit : forall w (n: nat) i,
+  0 <= i < Z.of_nat n -> List.get (pfx'_emb_rec w n) i = bit_at w (32 - Z.of_nat n + i).
 Proof.
-  intros. rewrite pfx_meet_comm. auto using pfx_meet_le_eq.
+  induction n.
+  - lia.
+  - intros. unfold pfx'_emb_rec. fold pfx'_emb_rec. destruct (i =? 0) eqn:E; steps.
+    rewrite IHn. steps. lia.
 Qed.
 
-Lemma pfx_cb_charac : forall (p1 p2: prefix) (n: Z),
-  (forall i, 0 <= i < n ->
-     exists b, pfx_bit p1 i b /\ pfx_bit p2 i b) ->
-  (exists b1 b2, b1 <> b2 /\ pfx_bit p1 n b1 /\ pfx_bit p2 n b2) ->
-  pfx_len (pfx_meet p1 p2) = n.
-Admitted.
+#[refine]
+Instance list_pfx : pfx := {
+  prefix := list bool;
+  pfx_len p := len p;
+  pfx_bit p i := if (0 <=? i) && (i <? len p) then Some (List.get p i) else None;
+  pfx_nil := nil;
+  pfx_le := pfx'_le;
+  pfx_meet := pfx'_meet;
+  pfx_snoc p b := p ++ [|b|];
+  pfx_emb w := pfx'_emb_rec w 32
+}.
+Proof.
+  - lia.
+  - intros.
+    match goal with
+    | |- context [ if ?cond then _ else _ ] => destruct cond eqn:E
+    end; split; steps.
+  - induction p1; destruct p2; intros;
+    match goal with
+    | H: forall _, _ = _ |- _ => rename H into HH
+    end.
+    + steps.
+    + specialize (HH 0). steps. simpl (len nil) in *. lia.
+    + specialize (HH 0). simpl len in *. steps; lia.
+    + f_equal.
+      * specialize (HH 0). steps.
+      * match goal with
+        | H: forall _, _ -> _ |- _ => apply H
+        end. steps. specialize (HH (i + 1)).
+        destruct (0 <=? i) eqn:E; steps.
+        replace (0 <=? i + 1) with true in *; steps.
+        replace (i + 1 <? len (a :: p1)) with (i <? len p1) in * by steps.
+        replace (i + 1 <? len (b :: p2)) with (i <? len p2) in * by steps.
+        replace ((a :: p1)[i + 1]) with (p1[i]) in * by steps.
+        replace ((b :: p2)[i + 1]) with (p2[i]) in * by steps.
+        steps.
+  - steps.
+  - induction p1; destruct p2; split; intros; simpl pfx'_le; simpl (len nil) in *;
+    try match goal with
+        | H: forall _, _ -> _ |- _ => rename H into HH
+        end;
+    try match goal with
+        | H: forall _, _ <-> _ |- _ => rename H into IH
+        end.
+    + steps.
+    + steps.
+    + steps.
+    + steps.
+    + specialize (HH 0). simpl in *. prove_ante HH. lia. steps.
+    + simpl in *. steps.
+    + assert (a = b). { specialize (HH 0). simpl in *. prove_ante HH. lia. steps. }
+      steps. apply IH. intros. specialize (HH (i + 1)). prove_ante HH. simpl len. lia.
+      replace (0 <=? i) with true; steps. replace (0 <=? i + 1) with true in *; steps.
+      replace (i + 1 <? len (a :: p1)) with (i <? len p1) in * by steps.
+      replace (i + 1 <? len (b :: p2)) with (i <? len p2) in * by steps.
+      replace (a :: p1)[i + 1] with p1[i] in * by steps.
+      replace (b :: p2)[i + 1] with p2[i] in * by steps.
+      steps.
+    + specialize (IH p2). simpl pfx'_le in *.  destruct (Bool.eqb a b) eqn:E; steps.
+      match goal with
+      | H: pfx'_le _ _ |- _ => rewrite <- IH in H; rename H into HH
+      end.
+      clear IH. destruct (i =? 0) eqn:E2.
+      * steps. subst. simpl.
+        replace (0 <? len p1 + 1) with true by steps.
+        replace (0 <? len p2 + 1) with true by steps.
+        steps.
+      * specialize (HH (i - 1)). prove_ante HH. { simpl len in *. lia. } simpl.
+        replace (a :: p1)[i] with p1[i - 1] by steps.
+        replace (b :: p2)[i] with p2[i - 1] by steps.
+        replace (0 <=? i - 1) with true in * by steps.
+        replace (0 <=? i) with true in * by steps.
+        replace (i - 1 <? len p1) with (i <? len p1 + 1) in * by steps.
+        replace (i - 1 <? len p2) with (i <? len p2 + 1) in * by steps.
+        steps.
+  - intros. generalize dependent p1. generalize dependent p2. induction p.
+    { simpl. steps. }
+    destruct p1, p2; simpl; steps. destruct a, b, b0; steps; auto.
+  - steps.
+  - induction p; simpl; steps.
+  - intros. replace ((0 <=? len p) && (len p <? len (p ++ [|b|]))) with true by steps.
+    steps.
+  - intros. simpl. steps.
+  - intros. simpl len.
+    match goal with
+    | |- context [ if ?cond then _ else _ ] => replace cond with true by steps
+    end.
+    rewrite pfx'_emb_rec_bit. steps. steps.
+Qed.
 
-Lemma pfx_emb_inj : forall (k1 k2: word), pfx_emb k1 = pfx_emb k2 -> k1 = k2.
-Admitted.
+Lemma pfx_le_nil : forall p, pfx_le pfx_nil p.
+Proof.
+  intros. rewrite <- pfx_le_spec. rewrite pfx_nil_len. lia.
+Qed.
 
-Lemma pfx_bit_inj : forall (p1 p2: prefix),
-  pfx_len p1 = pfx_len p2 ->
-  (forall i, 0 <= i < pfx_len p1 ->
-     exists b, pfx_bit p1 i b /\ pfx_bit p2 i b) ->
-  p1 = p2.
-Admitted.
+Lemma pfx_le_reflx : forall p, pfx_le p p.
+Proof.
+  intros. rewrite <- pfx_le_spec. steps.
+Qed.
 
-Lemma pfx_bit_bit_at_emb : forall w i, 0 <= i < 32 -> pfx_bit (pfx_emb w) i (bit_at w i).
-Admitted.
+Lemma pfx_le_len : forall p1 p2, pfx_le p1 p2 -> pfx_len p1 <= pfx_len p2.
+Proof.
+  intros. enough (~(pfx_len p2 < pfx_len p1)) by lia. intro.
+  pose proof (pfx_len_nneg p2).
+  match goal with
+  | H: pfx_le _ _ |- _ =>
+       rewrite <- pfx_le_spec in H; specialize (H (pfx_len p2)); prove_ante H
+  end.
+  lia.
+  pose proof (pfx_bit_len p1 (pfx_len p2)).
+  pose proof (pfx_bit_len p2 (pfx_len p2)).
+  match goal with
+  | H: pfx_bit _ _ = pfx_bit _ _ |- _ => rewrite H in *; clear H
+  end.
+  match goal with
+  | H: _ <-> _ |- _ => rewrite <- H in *; clear H
+  end.
+  lia.
+Qed.
 
-Lemma pfx_bit_emb_bit_at : forall w i b, pfx_bit (pfx_emb w) i b -> bit_at w i = b.
-Admitted.
+Lemma pfx_le_asym : forall p1 p2, pfx_le p1 p2 -> pfx_le p2 p1 -> p1 = p2.
+Proof.
+  intros. assert (pfx_len p1 = pfx_len p2).
+  do 2 match goal with
+       | H: pfx_le _ _ |- _ => apply pfx_le_len in H
+       end. lia.
+  apply pfx_bit_ext. steps.
+  assert (Hinrange: 0 <= i < pfx_len p1 \/ ~(0 <= i < pfx_len p1)) by lia.
+  destruct Hinrange.
+  - match goal with
+    | H: pfx_le _ _ |- _ => rewrite <- pfx_le_spec in H; specialize (H i); prove_ante H
+    end.
+    lia. steps.
+  - pose proof (pfx_bit_len p1 i) as Hbl1. pose proof (pfx_bit_len p2 i) as Hbl2.
+    match goal with
+    | H: pfx_len _ = pfx_len _ |- _ => rewrite H in *; clear H
+    end.
+    assert (pfx_bit p1 i = None).
+    { rewrite Hbl1 in *. destruct (pfx_bit p1 i). exfalso. apply_neg. steps. steps. }
+    assert (pfx_bit p2 i = None).
+    { rewrite Hbl2 in *. destruct (pfx_bit p2 i). exfalso. apply_neg. steps. steps. }
+    congruence.
+Qed.
 
-Lemma pfx_bit_meet : forall p1 p2 i b,
-  pfx_bit p1 i b /\ pfx_bit p2 i b <-> pfx_bit (pfx_meet p1 p2) i b.
-Admitted.
-*)
+Lemma pfx_le_trans : forall p1 p2 p3, pfx_le p1 p2 -> pfx_le p2 p3 -> pfx_le p1 p3.
+Proof.
+  intros. eassert _. { apply (pfx_le_len p1 p2). assumption. }
+  rewrite <- pfx_le_spec. intros.
+  do 2 match goal with
+       | H: pfx_le _ _ |- _ =>
+            rewrite <- pfx_le_spec in H; specialize (H i); prove_ante H; [ lia | ]
+       end.
+  congruence.
+Qed.
+
+Lemma pfx_lele_len_ord : forall p1 p2 p,
+  pfx_le p1 p -> pfx_le p2 p -> pfx_len p1 <= pfx_len p2 -> pfx_le p1 p2.
+Proof.
+  intros. rewrite <- pfx_le_spec in *. intros.
+  do 2 match goal with
+       | H: forall _, _ |- _ => specialize (H i); prove_ante H; [ lia | ]
+       end.
+  congruence.
+Qed.
+
+Lemma pfx_lele_len_eq : forall p1 p2 p,
+  pfx_le p1 p -> pfx_le p2 p -> pfx_len p1 = pfx_len p2 -> p1 = p2.
+Proof.
+  intros. apply pfx_le_asym; apply pfx_lele_len_ord with (p:=p); steps.
+Qed.
+
+Lemma pfx_lele_tot : forall p1 p2 p,
+  pfx_le p1 p -> pfx_le p2 p -> pfx_le p1 p2 \/ pfx_le p2 p1.
+Proof.
+  intros. assert (Hor: pfx_len p1 <= pfx_len p2 \/ pfx_len p2 <= pfx_len p1) by lia.
+  destruct Hor; [ left | right ]; apply pfx_lele_len_ord with (p:=p); assumption.
+Qed.
+
+Lemma pfx_meet_le_both : forall p p1 p2,
+  pfx_le p p1 -> pfx_le p p2 -> pfx_le p (pfx_meet p1 p2).
+Proof.
+  intros. apply pfx_meet_spec. tauto.
+Qed.
+
+Lemma pfx_meet_le_l : forall p1 p2, pfx_le (pfx_meet p1 p2) p1.
+Proof.
+  intros. eapply proj1. rewrite <- pfx_meet_spec. eapply pfx_le_reflx.
+Qed.
+
+Lemma pfx_meet_le_r : forall p1 p2, pfx_le (pfx_meet p1 p2) p2.
+Proof.
+  intros. eapply proj2. rewrite <- pfx_meet_spec. eapply pfx_le_reflx.
+Qed.
+
+(* TODO: consider using a hint database for the `auto`s and `eauto`s below *)
+
+Lemma pfx_meet_id : forall p, pfx_meet p p = p.
+Proof.
+  auto using pfx_le_asym, pfx_meet_le_l, pfx_le_reflx, pfx_meet_le_both.
+Qed.
+
+Lemma pfx_meet_comm : forall p1 p2, pfx_meet p1 p2 = pfx_meet p2 p1.
+Proof.
+  auto using pfx_le_asym, pfx_meet_le_both, pfx_meet_le_l, pfx_meet_le_r.
+Qed.
+
+Lemma pfx_meet_assoc : forall p1 p2 p3,
+  pfx_meet (pfx_meet p1 p2) p3 = pfx_meet p1 (pfx_meet p2 p3).
+Proof.
+  eauto 10
+    using pfx_le_asym, pfx_meet_le_both, pfx_meet_le_l, pfx_meet_le_r, pfx_le_trans.
+Qed.
+
+Lemma pfx_meet_nil_l : forall p, pfx_meet pfx_nil p = pfx_nil.
+Proof.
+  auto using pfx_le_asym, pfx_meet_le_l, pfx_le_nil.
+Qed.
+
+Lemma pfx_meet_nil_r : forall p, pfx_meet p pfx_nil = pfx_nil.
+Proof.
+  auto using pfx_le_asym, pfx_meet_le_r, pfx_le_nil.
+Qed.
+
+Lemma pfx_meet_le_meet_l : forall p1 p2 p,
+  pfx_le p1 p2 -> pfx_le (pfx_meet p1 p) (pfx_meet p2 p).
+Proof.
+  eauto 10
+    using pfx_le_asym, pfx_meet_le_both, pfx_meet_le_l, pfx_meet_le_r, pfx_le_trans.
+Qed.
+
+Lemma pfx_meet_le_meet_r : forall p1 p2 p,
+  pfx_le p1 p2 -> pfx_le (pfx_meet p p1) (pfx_meet p p2).
+Proof.
+  eauto 10
+    using pfx_le_asym, pfx_meet_le_both, pfx_meet_le_l, pfx_meet_le_r, pfx_le_trans.
+Qed.
+
+Lemma pfx_meet_le_eq : forall p1 p2, pfx_le p1 p2 -> pfx_meet p1 p2 = p1.
+Proof.
+  auto using pfx_le_asym, pfx_meet_le_both, pfx_meet_le_l, pfx_le_reflx.
+Qed.
+
+Lemma pfx_meet_le_eq' : forall p1 p2, pfx_le p1 p2 -> pfx_meet p2 p1 = p1.
+Proof.
+  auto using pfx_le_asym, pfx_meet_le_both, pfx_meet_le_r, pfx_le_reflx.
+Qed.
+
+Lemma pfx_snoc_ext_le : forall p1 p2 b,
+  pfx_le p1 p2 -> pfx_bit p2 (pfx_len p1) = Some b -> pfx_le (pfx_snoc p1 b) p2.
+Proof.
+  intros. rewrite <- pfx_le_spec. rewrite pfx_snoc_len. steps.
+  destruct (i =? pfx_len p1) eqn:E; steps.
+  - subst. rewrite pfx_snoc_bit. steps.
+  - pose proof (pfx_snoc_le p1 b) as Hsl. rewrite <- pfx_le_spec in Hsl.
+    specialize (Hsl i). prove_ante Hsl. lia.
+    match goal with
+    | H: pfx_le _ _ |- _ => rewrite <- pfx_le_spec in H; specialize (H i); prove_ante H
+    end.
+    lia. congruence.
+Qed.
+
+Lemma pfx_snoc_le_self : forall p b, ~pfx_le (pfx_snoc p b) p.
+Proof.
+  intros. intro Hle. apply pfx_le_len in Hle. rewrite pfx_snoc_len in Hle. lia.
+Qed.
+
+Lemma pfx_emb_inj : forall k1 k2, pfx_emb k1 = pfx_emb k2 -> k1 = k2.
+Proof.
+  intros. apply bit_at_inj. intros.
+  match goal with
+  | H: pfx_emb _ = pfx_emb _ |- _ => f_apply (fun p => pfx_bit p i) H
+  end.
+  do 2 rewrite pfx_emb_spec in *; steps.
+Qed.
+
+Lemma pfx_meet_neq_emb_len : forall w1 w2,
+  w1 <> w2 -> pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2)) < 32.
+Proof.
+  intros.
+  match goal with
+  | |- ?l < 32 => assert (Hb: l <= 32);
+       [ rewrite <- (pfx_emb_len w1); apply pfx_le_len; apply pfx_meet_le_l
+       | enough (l <> 32) by lia ]; clear Hb
+  end.
+  intro. apply_ne. assert (pfx_meet (pfx_emb w1) (pfx_emb w2) = pfx_emb w1). {
+    apply pfx_lele_len_eq with (p:=pfx_emb w1). apply pfx_meet_le_l.
+    apply pfx_le_reflx. rewrite pfx_emb_len. congruence. }
+  assert (pfx_meet (pfx_emb w1) (pfx_emb w2) = pfx_emb w2). {
+    apply pfx_lele_len_eq with (p:=pfx_emb w2). apply pfx_meet_le_r.
+    apply pfx_le_reflx. rewrite pfx_emb_len. congruence. }
+  apply pfx_emb_inj. congruence.
+Qed.
+
+Lemma pfx_meet_emb_bit_at_len : forall w1 w2,
+  w1 <> w2 ->
+  bit_at w1 (pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2))) <>
+  bit_at w2 (pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2))).
+Proof.
+  intros. intro. eassert _. { apply pfx_meet_neq_emb_len. eassumption. }
+  apply (pfx_snoc_le_self (pfx_meet (pfx_emb w1) (pfx_emb w2))
+         (bit_at w1 (pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2))))).
+  rewrite pfx_meet_spec. split; apply pfx_snoc_ext_le;
+    try apply pfx_meet_le_l; try apply pfx_meet_le_r.
+  apply pfx_emb_spec.
+  pose proof (pfx_len_nneg (pfx_meet (pfx_emb w1) (pfx_emb w2))). lia.
+  match goal with
+  | H: bit_at _ _ = bit_at _ _ |- _ => rewrite H
+  end.
+  apply pfx_emb_spec.
+  pose proof (pfx_len_nneg (pfx_meet (pfx_emb w1) (pfx_emb w2))). lia.
+Qed.
+
+Lemma pfx_meet_bit_diff_len : forall k1 k2 i b1 b2,
+  0 <= i -> bit_at k1 i = b1 -> bit_at k2 i = b2 -> b1 <> b2 ->
+  pfx_len (pfx_meet (pfx_emb k1) (pfx_emb k2)) <= i.
+Proof.
+  intros.
+  enough (~(i < pfx_len (pfx_meet (pfx_emb k1) (pfx_emb k2)))) by lia. intro.
+  apply_ne. steps.
+  pose proof (pfx_meet_le_l (pfx_emb k1) (pfx_emb k2)).
+  pose proof (pfx_meet_le_r (pfx_emb k1) (pfx_emb k2)).
+  eassert (Hle: _). eapply pfx_le_len. apply pfx_meet_le_l.
+  erewrite pfx_emb_len in Hle. instantiate (2:=k1) in Hle.
+  instantiate (1:=pfx_emb k2) in Hle.
+  do 2 match goal with
+       | H: pfx_le _ _ |- _ =>
+            rewrite <- pfx_le_spec in H; specialize (H i); prove_ante H; [ lia | ];
+            rewrite pfx_emb_spec in H by lia
+       end.
+  congruence.
+Qed.
+
+Lemma pfx_cb_charac : forall k1 k2 n,
+  0 <= n < 32 ->
+  (forall i, 0 <= i < n -> bit_at k1 i = bit_at k2 i) -> bit_at k1 n <> bit_at k2 n ->
+  pfx_len (pfx_meet (pfx_emb k1) (pfx_emb k2)) = n.
+Proof.
+  intros. apply Z.le_antisymm.
+  - eapply pfx_meet_bit_diff_len. lia. reflexivity. reflexivity. assumption.
+  - eq_neq_cases k1 k2; subst; steps.
+    eassert _. { apply pfx_meet_emb_bit_at_len. eassumption. }
+    match goal with
+    | H: bit_at _ (pfx_len ?pl) <> bit_at _ _ |- _ =>
+         pose proof (pfx_len_nneg pl); remember (pfx_len pl) as l; clear Heql
+    end.
+    enough (~(l < n)) by lia. intro.
+    apply_ne. apply_forall. lia.
+Qed.
 
 Lemma pfx_meet_left_emb_len_bound : forall p w,
   pfx_len (pfx_meet (pfx_emb w) p) <= 32.
@@ -812,7 +950,6 @@ Ltac pfx_step :=
   | |- context [ pfx_meet _ pfx_nil ] => rewrite pfx_meet_nil_r
   | H: context [ pfx_meet ?p ?p ] |- _ => rewrite pfx_meet_id in H
   | |- context [ pfx_meet ?p ?p ] => rewrite pfx_meet_id
-  | |- pfx_bit (pfx_emb ?k) ?i (bit_at ?k ?i) => apply pfx_bit_bit_at_emb
   | |- pfx_le (pfx_meet ?p _) ?p => apply pfx_meet_le_l
   | |- pfx_le (pfx_meet _ ?p) ?p => apply pfx_meet_le_r
   | |- pfx_le ?p ?p => apply pfx_le_reflx
@@ -1547,19 +1684,14 @@ Proof.
   intros. eq_neq_cases k0 k1; [ assumption | exfalso ].
   eassert _ by (apply (pfx_mmeet_nonsingle_len c k0 k1); assumption).
   assert (Hcontr: pfx_le (pfx_snoc (pfx_mmeet c) (negb b)) (pfx_mmeet c)). {
-    apply pfx_mmeet_all_le. steps. steps. apply pfx_snoc_le. steps.
-    eassert (Hbor: _). { eapply pfx_bit_or with (i:=pfx_len (pfx_mmeet c))
-                                                 (p:=pfx_emb k).
-      steps. pose proof (pfx_len_nneg (pfx_mmeet c)). lia. }
-    destruct b, Hbor; steps; exfalso;
+    apply pfx_mmeet_all_le. steps. steps. apply pfx_snoc_ext_le. steps.
+    rewrite pfx_emb_spec; [ steps | pose proof (pfx_len_nneg (pfx_mmeet c)); lia ].
     match goal with
-    | H: pfx_bit _ _ _ |- _ => apply pfx_bit_emb_bit_at in H
-    end;
-    match goal with
-    | H: ?hc = map.empty |- _ =>
-         assert (map.get hc k <> None); [ rewrite half_subcontent_get; steps | ];
-         rewrite H in *; steps
-    end. }
+    | H: half_subcontent _ _ = map.empty |- _ =>
+         f_apply (fun m: word_map => map.get m k) H; rewrite half_subcontent_get in H
+    end.
+    steps. destruct (Bool.eqb (bit_at k (pfx_len (pfx_mmeet c))) b) eqn:E; steps.
+    apply Bool_neq_eq_negb in E. steps. }
   apply pfx_snoc_le_self in Hcontr. steps.
 Qed.
 
@@ -1608,8 +1740,8 @@ Proof.
         eassert _. { apply (pfx_mmeet_nonsingle_len c k0 k1); steps.
           intro. subst. steps. }
         pose proof (pfx_len_nneg (pfx_mmeet c)). lia. }
-      eapply pfx_meet_bit_diff_len.
-      1-2: apply pfx_bit_bit_at_emb; assumption.
+      eapply pfx_meet_bit_diff_len. lia.
+      1-2: reflexivity.
       match goal with
       | H: _ = negb _ |- _ => rewrite H
       end.
@@ -1798,43 +1930,6 @@ Ltac hyps_to_with_mem := repeat match goal with
 
 Ltac add_dummy_mem_def_hyp m := assert (mmap.Def m = mmap.Def m) by reflexivity.
 
-(*
-Lemma map_get_putmany_not_left : forall (m1 m2 : word_map) (k : word),
-    map.get m1 k = None -> map.get (map.putmany m1 m2) k = map.get m2 k.
-Proof.
-  intros. destruct (map.get m2 k) eqn:E. erewrite map.get_putmany_right. reflexivity.
-  assumption. erewrite map.get_putmany_left; assumption.
-Qed.
-
-Lemma map_disjoint_singleton_l: forall (m: word_map) k v,
-  map.get m k = None -> map.disjoint (map.singleton k v) m.
-Proof.
-  intros. unfold map.singleton. apply map.disjoint_put_l. assumption.
-  apply map.disjoint_empty_l.
-Qed.
-
-Lemma map_disjoint_singleton_r: forall (m: word_map) k v,
-  map.get m k = None -> map.disjoint m (map.singleton k v).
-Proof.
-  intros. unfold map.singleton. apply map.disjoint_put_r. assumption.
-  apply map.disjoint_empty_r.
-Qed.
-
-Lemma map_putmany_singleton_l: forall (m: word_map) k v,
-  map.get m k = None -> map.putmany (map.singleton k v) m = map.put m k v.
-Proof.
-  intros. unfold map.singleton. rewrite <- map_put_putmany_left.
-  rewrite map.putmany_empty_l. reflexivity. assumption.
-Qed.
-
-Lemma map_putmany_singleton_r: forall (m: word_map) k v,
-  map.putmany m (map.singleton k v) = map.put m k v.
-Proof.
-  intros. unfold map.singleton. rewrite <- map_put_putmany_right.
-  rewrite map.putmany_empty_r. reflexivity.
-Qed.
-*)
-
 Ltac destruct_array_0 H :=
   unfold anyval in H; destruct H as [? H]; apply array_0_is_emp in H; [ | reflexivity ];
   unfold emp in H; destruct H.
@@ -1999,15 +2094,12 @@ Proof.
     | |- _ < pfx_len ?rhs =>
       assert (Hlp: pfx_le (pfx_snoc (pfx_mmeet c) (bit_at k (pfx_len (pfx_mmeet c)))) rhs)
     end.
-    { apply pfx_snoc_le. steps.
-    (* FIXME: the `pfx_bit_meet` lemma is false *) apply pfx_bit_meet. steps.
-    eassert (Hpb: pfx_bit _ _ _). {
-      apply (pfx_bit_bit_at_emb (cbt_best_lookup (Node sk1 sk2) c k)
-                                (pfx_len (pfx_mmeet c))).
-      pose proof (pfx_len_nneg (pfx_mmeet c)). lia. } simpl cbt_best_lookup in *.
-    simpl acbt in *. steps. destruct (bit_at k (pfx_len (pfx_mmeet c))) eqn:E;
-    (eassert (Hbeq: bit_at _ _ = _); [ | rewrite Hbeq in Hpb; exact Hpb ];
-    apply half_subcontent_in_bit; steps). }
+    { apply pfx_meet_le_both; apply pfx_snoc_ext_le; steps.
+      - apply pfx_emb_spec. steps.
+      - eapply proj2. apply pfx_meet_spec. eassumption.
+      - rewrite pfx_emb_spec; steps. simpl cbt_best_lookup in *. simpl acbt in *. steps.
+        destruct (bit_at k (pfx_len (pfx_mmeet c)));
+        apply half_subcontent_in_bit; steps. }
     apply pfx_le_len in Hlp. rewrite pfx_snoc_len in Hlp. lia.
 Qed.
 
@@ -2450,12 +2542,8 @@ Derive critical_bit SuchThat (fun_correct! critical_bit) As critical_bit_ok.    
   { match goal with | H: forall _, _ |- _ => apply H end. lia. } .**/
   return i;                                                                /**. .**/
 }                                                                          /**.
-  symmetry. apply pfx_cb_charac.
-  { steps. apply pfx_bit_bit_at_emb. steps.
-  match goal with | H: forall _, _ |- _ => rewrite H end.
-  apply pfx_bit_bit_at_emb. steps. steps. }
-  { steps. 2: apply pfx_bit_bit_at_emb; steps. 2: apply pfx_bit_bit_at_emb; steps.
-  unzify. destruct_or. assert (Hui: \[i] = 31) by lia. rewrite Hui in *. intro.
+  symmetry. apply pfx_cb_charac; steps.
+  { unzify. destruct_or. assert (Hui: \[i] = 31) by lia. rewrite Hui in *. intro.
   match goal with
   | H: k1 <> k2 |- _ => apply H
   end.
