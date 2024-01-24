@@ -2323,9 +2323,6 @@ Derive cbt_init SuchThat (fun_correct! cbt_init) As cbt_init_ok.                
   unfold cbt. to_with_mem_hyps. add_dummy_mem_def_hyp m. steps.
 Qed.
 
-Set Ltac Profiling.
-Reset Ltac Profile.
-
 #[export] Instance spec_of_cbt_update_or_best: fnspec :=                        .**/
 
 uintptr_t cbt_update_or_best(uintptr_t tp, uintptr_t k, uintptr_t v) /**#
@@ -2398,8 +2395,6 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   simpl. apply map_some_key_singleton. clear Error. simpl cbt'. steps. .**/
 }                                                                           /**.
 Qed.
-
-Show Ltac Profile.
 
 #[export] Instance spec_of_cbt_lookup_impl: fnspec :=                           .**/
 uintptr_t cbt_lookup_impl(uintptr_t tp, uintptr_t k, uintptr_t val_out) /**#
