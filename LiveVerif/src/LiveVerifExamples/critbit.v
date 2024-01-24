@@ -2810,14 +2810,15 @@ Derive cbt_delete_from_nonleaf SuchThat
   move R before Scope2.
 
   match goal with
-  | H1: ?mL |= cbt' skL _ _,
-    H2: ?mR |= cbt' skR _ _ |- _ =>
-    remember (if brc then mR else mL) as mcur;
-    remember (if brc then mL else mR) as msib;
-    assert (mcur |= cbt' skC (half_subcontent c brc) cur) by (destruct brc; congruence);
-    assert (msib |= cbt' skS (half_subcontent c (negb brc)) sib)
-       by (destruct brc; simpl negb; congruence)
+  | H1: ?mL' |= cbt' skL _ _,
+    H2: ?mR' |= cbt' skR _ _ |- _ => rename mL' into mL; rename mR' into mR
   end.
+
+  remember (if brc then mR else mL) as mcur.
+  remember (if brc then mL else mR) as msib.
+  assert (mcur |= cbt' skC (half_subcontent c brc) cur) by (destruct brc; congruence).
+  assert (msib |= cbt' skS (half_subcontent c (negb brc)) sib)
+     by (destruct brc; simpl negb; congruence).
 
   match goal with
   | H: _ |= sepapps _ ?pp |- _ =>
@@ -2827,12 +2828,26 @@ Derive cbt_delete_from_nonleaf SuchThat
   end.
   purge aL. purge aR. purge skL. purge skR.
 
+  (* Why we need the following manual heaplet manipulation? *)
+  (* We have the local variables cur and sib which point to subtrees of our CBT.
+     In the if-block above, cur/sib is initialized to point to the
+     left/right or right/left subtree depending on the value of a boolean flag.
+     However, after this if-block, the heaplets are organized in a way that there is
+     one heaplet (mL) with the left subtree, which is the cur or the sib subtree
+     depending on the value of the flag, and, similarly, there is another heaplet
+     (mR) with the right subtree, which again might be both cur or sib depending
+     on the flag. In such a situation, accessing the memory of the cur (or sib)
+     subtree is cumbersome because the framework cannot (cannot because it's
+     impossible with an indeterminate value of the flag) figure out whether that is an
+     access in mL or in mR.
+     So here, we just replace mL and mR with mcur and msib, where mcur is defined
+     as `if flag then mR else mL` and similarly for msib *)
   rewrite mmap.du_comm in D. rewrite <- mmap.du_assoc in D.
   rewrite <- mmap.du_assoc in D.
-  replace ((m2 ||| m1) ||| m3) with (m2 ||| mcur ||| msib) in D; cycle 1.
+  replace ((m2 ||| mL) ||| mR) with (m2 ||| mcur ||| msib) in D; cycle 1.
   do 2 rewrite mmap.du_assoc. f_equal. subst mcur. subst msib.
   destruct brc. apply mmap.du_comm. reflexivity.
-  purge m1. purge m3.
+  purge mL. purge mR.
 
   match goal with
   | H: par = tp |- _ => rewrite <- H in *; rewrite H at 2; clear H
