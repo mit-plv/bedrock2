@@ -721,8 +721,8 @@ Ltac default_careful_reflexivity_step :=
       lazymatch goal with
       | |- _ (sepapps _ _) (sepapps _ _) => idtac
       end
-  | |- uintptr ?l = uintptr ?r => eapply f_equal
-  | |- uint ?nbits ?l = uint ?nbits ?r => eapply f_equal
+  | |- eq (uintptr _) (uintptr _) => eapply f_equal
+  | |- eq (uint ?nbits _) (uint ?nbits _) => eapply f_equal
   | |- _ ?l ?r => subst l
   | |- _ ?l ?r => subst r
   | |- _ => turn_relation_into_eq; syntactic_f_equal_with_ZnWords
