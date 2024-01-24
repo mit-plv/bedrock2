@@ -1426,10 +1426,9 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   apply same_prefix_bits_equality. 2: assumption.
   enough (is_prefix_key pr k'). steps.
   apply_key_prefix_hyp. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. instantiate (2:=c). instantiate (3:=pr).
-  repeat clear_array_0.
+  step. step. step. step. step. step. step. step. step.
+  instantiate (2:=c). instantiate (3:=pr). step. step. step. step. steps.
+  step. repeat clear_array_0.
   simpl cbt' in *. instantiate (2:=full_prefix k). instantiate (1:=map.singleton k v).
   destruct sk; simpl cbt'; steps; cbn; steps. subst. steps.
   unfold is_canonic. unfold canonic_bits. cbn. rewrite clip_prefix_bits; steps.
@@ -1558,14 +1557,11 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   apply same_prefix_bits_equality. 2: assumption.
   enough (is_prefix_key pr k'). steps.
   apply_key_prefix_hyp. step. simpl cbt' in *. simpl length.
-  step. step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step. steps.
   step. step. step. step. step. step. step. step. step. step. step.
   repeat match goal with
   | H: _ /\ _ |- _ => destruct H; idtac H
-  end. subst. step. step.
-  step. step. step. step. step. step. step.
-  step. step. step. step. step. step.
-  step. unfold canceling. unfold seps. step. step.
+  end. subst. unfold canceling. unfold seps. step. step.
   2: apply I.
   step. step. apply sep_comm.
   step. step. step. step.
