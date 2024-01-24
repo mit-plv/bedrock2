@@ -2777,10 +2777,10 @@ uintptr_t cbt_delete_from_nonleaf(uintptr_t tp, uintptr_t k) /**#
                      * cbt' (Node skL skR) c tp
                      * R }> m;
   ensures t' m' res := t' = t
-                /\ if word.eqb res /[0] then
-                      map.get c k = None
-                   else
-                      map.get c k <> None
+                /\ res = /[match map.get c k with
+                           | Some _ => 1
+                           | None => 0
+                           end]
                 /\ <{ * allocator
                       * (EX sk', cbt' sk' (map.remove c k) tp)
                       * R }> m' #**/                                       /**.
@@ -2868,9 +2868,7 @@ Derive cbt_delete_from_nonleaf SuchThat
                       + uintptr (if brc then sib' else par)
                       + uintptr (if brc then par else sib') }> par'
                  * cbt' _ _ sib' }>).
-  unpurify. steps.
-  apply eq_None_by_false. intro HnN. apply half_subcontent_get_nNone in HnN.
-  apply HnN. subst brc. steps.
+  unpurify. steps. subst. rewrite half_subcontent_get. steps.
   clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
   unpurify. destruct brc eqn:E; simpl cbt'; steps.
 
@@ -2915,8 +2913,7 @@ Derive cbt_delete_from_nonleaf SuchThat
                           + uintptr (if brc then sib' else par)
                           + uintptr (if brc then par else sib') }> par'
                      * cbt' _ _ sib' }>).
-  steps. apply eq_None_by_false. intro HnN.
-  apply half_subcontent_get_nNone in HnN. apply HnN. subst brc. steps.
+  unpurify. steps. subst. rewrite half_subcontent_get. steps.
   clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
 
   destruct brc eqn:E; simpl cbt'; unpurify; steps.
@@ -2965,11 +2962,11 @@ Derive cbt_delete_from_nonleaf SuchThat
     cbt_raw_node_free(sib);                                                /**. .**/
     return 1;                                                              /**. .**/
   }                                                                        /**.
-  hwlia.
+  assert (map.get c k <> None). {
   eapply map_extends_get_nnone. apply half_subcontent_extends.
   match goal with
   | H: half_subcontent _ _ = map.singleton _ _ |- _ => rewrite H
-  end. steps.
+  end. steps. } destruct (map.get c k); steps.
   clear Error. instantiate (1:=skS).
   replace (map.remove c k) with (half_subcontent c (negb brc)); cycle 1.
   { eapply half_subcontent_removed_half_leaf. eassumption. }
@@ -2978,15 +2975,21 @@ Derive cbt_delete_from_nonleaf SuchThat
   | H: half_subcontent c (negb brc) = map.singleton _ _ |- _ => rewrite H
   end. steps. .**/
   else {                                                                   /**. .**/
-    return 0;                                                              /**. .**/
-  }                                                                        /**.
+    return 0;                                                              /**.
+  assert (Hgn: map.get c k = None). {
   apply eq_None_by_false. intro HnN. apply half_subcontent_get_nNone in HnN.
   match goal with
   | H: brc = bit_at _ _ |- _ => rewrite <- H in HnN
   end.
   match goal with
   | H: half_subcontent c brc = map.singleton _ _ |- _ => rewrite H in HnN
-  end. steps. .**/
+  end. steps. } .**/
+  }                                                                        /**.
+  clear Error.
+  replace (map.remove c k) with c by
+    (symmetry; apply map.remove_not_in; assumption).
+  instantiate (1:=if brc then Node skS Leaf else Node Leaf skS).
+  destruct brc; simpl cbt'; steps. .**/
 }                                                                          /**.
 Qed.
 
@@ -2999,12 +3002,10 @@ uintptr_t cbt_delete(uintptr_t tpp, uintptr_t k) /**#
                      * cbt c tp
                      * R }> m;
   ensures t' m' res := t' = t
-                    (* TODO: make this more specific to guarantee more
-                             -> 1 instead of just a non-zero *)
-                /\ if word.eqb res /[0] then
-                      map.get c k = None
-                   else
-                      map.get c k <> None
+                /\ res = /[match map.get c k with
+                           | Some _ => 1
+                           | None => 0
+                           end]
                 /\ <{ * allocator
                       * (EX tp', <{ * uintptr tp' tpp
                                     * cbt (map.remove c k) tp' }>)
@@ -3032,11 +3033,11 @@ Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          
         cbt_raw_node_free(tp);                                             /**. .**/
         store(tpp, 0);                                                     /**. .**/
         return 1;                                                          /**. .**/
-      }                                                                    /**.
-  hwlia. .**/
+      }                                                                    /**. .**/
       else {                                                               /**. .**/
         return 0;                                                          /**. .**/
-      }                                                                    /**. .**/
+      }                                                                    /**.
+  clear Error. instantiate (1:=Leaf). simpl cbt'. steps. .**/
     }                                                                      /**. .**/
     else {                                                                 /**.
   destruct tree. { exfalso. steps. } .**/
