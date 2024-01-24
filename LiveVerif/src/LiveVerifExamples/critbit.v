@@ -293,6 +293,12 @@ Proof.
   intros. destruct b1, b2; steps.
 Qed.
 
+(* 12 because it comes up as the size (in bytes) of a CBT node allocation *)
+Lemma unsigned_of_Z_12 : \[/[12]] = 12.
+Proof.
+  hwlia.
+Qed.
+
 Ltac misc_simpl_step :=
   match goal with
   | H: context [ negb ?c ] |- _ => is_constructor c; simpl negb in H
@@ -318,6 +324,8 @@ Ltac misc_simpl_step :=
   | |- context [ \[/[0]] ] => rewrite word.unsigned_of_Z_0
   | H: context [ \[/[1]] ] |- _ => rewrite word.unsigned_of_Z_1 in H
   | |- context [ \[/[1]] ] => rewrite word.unsigned_of_Z_1
+  | H: context [ \[/[12]] ] |- _ => rewrite unsigned_of_Z_12 in H
+  | |- context [ \[/[12]] ] => rewrite unsigned_of_Z_12
 
   | H: context[ if false then _ else _ ] |- _ => cbv iota in H
   | |- context[ if false then _ else _ ] => cbv iota
@@ -2207,9 +2215,7 @@ Derive cbt_raw_node_free SuchThat (fun_correct! cbt_raw_node_free)
   As cbt_raw_node_free_ok.                                                      .**/
 {                                                                          /**. .**/
   Free(node);                                                              /*?.
-  instantiate (5:=/[12]).
-  (* TODO: move to `step_hook` (?) *) replace \[/[12]] with 12 by hwlia.
-  steps. .**/
+  instantiate (5:=/[12]). steps. .**/
 }                                                                          /**.
 
   (* FIXME: this should probably be done more automatically *)
