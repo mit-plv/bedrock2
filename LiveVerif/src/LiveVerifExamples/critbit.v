@@ -2681,15 +2681,14 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
         apply pfx_le_asym; steps. apply pfx_lele_len_ord with (pfx_mmeet c); steps. }
       rewrite Hpeq. steps. }
     lia. }
-  replace (half_subcontent (map.put c k v) false) with c. steps. clear Error.
-  unfold canceling. simpl seps. split; [ | apply I ]. intros.
+  replace (half_subcontent (map.put c k v) false) with c. steps.
+  rewrite pfx_mmeet_put. steps. steps.
+  clear Error. unfold canceling. simpl seps. split; [ | apply I ]. intros.
   apply sep_comm. clear D. simpl cbt' in *. steps.
   subst. apply half_subcontent_put_excl_key. lia.
   congruence. clear Error. steps. clear Error.
-  destruct sk; simpl cbt' in *; steps. rewrite pfx_mmeet_put.
-  steps. steps. symmetry.
-  apply half_subcontent_put_excl_bulk. lia. steps. congruence.
-   (* TODO: investigate why many duplicated hypotheses *) .**/
+  destruct sk; simpl cbt' in *; steps.  symmetry.
+  apply half_subcontent_put_excl_bulk. lia. steps. congruence. .**/
       else {                                                                  /**. .**/
         store(p + 4, new_leaf);                                               /**. .**/
         store(p + 8, new_node);                                               /**. .**/
@@ -2717,9 +2716,9 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
       rewrite Hpeq. steps. }
     lia. }
   replace (half_subcontent (map.put c k v) true) with c. simpl cbt' in *. steps.
-  subst. apply half_subcontent_put_excl_key. lia. congruence.
-  clear Error. destruct sk; simpl cbt' in *; steps. subst.
-  rewrite pfx_mmeet_put. steps. steps. symmetry.
+  subst. rewrite pfx_mmeet_put. steps. steps. subst.
+  apply half_subcontent_put_excl_key. lia. congruence.
+  clear Error. destruct sk; simpl cbt' in *; steps. subst. symmetry.
   apply half_subcontent_put_excl_bulk. steps. steps. congruence. .**/
     }                                                                         /**. .**/
   }                                                                           /**. .**/
@@ -2876,6 +2875,11 @@ Derive cbt_delete_from_nonleaf SuchThat
   unpurify. destruct brc eqn:E; simpl cbt'; steps.
 
   (* TODO: move at least some of the steps in the proof code below into step_hook *)
+  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). congruence.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps.
+
   pose proof (half_subcontent_remove_other c k true) as Hhcr. steps. rewrite Hhcr.
   steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
@@ -2886,7 +2890,7 @@ Derive cbt_delete_from_nonleaf SuchThat
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
-  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). congruence.
+  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
@@ -2898,11 +2902,6 @@ Derive cbt_delete_from_nonleaf SuchThat
 
   pose proof (half_subcontent_remove_other c k false) as Hhcr. steps.
   rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
-  rewrite half_subcontent_get. steps.
-
-  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). congruence.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps. .**/
     else {                                                                 /**. .**/
@@ -2922,6 +2921,11 @@ Derive cbt_delete_from_nonleaf SuchThat
 
   destruct brc eqn:E; simpl cbt'; unpurify; steps.
 
+  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). congruence.
+  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
+  rewrite half_subcontent_get. steps.
+
   pose proof (half_subcontent_remove_other c k true) as Hhcr. steps.
   rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
@@ -2932,7 +2936,7 @@ Derive cbt_delete_from_nonleaf SuchThat
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
-  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). congruence.
+  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). congruence.
   eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
@@ -2944,11 +2948,6 @@ Derive cbt_delete_from_nonleaf SuchThat
 
   pose proof (half_subcontent_remove_other c k false) as Hhcr. steps.
   rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
-  eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
-  rewrite half_subcontent_get. steps.
-
-  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). congruence.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps. .**/
   }                                                                        /**.

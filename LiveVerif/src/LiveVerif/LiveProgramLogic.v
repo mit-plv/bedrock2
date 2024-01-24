@@ -721,6 +721,8 @@ Ltac default_careful_reflexivity_step :=
       lazymatch goal with
       | |- _ (sepapps _ _) (sepapps _ _) => idtac
       end
+  | |- uintptr ?l = uintptr ?r => eapply f_equal
+  | |- uint ?nbits ?l = uint ?nbits ?r => eapply f_equal
   | |- _ ?l ?r => subst l
   | |- _ ?l ?r => subst r
   | |- _ => turn_relation_into_eq; syntactic_f_equal_with_ZnWords
@@ -1068,10 +1070,11 @@ Ltac predicates_safe_to_cancel hypPred conclPred :=
     [ predicates_safe_to_cancel_hook hypPred conclPred
     | lazymatch conclPred with
       | uintptr ?v2 => lazymatch hypPred with
-                       | uintptr ?v1 => is_evar v2; unify v1 v2
+                       | uintptr ?v1 => tryif is_evar v2 then unify v1 v2 else idtac
                        end
       | uint ?nbits ?v2 => lazymatch hypPred with
-                           | uint nbits ?v1 => is_evar v2; unify v1 v2
+                           | uint nbits ?v1 =>
+                               tryif is_evar v2 then unify v1 v2 else idtac
                            end
       | array ?elem ?n2 ?vs2 => lazymatch hypPred with
                                 | array elem ?n1 ?vs1 =>
@@ -1082,10 +1085,9 @@ Ltac predicates_safe_to_cancel hypPred conclPred :=
       | sepapps nil => lazymatch hypPred with
                        | sepapps nil => idtac
                        end
-      | sepapps (cons (mk_sized_predicate ?P2 ?Psize2) ?rest2) =>
+      | sepapps (cons (mk_sized_predicate ?P2 ?Psize) ?rest2) =>
             lazymatch hypPred with
-            | sepapps (cons (mk_sized_predicate ?P1 ?Psize1) ?rest1) =>
-               constr_eq Psize1 Psize2;
+            | sepapps (cons (mk_sized_predicate ?P1 Psize) ?rest1) =>
                tryif constr_eq P1 P2 then idtac else predicates_safe_to_cancel P1 P2;
                predicates_safe_to_cancel (sepapps rest1) (sepapps rest2)
             end
