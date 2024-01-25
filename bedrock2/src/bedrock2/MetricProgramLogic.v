@@ -1,9 +1,9 @@
 From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
 Require Import coqutil.Map.Interface.
 Require Import bedrock2.Syntax.
-Require Import bedrock2.WeakestPrecondition.
-Require Import bedrock2.WeakestPreconditionProperties.
-Require Import bedrock2.Loops.
+Require Import bedrock2.MetricWeakestPrecondition.
+Require Import bedrock2.MetricWeakestPreconditionProperties.
+Require Import bedrock2.MetricLoops.
 Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
 
 Definition spec_of (procname:String.string) := Semantics.env -> Prop.
@@ -140,7 +140,7 @@ Ltac straightline_cleanup :=
     destruct H
   end.
 
-Import WeakestPrecondition.
+Import MetricWeakestPrecondition.
 Import coqutil.Map.Interface.
 
 Ltac straightline_stackalloc :=
@@ -234,15 +234,15 @@ Ltac straightline :=
     | H: map.get ?functions ?fname = Some _ |- _ =>
         eapply start_func; [exact H | clear H]
     end;
-    cbv match beta delta [WeakestPrecondition.func]
-  | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
+    cbv match beta delta [MetricWeakestPrecondition.func]
+  | |- MetricWeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ _ ?post =>
     unfold1_cmd_goal; cbv beta match delta [cmd_body];
     let __ := match s with String.String _ _ => idtac | String.EmptyString => idtac end in
     ident_of_constr_string_cps s ltac:(fun x =>
       ensure_free x;
       (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
       letexists _ as x; split; [solve [repeat straightline]|])
-  | |- cmd _ ?c _ _ _ ?post =>
+  | |- cmd _ ?c _ _ _ _ ?post =>
     let c := eval hnf in c in
     lazymatch c with
     | cmd.while _ _ => fail
@@ -250,20 +250,20 @@ Ltac straightline :=
     | cmd.interact _ _ _ => fail
     | _ => unfold1_cmd_goal; cbv beta match delta [cmd_body]
     end
-  | |- @list_map _ _ (get _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
-  | |- @list_map _ _ (expr _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
-  | |- @list_map _ _ _ nil _ => cbv beta match fix delta [list_map list_map_body]
-  | |- expr _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
-  | |- dexpr _ _ _ _ => cbv beta delta [dexpr]
-  | |- dexprs _ _ _ _ => cbv beta delta [dexprs]
-  | |- literal _ _ => cbv beta delta [literal]
-  | |- @get ?w ?W ?L ?l ?x ?P =>
+  | |- @list_map _ _ (get _ _) _ _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @list_map _ _ (expr _ _) _ _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @list_map _ _ _ nil _ _ => cbv beta match fix delta [list_map list_map_body]
+  | |- expr _ _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
+  | |- dexpr _ _ _ _ _ => cbv beta delta [dexpr]
+  | |- dexprs _ _ _ _ _ => cbv beta delta [dexprs]
+  | |- literal _ _ _ => cbv beta delta [literal]
+  | |- @get ?w ?W ?L ?l ?x ?mc ?P =>
       let get' := eval cbv [get] in @get in
-      change (get' w W L l x P); cbv beta
-  | |- load _ _ _ _ => cbv beta delta [load]
-  | |- @Loops.enforce ?width ?word ?locals ?names ?values ?map =>
+      change (get' w W L l x mc P); cbv beta
+  | |- load _ _ _ _ _ => cbv beta delta [load]
+  | |- @MetricLoops.enforce ?width ?word ?locals ?names ?values ?map =>
     let values := eval cbv in values in
-    change (@Loops.enforce width word locals names values map);
+    change (@MetricLoops.enforce width word locals names values map);
     exact (conj (eq_refl values) eq_refl)
   | |- @eq (@coqutil.Map.Interface.map.rep String.string Interface.word.rep _) _ _ =>
     eapply SortedList.eq_value; exact eq_refl
@@ -307,6 +307,11 @@ Ltac straightline :=
   | |- exists x, ?P /\ ?Q =>
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
+  (* NOTE: metrics only case; maybe try to unify with non-metrics? *)
+  | |- exists x y, ?P /\ ?Q =>
+    eexists; eexists; split; [solve [repeat straightline]|]
+    (* eexists instead of letexists ensures unification of (?a,?b) = (const,const)
+       does not unfold the const aggressively (e.g. word to Naive) *)
   | |- exists x, Markers.split (?P /\ ?Q) =>
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
@@ -324,6 +329,7 @@ Ltac straightline :=
   | |- True => exact I
   | |- False \/ _ => right
   | |- _ \/ False => left
+  (*| |- (_, _) = (_, _) => exact eq_refl (* NOTE: metrics-only case *)*)
   | |- BinInt.Z.modulo ?z (Memory.bytes_per_word _) = BinInt.Z0 /\ _ =>
       lazymatch Coq.setoid_ring.InitialRing.isZcst z with
       | true => split; [exact eq_refl|]
@@ -337,17 +343,17 @@ Ltac straightline :=
 (* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
 Ltac straightline_call :=
   lazymatch goal with
-  | |- WeakestPrecondition.call ?functions ?callee _ _ _ _ =>
+  | |- MetricWeakestPrecondition.call ?functions ?callee _ _ _ _ =>
     let callee_spec := lazymatch constr:(_:spec_of callee) with ?s => s end in
     let Hcall := lazymatch goal with H: callee_spec functions |- _ => H end in
-    eapply WeakestPreconditionProperties.Proper_call; cycle -1;
+    eapply MetricWeakestPreconditionProperties.Proper_call; cycle -1;
       [ eapply Hcall | try eabstract (solve [Morphisms.solve_proper]) .. ];
       [ .. | intros ? ? ? ?]
   end.
 
 Ltac current_trace_mem_locals :=
   lazymatch goal with
-  | |- WeakestPrecondition.cmd _  _ ?t ?m ?l _ => constr:((t, m, l))
+  | |- MetricWeakestPrecondition.cmd _  _ ?t ?m ?l _ => constr:((t, m, l))
   end.
 
 Ltac seprewrite Hrw :=

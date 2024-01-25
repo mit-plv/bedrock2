@@ -6,6 +6,7 @@ Require Import coqutil.Map.Properties.
 Require Import coqutil.Tactics.destr.
 From bedrock2 Require Import Map.Separation Map.SeparationLogic.
 From bedrock2 Require Import Syntax MetricSemantics Markers.
+From bedrock2 Require Semantics.
 From bedrock2 Require Import MetricWeakestPrecondition MetricWeakestPreconditionProperties.
 
 Require Import bedrock2.MetricLogging.
@@ -13,109 +14,113 @@ Require Import bedrock2.MetricLogging.
 Section Loops.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
-  Context {ext_spec: ExtSpec}.
+  Context {ext_spec: Semantics.ExtSpec}.
   Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
   Context {locals_ok : map.ok locals}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Context {fs : env}.
+  Context {fs : Semantics.env}.
   Let call := fs.
 
-  Lemma wp_while: forall e c t m l (post: _ -> _ -> _ -> Prop),
-     (exists measure (lt:measure->measure->Prop) (inv:measure->trace->mem->locals->Prop),
+  Lemma wp_while: forall e c t m l mc (post: _ -> _ -> _ -> _ -> Prop),
+     (exists measure (lt:measure->measure->Prop) (inv:measure->Semantics.trace->mem->locals->MetricLog->Prop),
       Coq.Init.Wf.well_founded lt /\
-      (exists v, inv v t m l) /\
-      (forall v t m l, inv v t m l ->
-        exists b, dexpr m l e b /\
-        (word.unsigned b <> 0%Z -> cmd call c t m l (fun t' m l =>
-          exists v', inv v' t' m l /\ lt v' v)) /\
-        (word.unsigned b = 0%Z -> post t m l))) ->
-     cmd call (cmd.while e c) t m l post.
+      (exists v, inv v t m l mc) /\
+      (forall v t m l mc, inv v t m l mc ->
+        exists bv bmc, dexpr m l e mc (bv, bmc) /\
+        (word.unsigned bv <> 0%Z -> cmd call c t m l bmc (fun t' m l mc =>
+          exists v', inv v' t' m l (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc)))
+            /\ lt v' v)) /\
+        (word.unsigned bv = 0%Z -> post t m l
+          (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 bmc)))))) ->
+     cmd call (cmd.while e c) t m l mc post.
   Proof.
     intros. destruct H as (measure & lt & inv & Hwf & HInit & Hbody).
     destruct HInit as (v0 & HInit).
-    revert t m l HInit. pattern v0. revert v0.
+    revert t m l mc HInit. pattern v0. revert v0.
     eapply (well_founded_ind Hwf). intros.
-    specialize Hbody with (1 := HInit). destruct Hbody as (b & Hb & Ht & Hf).
-    eapply expr_sound in Hb. destruct Hb as (b' & Hb & ?). subst b'.
-    destr.destr (Z.eqb (word.unsigned b) 0).
-    - specialize Hf with (1 := E). eapply exec.while_false; eassumption.
+    specialize Hbody with (1 := HInit) (mc := mc). destruct Hbody as (bv & bmc & Hb & Ht & Hf).
+    eapply expr_sound in Hb. destruct Hb as (bv' & bmc' & Hb & Heq). inversion Heq. subst bv' bmc'.
+    destr.destr (Z.eqb (word.unsigned bv) 0).
+    - specialize Hf with (1 := E). eapply exec.while_false; try eassumption.
     - specialize Ht with (1 := E). eapply sound_cmd in Ht.
       eapply exec.while_true; eauto.
       cbv beta. intros * (v' & HInv & HLt). eapply sound_cmd. eauto.
   Qed.
 
   Lemma tailrec_localsmap_1ghost
-    {e c t} {m: mem} {l} {post : trace -> mem -> locals -> Prop}
+    {e c t} {m: mem} {l} {mc} {post : Semantics.trace -> mem -> locals -> MetricLog -> Prop}
     {measure: Type} {Ghost: Type}
-    (P Q: measure -> Ghost -> trace -> mem -> locals -> Prop)
+    (P Q: measure -> Ghost -> Semantics.trace -> mem -> locals -> MetricLog -> Prop)
     (lt: measure -> measure -> Prop)
     (Hwf: well_founded lt)
     (v0: measure) (g0: Ghost)
-    (Hpre: P v0 g0 t m l)
-    (Hbody: forall v g t m l,
-      P v g t m l ->
-      exists br, expr m l e (eq br) /\
-      (word.unsigned br <> 0%Z -> cmd call c t m l
-        (fun t' m' l' => exists v' g',
-          P v' g' t' m' l' /\
+    (Hpre: P v0 g0 t m l mc)
+    (Hbody: forall v g t m l mc,
+      P v g t m l mc ->
+      exists brv brmc, expr m l e mc (eq (brv, brmc)) /\
+      (word.unsigned brv <> 0%Z -> cmd call c t m l brmc
+        (fun t' m' l' mc' => exists v' g',
+          P v' g' t' m' l' (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc'))) /\
           lt v' v /\
-          (forall t'' m'' l'', Q v' g' t'' m'' l'' -> Q v g t'' m'' l''))) /\
-      (word.unsigned br = 0%Z -> Q v g t m l))
-    (Hpost: forall t m l, Q v0 g0 t m l -> post t m l)
-    : cmd call (cmd.while e c) t m l post.
+          (forall t'' m'' l'' mc'', Q v' g' t'' m'' l'' mc'' -> Q v g t'' m'' l'' mc''))) /\
+      (word.unsigned brv = 0%Z -> Q v g t m l
+        (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 brmc)))))
+    (Hpost: forall t m l mc, Q v0 g0 t m l mc -> post t m l mc)
+    : cmd call (cmd.while e c) t m l mc post.
   Proof.
     eapply wp_while.
-    eexists measure, lt, (fun v t m l =>
-      exists g, P v g t m l /\ forall t'' m'' l'', Q v g t'' m'' l'' -> Q v0 g0 t'' m'' l'').
+    eexists measure, lt, (fun v t m l mc =>
+      exists g, P v g t m l mc /\ forall t'' m'' l'' mc'', Q v g t'' m'' l'' mc'' -> Q v0 g0 t'' m'' l'' mc'').
     split; [assumption|].
     split; [solve[eauto]|].
-    intros vi ti mi li (gi & HPi & HQimpl).
-    specialize (Hbody vi gi ti mi li HPi).
-    destruct Hbody as (br & ? & Hbody). exists br; split; [assumption|].
+    intros vi ti mi li mci (gi & HPi & HQimpl).
+    specialize (Hbody vi gi ti mi li mci HPi).
+    destruct Hbody as (brv & brmc & ? & Hbody). exists brv, brmc; split; [assumption|].
     destruct Hbody as (Htrue & Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
     { eapply Proper_cmd; [ |eapply Hpc].
-      intros tj mj lj (vj& gj & HPj & Hlt & Qji); eauto 9. }
+      intros tj mj lj mcj (vj& gj & HPj & Hlt & Qji); eauto 9. }
     { eauto. }
   Qed.
 
   Lemma tailrec_localsmap_1ghost_parameterized_finalpost
-    {e c rest t} {m: mem} {l}
+    {e c rest t} {m: mem} {l mc}
     {measure: Type} {Ghost: Type}
-    (P Q: measure -> Ghost -> trace -> mem -> locals -> Prop)
+    (P Q: measure -> Ghost -> Semantics.trace -> mem -> locals -> MetricLog -> Prop)
     (lt: measure -> measure -> Prop)
     (Hwf: well_founded lt)
     (v0: measure) (g0: Ghost)
-    (Hpre: P v0 g0 t m l)
-    (Hbody: forall v g t m l,
-      P v g t m l ->
-      exists br, expr m l e (eq br) /\
-      (word.unsigned br <> 0%Z -> cmd call c t m l
-        (fun t' m' l' => exists v' g',
-          P v' g' t' m' l' /\
+    (Hpre: P v0 g0 t m l mc)
+    (Hbody: forall v g t m l mc,
+      P v g t m l mc ->
+      exists brv brmc, expr m l e mc (eq (brv, brmc)) /\
+      (word.unsigned brv <> 0%Z -> cmd call c t m l brmc
+        (fun t' m' l' mc' => exists v' g',
+          P v' g' t' m' l' (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc'))) /\
           lt v' v /\
-          (forall t'' m'' l'', Q v' g' t'' m'' l'' -> Q v g t'' m'' l''))) /\
-      (word.unsigned br = 0%Z -> cmd call rest t m l (Q v g)))
-    : cmd call (cmd.seq (cmd.while e c) rest) t m l (Q v0 g0).
+          (forall t'' m'' l'' mc'', Q v' g' t'' m'' l'' mc'' -> Q v g t'' m'' l'' mc''))) /\
+      (word.unsigned brv = 0%Z -> cmd call rest t m l
+        (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 brmc))) (Q v g)))
+    : cmd call (cmd.seq (cmd.while e c) rest) t m l mc (Q v0 g0).
   Proof.
     cbn. eapply tailrec_localsmap_1ghost with
-      (Q := fun v g t m l => cmd call rest t m l (Q v g)).
+      (Q := fun v g t m l mc => cmd call rest t m l mc (Q v g)).
     1: eassumption.
     1: exact Hpre.
     2: intros *; exact id.
-    intros vi gi ti mi li HPi.
-    specialize (Hbody vi gi ti mi li HPi).
-    destruct Hbody as (br & ? & Hbody). exists br; split; [assumption|].
+    intros vi gi ti mi li mci HPi.
+    specialize (Hbody vi gi ti mi li mci HPi).
+    destruct Hbody as (brv & brmc & ? & Hbody). exists brv, brmc; split; [assumption|].
     destruct Hbody as (Htrue & Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
     { eapply Proper_cmd; [ |eapply Hpc].
-      intros tj mj lj (vj& gj & HPj & Hlt & Qji). do 2 eexists.
+      intros tj mj lj mcj (vj& gj & HPj & Hlt & Qji). do 2 eexists.
       split. 1: eassumption. split. 1: assumption.
       intros.
       eapply Proper_cmd.
       2: eassumption.
-      intros tk mk lk HH. eapply Qji. assumption. }
+      intros tk mk lk mck HH. eapply Qji. assumption. }
     eapply Hpc.
   Qed.
 
@@ -180,31 +185,25 @@ Section Loops.
 
   Lemma while_localsmap
     {e c t l mc} {m : mem}
-    {measure : Type} (invariant:_->_->_-> _ -> _ -> Prop)
+    {measure : Type} (invariant:_->_->_->_->_->Prop)
     {lt} (Hwf : well_founded lt) (v0 : measure)
-    {post : _->_->_-> _ -> Prop}
+    {post : _->_->_->_-> Prop}
     (Hpre : invariant v0 t m l mc)
     (Hbody : forall v t m l mc,
       invariant v t m l mc ->
-      exists br mcnew, expr m l e mc (eq (Datatypes.pair br mcnew)) /\
-         (word.unsigned br <> 0 ->
-<<<<<<< HEAD
-          cmd fs c t m l (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
-         (word.unsigned br = 0 -> post t m l))
-    : cmd fs (cmd.while e c) t m l post.
+      exists brv brmc, expr m l e mc (eq (Datatypes.pair brv brmc)) /\
+         (word.unsigned brv <> 0 ->
+          cmd fs c t m l brmc (fun t m l mc => exists v',
+            invariant v' t m l (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc)))
+              /\ lt v' v)) /\
+         (word.unsigned brv = 0 -> post t m l
+           (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 brmc)))))
+    : cmd fs (cmd.while e c) t m l mc post.
   Proof.
     eapply wp_while.
-=======
-          cmd call c t m l mcnew (fun t m l mcnew' => exists v', invariant v' t m l (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mcnew'))) /\ lt v' v)) /\
-         (word.unsigned br = 0 -> post t m l (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 mcnew)))))
-    : cmd call (cmd.while e c) t m l mc post.
-  Proof.
-    
->>>>>>> 94c30cc1 (made rather a mess trying to get andy's metric stuff to work; commiting so I can ask andres for help)
     eexists measure, lt, invariant.
     split. 1: exact Hwf.
     split. 1: eauto.
-    
     exact Hbody.
   Qed.
 
@@ -220,14 +219,14 @@ Section Loops.
     (Hbody : forall v t m mc, tuple.foralls (fun localstuple =>
       tuple.apply (invariant v t m mc) localstuple ->
       let l := reconstruct variables localstuple in
-      exists br mcnew, expr m l e mc (eq (Datatypes.pair br mcnew)) /\
-         (word.unsigned br <> 0 ->
-          cmd call c t m l mcnew (fun t m l mcnew' =>
+      exists brv brmc, expr m l e mc (eq (Datatypes.pair brv brmc)) /\
+         (word.unsigned brv <> 0 ->
+          cmd call c t m l brmc (fun t m l mc =>
             Markers.unique (Markers.left (tuple.existss (fun localstuple =>
               enforce variables localstuple l /\
               Markers.right (Markers.unique (exists v',
-                tuple.apply (invariant v' t m (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mcnew')))) localstuple /\ lt v' v))))))) /\
-         (word.unsigned br = 0 -> post t m l (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 mcnew))))))
+                tuple.apply (invariant v' t m (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc)))) localstuple /\ lt v' v))))))) /\
+         (word.unsigned brv = 0 -> post t m l (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 brmc))))))
     : cmd call (cmd.while e c) t m l mc post.
   Proof.
     eapply (while_localsmap (fun v t m l mc =>
@@ -239,8 +238,8 @@ Section Loops.
     eapply hlist.foralls_forall in Hbody.
     specialize (Hbody Y).
     rewrite <-(reconstruct_enforce _ _ _ X) in Hbody.
-    destruct Hbody as (br & mcnew & Cond & Again & Done).
-    exists br. exists mcnew. split; [exact Cond|].
+    destruct Hbody as (brv & brmc & Cond & Again & Done).
+    exists brv. exists brmc. split; [exact Cond|].
 
     split; [|exact Done].
     intro NE. specialize (Again NE).
@@ -263,31 +262,27 @@ Section Loops.
     (v0 : measure)
     : hlist.foralls (fun (g0 : hlist ghosttypes) => forall
                          (Hpre : (tuple.apply (hlist.apply (spec v0) g0 t m) l0 mc).(1))
-                
+
     (Hbody : forall v, hlist.foralls (fun g => forall t m mc, tuple.foralls (fun l =>
       @dlet _ (fun _ => Prop) (reconstruct variables l) (fun localsmap : locals =>
       match tuple.apply (hlist.apply (spec v) g t m) l mc with S_ =>
       S_.(1) ->
-      Markers.unique (Markers.left (exists br mc', expr m localsmap e mc (eq (Datatypes.pair br mc')) /\ Markers.right (
-      (word.unsigned br <> 0%Z -> cmd call c t m localsmap mc'
-        (fun t' m' localsmap' mc'' =>
+      Markers.unique (Markers.left (exists brv brmc, expr m localsmap e mc (eq (Datatypes.pair brv brmc)) /\ Markers.right (
+      (word.unsigned brv <> 0%Z -> cmd call c t m localsmap brmc
+        (fun t' m' localsmap' mc' =>
           Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
           Markers.unique (Markers.left (hlist.existss (fun g' => exists v',
-          match tuple.apply (hlist.apply (spec v') g' t' m') l' (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc''))) with S' =>
+          match tuple.apply (hlist.apply (spec v') g' t' m') l' (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc'))) with S' =>
           S'.(1) /\ Markers.right (
             lt v' v /\
             forall T M, hlist.foralls (fun L => forall MC, tuple.apply (S'.(2) T M) L MC -> tuple.apply (S_.(2) T M) L MC)) end))))))))) /\
-      (word.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 mc')))))))end))))
+      (word.unsigned brv = 0%Z -> tuple.apply (S_.(2) t m) l (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 brmc)))))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0 mc).(2) with Q0 => forall t m mc, hlist.foralls (fun l =>  tuple.apply (Q0 t m) l mc -> post t m (reconstruct variables l) mc)end)
     , cmd call (cmd.while e c) t m localsmap mc post ).
   Proof.
     eapply hlist_forall_foralls; intros g0 **.
-<<<<<<< HEAD
     eapply wp_while.
-    eexists measure, lt, (fun vi ti mi localsmapi =>
-=======
     eexists measure, lt, (fun vi ti mi localsmapi mci =>
->>>>>>> 94c30cc1 (made rather a mess trying to get andy's metric stuff to work; commiting so I can ask andres for help)
       exists gi li, localsmapi = reconstruct variables li /\
       match tuple.apply (hlist.apply (spec vi) gi ti mi) li mci with S_ =>
       S_.(1) /\ forall T M L MC, tuple.apply (S_.(2) T M) L MC->
@@ -296,19 +291,13 @@ Section Loops.
     split; [assumption|].
     split. { exists v0, g0, l0. split. 1: eapply reconstruct_enforce; eassumption. split; eauto. }
     intros vi ti mi lmapi mci (gi&?&?&?&Qi); subst.
-    destruct (hlist.foralls_forall (hlist.foralls_forall (Hbody vi) gi ti mi mci) _ ltac:(eassumption)) as (br&?&?&X).
+    destruct (hlist.foralls_forall (hlist.foralls_forall (Hbody vi) gi ti mi mci) _ ltac:(eassumption)) as (brv&brmc&?&X).
 
-      
-    exists br; exists x0; split; [assumption|]. destruct X as (Htrue&Hfalse). split; intros Hbr;
+
+    exists brv; exists brmc; split; [assumption|]. destruct X as (Htrue&Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
-<<<<<<< HEAD
     { eapply Proper_cmd; [ |eapply Hpc].
-      intros tj mj lmapj Hlj; eapply hlist.existss_exists in Hlj.
-=======
-    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
-      { eapply Proper_call; firstorder idtac. }
       intros tj mj lmapj mcj Hlj; eapply hlist.existss_exists in Hlj.
->>>>>>> 94c30cc1 (made rather a mess trying to get andy's metric stuff to work; commiting so I can ask andres for help)
       destruct Hlj as (lj&Elj&HE); eapply reconstruct_enforce in Elj; subst lmapj.
       eapply hlist.existss_exists in HE. destruct HE as (l&?&?&?&HR).
       pose proof fun T M => hlist.foralls_forall (HR T M); clear HR.
@@ -340,16 +329,10 @@ Section Loops.
     (Hpost : forall t m l mc, Q0 t m l mc -> post t m l mc)
     : cmd call (cmd.while e c) t m l mc post.
   Proof.
-<<<<<<< HEAD
     eapply wp_while.
-    eexists measure, lt, (fun v t m l =>
-      let S := spec v t m l in let '(P, Q) := S in
-      P /\ forall T M L, Q T M L -> Q0 T M L).
-=======
     eexists measure, lt, (fun v t m l mc =>
       let S := spec v t m l mc in let '(P, Q) := S in
       P /\ forall T M L MC, Q T M L MC -> Q0 T M L MC).
->>>>>>> 94c30cc1 (made rather a mess trying to get andy's metric stuff to work; commiting so I can ask andres for help)
     split; [assumption|].
     cbv [Markers.split] in *.
     split; [solve[eauto]|].
@@ -357,14 +340,8 @@ Section Loops.
     destruct (Hbody _ _ _ _ _ ltac:(eassumption)) as (br&?&?&X); exists br; eexists; split; [eassumption|].
     destruct X as (Htrue&Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
-<<<<<<< HEAD
     { eapply Proper_cmd; [ |eapply Hpc].
-      intros tj mj lj (vj&dP&?&dQ); eauto 9. }
-=======
-    { eapply Proper_cmd; [reflexivity..| | |eapply Hpc].
-      { eapply Proper_call; firstorder idtac. }
       intros tj mj lj mcj (vj&dP&?&dQ); eauto 9. }
->>>>>>> 94c30cc1 (made rather a mess trying to get andy's metric stuff to work; commiting so I can ask andres for help)
     { eauto. }
   Qed.
 
@@ -382,7 +359,9 @@ Section Loops.
     constructor. intros [y|] pf; eauto.
     constructor. intros [] [].
   Qed.
-  
+
+  (*METRICSTODO
+
   Lemma atleastonce_localsmap
     {e c t} {m : mem} {l mc} {post : _->_->_->_-> Prop}
     {measure : Type} (invariant:_->_->_->_->_->Prop) lt
@@ -429,7 +408,7 @@ Section Loops.
         split; intros; try contradiction; split; eauto. }
       {
         assert (Hnonzero := n).
-        apply Henterm in Hnonzero. 
+        apply Henterm in Hnonzero.
         destruct Hnonzero as [v Hinv].
         exists (Some v), br, mc'.
 
@@ -442,7 +421,7 @@ Section Loops.
       eapply Proper_cmd; [ |eapply Hbody; eassumption].
 =======
 
-        exists v; split; trivial. 
+        exists v; split; trivial.
 
 
     } }
@@ -450,11 +429,11 @@ Section Loops.
     eexists; eexists; split.
     - eassumption.
     - split.
-      
-    
+
+
     (*eexists; eexists; split; [eassumption|]; split.*)
 
-    { 
+    {
       intros Hc; destruct (Hcontinue Hc) as (v&?&Hinv); subst.
       eapply Proper_cmd.
       1: { eapply Proper_call. }
@@ -473,11 +452,11 @@ Section Loops.
         exists br'; split; trivial.
         split; intros; try contradiction.
         eexists; split; eauto. } }
-    
+
     eapply Hexit.
-  Qed. 
+  Qed.
          *) Admitted.
-    
+
   Lemma atleastonce
     {e c t l mc} {m : mem}
     (variables : list String.string)
@@ -514,7 +493,7 @@ Section Loops.
       intro Hnonzero. apply Henternonzero in Hnonzero. destruct Hnonzero as [v Hnonzero].
       exists v. exists localstuple. repeat (split; eauto).
     }
-    { 
+    {
     intros vi ti mi li mci (?&X&Y).
     specialize (Hbody vi ti mi).
     eapply hlist.foralls_forall in Hbody.
@@ -529,6 +508,9 @@ Section Loops.
     eexists; split; eauto.
     }
   Qed.
+
+  METRICSTODO*)
+
   (*
   Lemma tailrec_earlyout_localsmap
     {e c t} {m : mem} {l mc} {post : _-> _->_->_-> Prop}
@@ -729,4 +711,3 @@ Ltac loop_simpl :=
        List.repeat Datatypes.length
        HList.polymorphic_list.repeat HList.polymorphic_list.length
        PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
-
