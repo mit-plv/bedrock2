@@ -121,6 +121,26 @@ Ltac _stats := don't_print_stats.
 
 Tactic Notation "stats" tactic0(f) := _stats f.
 
+(* used by bedrock2.LogSidecond, which is used to log simplifications by bottom_up_simpl: *)
+#[export] Hint Extern 1 (SidecondIrrelevant (with_mem _ _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (scope_marker _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (currently _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (ext_spec.ok _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (DisjointUnion.mmap.du _ _ = _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (functions_correct _ _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (merge_step _)) =>
+  constructor : typeclass_instances.
+#[export] Hint Extern 1 (SidecondIrrelevant (fold_step _)) =>
+  constructor : typeclass_instances.
+
+Ltac pre_log_simpl_hook ::= unzify.
+
 Ltac start :=
   lazymatch goal with
   | |- @program_logic_goal_for ?fname ?evar ?spec =>
