@@ -869,7 +869,7 @@ Ltac will_merge_back_later :=
 Create HintDb heapletwise_always_unfold.
 
 Ltac prove_emp_in h p :=
-  eapply (use_is_emp p) in h; [ | solve [ eauto with is_emp ] ].
+  eapply (use_is_emp p) in h; [ | solve [ auto with is_emp ] ].
 
 Ltac new_mem_hyp h :=
   let t := type of h in

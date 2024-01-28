@@ -158,6 +158,9 @@ Proof. unfold purify. intros. constructor. Qed.
 #[export] Hint Extern 1 (cannot_purify (uintptr ? _))
 => constructor : suppressed_warnings.
 
+#[export] Hint Extern 1 (cannot_purify (uint _ ? _))
+=> constructor : suppressed_warnings.
+
 #[export] Hint Extern 1 (cannot_purify (if _ then _ else _))
 => constructor : suppressed_warnings.
 
