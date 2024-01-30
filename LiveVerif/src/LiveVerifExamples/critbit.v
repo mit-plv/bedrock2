@@ -2535,7 +2535,7 @@ uintptr_t critical_bit(uintptr_t k1, uintptr_t k2) /**#
   (* heaplet packaging doesn't work well then there's just one item in the heap
      [or I was doing something wrong] *)
   ghost_args := (R1 R2: mem -> Prop);
-  requires t m := <{ * R1 * R2 }> m /\ k1 <> k2;
+  requires t m := k1 <> k2 /\ <{ * R1 * R2 }> m;
   ensures t' m' res := t = t' /\ <{ * R1 * R2 }> m'
                 /\ 0 <= \[res] < 32
                 /\ \[res] = pfx_len (pfx_meet (pfx_emb k1) (pfx_emb k2)) #**/
@@ -2572,15 +2572,15 @@ Qed.
 
 uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /**#
   ghost_args := (sk: tree_skeleton) (c: word_map) (R: mem -> Prop);
-  requires t m := <{ * allocator
-                     * cbt' sk c tp
-                     * R }> m
-                  /\ 0 <= \[cb] < 32
+  requires t m := 0 <= \[cb] < 32
                   /\ pfx_len
                        (pfx_meet
                          (pfx_emb k)
                          (pfx_emb (cbt_best_lookup sk c k)))
-                      = \[cb];
+                      = \[cb]
+                  /\ <{ * allocator
+                        * cbt' sk c tp
+                         * R }> m;
   ensures t' m' res := t' = t
                        /\ if \[res] =? 0 then
                             <{ * allocator_failed_below 12
@@ -2773,9 +2773,13 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
     }                                                                      /**. .**/
     else {                                                                 /**. .**/
       uintptr_t cb = critical_bit(k, best_k);                              /**.
-  instantiate (3:=emp True). steps.
-  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+  instantiate (3:=emp True). steps. .**/
       uintptr_t result = cbt_insert_at(tp, cb, k, v);                      /**.
+  (* TODO: figure out why instantiate_frame_evar_with_remaining_obligation
+           fails here when canceling the frace ?R, and so we need to
+           manually unfold enable_frame_trick *)
+  (* ...maybe has something to do what the memory we are canceling in is only
+     one heaplet and not a union? *)
   subst. steps. unfold enable_frame_trick.enable_frame_trick. steps. .**/
       return result;                                                       /**. .**/
     }                                                                      /**.
@@ -3073,8 +3077,7 @@ Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          
     else {                                                                 /**.
   destruct tree. { exfalso. steps. } .**/
       uintptr_t ret = cbt_delete_from_nonleaf(tp, k);                      /**.
-  simpl cbt'. clear Error. steps.
-  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+  simpl cbt'. clear Error. steps. .**/
       return ret;                                                          /**. .**/
     }                                                                      /**. .**/
   }                                                                        /**. .**/
@@ -3147,6 +3150,7 @@ Derive cbt_get_min_impl SuchThat (fun_correct! cbt_get_min_impl)
     - apply_forall. steps. }
   destruct sk; [ | exfalso; steps ]. .**/
   store(key_out, load(tp + 4));                                            /**.
+  (* TODO: figure out why enable_frame_trick appears here *)
   unfold enable_frame_trick.enable_frame_trick. steps. .**/
   store(val_out, load(tp + 8));                                            /**. .**/
 }                                                                          /**.
@@ -3243,6 +3247,8 @@ Derive cbt_get_max SuchThat (fun_correct! cbt_get_max) As cbt_get_max_ok.       
     - eapply half_subcontent_in_false_true_le; [ eassumption | steps ]. }
   destruct tree; [ | exfalso; steps ]. .**/
     store(key_out, load(tp + 4));                                          /**.
+  (* TODO: (analogous to one in cbt_get_min) figure out why
+           enable_frame_trick left here *)
   unfold enable_frame_trick.enable_frame_trick. steps. .**/
     store(val_out, load(tp + 8));                                          /**. .**/
     return 1;                                                              /**. .**/
@@ -3449,11 +3455,8 @@ Admitted.
 void cbt_next_ge_impl_uptrace(uintptr_t tp, uintptr_t k, uintptr_t i,
                                  uintptr_t key_out, uintptr_t val_out) /**#
   ghost_args := (sk: tree_skeleton) (c: word_map) (cb: Z) (R: mem -> Prop);
-  requires t m := <{ * cbt' sk c tp
-                     * (EX k0, uintptr k0 key_out)
-                     * (EX v0, uintptr v0 val_out)
-                     * R }> m
-    /\ cb = pfx_len (pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k)))
+  requires t m :=
+    cb = pfx_len (pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k)))
     /\ 0 <= cb < 32
     /\ 0 <= \[i] < cb
     /\ k <> cbt_best_lookup sk c k
@@ -3466,7 +3469,11 @@ void cbt_next_ge_impl_uptrace(uintptr_t tp, uintptr_t k, uintptr_t i,
     /\ bit_at (cbt_lookup_trace sk c k) \[i] = true
     /\ bit_at k \[i] = false
     /\ bit_at (cbt_best_lookup sk c k) cb = false
-    /\ bit_at k cb = true;
+    /\ bit_at k cb = true
+    /\ <{ * cbt' sk c tp
+          * (EX k0, uintptr k0 key_out)
+          * (EX v0, uintptr v0 val_out)
+          * R }> m;
   ensures t' m' := t' = t
            /\ <{ * cbt' sk c tp
                  * (EX k_res v_res,
@@ -3658,20 +3665,20 @@ Derive cbt_next_ge_impl_uptrace SuchThat (fun_correct! cbt_next_ge_impl_uptrace)
         * steps. }
 Qed.
 
-
 #[export] Instance spec_of_cbt_next_ge_impl_at_cb: fnspec :=                    .**/
 void cbt_next_ge_impl_at_cb(uintptr_t tp, uintptr_t k, uintptr_t cb,
                                  uintptr_t key_out, uintptr_t val_out) /**#
   ghost_args := (sk: tree_skeleton) (c: word_map) (R: mem -> Prop);
-  requires t m := <{ * cbt' sk c tp
-                     * (EX k0, uintptr k0 key_out)
-                     * (EX v0, uintptr v0 val_out)
-                     * R }> m
-    /\ \[cb] = pfx_len (pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k)))
+  requires t m :=
+    \[cb] = pfx_len (pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k)))
     /\ 0 <= \[cb] < 32
     /\ k <> cbt_best_lookup sk c k
     /\ bit_at (cbt_best_lookup sk c k) \[cb] = true
-    /\ bit_at k \[cb] = false;
+    /\ bit_at k \[cb] = false
+    /\ <{ * cbt' sk c tp
+          * (EX k0, uintptr k0 key_out)
+          * (EX v0, uintptr v0 val_out)
+          * R }> m;
   ensures t' m' := t' = t
            /\ <{ * cbt' sk c tp
                  * (EX k_res v_res,
@@ -3801,10 +3808,7 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
     else {                                                                 /**. .**/
       uintptr_t trace = load(key_out);                                     /**. .**/
       uintptr_t cb = critical_bit(best_k, k);                              /**.
-  instantiate (3:=emp True). steps. unfold enable_frame_trick.enable_frame_trick.
-  steps.
-  (* FIXME: we shouldn't have to clear these manually *)
-  purge m'. purge m3. purge m0. purge m4. purge m2. .**/
+  instantiate (3:=emp True). steps. .**/
       if (((k >> cb) & 1) == 1) /* split */ {                              /**. .**/
         uintptr_t i = cb - 1;                                              /**.
   prove (forall j,
@@ -3823,7 +3827,7 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
     end; steps. congruence. }
   apply_forall; steps.
   (* FIXME: again, shouldn't be clearing this *)
-  purge m'0. purge m6. purge m5. purge m7. purge m9.
+  purge m'. purge m0. purge m2. purge m3. purge m4.
   (* FIXME: should this v still be around in the first place? *)
   purge v.
   .**/
@@ -3894,8 +3898,7 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
     match goal with
     | |- ?v = false => destruct v eqn:E; steps; congruence
     end. }
-  { rewrite pfx_meet_comm. congruence. }
-  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+  { rewrite pfx_meet_comm. congruence. } .**/
           return 1;                                                        /**. .**/
         }                                                                  /**.
   auto. .**/
@@ -3907,8 +3910,7 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
     | |- ?v = true => destruct v eqn:E; steps
     end.
     exfalso. apply (pfx_meet_emb_bit_at_len (cbt_best_lookup tree c k) k); steps.
-    congruence. }
-   unfold enable_frame_trick.enable_frame_trick. steps. .**/
+    congruence. } .**/
         return 1;                                                           /**. .**/
       }                                                                     /**.
   auto. .**/
