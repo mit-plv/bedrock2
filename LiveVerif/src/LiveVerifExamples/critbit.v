@@ -106,6 +106,16 @@ Ltac simple_finish_step :=
       let He := fresh in intro He; discriminate He
   end].
 
+Lemma word_eqb_0_1_false : word.eqb /[0] /[1] = false.
+Proof.
+  hwlia.
+Qed.
+
+Lemma word_eqb_1_0_false : word.eqb /[1] /[0] = false.
+Proof.
+  hwlia.
+Qed.
+
 (* replacing Bool.eqb _ _, word.eqb _ _, or _ =? _ with true or false
    when it's clear that that's what it evaluates to;
    should replace in all the hyps the same way it does in the goal *)
@@ -139,11 +149,11 @@ Ltac comparison_simpl_step :=
   | Hne: ?n <> ?m, H: context con [ ?m =? ?n ] |- _ =>
       let cnvrt := context con [ m =? n ] in change cnvrt in H;
       replace (m =? n) with false in H
-        by (symmetry; apply Z.eqb_neq; symmetry; exact Hne)
+        by (symmetry; apply Z.eqb_neq; exact (not_eq_sym Hne))
   | Hne: ?n <> ?m |- context con [ ?m =? ?n ] =>
       let cnvrt := context con [ m =? n ] in change cnvrt;
       replace (m =? n) with false
-        by (symmetry; apply Z.eqb_neq; symmetry; exact Hne)
+        by (symmetry; apply Z.eqb_neq; exact (not_eq_sym Hne))
 
   | Hne: ?w <> /[0] |- context[ \[?w] =? 0 ] => replace (\[w] =? 0) with false by hwlia
   | Hne: ?w <> /[0], H2: context[ \[?w] =? 0 ] |- _ =>
@@ -233,11 +243,11 @@ Ltac comparison_simpl_step :=
   | Hne: ?b1 <> ?b2, H: context con [ Bool.eqb ?b2 ?b1 ] |- _ =>
       let cnvrt := context con [ Bool.eqb b2 b1 ] in change cnvrt in H;
       replace (Bool.eqb b2 b1) with false in H
-        by (symmetry; rewrite Bool.eqb_false_iff; symmetry; exact Hne)
+        by (symmetry; rewrite Bool.eqb_false_iff; exact (not_eq_sym Hne))
   | Hne: ?b1 <> ?b2 |- context con [ Bool.eqb ?b2 ?b1 ] =>
       let cnvrt := context con [ Bool.eqb b2 b1 ] in change cnvrt;
       replace (Bool.eqb b2 b1) with false
-        by (symmetry; rewrite Bool.eqb_false_iff; symmetry; exact Hne)
+        by (symmetry; rewrite Bool.eqb_false_iff; exact (not_eq_sym Hne))
 
   | H: Bool.eqb ?b1 ?b2 = true |- _ => apply Bool.eqb_prop in H
   | H: Bool.eqb ?b1 ?b2 = false |- _ => rewrite Bool.eqb_false_iff in H
@@ -245,6 +255,11 @@ Ltac comparison_simpl_step :=
   (* word.eqb _ _ *)
   | H: context[ word.eqb ?w ?w ] |- _ => rewrite word.eqb_eq in H by reflexivity
   | |- context[ word.eqb ?w ?w ] => rewrite word.eqb_eq by reflexivity
+
+  | H: context [ word.eqb /[0] /[1] ] |- _ => rewrite word_eqb_0_1_false in H
+  | |- context [ word.eqb /[0] /[1] ] => rewrite word_eqb_0_1_false
+  | H: context [ word.eqb /[1] /[0] ] |- _ => rewrite word_eqb_1_0_false in H
+  | |- context [ word.eqb /[1] /[0] ] => rewrite word_eqb_1_0_false
 
   | Heq: ?w1 = ?w2, H: context con [ word.eqb ?w1 ?w2 ] |- _ =>
       let cnvrt := context con [ word.eqb w1 w2 ] in change cnvrt in H;
@@ -276,11 +291,11 @@ Ltac comparison_simpl_step :=
   | Hne: ?w1 <> ?w2, H: context con [ word.eqb ?w2 ?w1 ] |- _ =>
       let cnvrt := context con [ word.eqb w2 w1 ] in change cnvrt in H;
       replace (word.eqb w2 w1) with false in H
-        by (symmetry; apply word.eqb_ne; symmetry; exact Hne)
+        by (symmetry; apply word.eqb_ne; exact (not_eq_sym Hne))
   | Hne: ?w1 <> ?w2 |- context con [ word.eqb ?w2 ?w1 ] =>
       let cnvrt := context con [ word.eqb w2 w1 ] in change cnvrt;
       replace (word.eqb w2 w1) with false
-        by (symmetry; apply word.eqb_ne; symmetry; exact Hne)
+        by (symmetry; apply word.eqb_ne; exact (not_eq_sym Hne))
 end.
 
 Lemma identical_if_branches : forall {T} (b: bool) (v: T), (if b then v else v) = v.
@@ -3065,6 +3080,846 @@ Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          
   }                                                                        /**. .**/
 }                                                                          /**.
 Qed.
+
+(* TODO: hoist *)
+Lemma half_subcontent_get_some : forall c b k v,
+  map.get (half_subcontent c b) k = Some v -> map.get c k = Some v.
+Proof.
+  intros. rewrite half_subcontent_get in *.
+  match goal with
+  | H: context [ if ?cond then _ else _ ] |- _ => destruct cond
+  end; steps.
+Qed.
+
+(* TODO: hoist *)
+(* actually, even `_lt` holds *)
+Lemma half_subcontent_in_false_true_le : forall c k k',
+  map.get (half_subcontent c false) k <> None ->
+  map.get (half_subcontent c true) k' <> None ->
+  \[k] <= \[k'].
+Admitted.
+
+#[export] Instance spec_of_cbt_get_min_impl: fnspec :=                          .**/
+void cbt_get_min_impl(uintptr_t tp, uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (sk: tree_skeleton) (c: word_map)
+                (key_out_orig: word) (val_out_orig: word) (R: mem -> Prop);
+  requires t m := <{ * cbt' sk c tp
+                     * uintptr key_out_orig key_out
+                     * uintptr val_out_orig val_out
+                     * R }> m;
+  ensures t' m' := t' = t
+           /\ <{ * cbt' sk c tp
+                 * (EX k v,
+                      <{ * emp (map.get c k = Some v)
+                         * emp (forall k', map.get c k' <> None -> \[k] <= \[k'])
+                         * uintptr k key_out
+                         * uintptr v val_out }>)
+                 * R }> m'         #**/                                    /**.
+Derive cbt_get_min_impl SuchThat (fun_correct! cbt_get_min_impl)
+  As cbt_get_min_impl_ok.                                                       .**/
+{                                                                          /**.
+  move sk at bottom.
+  loop invariant above m. .**/
+  while (load(tp) != 32) /* initial_ghosts(tp,c,R); decreases sk */ {      /*?.
+  repeat heapletwise_step.
+  match goal with
+  | H: _ |= cbt' _ _ tp |- _ => pose proof (purify_cbt' _ _ _ _ H);
+                                apply cbt_expose_fields in H
+  end. steps. destruct sk. { exfalso; steps. } .**/
+      tp = load(tp + 4);                                                   /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c false,
+      <{ * cbt' sk2 (half_subcontent c true) w3
+         * freeable 12 tp'
+         * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+              + uintptr tp
+              + uintptr w3 }> tp'
+         * R }>).
+  steps. clear Error. simpl cbt'. steps.
+  eapply half_subcontent_get_some. eassumption.
+  match goal with
+  | H: map.get _ _ <> None |- _ => apply half_subcontent_get_nNone in H
+  end.
+  { match goal with
+    | H: context [ map.get (half_subcontent _ ?b) _ <> None ] |- _ => destruct b
+    end.
+    - eapply half_subcontent_in_false_true_le; [ | eassumption ]. steps.
+    - apply_forall. steps. }
+  destruct sk; [ | exfalso; steps ]. .**/
+  store(key_out, load(tp + 4));                                            /**.
+  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+  store(val_out, load(tp + 8));                                            /**. .**/
+}                                                                          /**.
+simpl cbt'. clear Error. steps. subst. steps.
+Qed.
+
+#[export] Instance spec_of_cbt_get_min: fnspec :=                                .**/
+uintptr_t cbt_get_min(uintptr_t tp, uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (c: word_map) (key_out_orig: word) (val_out_orig: word)
+                (R: mem -> Prop);
+  requires t m := <{ * cbt c tp
+                     * uintptr key_out_orig key_out
+                     * uintptr val_out_orig val_out
+                     * R }> m;
+  ensures t' m' res := t' = t
+           /\ <{ * emp (res = if word.eqb tp /[0] then /[0] else /[1])
+                 * cbt c tp
+                 * (if word.eqb tp /[0] then
+                      <{ * uintptr key_out_orig key_out
+                         * uintptr val_out_orig val_out }>
+                    else
+                      (EX k v,
+                        <{ * emp (map.get c k = Some v)
+                           * emp (forall k', map.get c k' <> None -> \[k] <= \[k'])
+                           * uintptr k key_out
+                           * uintptr v val_out }>))
+                 * R }> m'         #**/                                    /**.
+Derive cbt_get_min SuchThat (fun_correct! cbt_get_min) As cbt_get_min_ok.       .**/
+{                                                                          /**. .**/
+  if (tp == 0) /* split */ {                                               /**. .**/
+    return 0;                                                              /**. .**/
+  }                                                                        /**. .**/
+  else {                                                                   /**. .**/
+    cbt_get_min_impl(tp, key_out, val_out);                                /**. .**/
+    return 1;                                                              /**. .**/
+  }                                                                        /**.
+  apply_forall; steps. .**/
+}                                                                          /**.
+Qed.
+
+#[export] Instance spec_of_cbt_get_max: fnspec :=                                .**/
+uintptr_t cbt_get_max(uintptr_t tp, uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (c: word_map) (key_out_orig: word) (val_out_orig: word)
+                (R: mem -> Prop);
+  requires t m := <{ * cbt c tp
+                     * uintptr key_out_orig key_out
+                     * uintptr val_out_orig val_out
+                     * R }> m;
+  ensures t' m' res := t' = t
+           /\ <{ * emp (res = if word.eqb tp /[0] then /[0] else /[1])
+                 * cbt c tp
+                 * (if word.eqb tp /[0] then
+                      <{ * uintptr key_out_orig key_out
+                         * uintptr val_out_orig val_out }>
+                    else
+                      (EX k v,
+                        <{ * emp (map.get c k = Some v)
+                           * emp (forall k', map.get c k' <> None -> \[k'] <= \[k])
+                           * uintptr k key_out
+                           * uintptr v val_out }>))
+                 * R }> m'         #**/                                    /**.
+Derive cbt_get_max SuchThat (fun_correct! cbt_get_max) As cbt_get_max_ok.       .**/
+{                                                                          /**. .**/
+  if (tp == 0) /* split */ {                                               /**. .**/
+    return 0;                                                              /**. .**/
+  }                                                                        /**. .**/
+  else {                                                                   /**.
+  move tree at bottom.
+  loop invariant above m. .**/
+    while (load(tp) != 32) /* initial_ghosts(tp,c,R); decreases tree */ {   /*?.
+  repeat heapletwise_step.
+  match goal with
+  | H: _ |= cbt' _ _ tp |- _ => pose proof (purify_cbt' _ _ _ _ H);
+                                apply cbt_expose_fields in H
+  end. steps. destruct tree. { exfalso; steps. } .**/
+      tp = load(tp + 8);                                                   /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c true,
+      <{ * cbt' tree1 (half_subcontent c false) w2
+         * freeable 12 tp'
+         * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+              + uintptr w2
+              + uintptr tp }> tp'
+         * R }>).
+  steps. instantiate (1:=Node tree1 tree). clear Error. simpl cbt'. steps.
+  eapply half_subcontent_get_some. eassumption.
+  match goal with
+  | H: map.get _ _ <> None |- _ => apply half_subcontent_get_nNone in H
+  end.
+  { match goal with
+    | H: context [ map.get (half_subcontent _ ?b) _ <> None ] |- _ => destruct b
+    end.
+    - apply_forall. steps.
+    - eapply half_subcontent_in_false_true_le; [ eassumption | steps ]. }
+  destruct tree; [ | exfalso; steps ]. .**/
+    store(key_out, load(tp + 4));                                          /**.
+  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+    store(val_out, load(tp + 8));                                          /**. .**/
+    return 1;                                                              /**. .**/
+  }                                                                        /**.
+  instantiate (1:=Leaf). simpl cbt'. clear Error. steps. subst. steps. .**/
+}                                                                          /**.
+Qed.
+
+Definition set_bit_at (w: word) (i: Z) := word.or w (/[1] ^<< /[i]).
+
+Fixpoint cbt_lookup_trace sk c k :=
+  match sk with
+  | Node skL skR => set_bit_at
+            (if bit_at k (pfx_len (pfx_mmeet c))
+            then cbt_lookup_trace skR (half_subcontent c true) k
+            else cbt_lookup_trace skL (half_subcontent c false) k)
+            (pfx_len (pfx_mmeet c))
+  | Leaf => /[0]
+  end.
+
+Lemma word_or_0_l : forall w, word.or /[0] w = w.
+Admitted.
+
+Lemma word_or_0_r : forall w, word.or w /[0] = w.
+Admitted.
+
+Lemma word_or_assoc : forall w1 w2 w3,
+  word.or w1 (word.or w2 w3) = word.or (word.or w1 w2) w3.
+Admitted.
+
+#[export] Instance spec_of_cbt_best_with_trace: fnspec :=                       .**/
+uintptr_t cbt_best_with_trace(uintptr_t tp, uintptr_t k, uintptr_t trace_out,
+                              uintptr_t val_out) /**#
+  ghost_args := (sk: tree_skeleton) (c: word_map)
+                (val_out_orig: word) (R: mem -> Prop);
+  requires t m := <{ * (EX old_val, uintptr old_val trace_out)
+                     * cbt' sk c tp
+                     * uintptr val_out_orig val_out
+                     * R }> m;
+  ensures t' m' res := t' = t /\ cbt_best_lookup sk c k = res /\
+                  <{ * uintptr (cbt_lookup_trace sk c k) trace_out
+                     * cbt' sk c tp
+                     * (if word.eqb k res then
+                         (EX v, <{ * uintptr v val_out
+                                   * emp (map.get c k = Some v) }>)
+                       else
+                         uintptr val_out_orig val_out)
+                     * R }> m' #**/                                        /**.
+Derive cbt_best_with_trace SuchThat (fun_correct! cbt_best_with_trace)
+  As cbt_best_with_trace_ok.       .**/
+{                                                                          /**. .**/
+  uintptr_t trace = 0;                                                     /**.
+  move sk at bottom.
+  loop invariant above m.
+  move Def0 after t.
+  (* introducing `trace` into the postcondition *)
+  replace (cbt_lookup_trace sk c k) with (word.or trace (cbt_lookup_trace sk c k))
+   by (subst; apply word_or_0_l). .**/
+  while (load(tp) != 32) /* initial_ghosts(tp,c,trace,R); decreases sk */ {      /*?.
+  repeat heapletwise_step.
+  match goal with
+  | H: _ |= cbt' _ _ tp |- _ => pose proof (purify_cbt' _ _ _ _ H);
+                                apply cbt_expose_fields in H
+  end. steps. destruct sk. { exfalso; steps. } .**/
+    trace = trace | (1 << load(tp));                                       /**. .**/
+    if (((k >> load(tp)) & 1) == 1) /* split */ {                          /**. .**/
+      tp = load(tp + 8);                                                   /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c true, trace,
+      <{ * cbt' sk1 (half_subcontent c false) w2
+         * freeable 12 tp'
+         * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+              + uintptr w2
+              + uintptr tp }> tp'
+         * R }>).
+  steps.
+  { simpl cbt_best_lookup. steps. }
+  { simpl cbt_lookup_trace. steps. subst trace. rewrite <- word_or_assoc.
+    unfold set_bit_at. f_equal. rewrite word.or_comm. steps. }
+  { simpl cbt'. clear Error. steps. } .**/
+    else {                                                                 /**. .**/
+      tp = load(tp + 4);                                                   /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c false, trace,
+      <{ * cbt' sk2 (half_subcontent c true) w3
+         * freeable 12 tp'
+         * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+              + uintptr tp
+              + uintptr w3 }> tp'
+         * R }>).
+  steps.
+  { simpl cbt_best_lookup. steps. }
+  { simpl cbt_lookup_trace. steps. subst trace. rewrite <- word_or_assoc.
+    unfold set_bit_at. f_equal. rewrite word.or_comm. steps. }
+  { simpl cbt'. clear Error. steps. } .**/
+  }                                                                        /**.
+  destruct sk; [ | exfalso; steps ]. .**/
+  store(trace_out, trace);                                                 /**. .**/
+  uintptr_t best_k = load(tp + 4);                                         /**. .**/
+  if (best_k == k) /* split */ {                                           /**. .**/
+    store(val_out, load(tp + 8));                                          /**. .**/
+    return best_k;                                                         /**. .**/
+  }                                                                        /**.
+  { simpl cbt_best_lookup. apply map_some_key_singleton. }
+  { simpl cbt_lookup_trace. rewrite word_or_0_r. steps. }
+  { simpl cbt'. clear Error. steps. } .**/
+  else {                                                                   /**. .**/
+    return best_k;                                                         /**. .**/
+  }                                                                        /**.
+  { simpl cbt_best_lookup. apply map_some_key_singleton. }
+  { simpl cbt_lookup_trace. rewrite word_or_0_r. steps. }
+  { simpl cbt'. clear Error. steps. } .**/
+}                                                                          /**.
+Qed.
+
+Fixpoint cbt_max_key sk c :=
+  match sk with
+  | Leaf => map_some_key c /[0]
+  | Node skL skR => cbt_max_key skR (half_subcontent c true)
+  end.
+
+Lemma cbt_max_key_in : forall sk c, acbt sk c -> map.get c (cbt_max_key sk c) <> None.
+Admitted.
+
+Lemma cbt_max_key_max : forall sk c k,
+  acbt sk c -> map.get c k <> None -> \[k] <= \[cbt_max_key sk c].
+Admitted.
+
+Lemma cbt_max_key_trace_bits : forall sk c i,
+  acbt sk c -> 0 <= i < 32 ->
+  bit_at (cbt_lookup_trace sk c (cbt_max_key sk c)) i = true ->
+  bit_at (cbt_max_key sk c) i = true.
+Admitted.
+
+Lemma cbt_trace_fixes_prefix : forall sk c i k1 k2 bts,
+  acbt sk c -> 0 <= i < 32 ->
+  map.get c k1 <> None ->
+  (forall j, 0 <= j <= i -> bit_at (cbt_lookup_trace sk c k1) j = true ->
+    bit_at k1 j = bts j) ->
+  map.get c k2 <> None ->
+  (forall j, 0 <= j <= i -> bit_at (cbt_lookup_trace sk c k2) j = true ->
+    bit_at k2 j = bts j) ->
+  (forall j, 0 <= j <= i -> bit_at k1 j = bit_at k2 j).
+Admitted.
+
+Lemma cbt_best_lookup_matches_on_trace : forall sk c k i,
+  acbt sk c -> 0 <= i < 32 -> bit_at (cbt_lookup_trace sk c k) i = true ->
+  bit_at (cbt_best_lookup sk c k) i = bit_at k i.
+Admitted.
+
+Lemma cbt_lookup_trace_best : forall sk c k,
+  acbt sk c -> cbt_lookup_trace sk c (cbt_best_lookup sk c k) = cbt_lookup_trace sk c k.
+Admitted.
+
+Lemma bit_at_lt : forall w1 w2 i, 0 <= i < 32 ->
+  (forall j, 0 <= j < i -> bit_at w1 j = bit_at w2 j) ->
+  bit_at w1 i = false -> bit_at w2 i = true ->
+  \[w1] < \[w2].
+Admitted.
+
+Lemma bit_at_le : forall w1 w2 i, 0 <= i < 32 ->
+  (forall j, 0 <= j < i -> bit_at w1 j = bit_at w2 j) ->
+  bit_at w1 i = false -> bit_at w2 i = true ->
+  \[w1] <= \[w2].
+Admitted.
+
+(* TODO: hoist *)
+Lemma half_subcontent_in_false_true_lt : forall c k k',
+  map.get (half_subcontent c false) k <> None ->
+  map.get (half_subcontent c true) k' <> None ->
+  \[k] < \[k'].
+Admitted.
+
+Lemma pfx_meet_emb_bit_at_eq : forall w1 w2 i,
+  0 <= i < pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2)) ->
+  bit_at w1 i = bit_at w2 i.
+Admitted.
+
+Lemma trace_bit_after_root : forall sk c k i,
+  0 <= i < 32 -> acbt sk c -> bit_at (cbt_lookup_trace sk c k) i = true ->
+  pfx_len (pfx_mmeet c) <= i.
+Admitted.
+
+Lemma set_bit_at_bit_at_diff_ix : forall w i i',
+  0 <= i < 32 -> 0 <= i' < 32 -> i' <> i -> bit_at (set_bit_at w i) i' = bit_at w i'.
+Admitted.
+
+Lemma pfx_le_emb_bit_same_prefix : forall p w1 w2 i,
+  pfx_le p (pfx_emb w1) -> pfx_le p (pfx_emb w2) -> 0 <= i < pfx_len p ->
+  bit_at w1 i = bit_at w2 i.
+Admitted.
+
+Lemma pfx_mmeet_len_lt_node : forall sk1 sk2 c b,
+  acbt (Node sk1 sk2) c ->
+  pfx_len (pfx_mmeet c) < pfx_len (pfx_mmeet (half_subcontent c b)).
+Admitted.
+
+Lemma set_bit_at_true : forall w i i',
+  0 <= i < 32 -> 0 <= i' < 32 -> bit_at w i = true ->
+  bit_at (set_bit_at w i') i = true.
+Admitted.
+
+#[export] Instance spec_of_cbt_next_ge_impl_uptrace: fnspec :=                .**/
+void cbt_next_ge_impl_uptrace(uintptr_t tp, uintptr_t k, uintptr_t i,
+                                 uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (sk: tree_skeleton) (c: word_map) (cb: Z) (R: mem -> Prop);
+  requires t m := <{ * cbt' sk c tp
+                     * (EX k0, uintptr k0 key_out)
+                     * (EX v0, uintptr v0 val_out)
+                     * R }> m
+    /\ cb = pfx_len (pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k)))
+    /\ 0 <= cb < 32
+    /\ 0 <= \[i] < cb
+    /\ k <> cbt_best_lookup sk c k
+    /\ (forall j, \[i] + 1 <= j < pfx_len
+                                   (pfx_meet
+                                     (pfx_emb k)
+                                     (pfx_emb (cbt_best_lookup sk c k))) ->
+          bit_at (cbt_lookup_trace sk c k) j = true ->
+          bit_at k j = true)
+    /\ bit_at (cbt_lookup_trace sk c k) \[i] = true
+    /\ bit_at k \[i] = false
+    /\ bit_at (cbt_best_lookup sk c k) cb = false
+    /\ bit_at k cb = true;
+  ensures t' m' := t' = t
+           /\ <{ * cbt' sk c tp
+                 * (EX k_res v_res,
+                    <{ * emp (map.get c k_res = Some v_res)
+                       * emp (\[k] <= \[k_res])
+                       * emp (forall k', map.get c k' <> None ->
+                                             \[k] <= \[k'] -> \[k_res] <= \[k'])
+                       * uintptr k_res key_out
+                       * uintptr v_res val_out }>)
+                 * R }> m' #**/                                            /**.
+Derive cbt_next_ge_impl_uptrace SuchThat (fun_correct! cbt_next_ge_impl_uptrace)
+  As cbt_next_ge_impl_uptrace_ok.                                                .**/
+{                                                                          /**.
+  loop invariant above m.
+  move sk at bottom.
+  prove (pfx_len (pfx_mmeet c) <= \[i]).
+  { eapply trace_bit_after_root; steps; eassumption. }
+  assert (bit_at (cbt_lookup_trace sk c k) \[i] = true) by steps. .**/
+  while (load(tp) < i) /* initial_ghosts(tp,c,R); decreases sk */ { /*?.
+  repeat heapletwise_step.
+  subst v.
+  match goal with
+  | H: _ |= cbt' _ _ _ |- _ => apply cbt_expose_fields in H
+  end.
+  steps. destruct sk. { exfalso. steps. } repeat heapletwise_step. .**/
+    if (((k >> load(tp)) & 1) == 1) /* split */ {                          /**. .**/
+      tp = load(tp + 8);                                                   /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c true,
+    <{ * cbt' sk1 (half_subcontent c false) w2
+       * freeable 12 tp'
+       * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+            + uintptr w2
+            + uintptr tp }> tp'
+       * R }>). steps; simpl cbt_best_lookup in *; try steps.
+  { apply_forall. steps. simpl cbt_lookup_trace. steps.
+    rewrite set_bit_at_bit_at_diff_ix by steps. steps. }
+  { simpl cbt_lookup_trace in *. steps.
+    rewrite set_bit_at_bit_at_diff_ix in * by steps. steps. }
+  { simpl cbt_lookup_trace in *. steps.
+    rewrite set_bit_at_bit_at_diff_ix in * by steps. steps.
+    eapply trace_bit_after_root; steps; eassumption. }
+  { simpl cbt_lookup_trace in *. steps.
+    rewrite set_bit_at_bit_at_diff_ix in * by steps. steps. }
+  simpl cbt'. clear Error. steps.
+  { match goal with
+    | H: map.get _ _ = Some _ |- _ => rewrite half_subcontent_get in H
+    end. steps. }
+  { destruct (bit_at k' (pfx_len (pfx_mmeet c))) eqn:E.
+    - apply_forall. rewrite half_subcontent_get; steps. steps.
+    - exfalso. enough (\[k'] < \[k]) by lia.
+      eapply bit_at_lt with (i:=pfx_len (pfx_mmeet c)); steps.
+      transitivity (bit_at (cbt_best_lookup sk2 (half_subcontent c true) k) j).
+      + assert (pfx_len (pfx_mmeet c)
+         <= pfx_len (pfx_meet
+                      (pfx_emb k')
+                      (pfx_emb (cbt_best_lookup sk2 (half_subcontent c true) k)))).
+        { apply pfx_le_len. apply pfx_meet_le_both. steps. apply pfx_mmeet_key_le.
+          eapply map_extends_get_nnone. 2: apply cbt_best_lookup_in. all: steps. }
+        apply pfx_meet_emb_bit_at_eq. lia.
+      + apply pfx_meet_emb_bit_at_eq. rewrite pfx_meet_comm. lia. } .**/
+     else {                                                                /**. .**/
+       tp = load(tp + 4);                                                  /**. .**/
+     }                                                                     /**.
+  new_ghosts(tp, half_subcontent c false,
+    <{ * cbt' sk2 (half_subcontent c true) w3
+       * freeable 12 tp'
+       * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+            + uintptr tp
+            + uintptr w3 }> tp'
+       * R }>). steps; simpl cbt_best_lookup in *; try steps.
+  { apply_forall. steps. simpl cbt_lookup_trace. steps.
+    rewrite set_bit_at_bit_at_diff_ix by steps. steps. }
+  { simpl cbt_lookup_trace in *. steps.
+    rewrite set_bit_at_bit_at_diff_ix in * by steps. steps. }
+  { simpl cbt_lookup_trace in *. steps.
+    rewrite set_bit_at_bit_at_diff_ix in * by steps. steps.
+    eapply trace_bit_after_root; steps; eassumption. }
+  { simpl cbt_lookup_trace in *. steps.
+    rewrite set_bit_at_bit_at_diff_ix in * by steps. steps. }
+  simpl cbt'. clear Error. steps.
+  { match goal with
+    | H: map.get _ _ = Some _ |- _ => rewrite half_subcontent_get in H
+    end. steps. }
+  { destruct (bit_at k' (pfx_len (pfx_mmeet c))) eqn:E.
+    - eapply bit_at_le with (i:=pfx_len (pfx_mmeet c)); steps.
+      assert (pfx_len (pfx_mmeet c) <= pfx_len (pfx_meet (pfx_emb k_res) (pfx_emb k'))).
+      { apply pfx_le_len. apply pfx_meet_le_both. apply pfx_mmeet_key_le.
+        eapply map_extends_get_nnone. apply (half_subcontent_extends _ false). steps.
+        steps. }
+      apply pfx_meet_emb_bit_at_eq. lia. rewrite half_subcontent_get in *. steps.
+    - apply_forall; steps. } .**/
+  }                                                                        /**.
+  assert (Hieq: pfx_len (pfx_mmeet c) = \[i]) by lia. rewrite <- Hieq in *.
+  destruct sk. { exfalso; steps. } .**/
+  tp = load(tp + 8);                                                       /**. .**/
+  cbt_get_min_impl(tp, key_out, val_out);                                  /**. .**/
+}                                                                          /**.
+  simpl cbt'. clear Error. steps.
+  { rewrite half_subcontent_get in *. steps. }
+  { apply bit_at_le with (i:=pfx_len (pfx_mmeet c)); steps.
+    - transitivity (bit_at (cbt_best_lookup (Node sk1 sk2) c k) j).
+      + apply pfx_meet_emb_bit_at_eq. lia.
+      + apply pfx_meet_emb_bit_at_eq.
+        assert (Hpfxle: pfx_le
+                          (pfx_mmeet c)
+                          (pfx_meet
+                            (pfx_emb (cbt_best_lookup (Node sk1 sk2) c k))
+                            (pfx_emb k1))).
+        { apply pfx_meet_le_both. apply pfx_mmeet_key_le. steps. apply pfx_mmeet_key_le.
+          eapply map_extends_get_nnone. apply (half_subcontent_extends _ true). steps. }
+        apply pfx_le_len in Hpfxle. steps.
+    - rewrite half_subcontent_get in *. steps. }
+  { destruct (bit_at k' (pfx_len (pfx_mmeet c))) eqn:E.
+    - apply_forall. steps.
+    - exfalso. enough (\[cbt_max_key sk1 (half_subcontent c false)] < \[k]).
+      + assert (\[k'] <= \[cbt_max_key sk1 (half_subcontent c false)])
+         by (apply cbt_max_key_max; steps). lia.
+      + apply bit_at_lt with (i:=cb).
+        * steps.
+        * steps. transitivity (bit_at (cbt_best_lookup sk1 (half_subcontent c false) k) j).
+          { eapply cbt_trace_fixes_prefix with
+              (bts:=fun _ => true) (sk:=sk1) (c:=half_subcontent c false) (i:=cb); steps.
+            - apply cbt_max_key_in. steps.
+            - apply cbt_max_key_trace_bits; steps.
+            - destruct (j0 =? cb) eqn:E2; steps. { exfalso. subst j0.
+              rewrite cbt_lookup_trace_best in * by steps.
+              pose proof (pfx_meet_emb_bit_at_len
+                           k
+                           (cbt_best_lookup sk1 (half_subcontent c false) k)) as Hbneq.
+              prove_ante Hbneq. simpl cbt_best_lookup in *. steps.
+              apply_ne. symmetry. apply cbt_best_lookup_matches_on_trace; steps.
+              simpl cbt_best_lookup in *. steps. simpl cbt_best_lookup in *. steps.
+              congruence. }
+              transitivity (bit_at k j0).
+              apply pfx_meet_emb_bit_at_eq. simpl cbt_best_lookup in *. steps.
+              subst cb. rewrite pfx_meet_comm. steps.
+              simpl cbt_best_lookup in *. steps.
+              match goal with
+              | H: forall _, _ -> _ -> bit_at _ _ = true |- _ => apply H
+              end.
+              enough (pfx_len (pfx_mmeet c) + 1 <= j0). {
+                subst cb. simpl cbt_best_lookup in *. steps. }
+              rewrite cbt_lookup_trace_best in * by steps.
+              match goal with
+              | H: bit_at (cbt_lookup_trace _ _ _) _ = true |- _ =>
+                   apply trace_bit_after_root in H; steps
+              end.
+              enough (pfx_len (pfx_mmeet c) <
+                        pfx_len (pfx_mmeet (half_subcontent c false))) by lia.
+              apply pfx_mmeet_len_lt_node with (sk1:=sk1) (sk2:=sk2). simpl. steps.
+              rewrite cbt_lookup_trace_best in * by steps.
+              simpl cbt_lookup_trace. steps. apply set_bit_at_true; steps. }
+          { apply pfx_meet_emb_bit_at_eq. simpl cbt_best_lookup in *. steps.
+            rewrite pfx_meet_comm. steps. }
+        * steps. simpl cbt_best_lookup in *. steps.
+          match goal with
+          | H: bit_at (cbt_best_lookup _ _ _) _ = false |- _ => rewrite <- H at 2
+          end.
+          eapply cbt_trace_fixes_prefix with
+            (bts:=fun _ => true) (sk:=sk1) (c:=half_subcontent c false) (i:=cb); steps.
+          { apply cbt_max_key_in; steps. }
+          { apply cbt_max_key_trace_bits; steps. }
+          { destruct (j =? cb) eqn:E2; steps. { exfalso. subst j.
+              rewrite cbt_lookup_trace_best in * by steps.
+              pose proof (pfx_meet_emb_bit_at_len
+                           k
+                           (cbt_best_lookup sk1 (half_subcontent c false) k)) as Hbneq.
+              prove_ante Hbneq. simpl cbt_best_lookup in *. steps.
+              apply_ne. symmetry. apply cbt_best_lookup_matches_on_trace; steps.
+              simpl cbt_best_lookup in *. steps. congruence. }
+              transitivity (bit_at k j).
+              apply pfx_meet_emb_bit_at_eq.
+              subst cb. rewrite pfx_meet_comm. steps.
+              match goal with
+              | H: forall _, _ -> _ -> bit_at _ _ = true |- _ => apply H
+              end.
+              enough (pfx_len (pfx_mmeet c) + 1 <= j) by steps.
+              rewrite cbt_lookup_trace_best in * by steps.
+              match goal with
+              | H: bit_at (cbt_lookup_trace _ _ _) _ = true |- _ =>
+                   apply trace_bit_after_root in H; steps
+              end.
+              enough (pfx_len (pfx_mmeet c) <
+                        pfx_len (pfx_mmeet (half_subcontent c false))) by lia.
+              apply pfx_mmeet_len_lt_node with (sk1:=sk1) (sk2:=sk2). simpl. steps.
+              rewrite cbt_lookup_trace_best in * by steps.
+              simpl cbt_lookup_trace. steps. apply set_bit_at_true; steps. }
+        * steps. }
+Qed.
+
+
+#[export] Instance spec_of_cbt_next_ge_impl_at_cb: fnspec :=                    .**/
+void cbt_next_ge_impl_at_cb(uintptr_t tp, uintptr_t k, uintptr_t cb,
+                                 uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (sk: tree_skeleton) (c: word_map) (R: mem -> Prop);
+  requires t m := <{ * cbt' sk c tp
+                     * (EX k0, uintptr k0 key_out)
+                     * (EX v0, uintptr v0 val_out)
+                     * R }> m
+    /\ \[cb] = pfx_len (pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k)))
+    /\ 0 <= \[cb] < 32
+    /\ k <> cbt_best_lookup sk c k
+    /\ bit_at (cbt_best_lookup sk c k) \[cb] = true
+    /\ bit_at k \[cb] = false;
+  ensures t' m' := t' = t
+           /\ <{ * cbt' sk c tp
+                 * (EX k_res v_res,
+                    <{ * emp (map.get c k_res = Some v_res)
+                       * emp (\[k] <= \[k_res])
+                       * emp (forall k', map.get c k' <> None ->
+                                             \[k] <= \[k'] -> \[k_res] <= \[k'])
+                       * uintptr k_res key_out
+                       * uintptr v_res val_out }>)
+                 * R }> m' #**/                                            /**.
+Derive cbt_next_ge_impl_at_cb SuchThat (fun_correct! cbt_next_ge_impl_at_cb)
+  As cbt_next_ge_impl_at_cb_ok.                                                 .**/
+{                                                                          /**.
+  loop invariant above m.
+  move sk at bottom. .**/
+  while (load(tp) < cb) /* initial_ghosts(tp,c,R); decreases sk */ { /*?.
+  repeat heapletwise_step.
+  subst v.
+  match goal with
+  | H: _ |= cbt' _ _ _ |- _ => apply cbt_expose_fields in H
+  end.
+  steps. destruct sk. { exfalso. steps. } repeat heapletwise_step. .**/
+    if (((k >> load(tp)) & 1) == 1) /* split */ {                          /**. .**/
+      tp = load(tp + 8);                                                   /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c true,
+    <{ * cbt' sk1 (half_subcontent c false) w2
+       * freeable 12 tp'
+       * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+            + uintptr w2
+            + uintptr tp }> tp'
+       * R }>).
+  steps; simpl cbt_best_lookup in *; try steps.
+  { clear Error. simpl cbt'. steps. rewrite half_subcontent_get in *. steps.
+    destruct (bit_at k' (pfx_len (pfx_mmeet c))) eqn:E.
+    - apply_forall. rewrite half_subcontent_get. steps. steps.
+    - exfalso. enough (\[k'] < \[k]) by lia.
+      apply bit_at_lt with (pfx_len (pfx_mmeet c)); steps.
+      transitivity (bit_at (cbt_best_lookup (Node sk1 sk2) c k) j).
+      + apply pfx_le_emb_bit_same_prefix with (pfx_mmeet c); steps.
+        apply pfx_mmeet_key_le. steps.
+      + simpl cbt_best_lookup. steps. apply pfx_meet_emb_bit_at_eq.
+        rewrite pfx_meet_comm. lia. } .**/
+    else {                                                                 /**. .**/
+      tp = load(tp + 4);                                                   /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c false,
+    <{ * cbt' sk2 (half_subcontent c true) w3
+       * freeable 12 tp'
+       * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+            + uintptr tp
+            + uintptr w3 }> tp'
+       * R }>). steps; simpl cbt_best_lookup in *; try steps.
+  { clear Error. simpl cbt'. steps. rewrite half_subcontent_get in *. steps.
+    destruct (bit_at k' (pfx_len (pfx_mmeet c))) eqn:E.
+    - apply half_subcontent_in_false_true_le with (c:=c); steps.
+    - apply_forall. rewrite half_subcontent_get. steps. steps. } .**/
+  }                                                                        /**. .**/
+  cbt_get_min_impl(tp, key_out, val_out);                                  /**.
+  clear Error. instantiate (3:=c). instantiate (3:=sk).
+  unfold canceling. steps. unfold seps. destruct sk; simpl cbt'; steps.
+  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+}                                                                          /**.
+  destruct (\[cb] =? pfx_len (pfx_mmeet c)) eqn:E. {
+    exfalso. destruct sk; steps. simpl cbt_best_lookup in *.
+    match goal with
+    | H: \[cb] = _ |- _ => rewrite H in *
+    end. steps.
+    assert (Hwrh: map.get (half_subcontent c false)
+                    (cbt_best_lookup sk1 (half_subcontent c false) k) <> None) by steps.
+    rewrite half_subcontent_get in Hwrh. steps. }
+  steps.
+  { apply bit_at_le with \[cb]; steps.
+    - transitivity (bit_at (cbt_best_lookup sk c k) j).
+      + apply pfx_meet_emb_bit_at_eq. steps.
+      + apply pfx_le_emb_bit_same_prefix with (pfx_mmeet c); steps.
+        apply pfx_mmeet_key_le. steps.
+    - transitivity (bit_at (cbt_best_lookup sk c k) \[cb]).
+      + apply pfx_le_emb_bit_same_prefix with (pfx_mmeet c); steps.
+        apply pfx_mmeet_key_le. steps.
+      + destruct (bit_at (cbt_best_lookup sk c k) \[cb]) eqn:E2; steps. }
+  apply_forall. steps.
+Qed.
+
+#[export] Instance spec_of_cbt_next_ge: fnspec :=                                .**/
+uintptr_t cbt_next_ge(uintptr_t tp, uintptr_t k,
+                      uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (c: word_map) (key_out_orig: word) (val_out_orig: word)
+                (R: mem -> Prop);
+  requires t m := <{ * cbt c tp
+                     * uintptr key_out_orig key_out
+                     * uintptr val_out_orig val_out
+                     * R }> m;
+  ensures t' m' res := t' = t
+           /\ <{ * emp (res = /[0] \/ res = /[1])
+                 * cbt c tp
+                 * (if word.eqb res /[1] then
+                      (EX k_res v_res,
+                        <{ * emp (map.get c k_res = Some v_res)
+                           * emp (\[k] <= \[k_res])
+                           * emp (forall k', map.get c k' <> None ->
+                                             \[k] <= \[k'] -> \[k_res] <= \[k'])
+                           * uintptr k_res key_out
+                           * uintptr v_res val_out }>)
+                    else
+                      <{ * uintptr key_out_orig key_out
+                         * uintptr val_out_orig val_out
+                         * emp (forall k', map.get c k' <> None -> \[k'] < \[k]) }>)
+                 * R }> m'         #**/                                    /**.
+Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       .**/
+{                                                                          /**. .**/
+  if (tp == 0) /* split */ {                                               /**. .**/
+    return 0;                                                              /**. .**/
+  }                                                                        /**. .**/
+  else {                                                                   /**. .**/
+    uintptr_t orig_in_key_out = load(key_out);                             /**. .**/
+    uintptr_t best_k = cbt_best_with_trace(tp, k, key_out, val_out);       /**.
+  (* FIXME: removing orphaned heaplet from before the function call
+            (it should've been removed automatically) *)
+  match goal with
+  | H: ?m |= uintptr val_out_orig val_out |- _ => purge m
+  end. .**/
+    if (best_k == k) /* split */ {                                         /**. .**/
+      store(key_out, k);                                                   /**. .**/
+      return 1;                                                            /**. .**/
+    }                                                                      /**. .**/
+    else {                                                                 /**. .**/
+      uintptr_t trace = load(key_out);                                     /**. .**/
+      uintptr_t cb = critical_bit(best_k, k);                              /**.
+  instantiate (3:=emp True). steps. unfold enable_frame_trick.enable_frame_trick.
+  steps.
+  (* FIXME: we shouldn't have to clear these manually *)
+  purge m'. purge m3. purge m0. purge m4. purge m2. .**/
+      if (((k >> cb) & 1) == 1) /* split */ {                              /**. .**/
+        uintptr_t i = cb - 1;                                              /**.
+  prove (forall j,
+    (\[i ^+ /[1]] <= j < \[cb]) -> bit_at trace j = true -> bit_at k j = true).
+  { subst. replace (cb ^- /[1] ^+ /[1]) with cb by hwlia. steps. }
+  prove (\[cb] <= \[i] -> i = /[-1]).
+  delete #(i = cb ^- ??).
+  loop invariant above i. .**/
+        while (i != -1 && (((trace >> i) & 1) != 1 || ((k >> i) & 1) == 1))
+          /* decreases (i ^+ /[1]) */ {                                    /**. .**/
+          i = i - 1;                                                       /**. .**/
+        }                                                                  /**.
+  assert (Hor: j = \[i'] \/ \[i'] + 1 <= j) by hwlia. destruct Hor.
+  { match goal with
+    | H: word.and _ _ <> _ \/ word.and _ _ = _ |- _ => destruct H
+    end; steps. congruence. }
+  apply_forall; steps.
+  (* FIXME: again, shouldn't be clearing this *)
+  purge m'0. purge m6. purge m5. purge m7. purge m9.
+  (* FIXME: should this v still be around in the first place? *)
+  purge v.
+  .**/
+        if (i == -1) /* split */ {                                         /**. .**/
+          store(key_out, orig_in_key_out);                                 /**. .**/
+          return 0;                                                        /**. .**/
+        }                                                                  /**.
+  assert (\[k'] <= \[cbt_max_key tree c]) by (apply cbt_max_key_max; steps).
+  enough (\[cbt_max_key tree c] < \[k]) by lia. purge k'.
+  assert (forall j, 0 <= j <= \[cb] ->
+    bit_at (cbt_max_key tree c) j = bit_at best_k j).
+  { symmetry. eapply cbt_trace_fixes_prefix with (bts:=(fun _ => true)).
+    - eassumption.
+    - eassumption.
+    - subst; steps.
+    - steps. subst.
+      match goal with
+      | H: context [ cbt_lookup_trace _ _ (cbt_best_lookup _ _ _) ] |- _ =>
+           rewrite cbt_lookup_trace_best in H
+      end.
+      assert (Hor: j0 = \[cb] \/ j0 < \[cb]) by lia. destruct Hor.
+      + subst.
+        match goal with
+        | H: \[cb] = _ |- _ => rewrite H in *
+        end.
+        match goal with
+        | H: bit_at (cbt_lookup_trace _ _ _) _ = true |- _ => rename H into Hbt
+        end.
+        apply cbt_best_lookup_matches_on_trace in Hbt; steps.
+        apply pfx_meet_emb_bit_at_len in Hbt; steps.
+      + replace (bit_at (cbt_best_lookup tree c k) j0) with (bit_at k j0).
+        apply_forall; steps. symmetry. apply cbt_best_lookup_matches_on_trace; steps.
+      + steps.
+    - apply cbt_max_key_in; steps.
+    - steps. apply cbt_max_key_trace_bits; steps.
+    - steps. }
+  apply bit_at_lt with (i:=\[cb]); steps.
+  { match goal with
+    | H: forall _, _ |- _ => rewrite H; clear H
+    end.
+    apply pfx_meet_emb_bit_at_eq. steps. steps. }
+  { match goal with
+    | H: forall _, _ -> bit_at _ _ = bit_at _ _ |- _ => rewrite H; clear H
+    end.
+    subst. pose proof (pfx_meet_emb_bit_at_len (cbt_best_lookup tree c k) k) as Hb.
+    prove_ante Hb. steps.
+    match goal with
+    | H: \[cb] = _ |- _ => rewrite H in *
+    end.
+    match goal with
+    | |- ?v = false => destruct v eqn:E
+    end; steps.
+    - congruence.
+    - steps. } .**/
+        else {                                                             /**.
+  destruct_or. congruence. fwd. .**/
+          cbt_next_ge_impl_uptrace(tp, k, i, key_out, val_out);            /**.
+  { rewrite pfx_meet_comm. subst. steps. }
+  { rewrite pfx_meet_comm. subst. steps. }
+  { apply_forall. subst. steps.
+    match goal with
+    | H: \[i] + 1 <= j < pfx_len _ |- _ => rewrite pfx_meet_comm in H
+    end. steps. subst. steps. }
+  { subst. steps. }
+  { subst. steps. rewrite pfx_meet_comm.
+    pose proof (pfx_meet_emb_bit_at_len (cbt_best_lookup tree c k) k) as Hbneq.
+    prove_ante Hbneq. steps.
+    match goal with
+    | |- ?v = false => destruct v eqn:E; steps; congruence
+    end. }
+  { rewrite pfx_meet_comm. congruence. }
+  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+          return 1;                                                        /**. .**/
+        }                                                                  /**.
+  auto. .**/
+      }                                                                    /**. .**/
+      else {                                                               /**. .**/
+        cbt_next_ge_impl_at_cb(tp, k, cb, key_out, val_out);               /**.
+  { subst. rewrite pfx_meet_comm. steps. }
+  { match goal with
+    | |- ?v = true => destruct v eqn:E; steps
+    end.
+    exfalso. apply (pfx_meet_emb_bit_at_len (cbt_best_lookup tree c k) k); steps.
+    congruence. }
+   unfold enable_frame_trick.enable_frame_trick. steps. .**/
+        return 1;                                                           /**. .**/
+      }                                                                     /**.
+  auto. .**/
+    }                                                                       /**. .**/
+  }                                                                         /**. .**/
+}                                                                           /**.
+Qed.
+
+  (* TODO (not local to here): fix that there is
+     - half_subcontent_get_nnone, and also
+     - half_subcontent_get_nNone; both doing different things *)
 
 (* END CBT IMPL *)
 
