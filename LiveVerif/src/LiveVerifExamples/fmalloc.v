@@ -108,15 +108,13 @@ Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
       end
   end.
 
-Axiom TODO: False.
-
 #[export] Instance spec_of_fmalloc_init: fnspec :=                              .**/
 
 void fmalloc_init(uintptr_t a, uintptr_t buf, uintptr_t blk_size, uintptr_t n) /**#
   ghost_args := (R: mem -> Prop);
   requires t m := 2 * sizeof uintptr <= \[blk_size] /\
                   (* disallow wrap to avoid null pointers in free list: *)
-                  \[buf] + \[n] * \[blk_size] < 2 ^ bitwidth /\
+                  \[buf] <> 0 /\ \[buf] + \[n] * \[blk_size] < 2 ^ bitwidth /\
                   <{ * array (uint 8) (sizeof fmalloc_state_t) ? a
                      * array (uint 8) (\[blk_size] * \[n]) ? buf
                      * R }> m;
@@ -137,6 +135,7 @@ Derive fmalloc_init SuchThat (fun_correct! fmalloc_init) As fmalloc_init_ok.    
   let h := find #(?? + ?? < ??) in move h after tail.
   let h := find #(?? <= ??) in move h after tail.
   pose (nOrig := n). swap n with nOrig in #(?? < 2 ^ ??).
+  change n with nOrig at 2.
   swap O with (Z.to_nat (\[nOrig] - \[n])) in A.
   prove (0 <= \[n] <= \[nOrig]).
   swap nOrig with n in #(head = ??).
@@ -148,92 +147,149 @@ Derive fmalloc_init SuchThat (fun_correct! fmalloc_init) As fmalloc_init_ok.    
     head = head - blk_size;                                                /**. .**/
     n = n - 1;                                                             /**.
 
-    assert (\[head ^- buf] + sizeof uintptr <= \[blk_size] * \[n'']). {
+    assert (\[head ^- buf] + sizeof uintptr <= \[blk_size] * \[n']). {
       (* TODO can we automate this proof so that the assertion is not needed
          any more, because the subrange check that needs it finds it on its own? *)
       subst head.
       subst head'.
       bottom_up_simpl_in_goal.
-      zify_hyps.
-      zify_goal.
-      case TODO. (*
-      assert (0 < \[n]) by lia.
-      replace (/[c]) with (/[c-1] ^+ /[1]).
-      2: solve [steps].
-      bottom_up_simpl_in_goal.
-      zify_goal.
-      lia.*)
+      replace (blk_size ^* n' ^- blk_size) with (blk_size ^* (n' ^- /[1])) by ring.
+      (* non-linear arithmetic! *)
+      rewrite word.unsigned_mul_nowrap.
+      2: {
+        eapply Z.le_lt_trans. 2: eassumption.
+        rewrite Z.mul_comm.
+        etransitivity.
+        1: eapply Z.mul_le_mono_nonneg_r. 1: solve [steps].
+        1: instantiate (1 := \[nOrig]).
+        all: steps.
+      }
+      replace \[n' ^- /[1]] with (\[n'] - 1) by steps. steps.
     }                                                                           .**/
     store(head, tail);                                                     /**. .**/
     tail = head;                                                           /**. .**/
-  }                                                                        /*?.
-    lazymatch goal with
-    | H: merge_step _ |- _ => clear H
-    end.
-    steps.
-    unzify.
-(*
-  store(a+sizeof(uintptr_t), buf);                                         /**. .**/
-*)
-(*
-    assert (\[tail] <> 0). {
-      subst.
-      assert (0 < c) by lia.
-      replace (/[c]) with (/[c-1] ^+ /[1]).
-      2: solve [steps].
-      bottom_up_simpl_in_goal.
-      zify_goal.
-      lia.
-
-      zify_goal.
- by steps.
+  }                                                                        /**.
+    unfold split_concl_at.
+    replace (\[blk_size] * \[n]) with \[head ^- buf].
     2: {
-    clear Error. unfold find_hyp_for_range.
-    unzify.
+      subst head head' n.
+      bottom_up_simpl_in_goal.
+      replace (blk_size ^* n' ^- blk_size) with (blk_size ^* (n' ^- /[1])) by ring.
+      (* non-linear arithmetic! *)
+      rewrite word.unsigned_mul_nowrap.
+      2: {
+        eapply Z.le_lt_trans. 2: eassumption.
+        rewrite Z.mul_comm.
+        etransitivity.
+        1: eapply Z.mul_le_mono_nonneg_r. 1: solve [steps].
+        1: instantiate (1 := \[nOrig]).
+        all: steps.
+      }
+      steps.
+    }
+    step. step.
+    replace (Z.to_nat (\[nOrig] - \[n])) with (S (Z.to_nat (\[nOrig] - \[n']))).
+    2: {
+      subst n. steps.
+    }
+    simpl fixed_size_free_list.
+    steps.
 
+    subst tail head head'.
+    assert (0 < \[buf ^+ blk_size ^* n' ^- blk_size]).
+    2: solve [steps].
+    eapply Z.lt_le_trans with (m := \[buf]). 1: solve[steps].
+    replace (buf ^+ blk_size ^* n' ^- blk_size)
+      with (buf ^+ blk_size ^* (n' ^- /[1])) by ring.
+    rewrite word.unsigned_add_nowrap. 1: solve[steps].
+    (* non-linear arithmetic! *)
+    eapply Z.le_lt_trans.
+    2: eassumption.
+    eapply (proj1 (Z.add_le_mono_l _ _ _)).
+    rewrite Z.mul_comm.
+    rewrite word.unsigned_mul_nowrap.
+    2: {
+      eapply Z.le_lt_trans. 2: eassumption.
+      rewrite Z.mul_comm.
+      etransitivity.
+      1: eapply Z.mul_le_mono_nonneg_r. 1: solve [steps].
+      1: instantiate (1 := \[nOrig]).
+      all: steps.
+    }
+    eapply Z.mul_le_mono_nonneg_l; solve [steps].
 
-assert (subrange head 4 p (c * malloc_block_size * 1)). {
-  unfold subrange.
-  subst head.
-  subst head'.
-  bottom_up_simpl_in_goal.
+    rewrite mmap.du_empty_l.
+    lazymatch goal with
+    | H: with_mem ?m (array _ ?n ? _) |- canceling nil (mmap.Def ?m) True =>
+        replace n with 0 in H
+    end.
+    prove_emp_in_hyps. steps.
+    subst head head' tail.
+    bottom_up_simpl_in_goal.
+    rewrite word.unsigned_sub_nowrap.
+    2: {
+      rewrite word.unsigned_mul_nowrap by nia.
+      nia.
+    }
+    rewrite word.unsigned_mul_nowrap by nia.
+    steps.
+                                                                                .**/
+  store(a, blk_size);                                                      /**. .**/
+  store(a+sizeof(uintptr_t), tail);                                        /**.
 
-  clear Error.
-  assert (0 < c) by lia.
-  replace (/[c]) with (/[c-1] ^+ /[1]).
-  2: solve [steps].
-  bottom_up_simpl_in_goal.
-
-  zify_goal.
-  lia.
-
-clear Error.
-Search p.
-
-jj
-*)
-  case TODO.
+  assert (n = /[0]) as Hn by steps.
+  rewrite Hn in *|-.
+  bottom_up_simpl_in_hyps.
+  prove_emp_in_hyps.
+  repeat heapletwise_step.
                                                                                 .**/
 }                                                                          /**.
-  all: case TODO.
-  Unshelve. try exact (word.of_Z 0).
+  unfold fmalloc_state_t, split_concl_at.
+  steps.
 Qed.
 
-#[export] Instance spec_of_fmalloc: fnspec :=                                    .**/
+#[export] Instance spec_of_fmalloc_has_space: fnspec :=                         .**/
+
+uintptr_t fmalloc_has_space(uintptr_t al) /**#
+  ghost_args := blk_size n_remaining (R: mem -> Prop);
+  requires t m := <{ * allocator blk_size n_remaining al
+                     * R }> m;
+  ensures t' m' r := t' = t /\
+                     ((\[r] = 0 /\ n_remaining = 0) \/ (\[r] = 1 /\ 0 < n_remaining)) /\
+                     <{ * allocator blk_size n_remaining al
+                        * R }> m' #**/                                     /**.
+Derive fmalloc_has_space
+  SuchThat (fun_correct! fmalloc_has_space) As fmalloc_has_space_ok.            .**/
+{                                                                          /**. .**/
+  uintptr_t l = load(al + sizeof(uintptr_t));                              /**. .**/
+  return l != 0;                                                           /**.
+  unfold expr.not. (* TODO support boolean operators in non-condition position *)
+  steps.                                                                        .**/
+}                                                                          /**.
+  destr (word.eqb l /[0]); [left|right]; steps.
+  - let H := constr:(#(fixed_size_free_list)) in eapply fixed_size_free_list_null in H.
+    steps.
+  - let H := constr:(#(fixed_size_free_list)) in eapply fixed_size_free_list_nonnull in H.
+    2: assumption.
+    steps. lia.
+Qed.
+
+#[export] Instance spec_of_fmalloc: fnspec :=                                   .**/
 
 uintptr_t fmalloc(uintptr_t al) /**#
   ghost_args := blk_size n_remaining (R: mem -> Prop);
   requires t m := <{ * allocator blk_size n_remaining al
                      * R }> m;
   ensures t' m' p := t' = t /\
-                     (if \[p] =? 0 then
-                        <{ * allocator blk_size 0 al
-                           * R }>
-                      else
-                        <{ * allocator blk_size (n_remaining - 1) al
-                           * array (uint 8) blk_size ? p
-                           * freeable blk_size p
-                           * R }>) m' #**/                                  /**.
+                     if \[p] =? 0 then
+                       n_remaining = 0 /\
+                       <{ * allocator blk_size 0 al
+                          * R }> m'
+                     else
+                       <{ * allocator blk_size (n_remaining - 1) al
+                          * array (uint 8) blk_size ? p
+                          * freeable blk_size p
+                          * R }> m' #**/                                  /**.
 Derive fmalloc SuchThat (fun_correct! fmalloc) As fmalloc_ok.                   .**/
 {                                                                          /**. .**/
   uintptr_t l = load(al + sizeof(uintptr_t));                              /**. .**/
@@ -261,7 +317,8 @@ Derive fmalloc SuchThat (fun_correct! fmalloc) As fmalloc_ok.                   
   else {                                                                   /**. .**/
     return 0;                                                              /**. .**/
   }                                                                        /**.
-    replace (\[/[0]] =? 0) with true; steps.
+    let H := constr:(#fixed_size_free_list) in eapply fixed_size_free_list_null in H.
+    steps.
     simpl fixed_size_free_list.
     let H := constr:(#fixed_size_free_list) in eapply fixed_size_free_list_null in H.
     steps.

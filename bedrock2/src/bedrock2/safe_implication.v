@@ -88,6 +88,9 @@ Section WithMem.
       safe_implication (w = word.of_Z z) (impl1 (uint width z a) (uintptr w a)).
   Proof. unfold safe_implication. intros. subst. apply uint_to_uintptr. Qed.
 
+  Lemma uint_from_uintptr: forall a w z,
+      safe_implication (z = word.unsigned w) (impl1 (uintptr w a) (uint width z a)).
+  Proof. unfold safe_implication. intros. subst. apply uintptr_to_uint. Qed.
 End WithMem.
 
 #[export] Hint Resolve
@@ -95,6 +98,7 @@ End WithMem.
   list_app_eq_r
   array_impl_from_values_eq
   uintptr_from_uint
+  uint_from_uintptr
   : safe_implication.
 
 Global Hint Transparent PredicateSize : safe_implication.

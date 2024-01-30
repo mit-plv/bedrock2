@@ -372,6 +372,17 @@ Section WithMem.
     rewrite Z.max_r by apply word.width_nonneg.
     reflexivity.
   Qed.
+
+  Lemma uintptr_to_uint: forall a w,
+      impl1 (uintptr w a) (uint width (word.unsigned w) a) .
+  Proof.
+    unfold uint, uintptr. intros.
+    eapply impl1_r_sep_emp. split. 1: eapply word.unsigned_range.
+    unfold scalar, truncated_word, truncated_scalar.
+    unfold nbits_to_nbytes, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite Z.max_r by apply word.width_nonneg.
+    reflexivity.
+  Qed.
 End WithMem.
 
 Notation "'EX' x .. y , p" := (ex1 (fun x => .. (ex1 (fun y => p)) ..))
