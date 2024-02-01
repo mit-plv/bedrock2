@@ -66,6 +66,7 @@ Notation "/* *# x #* */" := x (in custom c_array_size at level 2, x constr at le
 
 Declare Custom Entry c_type_as_predicate.
 Notation "'uintptr_t'" := uintptr (in custom c_type_as_predicate).
+Notation "'uint64_t'" := (uint 64) (in custom c_type_as_predicate).
 Notation "'uint32_t'" := (uint 32) (in custom c_type_as_predicate).
 Notation "'uint16_t'" := (uint 16) (in custom c_type_as_predicate).
 Notation "'uint8_t'" := (uint 8) (in custom c_type_as_predicate).
