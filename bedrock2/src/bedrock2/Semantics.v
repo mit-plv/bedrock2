@@ -8,8 +8,11 @@ Require Export bedrock2.Memory.
 Require Import Coq.Lists.List.
 
 (* BW is not needed on the rhs, but helps infer width *)
+Definition LogItem{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
+  ((mem * String.string * list word) * (mem * list word))%type.
+
 Definition trace{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
-  list ((mem * String.string * list word) * (mem * list word)).
+  list LogItem.
 
 Definition ExtSpec{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
   (* Given a trace of what happened so far,

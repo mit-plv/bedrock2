@@ -12,13 +12,28 @@ These network cards were launched in the 2000s and discontinued in the 2010s, bu
 
 Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
-Require Import coqutil.Map.Interface coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Tactics.fwd.
+Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require coqutil.Map.SortedListZ.
+Require Import coqutil.Datatypes.ZList.
+Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
+Require Import coqutil.Datatypes.RecordSetters. Import DoubleBraceUpdate.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.StateMachineBasedExtSpec.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
+Require Import bedrock2.Map.SeparationLogic.
 Require Import bedrock2.SepLib.
+Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2.RecordPredicates.
+
+(* Consider a circular buffer of size `modulus` whose elements are indexed from
+   `0` to `modulus-1`. Given a `candidate` and a (potentially-wrapping) interval from
+   `start` (inclusive) to `past_end` (exclusive), is `candidate` inside that range?
+   Note that `start=past_end` is treated as the empty interval, so it is not possible
+   to express an interval that covers the whole buffer. *)
+Definition in_circular_interval(modulus candidate start past_end: Z): Prop :=
+  (candidate - start) mod modulus < (past_end - start) mod modulus.
 
 (* Not part of the spec, but a convention we chose to hardcode here: *)
 Definition E1000_REGS := 0x40000000.
@@ -91,24 +106,51 @@ Record tx_desc := {
    RISC-V, but most network protocols encode multi-byte fields in big-endian order, but
    this file is not about protocols, so everything in the current file is little-endian. *)
 
-Definition z_to_buf_map: map.map Z (list Byte.byte) := SortedListZ.map (list Byte.byte).
+Definition buf := list Z. (* Zs representing bytes *)
 
-Record e1000_state := {
+Definition z_to_buf_map: map.map Z buf := SortedListZ.map buf.
+
+Record e1000_config := {
   rx_queue_base_addr: Z; (* RDBAL/RDBAH, 64-bit total *)
   tx_queue_base_addr: Z; (* TDBAL/TDBAH, 64-bit *)
   rx_queue_capacity: Z; (* RDLEN / 16 *)
   tx_queue_capacity: Z; (* TDLEN / 16 *)
-  rx_queue_head: Z; (* RDH *)
-  rx_queue_tail: Z; (* RDT *)
-  tx_queue_head: Z; (* TDH *)
-  tx_queue_tail: Z; (* TDT *)
+  (* Size of the receive buffers. If a packet doesn't fit, it is split into multiple
+     buffers, using multiple descriptors.
+     Hardware supports the following receive buffer sizes:
+     256 B, 512 B, 1024 B, 2048 B, 4096 B, 8192 B, 16384 B (Section 3.2.2).
+     The buffer size is controlled using RCTL.BSIZE and RCTL.BSEX (Section 13.4.22). *)
+  rx_buf_size: Z;
+}.
+
+Record e1000_state := {
+  get_e1000_config :> e1000_config;
   rx_queue: list rx_desc;
   tx_queue: list tx_desc;
+  rx_queue_head: Z; (* RDH *)
+  tx_queue_head: Z; (* TDH *)
   (* We keep track of tx buffers because these remain unchanged when handed back to
      software. Its keys are Z because the spec says that buffer addresses are always
      64-bit addresses, even if the processor is 32-bit, and we use "word" only for
      "word of bitwidth of processor". *)
   tx_bufs: z_to_buf_map;
+}.
+
+Definition rx_queue_tail(s: e1000_state): Z := (* RDT *)
+  (s.(rx_queue_head) + len s.(rx_queue)) mod s.(rx_queue_capacity).
+
+Definition tx_queue_tail(s: e1000_state): Z := (* TDT *)
+  (s.(tx_queue_head) + len s.(tx_queue)) mod s.(tx_queue_capacity).
+
+Record e1000_ok(cfg: e1000_config)(s: e1000_state): Prop := {
+  config_matches: s.(get_e1000_config) = cfg;
+  RDH_bounded: 0 <= s.(rx_queue_head) < cfg.(rx_queue_capacity);
+  TDH_bounded: 0 <= s.(tx_queue_head) < cfg.(tx_queue_capacity);
+  rx_queue_bounded: len s.(rx_queue) <= cfg.(rx_queue_capacity);
+  tx_queue_bounded: len s.(tx_queue) <= cfg.(tx_queue_capacity);
+  tx_bufs_present: forall txd, List.In txd s.(tx_queue) ->
+                   exists bs, map.get s.(tx_bufs) txd.(tx_desc_addr) = Some bs /\
+                              len bs = txd.(tx_desc_length);
 }.
 
 Definition is_initial_e1000_state(s: e1000_state) :=
@@ -119,6 +161,51 @@ Definition is_initial_e1000_state(s: e1000_state) :=
 Section WithMem.
   Context {width: Z} {BW: Bitwidth width}
           {word: word.word width} {mem: map.map word Byte.byte}.
+
+  (* TODO move,
+     and maybe this could be used to define array and sepapps more conveniently? *)
+  Section WithElem.
+    Context {E: Type}.
+
+    Definition layout_absolute(ps: list (word -> mem -> Prop))(addrs: list word) :=
+      seps' (List.map (fun '(p, a) => p a) (List.combine ps addrs)).
+
+    Definition layout_offsets(ps: list (word -> mem -> Prop))(offsets: list Z)(addr: word):
+      mem -> Prop :=
+      layout_absolute ps (List.map (fun ofs => word.add addr (word.of_Z ofs)) offsets).
+
+    Definition scattered_array(elem: E -> word -> mem -> Prop)
+                              (vs: list E)(addrs: list word): mem -> Prop :=
+      layout_absolute (List.map elem vs) addrs.
+
+    Definition array'(elem: E -> word -> mem -> Prop){sz: PredicateSize elem}
+                     (vs: list E): word -> mem -> Prop :=
+      layout_offsets (List.map elem vs)
+             (List.map (fun i => sz * Z.of_nat i) (List.seq O (List.length vs))).
+
+    (* starts with 0 and has same length as given list, so the last element sum
+       excludes the last element *)
+    Fixpoint prefix_sums_starting_at(s: Z)(l: list Z): list Z :=
+      match l with
+      | nil => nil
+      | cons h t => cons (s + h) (prefix_sums_starting_at (s + h) t)
+      end.
+    Definition prefix_sums: list Z -> list Z := prefix_sums_starting_at 0.
+
+    Definition sepapps'(l: list sized_predicate): word -> mem -> Prop :=
+      layout_offsets (List.map proj_predicate l) (prefix_sums (List.map proj_size l)).
+
+    Definition circular_interval(modulus start: Z)(count: nat): list Z :=
+      List.unfoldn (fun x => (x + 1) mod modulus) count start.
+
+    (* The address a passed to this predicate is the base address. The area
+       occupied by the whole buffer is a..a+modulus*sz, but there might actually
+       be nothing at a, since the slice starts at a+startIndex*sz. *)
+    Definition circular_buffer_slice(elem: E -> word -> mem -> Prop)
+      {sz: PredicateSize elem}(modulus startIndex: Z)(vs: list E): word -> mem -> Prop :=
+      layout_offsets (List.map elem vs)
+             (List.map (Z.mul sz) (circular_interval modulus startIndex (List.length vs))).
+  End WithElem.
 
   Definition rx_desc_t(r: rx_desc): word -> mem -> Prop := .**/
     typedef struct __attribute__ ((__packed__)) {
@@ -167,7 +254,7 @@ Section WithMem.
   Definition read_RDH(s: e1000_state)(post: word -> e1000_state -> Prop): Prop :=
     False. (* TODO add is mGive and mReceive *)
 
-  Definition e1000_step:
+  Definition e1000_step_fun:
     e1000_state ->
     ((mem * String.string * list word) * (mem * list word)) ->
     e1000_state ->
@@ -189,27 +276,87 @@ Section WithMem.
         end
       else False.
 
+  Local Open Scope sep_bullets_scope.
+  Local Open Scope string_scope.
+
+  Inductive e1000_step: e1000_state -> LogItem -> e1000_state -> Prop :=
+  (* read RDH: new RDH can be anywhere between old RDH (incl) and old RDT (excl),
+     we receive the memory chunk for each descriptor between old and new RDH,
+     as well as the buffers pointed to by them, which contain newly received packets *)
+  | read_RDH_step: forall s mRcv new_RDH (packets: list buf),
+      len packets <= len s.(rx_queue) ->
+      \[new_RDH] = (s.(rx_queue_head) + len packets) mod s.(rx_queue_capacity) ->
+      (* we get back a (wrapping) slice of the rx queue as well as the corresponding
+         buffers *)
+      <{ * circular_buffer_slice rx_desc_t s.(rx_queue_capacity) s.(rx_queue_head)
+                                 s.(rx_queue)[:len packets] /[s.(rx_queue_base_addr)]
+         * scattered_array (array (uint 8) s.(rx_buf_size)) packets
+             (List.map (fun d => /[d.(rx_desc_addr)]) s.(rx_queue)[:len packets])
+        }> mRcv ->
+      e1000_step s ((map.empty, "MMIOREAD", [| /[E1000_RDH] |]), (mRcv, [|new_RDH|]))
+        s{{ rx_queue := s.(rx_queue)[:len packets];
+            rx_queue_head := (s.(rx_queue_head) + len packets) mod s.(rx_queue_capacity) }}
+  .
+
   Global Instance ext_spec: ExtSpec :=
     StateMachineBasedExtSpec.ext_spec is_initial_e1000_state e1000_step.
 
   Global Instance ext_spec_ok: ext_spec.ok ext_spec.
   Proof.
     apply StateMachineBasedExtSpec.ext_spec_ok.
-    unfold e1000_step. intros.
-  Admitted.
+    intros. inversion H; subst; clear H. inversion H0; subst; clear H0.
+    apply map.same_domain_refl.
+  Qed.
 
-  Import List.ListNotations.
+  Definition trace_state_satisfies(t: trace)(P: e1000_state -> Prop): Prop :=
+    (exists s, trace_can_lead_to is_initial_e1000_state e1000_step t s) /\
+    (forall s, trace_can_lead_to is_initial_e1000_state e1000_step t s -> P s).
+
   Context {locals: map.map String.string word}.
 
-  (* read RDH: new RDH can be anywhere between old RDH (incl) and RDT (excl),
+  (* TODO move to bedrock2.Semantics *)
+  Lemma exec_interact_cps: forall e binds action arges args t m l
+                                  (post: trace -> mem -> locals -> Prop) mKeep mGive,
+      map.split m mKeep mGive ->
+      eval_call_args m l arges = Some args ->
+      ext_spec t mGive action args (fun mReceive resvals =>
+          exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
+          forall m', map.split m' mKeep mReceive ->
+          post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l') ->
+      exec e (cmd.interact binds action arges) t m l post.
+  Proof. intros. eauto using exec.interact. Qed.
+
+  (* read RDH: new RDH can be anywhere between old RDH (incl) and old RDT (excl),
      we receive the memory chunk for each descriptor between old and new RDH,
      as well as the buffers pointed to by them, which contain newly received packets *)
-  Lemma wp_read_RDH: forall e t m l r post,
-
-      exec e (cmd.interact [r] "MMIOREAD" [expr.literal E1000_RDH]) t m l post.
+  Lemma wp_read_RDH: forall e cfg old_RDH old_rx_descs t m l r
+                            (post: trace -> mem -> locals -> Prop),
+      trace_state_satisfies t (fun s => e1000_ok cfg s /\
+         s.(rx_queue_head) = old_RDH /\ s.(rx_queue) = old_rx_descs) ->
+      (forall (m' mRcv: mem) (packets: list buf),
+          map.split m' mRcv m ->
+          len packets <= len old_rx_descs ->
+          let new_RDH := /[(old_RDH + len packets) mod cfg.(rx_queue_capacity)] in
+          (* we get back a (wrapping) slice of the rx queue as well as the corresponding
+             buffers *)
+          <{ * circular_buffer_slice rx_desc_t cfg.(rx_queue_capacity) old_RDH
+                                     old_rx_descs[:len packets] /[cfg.(rx_queue_base_addr)]
+             * scattered_array (array (uint 8) cfg.(rx_buf_size)) packets
+                   (List.map (fun d => /[d.(rx_desc_addr)]) (old_rx_descs[:len packets]))
+          }> mRcv ->
+          post (cons ((map.empty, "MMIOREAD", [| /[E1000_RDH] |]), (mRcv, [|new_RDH|])) t)
+               m' (map.put l r new_RDH)) ->
+      exec e (cmd.interact [|r|] "MMIOREAD" [|expr.literal E1000_RDH|]) t m l post.
   Proof.
     intros.
-    eapply exec.interact.
+    unfold trace_state_satisfies in *. fwd.
+    eapply exec_interact_cps.
+    3: {
+      unfold ext_spec, StateMachineBasedExtSpec.ext_spec.
+      split. 1: eauto.
+      intros. split.
+      - do 3 eexists. eapply read_RDH_step.
+        (* TODO the "exists step" part needs to be in the hypotheses *)
   Abort.
 
 End WithMem.
