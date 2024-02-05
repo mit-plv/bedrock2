@@ -36,7 +36,7 @@ Module ext_spec.
         ext_spec t2 mGive2 a args post2 ->
         map.same_domain mGive1 mGive2;
 
-    weaken :> forall t mGive act args,
+    #[global] weaken :: forall t mGive act args,
         Morphisms.Proper
           (Morphisms.respectful
              (Morphisms.pointwise_relation Interface.map.rep
