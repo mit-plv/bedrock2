@@ -315,8 +315,7 @@ Section WithMem.
   Context {locals: map.map String.string word}.
 
   (* TODO move to bedrock2.Semantics *)
-  Lemma exec_interact_cps: forall e binds action arges args t m l
-                                  (post: trace -> mem -> locals -> Prop) mKeep mGive,
+  Lemma exec_interact_cps: forall e binds action arges args t m l post mKeep mGive,
       map.split m mKeep mGive ->
       eval_call_args m l arges = Some args ->
       ext_spec t mGive action args (fun mReceive resvals =>
@@ -329,8 +328,7 @@ Section WithMem.
   (* read RDH: new RDH can be anywhere between old RDH (incl) and old RDT (excl),
      we receive the memory chunk for each descriptor between old and new RDH,
      as well as the buffers pointed to by them, which contain newly received packets *)
-  Lemma wp_read_RDH: forall e cfg old_RDH old_rx_descs t m l r
-                            (post: trace -> mem -> locals -> Prop),
+  Lemma wp_read_RDH: forall e cfg old_RDH old_rx_descs t m l r post,
       trace_state_satisfies t (fun s => e1000_ok cfg s /\
          s.(rx_queue_head) = old_RDH /\ s.(rx_queue) = old_rx_descs) ->
       (forall (m' mRcv: mem) (packets: list buf),
