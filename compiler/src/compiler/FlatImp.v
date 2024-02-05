@@ -18,7 +18,7 @@ Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Word.Interface.
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
-Inductive bbinop: Type :=
+Inductive bbinop: Set :=
 | BEq
 | BNe
 | BLt
@@ -97,7 +97,7 @@ Section Syntax.
         list_union veq (modVars_as_list veq s1) (modVars_as_list veq s2)
     | SCall binds _ _ | SInteract binds _ _ => list_union veq binds []
     end.
-  
+
   Definition ForallVars_bcond_gen{R: Type}(and: R -> R -> R)(P: varname -> R)(cond: bcond): R :=
     match cond with
     | CondBinary _ x y => and (P x) (P y)
@@ -173,7 +173,7 @@ Section Syntax.
              | |- andb _ _ = true => apply Bool.andb_true_iff
              | |- _ /\ _ => split
              | |- (_ <=? _)%nat = true => eapply Nat.leb_le
-             | y: operand |- _ => destruct y   
+             | y: operand |- _ => destruct y
              end;
       eauto using List.Forall_to_forallb, List.forallb_to_Forall.
   Qed.

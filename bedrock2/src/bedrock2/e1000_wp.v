@@ -45,7 +45,7 @@ Definition E1000_TDH := R 0x3810. (* transmit descriptor queue head *)
 Definition E1000_TDT := R 0x3818. (* transmit descriptor queue tail *)
 
 (* Receive Descriptors (Section 3.2.3) *)
-Record rx_desc := {
+Record rx_desc: Set := {
   (* 64 bits *) rx_desc_addr: Z; (* address of buffer to write to *)
   (* 16 bits *) rx_desc_length: Z; (* length of packet received *)
   (* 16 bits *) rx_desc_csum: Z; (* checksum *)
@@ -55,7 +55,7 @@ Record rx_desc := {
 }.
 
 (* Transmit Descriptors (Section 3.3.3) *)
-Record tx_desc := {
+Record tx_desc: Set := {
   (* 64 bits *) tx_desc_addr: Z; (* address of buffer to read from *)
   (* 16 bits *) tx_desc_length: Z; (* length of packet to be sent *)
   (*  8 bits *) tx_desc_cso: Z; (* checksum offset: where to insert checksum (if enabled) *)
@@ -102,7 +102,7 @@ Definition buf := list Z. (* Zs representing bytes *)
 
 Definition z_to_buf_map: map.map Z buf := SortedListZ.map buf.
 
-Record e1000_config := {
+Record e1000_config: Set := {
   rx_queue_base_addr: Z; (* RDBAL/RDBAH, 64-bit total *)
   tx_queue_base_addr: Z; (* TDBAL/TDBAH, 64-bit *)
   rx_queue_capacity: Z; (* RDLEN / 16 *)

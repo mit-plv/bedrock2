@@ -2,14 +2,14 @@
 Require Import LiveVerif.LiveVerifLib.
 Require Import LiveVerifExamples.swap.
 
-Record foo := {
+Record foo: Set := {
   fieldA: Z;
   fieldB: Z;
   fieldC: Z;
   fieldD: Z;
 }.
 
-Record singleton_foo := {
+Record singleton_foo: Set := {
   singleField: Z;
 }.
 

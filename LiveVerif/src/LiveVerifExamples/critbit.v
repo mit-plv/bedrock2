@@ -1853,7 +1853,7 @@ Ltac step_hook ::=
   | |- _ => custom_map_ops_step
   end.
 
-Inductive tree_skeleton: Type :=
+Inductive tree_skeleton: Set :=
 | Leaf
 | Node (skL skR: tree_skeleton).
 
