@@ -103,8 +103,8 @@ Definition buf := list Z. (* Zs representing bytes *)
 Definition z_to_buf_map: map.map Z buf := SortedListZ.map buf.
 
 Record e1000_config: Set := {
-  rx_queue_base_addr: Z; (* RDBAL/RDBAH, 64-bit total *)
-  tx_queue_base_addr: Z; (* TDBAL/TDBAH, 64-bit *)
+  rx_queue_base_addr: option Z; (* RDBAL/RDBAH, 64-bit total, None means uninitialized *)
+  tx_queue_base_addr: option Z; (* TDBAL/TDBAH, same *)
   rx_queue_capacity: Z; (* RDLEN / 16 *)
   tx_queue_capacity: Z; (* TDLEN / 16 *)
   (* Size of the receive buffers. If a packet doesn't fit, it is split into multiple
@@ -114,6 +114,14 @@ Record e1000_config: Set := {
      The buffer size is controlled using RCTL.BSIZE and RCTL.BSEX (Section 13.4.22). *)
   rx_buf_size: Z;
 }.
+(* rx/tx_queue_base_addr: Why we use option Z instead of just leaving the Z unspecified in
+   is_initial_e1000_state: We want mGive to be unique given a trace and extcall args, but
+   the rx/tx queue base addresses are not unique (because initial value is unspecified),
+   (but the heads and tails are), so given a trace and a list of extcall arguments,
+   the given-away memory is not uniquely determined, because the heads and tails are
+   relative to the potentially-undefined base address.
+   So if the base address is unspecified, we need to reject all steps that would give
+   up memory, so we need to use an option for the base address... *)
 
 Record e1000_state := {
   get_e1000_config :> e1000_config;
@@ -146,9 +154,14 @@ Record e1000_ok(cfg: e1000_config)(s: e1000_state): Prop := {
 }.
 
 Definition is_initial_e1000_state(s: e1000_state) :=
-  (* we don't know anything about the initial values of the registers, but we know
-     that it initially does not own any memory *)
-  s.(rx_queue) = nil /\ s.(tx_queue) = nil /\ s.(tx_bufs) = map.empty.
+  (* initially, the network card does not own any memory *)
+  s.(rx_queue) = nil /\ s.(tx_queue) = nil /\ s.(tx_bufs) = map.empty /\
+  (* some registers (eg RDBAL/RDBAH, TDBAL/TDBAH have an initial value of X (undefined),*)
+  s.(rx_queue_base_addr) = None /\ s.(tx_queue_base_addr) = None /\
+  (* while others are specified to have an initial value of 0 (see Section 13) *)
+  s.(rx_queue_capacity) = 0 /\ s.(tx_queue_capacity) = 0 /\
+  s.(rx_buf_size) = 2048 /\ (* <- meaning of RCTL.BSIZE=0 /\ RCTL.BSEX=0 *)
+  s.(rx_queue_head) = 0 /\ s.(tx_queue_head) = 0.
 
 Section WithMem.
   Context {width: Z} {BW: Bitwidth width}
@@ -246,28 +259,6 @@ Section WithMem.
   Definition read_RDH(s: e1000_state)(post: word -> e1000_state -> Prop): Prop :=
     False. (* TODO add is mGive and mReceive *)
 
-  Definition e1000_step_fun:
-    e1000_state ->
-    ((mem * String.string * list word) * (mem * list word)) ->
-    e1000_state ->
-    Prop :=
-    fun s '((mGive, action, args), (mReceive, rets)) s' =>
-      if String.eqb action "MMIOREAD"%string then
-        match args with
-        | cons addr nil =>
-            if \[addr] =? E1000_RDH then False
-            else False
-        | _ => False
-        end
-      else if String.eqb action "MMIOWRITE" then
-        match args with
-        | cons addr (cons value nil) =>
-            if \[addr] =? E1000_RDT then False
-            else False
-        | _ => False
-        end
-      else False.
-
   Local Open Scope sep_bullets_scope.
   Local Open Scope string_scope.
 
@@ -283,14 +274,15 @@ Section WithMem.
   (* read RDH: new RDH can be anywhere between old RDH (incl) and old RDT (excl),
      we receive the memory chunk for each descriptor between old and new RDH,
      as well as the buffers pointed to by them, which contain newly received packets *)
-  | read_RDH_step: forall s (post: mem -> list word -> e1000_state -> Prop),
+  | read_RDH_step: forall s rdba (post: mem -> list word -> e1000_state -> Prop),
+      s.(get_e1000_config).(rx_queue_base_addr) = Some rdba ->
       (forall mRcv new_RDH (packets: list buf),
           len packets <= len s.(rx_queue) ->
           \[new_RDH] = (s.(rx_queue_head) + len packets) mod s.(rx_queue_capacity) ->
           (* we get back a (wrapping) slice of the rx queue as well as the corresponding
              buffers *)
           <{ * circular_buffer_slice rx_desc_t s.(rx_queue_capacity) s.(rx_queue_head)
-                                     s.(rx_queue)[:len packets] /[s.(rx_queue_base_addr)]
+                                     s.(rx_queue)[:len packets] /[rdba]
              * scattered_array (array (uint 8) s.(rx_buf_size)) packets
                  (List.map (fun d => /[d.(rx_desc_addr)]) s.(rx_queue)[:len packets])
             }> mRcv ->
@@ -300,6 +292,42 @@ Section WithMem.
                                  s.(rx_queue_capacity) }}) ->
       e1000_step s map.empty "MMIOREAD" [| /[E1000_RDH] |] post.
 
+  Lemma weaken_e1000_step: forall s mGive action args post1 post2,
+      e1000_step s mGive action args post1 ->
+      (forall mReceive rets s', post1 mReceive rets s' -> post2 mReceive rets s') ->
+      e1000_step s mGive action args post2.
+  Proof.
+    intros. inversion H; subst; clear H.
+    - eapply read_RDH_step. 1: eassumption. eauto.
+  Qed.
+
+  Definition trace_state_satisfies: trace -> (e1000_state -> Prop) -> Prop :=
+    trace_leads_to_state_satisfying is_initial_e1000_state e1000_step.
+
+  (* Given a trace, some state fields (currently, actually, all, but we don't want to
+     rely on it) are uniquely determined: *)
+  Lemma unique_state_fields: forall t post,
+      trace_state_satisfies t post ->
+      exists rdba tdba rxcap txcap rxsz rxq txq rdh tdh,
+      trace_state_satisfies t (fun s => post s /\
+        s.(rx_queue_base_addr) = rdba /\
+        s.(tx_queue_base_addr) = tdba /\
+        s.(rx_queue_capacity) = rxcap /\
+        s.(tx_queue_capacity) = txcap /\
+        s.(rx_buf_size) = rxsz /\
+        s.(rx_queue) = rxq /\
+        s.(tx_queue) = txq /\
+        s.(rx_queue_head) = rdh /\
+        s.(tx_queue_head) = tdh).
+  Proof.
+    unfold trace_state_satisfies, trace_leads_to_state_satisfying.
+    intros.
+    (* apply_snoc_trace_induction
+       exists u, forall s
+       vs
+       forall s, exists u *)
+  Admitted.
+
   Global Instance ext_spec: ExtSpec :=
     StateMachineBasedExtSpec_wp.ext_spec is_initial_e1000_state e1000_step.
 
@@ -308,9 +336,6 @@ Section WithMem.
     apply StateMachineBasedExtSpec_wp.ext_spec_ok.
     intros.
   Admitted.
-
-  Definition trace_state_satisfies: trace -> (e1000_state -> Prop) -> Prop :=
-    trace_leads_to_state_satisfying is_initial_e1000_state e1000_step.
 
   Context {locals: map.map String.string word}.
 
@@ -329,8 +354,9 @@ Section WithMem.
   (* read RDH: new RDH can be anywhere between old RDH (incl) and old RDT (excl),
      we receive the memory chunk for each descriptor between old and new RDH,
      as well as the buffers pointed to by them, which contain newly received packets *)
-  Lemma wp_read_RDH: forall e cfg old_RDH old_rx_descs t m l r
+  Lemma wp_read_RDH: forall e cfg rdba old_RDH old_rx_descs t m l r
                             (post: trace -> mem -> locals -> Prop),
+      cfg.(rx_queue_base_addr) = Some rdba ->
       trace_state_satisfies t (fun s => e1000_ok cfg s /\
          s.(rx_queue_head) = old_RDH /\ s.(rx_queue) = old_rx_descs) ->
       (forall (m' mRcv: mem) (packets: list buf),
@@ -340,7 +366,7 @@ Section WithMem.
           (* we get back a (wrapping) slice of the rx queue as well as the corresponding
              buffers *)
           <{ * circular_buffer_slice rx_desc_t cfg.(rx_queue_capacity) old_RDH
-                                     old_rx_descs[:len packets] /[cfg.(rx_queue_base_addr)]
+                                     old_rx_descs[:len packets] /[rdba]
              * scattered_array (array (uint 8) cfg.(rx_buf_size)) packets
                    (List.map (fun d => /[d.(rx_desc_addr)]) (old_rx_descs[:len packets]))
           }> mRcv ->

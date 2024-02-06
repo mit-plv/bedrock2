@@ -29,11 +29,12 @@ Module ext_spec.
   Class ok{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte}
           {ext_spec: ExtSpec}: Prop :=
   {
-    (* The action name and arguments uniquely determine the footprint of the given-away memory. *)
-    unique_mGive_footprint: forall t1 t2 mGive1 mGive2 a args
-                                            (post1 post2: mem -> list word -> Prop),
-        ext_spec t1 mGive1 a args post1 ->
-        ext_spec t2 mGive2 a args post2 ->
+    (* Given a trace of previous interactions, the action name and arguments
+       uniquely determine the footprint of the given-away memory. *)
+    unique_mGive_footprint: forall t mGive1 mGive2 a args
+                                   (post1 post2: mem -> list word -> Prop),
+        ext_spec t mGive1 a args post1 ->
+        ext_spec t mGive2 a args post2 ->
         map.same_domain mGive1 mGive2;
 
     #[global] weaken :: forall t mGive act args,
