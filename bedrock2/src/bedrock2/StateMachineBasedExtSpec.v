@@ -37,22 +37,26 @@ Section WithMem.
                                   post mReceive rets)).
 
   Hypothesis action_and_args_determine_mGive:
-    forall action args
-           s1 mGive1 mReceive1 rets1 s1'
-           s2 mGive2 mReceive2 rets2 s2',
+    forall t m action args
+           s1 mGive1 mKeep1 mReceive1 rets1 s1'
+           s2 mGive2 mKeep2 mReceive2 rets2 s2',
+      trace_can_lead_to t s1 ->
+      trace_can_lead_to t s2 ->
+      map.split m mKeep1 mGive1 ->
+      map.split m mKeep2 mGive2 ->
       step s1 (mGive1, action, args, (mReceive1, rets1)) s1' ->
       step s2 (mGive2, action, args, (mReceive2, rets2)) s2' ->
-      map.same_domain mGive1 mGive2.
+      mGive1 = mGive2.
 
   Lemma ext_spec_ok: ext_spec.ok ext_spec.
   Proof.
     unfold ext_spec. constructor.
-    - intros *. intros ((s1 & L1) & H1) ((s2 & L2) & H2).
+    - intros *. intros Hs1 Hs2. intros ((s1 & L1) & H1) ((s2 & L2) & H2).
       specialize H1 with (1 := L1). destruct H1 as (A1 & B1).
       specialize H2 with (1 := L2). destruct H2 as (A2 & B2).
       destruct A1 as (rets1 & mReceive1 & s1' & A1).
       destruct A2 as (rets2 & mReceive2 & s2' & A2).
-      eapply action_and_args_determine_mGive; eassumption.
+      eapply action_and_args_determine_mGive; cycle -2; eassumption.
     - unfold Morphisms.Proper, Morphisms.respectful, Morphisms.pointwise_relation,
         Basics.impl.
       intros. destruct H0 as (HE & H0). split. 1: exact HE.

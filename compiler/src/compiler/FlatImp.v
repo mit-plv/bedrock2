@@ -544,9 +544,11 @@ Module exec.
         try solve [econstructor; eauto | exfalso; congruence].
 
       - (* SInteract *)
-        pose proof ext_spec.unique_mGive_footprint as P.
-        specialize P with (1 := H1) (2 := H14).
-        destruct (map.split_diff P H H7). subst mKeep0 mGive0.
+        pose proof ext_spec.mGive_unique as P.
+        specialize P with (1 := H) (2 := H7) (3 := H1) (4 := H14).
+        subst mGive0.
+        destruct (map.split_diff (map.same_domain_refl mGive) H H7) as (? & _).
+        subst mKeep0.
         eapply @interact.
         + eassumption.
         + eassumption.

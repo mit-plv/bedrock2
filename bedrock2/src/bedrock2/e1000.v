@@ -12,6 +12,7 @@ These network cards were launched in the 2000s and discontinued in the 2010s, bu
 
 Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
@@ -254,28 +255,6 @@ Section WithMem.
   Definition read_RDH(s: e1000_state)(post: word -> e1000_state -> Prop): Prop :=
     False. (* TODO add is mGive and mReceive *)
 
-  Definition e1000_step_fun:
-    e1000_state ->
-    ((mem * String.string * list word) * (mem * list word)) ->
-    e1000_state ->
-    Prop :=
-    fun s '((mGive, action, args), (mReceive, rets)) s' =>
-      if String.eqb action "MMIOREAD"%string then
-        match args with
-        | cons addr nil =>
-            if \[addr] =? E1000_RDH then False
-            else False
-        | _ => False
-        end
-      else if String.eqb action "MMIOWRITE" then
-        match args with
-        | cons addr (cons value nil) =>
-            if \[addr] =? E1000_RDT then False
-            else False
-        | _ => False
-        end
-      else False.
-
   Local Open Scope sep_bullets_scope.
   Local Open Scope string_scope.
 
@@ -296,16 +275,91 @@ Section WithMem.
       e1000_step s ((map.empty, "MMIOREAD", [| /[E1000_RDH] |]), (mRcv, [|new_RDH|]))
         s{{ rx_queue := s.(rx_queue)[:len packets];
             rx_queue_head := (s.(rx_queue_head) + len packets) mod s.(rx_queue_capacity) }}
+  (* write RDT: software may set new RDT to anywhere between old RDT (incl) and
+     RDH (excl, because otherwise queue considered empty), and by doing so, abandons
+     the memory chunks corresponding to these descriptors and the buffers pointed to
+     by them, thus providing more space for hardware to store received packets *)
+  | write_RDT_step: forall s mGive new_RDT new_descs (fillable: list buf),
+      (* Note: strict < because otherwise we had head=tail which would be interpreted
+         as an empty circular buffer *)
+      len s.(rx_queue) + len fillable < s.(rx_queue_capacity) ->
+      \[new_RDT] = (s.(rx_queue_head) + len s.(rx_queue) + len fillable)
+                     mod s.(rx_queue_capacity) ->
+      len fillable = len new_descs ->
+      <{ * circular_buffer_slice rx_desc_t s.(rx_queue_capacity) s.(rx_queue_head)
+                  (s.(rx_queue) ++ new_descs)%list /[s.(rx_queue_base_addr)]
+         * scattered_array (array (uint 8) s.(rx_buf_size)) fillable
+             (List.map (fun d => /[d.(rx_desc_addr)]) (s.(rx_queue) ++ new_descs)%list)
+        }> mGive ->
+      e1000_step s ((mGive, "MMIOWRITE", [| /[E1000_RDT]; new_RDT |]), (map.empty, nil))
+        s{{ rx_queue := (s.(rx_queue) ++ new_descs)%list (* TODO *) }}
+        (* no need to update rx_queue_tail because it is inferred from
+           rx_queue_head and len rx_queue *)
   .
 
   Global Instance ext_spec: ExtSpec :=
     StateMachineBasedExtSpec.ext_spec is_initial_e1000_state e1000_step.
 
+  Axiom TODO: False.
+
   Global Instance ext_spec_ok: ext_spec.ok ext_spec.
   Proof.
     apply StateMachineBasedExtSpec.ext_spec_ok.
-    intros. inversion H; subst; clear H. inversion H0; subst; clear H0.
-    apply map.same_domain_refl.
+    intros. inversion H3; subst; clear H3; inversion H4; subst; clear H4.
+    - (* read_RDH_step *)
+      reflexivity.
+    - (* write_RDT_step *)
+      lazymatch goal with
+      | H: sep _ _ _ |- _ => destruct H as (mGive2a & mGive2b & D2 & M2a & M2b)
+      end.
+      lazymatch goal with
+      | H: sep _ _ _ |- _ => destruct H as (mGive1a & mGive1b & D1 & M1a & M1b)
+      end.
+      (* uniqueness stuff: *)
+      replace (rx_queue s2) with (rx_queue s1) in * by case TODO.
+      replace (rx_queue_base_addr s2) with (rx_queue_base_addr s1) in * by case TODO.
+      replace (rx_queue_capacity s2) with (rx_queue_capacity s1) in * by case TODO.
+      replace (rx_buf_size s2) with (rx_buf_size s1) in * by case TODO.
+      replace (rx_queue_head s2) with (rx_queue_head s1) in * by case TODO.
+      rename fillable0 into fillable2, fillable into fillable1.
+      rename new_descs0 into new_descs2, new_descs into new_descs1.
+      assert (len fillable1 = len fillable2). {
+        assert (
+          (rx_queue_head s1 + len (rx_queue s1) + len fillable1) mod rx_queue_capacity s1 =
+          (rx_queue_head s1 + len (rx_queue s1) + len fillable2) mod rx_queue_capacity s1)
+          by lia.
+        assert (
+          (len fillable1) mod rx_queue_capacity s1 =
+          (len fillable2) mod rx_queue_capacity s1)
+          as Hlf by case TODO.
+        rewrite 2Z.mod_small in Hlf by lia.
+        exact Hlf.
+      }
+      assert (len new_descs1 = len new_descs2) by lia.
+      (* In M1a and M2a, we have the same base address, start index, modulus, and
+         list length, so: *)
+      assert (map.same_domain mGive1a mGive2a) as Hsd by case TODO.
+      (* Because of D1, D2, H1, H2: mGive1a and mGive2a are part of the same big m,
+         so since they have the same footprint, they must also have the same values: *)
+      assert (mGive1a = mGive2a) by case TODO.
+      subst mGive2a. clear Hsd.
+      (* But now, M1a and M2a imply: *)
+      replace new_descs2 with new_descs1 in * by case TODO.
+      set (addrs := (List.map (fun d : rx_desc => /[rx_desc_addr d])
+                       (rx_queue s1 ++ new_descs1))) in *.
+      move M1b at bottom. move M2b at bottom.
+      (* same addresses in M1b and M2b and same element size means same footprint: *)
+      assert (map.same_domain mGive1b mGive2b) as Hsd by case TODO.
+      (* Because of D1, D2, H1, H2: mGive1b and mGive2b are part of the same big m,
+         so since they have the same footprint, they must also have the same values: *)
+      assert (mGive1b = mGive2b) by case TODO.
+      subst mGive2b. clear Hsd.
+      (* But now, M1b and M2b imply: *)
+      replace fillable2 with fillable1 in * by case TODO.
+      unfold map.split in D1, D2.
+      destruct D1 as (? & D1). destruct D2 as (? & D2).
+      subst mGive1 mGive2.
+      reflexivity.
   Qed.
 
   Definition trace_state_satisfies(t: trace)(P: e1000_state -> Prop): Prop :=

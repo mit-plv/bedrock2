@@ -30,12 +30,14 @@ Module ext_spec.
           {ext_spec: ExtSpec}: Prop :=
   {
     (* Given a trace of previous interactions, the action name and arguments
-       uniquely determine the footprint of the given-away memory. *)
-    unique_mGive_footprint: forall t mGive1 mGive2 a args
-                                   (post1 post2: mem -> list word -> Prop),
-        ext_spec t mGive1 a args post1 ->
-        ext_spec t mGive2 a args post2 ->
-        map.same_domain mGive1 mGive2;
+       uniquely determine what chunk of memory the ext_spec will chop off from
+       the whole memory m *)
+    mGive_unique: forall t m mGive1 mKeep1 mGive2 mKeep2 a args post1 post2,
+      map.split m mKeep1 mGive1 ->
+      map.split m mKeep2 mGive2 ->
+      ext_spec t mGive1 a args post1 ->
+      ext_spec t mGive2 a args post2 ->
+      mGive1 = mGive2;
 
     #[global] weaken :: forall t mGive act args,
         Morphisms.Proper
@@ -290,9 +292,11 @@ Module exec. Section WithParams.
                  replace v2 with v1 in * by congruence; clear H2
                end.
         eauto 10.
-    - pose proof ext_spec.unique_mGive_footprint as P.
-      specialize P with (1 := H1) (2 := H13).
-      destruct (map.split_diff P H H7). subst mKeep0 mGive0. clear H7.
+    - pose proof ext_spec.mGive_unique as P.
+      specialize P with (1 := H) (2 := H7) (3 := H1) (4 := H13).
+      subst mGive0.
+      destruct (map.split_diff (map.same_domain_refl mGive) H H7) as (? & _).
+      subst mKeep0.
       eapply interact. 1,2: eassumption.
       + eapply ext_spec.intersect; [ exact H1 | exact H13 ].
       + simpl. intros *. intros [? ?].
