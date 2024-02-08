@@ -2133,6 +2133,7 @@ Qed.
       => constructor : suppressed_warnings.
 #[local] Hint Extern 1 (cannot_purify (cbt' _ _ _ _))
       => constructor : suppressed_warnings.
+(* change from #[local] to #[export]? *)
 #[local] Hint Extern 1 (cannot_purify (cbt _ _))
       => constructor : suppressed_warnings.
 #[local] Hint Extern 1 (cannot_purify (wand _ _))
@@ -2157,8 +2158,10 @@ Qed.
       => constructor : suppressed_warnings.
 #[local] Hint Extern 1 (PredicateSize_not_found (sep allocator))
       => constructor : suppressed_warnings.
+#[local] Hint Extern 1 (PredicateSize_not_found (cbt _))
+      => constructor : suppressed_warnings.
 
-#[local] Hint Unfold cbt : heapletwise_always_unfold.
+(* #[local] Hint Unfold cbt : heapletwise_always_unfold. *)
 #[local] Hint Unfold nncbt : heapletwise_always_unfold.
 
 Hint Resolve purify_cbt' : purify.
@@ -2498,7 +2501,8 @@ uintptr_t cbt_lookup(uintptr_t tp, uintptr_t k, uintptr_t val_out) /**#
                             end) val_out
                  * R }> m'         #**/                                     /**.
 Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.           .**/
-{                                                                           /**. .**/
+{                                                                           /**.
+  unfold cbt, nncbt in *. .**/
   if (tp == 0) /* split */ {                                                /**. .**/
     return 0;                                                               /**. .**/
   }                                                                         /**. .**/
@@ -2759,7 +2763,8 @@ uintptr_t cbt_insert(uintptr_t tp, uintptr_t k, uintptr_t v) /**#
                     * cbt (map.put c k v) res
                     * R }> m' #**/                                         /**.
 Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          .**/
-{                                                                          /**. .**/
+{                                                                          /**.
+  unfold cbt, nncbt in *. .**/
   if (tp == 0) /* split */ {                                               /**.
     (* a direct `return cbt_alloc_leaf(k, v);` gives a type error
        (the assignment_rhs type vs the expr type) *)                            .**/
@@ -3046,7 +3051,8 @@ uintptr_t cbt_delete(uintptr_t tpp, uintptr_t k) /**#
                                     * cbt (map.remove c k) tp' }>)
                       * R }> m' #**/                                       /**.
 Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          .**/
-{                                                                          /**. .**/
+{                                                                          /**.
+  unfold cbt, nncbt in *. .**/
   uintptr_t tp = load(tpp);                                                /**. .**/
   if (tp == 0) /* split */ {                                               /**. .**/
     return 0;                                                              /**. .**/
@@ -3179,7 +3185,8 @@ uintptr_t cbt_get_min(uintptr_t tp, uintptr_t key_out, uintptr_t val_out) /**#
                            * uintptr v val_out }>))
                  * R }> m'         #**/                                    /**.
 Derive cbt_get_min SuchThat (fun_correct! cbt_get_min) As cbt_get_min_ok.       .**/
-{                                                                          /**. .**/
+{                                                                          /**.
+  unfold cbt, nncbt in *. .**/
   if (tp == 0) /* split */ {                                               /**. .**/
     return 0;                                                              /**. .**/
   }                                                                        /**. .**/
@@ -3213,7 +3220,8 @@ uintptr_t cbt_get_max(uintptr_t tp, uintptr_t key_out, uintptr_t val_out) /**#
                            * uintptr v val_out }>))
                  * R }> m'         #**/                                    /**.
 Derive cbt_get_max SuchThat (fun_correct! cbt_get_max) As cbt_get_max_ok.       .**/
-{                                                                          /**. .**/
+{                                                                          /**.
+  unfold cbt, nncbt in *. .**/
   if (tp == 0) /* split */ {                                               /**. .**/
     return 0;                                                              /**. .**/
   }                                                                        /**. .**/
@@ -3763,6 +3771,28 @@ Derive cbt_next_ge_impl_at_cb SuchThat (fun_correct! cbt_next_ge_impl_at_cb)
   apply_forall. steps.
 Qed.
 
+Definition map_all_keys (c: word_map) (pred: word -> bool) :=
+  map.fold (fun b k v => andb b (pred k)) true c.
+
+Lemma map_all_keys_spec: forall c pred,
+  map_all_keys c pred = true <-> (forall k, map.get c k <> None -> pred k = true).
+Admitted.
+
+Lemma map_all_keys_false_ce: forall c pred,
+  map_all_keys c pred = false -> (exists k, map.get c k <> None /\ pred k = false).
+Admitted.
+
+Lemma map_all_keys_ce_false: forall c pred k,
+  map.get c k <> None -> pred k = false -> map_all_keys c pred = false.
+Admitted.
+
+Lemma map_all_keys_empty: forall pred, map_all_keys map.empty pred = true.
+Admitted.
+
+Lemma map_all_keys_eq: forall c pred1 pred2,
+  (forall k, pred1 k = pred2 k) -> map_all_keys c pred1 = map_all_keys c pred2.
+Admitted.
+
 #[export] Instance spec_of_cbt_next_ge: fnspec :=                                .**/
 uintptr_t cbt_next_ge(uintptr_t tp, uintptr_t k,
                       uintptr_t key_out, uintptr_t val_out) /**#
@@ -3773,26 +3803,28 @@ uintptr_t cbt_next_ge(uintptr_t tp, uintptr_t k,
                      * uintptr val_out_orig val_out
                      * R }> m;
   ensures t' m' res := t' = t
-           /\ <{ * emp (res = /[0] \/ res = /[1])
-                 * cbt c tp
-                 * (if word.eqb res /[1] then
+           /\ <{ * cbt c tp
+                 * (if map_all_keys c (fun k' => \[k'] <? \[k]) then
+                      <{ * uintptr key_out_orig key_out
+                         * uintptr val_out_orig val_out
+                         * emp (res = /[0]) }>
+                    else
                       (EX k_res v_res,
                         <{ * emp (map.get c k_res = Some v_res)
                            * emp (\[k] <= \[k_res])
                            * emp (forall k', map.get c k' <> None ->
                                              \[k] <= \[k'] -> \[k_res] <= \[k'])
                            * uintptr k_res key_out
-                           * uintptr v_res val_out }>)
-                    else
-                      <{ * uintptr key_out_orig key_out
-                         * uintptr val_out_orig val_out
-                         * emp (forall k', map.get c k' <> None -> \[k'] < \[k]) }>)
+                           * uintptr v_res val_out
+                           * emp (res = /[1]) }>))
                  * R }> m'         #**/                                    /**.
 Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       .**/
-{                                                                          /**. .**/
+{                                                                          /**.
+  unfold cbt, nncbt in *. .**/
   if (tp == 0) /* split */ {                                               /**. .**/
     return 0;                                                              /**. .**/
-  }                                                                        /**. .**/
+  }                                                                        /**.
+  rewrite map_all_keys_empty. steps. .**/
   else {                                                                   /**. .**/
     uintptr_t orig_in_key_out = load(key_out);                             /**. .**/
     uintptr_t best_k = cbt_best_with_trace(tp, k, key_out, val_out);       /**.
@@ -3804,7 +3836,8 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
     if (best_k == k) /* split */ {                                         /**. .**/
       store(key_out, k);                                                   /**. .**/
       return 1;                                                            /**. .**/
-    }                                                                      /**. .**/
+    }                                                                      /**.
+  rewrite (map_all_keys_ce_false _ _ best_k); steps; subst; steps. .**/
     else {                                                                 /**. .**/
       uintptr_t trace = load(key_out);                                     /**. .**/
       uintptr_t cb = critical_bit(best_k, k);                              /**.
@@ -3835,6 +3868,10 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
           store(key_out, orig_in_key_out);                                 /**. .**/
           return 0;                                                        /**. .**/
         }                                                                  /**.
+  match goal with
+  | |- context [ if ?cond then _ else _ ] => assert (cond = true)
+  end.
+  rewrite map_all_keys_spec. steps. rename k0 into k'.
   assert (\[k'] <= \[cbt_max_key tree c]) by (apply cbt_max_key_max; steps).
   enough (\[cbt_max_key tree c] < \[k]) by lia. purge k'.
   assert (forall j, 0 <= j <= \[cb] ->
@@ -3881,7 +3918,7 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
     | |- ?v = false => destruct v eqn:E
     end; steps.
     - congruence.
-    - steps. } .**/
+    - steps. } steps. .**/
         else {                                                             /**.
   destruct_or. congruence. fwd. .**/
           cbt_next_ge_impl_uptrace(tp, k, i, key_out, val_out);            /**.
@@ -3901,7 +3938,7 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
   { rewrite pfx_meet_comm. congruence. } .**/
           return 1;                                                        /**. .**/
         }                                                                  /**.
-  auto. .**/
+  rewrite (map_all_keys_ce_false _ _ k_res). steps. auto. steps. steps. .**/
       }                                                                    /**. .**/
       else {                                                               /**. .**/
         cbt_next_ge_impl_at_cb(tp, k, cb, key_out, val_out);               /**.
@@ -3913,15 +3950,376 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
     congruence. } .**/
         return 1;                                                           /**. .**/
       }                                                                     /**.
-  auto. .**/
+  rewrite (map_all_keys_ce_false _ _ k_res). steps. auto. steps. steps. .**/
     }                                                                       /**. .**/
   }                                                                         /**. .**/
 }                                                                           /**.
 Qed.
 
-  (* TODO (not local to here): fix that there is
-     - half_subcontent_get_nnone, and also
-     - half_subcontent_get_nNone; both doing different things *)
+#[export] Instance spec_of_cbt_next_gt: fnspec :=                                .**/
+uintptr_t cbt_next_gt(uintptr_t tp, uintptr_t k,
+                      uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (c: word_map) (key_out_orig: word) (val_out_orig: word)
+                (R: mem -> Prop);
+  requires t m := <{ * cbt c tp
+                     * uintptr key_out_orig key_out
+                     * uintptr val_out_orig val_out
+                     * R }> m;
+  ensures t' m' res := t' = t
+           /\ <{ * cbt c tp
+                 * (if map_all_keys c (fun k' => \[k'] <=? \[k]) then
+                      <{ * uintptr key_out_orig key_out
+                         * uintptr val_out_orig val_out
+                         * emp (res = /[0]) }>
+                    else
+                      (EX k_res v_res,
+                        <{ * emp (map.get c k_res = Some v_res)
+                           * emp (\[k] < \[k_res])
+                           * emp (forall k', map.get c k' <> None ->
+                                             \[k] < \[k'] -> \[k_res] <= \[k'])
+                           * uintptr k_res key_out
+                           * uintptr v_res val_out
+                           * emp (res = /[1]) }>))
+                 * R }> m'         #**/                                    /**.
+Derive cbt_next_gt SuchThat (fun_correct! cbt_next_gt) As cbt_next_gt_ok.       .**/
+{                                                                          /**. .**/
+  if (k == -1) /* split */ {                                               /**. .**/
+    return 0;                                                              /**. .**/
+  }                                                                        /**.
+  match goal with
+  | |- context[ if ?cond then _ else _ ] => assert (cond = true)
+  end.
+  rewrite map_all_keys_spec. steps. steps. .**/
+  else {                                                                   /**. .**/
+    uintptr_t res = cbt_next_ge(tp, k + 1, key_out, val_out);              /**.
+  instantiate (7:=c). steps. .**/
+    return res;                                                            /**. .**/
+  }                                                                        /**.
+  match goal with
+  | H: context [ if ?condH then _ else _ ] |- context [ if ?condG then _ else _ ] =>
+       replace (condH) with (condG) in H by (apply map_all_keys_eq; steps);
+       destruct condG eqn:E; steps
+  end.
+  hwlia.
+  { apply_forall. steps. hwlia. } .**/
+}                                                                          /**.
+Qed.
+
+Definition map_min_key (c: word_map) := map.fold
+  (fun cur k _ => match cur with
+                  | Some k' => if \[k] <? \[k'] then Some k else Some k'
+                  | None => Some k
+                  end) None c.
+
+Fixpoint map_ith_key_nat (c: word_map) (i: nat) :=
+  match i with
+  | O => map_min_key c
+  | S i' => match map_min_key c with
+            | None => None
+            | Some min_k => map_ith_key_nat (map.remove c min_k) i'
+            end
+  end.
+
+Definition map_ith_key c i := if i <? 0 then None else map_ith_key_nat c (Z.to_nat i).
+
+Lemma map_ith_key_in: forall c i k, map_ith_key c i = Some k -> map.get c k <> None.
+Admitted.
+
+Lemma map_ith_key_in_exists_i: forall c k, map.get c k <> None ->
+  exists i, map_ith_key c i = Some k.
+Admitted.
+
+Definition map_size (c: word_map) := map.fold (fun n _ _ => n + 1) 0 c.
+
+Lemma map_ith_key_i_bounds: forall c i k,
+  map_ith_key c i = Some k -> 0 <= i < map_size c.
+Admitted.
+
+Lemma map_ith_key_inj: forall c i1 i2 k,
+  map_ith_key c i1 = Some k -> map_ith_key c i2 = Some k -> i1 = i2.
+Admitted.
+
+Lemma list_len_0_nil : forall [A: Type] (l: list A), len l = 0 -> l = nil.
+Proof.
+  steps. destruct l.
+  - steps.
+  - simpl len in *. lia.
+Qed.
+
+Lemma map_key_next_exists : forall (c: word_map) k k',
+  (map.get c k' <> None /\ \[k] <= \[k']) ->
+  (exists knext, map.get c knext <> None /\ \[k] <= \[knext] /\
+    (forall k'', map.get c k'' <> None -> \[k] <= \[k''] -> \[knext] <= \[k''])).
+Admitted.
+
+Lemma array_len_1 : forall v a, impl1 (uintptr v a) (array uintptr 1 [|v|] a).
+Proof.
+  steps. unfold impl1, array, Array.array. intro m'. steps.
+  assert (mmap.Def m' = mmap.Def m') by steps. steps. clear Error.
+  unfold find_hyp_for_range, canceling, seps. steps.
+  apply sep_comm. assert (mmap.Def m = mmap.Def m) by steps. steps. clear Error.
+  unfold find_hyp_for_range, canceling, seps. steps.
+Qed.
+
+Lemma array_max_len : forall n l a m, array uintptr n l a m -> n <= 2 ^ 32 / 4.
+Admitted.
+
+Lemma map_ith_key_next : forall c k0 k i,
+  map_ith_key c i = Some k0 -> \[k0] < \[k] ->
+  (forall k', map.get c k' <> None -> \[k0] < \[k'] -> \[k] <= \[k']) ->
+  map_ith_key c (i + 1) = Some k.
+Admitted.
+
+Lemma map_ith_key_last : forall c k,
+  map.get c k <> None ->
+  (forall k', map.get c k' <> None -> \[k'] <= \[k]) ->
+  map_ith_key c (map_size c - 1) = Some k.
+Admitted.
+
+#[export] Instance spec_of_page_from_cbt: fnspec :=                         .**/
+uintptr_t page_from_cbt(uintptr_t tp, uintptr_t k, uintptr_t n,
+                        uintptr_t keys_out, uintptr_t vals_out) /**#
+  ghost_args := (c: word_map) (keys_out_orig: list word) (vals_out_orig: list word)
+                (R: mem -> Prop);
+  requires t m := <{ * cbt c tp
+                     * array uintptr \[n] keys_out_orig keys_out
+                     * array uintptr \[n] vals_out_orig vals_out
+                     * R }> m;
+  ensures t' m' res := t' = t
+           /\ if map_all_keys c (fun k' => \[k] >? \[k']) then
+                res = /[0]
+                /\ <{ * cbt c tp
+                      * array uintptr \[n] keys_out_orig keys_out
+                      * array uintptr \[n] vals_out_orig vals_out
+                      * R }> m'
+              else
+                exists i0 k0 keys_new vals_new,
+                  map_ith_key c i0 = Some k0 /\
+                  \[k] <= \[k0] /\
+                  (forall k', map.get c k' <> None -> \[k'] >= \[k] -> \[k'] >= \[k0]) /\
+                  res = /[Z.min (map_size c - i0) \[n]] /\
+                  len keys_new = \[res] /\ len vals_new = \[res] /\
+                  (forall j, 0 <= j < \[res] ->
+                    map_ith_key c (i0 + j) = Some keys_new[j] /\
+                    map.get c keys_new[j] = Some vals_new[j]) /\
+                  <{ * cbt c tp
+                     * array uintptr \[n] (keys_new ++ keys_out_orig[\[res]:]) keys_out
+                     * array uintptr \[n] (vals_new ++ vals_out_orig[\[res]:]) vals_out
+                     * R }> m' #**/                                          /**.
+Derive page_from_cbt SuchThat (fun_correct! page_from_cbt) As page_from_cbt_ok.   .**/
+{                                                                            /**.
+  assert (\[n] <= 2 ^ 32 / 4) by (eapply array_max_len; eassumption). .**/
+  if (n == 0) /* split */  {                                                 /**. .**/
+    return 0;                                                                /**. .**/
+  }                                                                          /*?.
+  step. step. steps. step. steps.
+  match goal with
+  | H: map_all_keys _ _ = false |- _ => apply map_all_keys_false_ce in H;
+                                        destruct H as [ kbig H ]
+  end.
+  pose proof (map_key_next_exists c k kbig) as Hex. prove_ante Hex. solve [ steps ].
+  destruct Hex as [ k0 Hk0 ].
+  pose proof (map_ith_key_in_exists_i c k0) as Hexi. prove_ante Hexi. solve [ steps ].
+  destruct Hexi as [ i0 Hi0 ].
+  exists i0. exists k0.
+  exists nil. exists nil.
+  steps. enough (\[k0] <= \[k']) by lia. apply_forall. steps. lia.
+  enough (i0 < map_size c) by hwlia.
+  match goal with
+  | H: map_ith_key _ _ = Some _ |- _ => apply map_ith_key_i_bounds in H
+  end. steps. .**/
+  else {                                                                     /**.
+  assert (len keys_out_orig = \[n]) by steps.
+  assert (len vals_out_orig = \[n]) by steps. .**/
+    uintptr_t next_res = cbt_next_ge(tp, k, keys_out, vals_out);             /**.
+  instantiate (7:=c). steps. .**/
+    if (next_res == 0) /* split */ {                                         /**. .**/
+      return 0;                                                              /**. .**/
+    }                                                                        /*?.
+  match goal with
+  | H: context [ if ?cond then _ else _ ] |- _ =>
+       destruct cond eqn:E; [ | exfalso; steps ]
+  end.
+  rewrite map_all_keys_spec in E.
+  repeat heapletwise_step. step. step. step. steps.
+  match goal with
+  | |- if ?cond then _ else _ => assert (cond = true)
+  end.
+  rewrite map_all_keys_spec. steps. enough (\[k0] <? \[k] = true) by lia.
+  { apply_forall. steps. }
+  step. step. steps. steps.
+  (* TODO: the framework could figure this instantiation out
+           (specificaly: when goal is impl1 (pred v a) (array pred 1 ?evar a),
+                         instantiate evar:=v *)
+  (* ...it could have something like the array_len_1 lemma built in *)
+  6-7: apply array_len_1. 1-4: steps.
+  (* TODO: make into an ltac *)
+  repeat match goal with
+  | H: ?m |= array _ 0 _ _ |- _ => move H at bottom;
+                                   apply array_0_is_emp in H; [ | trivial ];
+                                   unfold emp in H; fwd; subst m
+  end.
+  steps. .**/
+    else {                                                                   /**.
+  match goal with
+  | H: context [ if ?cond then _ else _ ] |- _ =>
+       destruct cond eqn:E; [ exfalso; steps | ]
+  end.
+  repeat heapletwise_step. .**/
+      uintptr_t k_it = load(keys_out);                                       /**. .**/
+      uintptr_t finished = 0;                                                /**. .**/
+      uintptr_t i = 1;                                                       /**.
+  loop invariant above m'. move Scope6 at bottom.
+  do 10 match reverse goal with
+  | H: _ |= _ |- _ => move H at bottom
+  end.
+  remember ([|k_it|]) as keys_new eqn:Heq1.
+  remember ([|v_res|]) as vals_new eqn:Heq2.
+  (* TODO: investitage/document why this this has to be done manually *)
+  replace (\[keys_out ^- keys_out] / 4) with 0 in * by steps.
+  replace (\[vals_out ^- vals_out] / 4) with 0 in * by steps.
+  replace (\[n] - 0 - 1) with (\[n] - 1) in * by steps.
+  merge_step. merge_step.
+  replace (nil ++ [|k_it|] ++ keys_out_orig[1:])
+    with (keys_new ++ keys_out_orig[\[i]:]) in * by steps.
+  replace (nil ++ [|v_res|] ++ vals_out_orig[1:])
+    with (vals_new ++ vals_out_orig[\[i]:]) in * by steps.
+  prove (len keys_new = \[i]).
+  prove (len vals_new = \[i]).
+  prove (keys_new[\[i] - 1] = k_it). { subst keys_new. steps. }
+  remember (id k_it) as k0. unfold id in *.
+  pose proof (map_ith_key_in_exists_i c k0) as Hexi. prove_ante Hexi. { subst. steps. }
+  destruct Hexi as [ i0 Hi0 ].
+  assert (Hk0g: \[k] <= \[k0]) by steps.
+  assert (Hk0s: forall k', map.get c k' <> None -> \[k'] >= \[k] -> \[k'] >= \[k0]).
+  { subst. steps. enough (\[k_it] <= \[k']) by lia. apply_forall; steps. }
+  assert (forall j, 0 <= j < \[i] ->
+    map_ith_key c (i0 + j) = Some keys_new[j] /\
+    map.get c keys_new[j] = Some vals_new[j]). { intros.
+    assert (j = 0) by steps. subst j. subst. steps. }
+  assert (finished <> /[0] -> forall k', map.get c k' <> None -> \[k'] <= \[k_it])
+    by steps.
+  assert (map_ith_key c (i0 + \[i] - 1) = Some k_it) by (subst; steps).
+  clear Heq1 Heq2.
+  prove (\[i] >= 1).
+  match goal with
+  | H1: finished = /[0], H2: i = /[1] |- _ => clear H1 H2
+  end.
+  clear Heqk0.
+  move finished at bottom.
+  move i at bottom.
+  move k_it at bottom.
+  move k0 after Scope6.
+  move i0 after Scope6.
+  move Hk0g after Scope6.
+  move Hk0s after Scope6.
+  move Hi0 after Scope6.
+  match goal with
+  | H1: forall _, map.get _ _ <> None -> _ -> _,
+    H2: \[k] <= \[k_it],
+    H3: map_ith_key _ _ = Some _ |- _ =>
+        clear H1 H2 H3
+  end.
+  purge v_res. .**/
+      while (i < n && !finished)
+        /* decreases (\[n] + 1 - \[i] - \[finished]) */ {                  /**. .**/
+        uintptr_t next_res_loop =
+          cbt_next_gt(tp, k_it, keys_out + 4 * i, vals_out + 4 * i); /**.
+  instantiate (3:=c). steps. .**/
+        if (next_res_loop == 1) /* split */ {                              /**.
+  match goal with
+  | H: context [ if ?cond then _ else _ ] |- _ =>
+       destruct cond eqn:E2; [ solve [ exfalso; steps ] | ]
+  end.
+  repeat heapletwise_step.
+  replace (2 * \[i] - len keys_new) with \[i] in * by hwlia.
+  replace (2 * \[i] - len vals_new) with \[i] in * by hwlia.
+  replace (keys_out ^+ /[4] ^* i ^- keys_out) with (/[4] ^* i) in * by hwlia.
+  replace (vals_out ^+ /[4] ^* i ^- vals_out) with (/[4] ^* i) in * by hwlia.
+  replace (\[/[4] ^* i] / 4) with \[i] in * by hwlia.
+  merge_step. merge_step. .**/
+          k_it = load(keys_out + 4 * i);                                   /**. .**/
+          i = i + 1;                                                       /**. .**/
+        }                                                                  /*?.
+  step. step. step.
+  exists (keys_new ++ [|k_it|]). exists (vals_new ++ [|v_res|]). steps.
+  { destruct (j =? \[i']) eqn:E3; steps.
+    - subst j. pose proof (map_ith_key_next c k_it' k_it (i0 + \[i'] - 1)) as Hnext.
+      replace (i0 + \[i'] - 1 + 1) with (i0 + \[i']) in * by lia. apply Hnext; steps.
+      match goal with
+      | H: forall _, 0 <= _ < \[i'] -> _ /\ _ |- _ =>
+           specialize (H (\[i'] - 1)); prove_ante H; [ lia | ]
+      end.
+      steps. replace (i0 + \[i'] - 1) with (i0 + (\[i'] - 1)) by lia. congruence.
+    - assert (Hjb: 0 <= j < \[i']) by lia.
+      match goal with
+      | H: forall _, 0 <= _ < \[i'] -> _ /\ _ |- _ => specialize (H j Hjb)
+      end.
+      steps. }
+  { destruct (j =? \[i']) eqn:E3; steps.
+    - assert (Hjb: 0 <= j < \[i']) by lia.
+      match goal with
+      | H: forall _, 0 <= _ < \[i'] -> _ /\ _ |- _ => specialize (H j Hjb)
+      end.
+      steps. }
+  { subst. steps. } .**/
+        else {                                                             /**.
+  match goal with
+  | H: context [ if ?cond then _ else _ ] |- _ =>
+       destruct cond eqn:E2; [ | solve [ exfalso; steps ] ]
+  end.
+  repeat heapletwise_step.
+  replace (2 * \[i] - len keys_new) with \[i] in * by hwlia.
+  replace (2 * \[i] - len vals_new) with \[i] in * by hwlia.
+  replace (keys_out ^+ /[4] ^* i ^- keys_out) with (/[4] ^* i) in * by hwlia.
+  replace (vals_out ^+ /[4] ^* i ^- vals_out) with (/[4] ^* i) in * by hwlia.
+  replace (\[/[4] ^* i] / 4) with \[i] in * by hwlia.
+  merge_step. merge_step.
+  rewrite map_all_keys_spec in E2. .**/
+          finished = 1;                                                    /**. .**/
+        }                                                                  /*?.
+  step. step. step.
+  exists keys_new. exists vals_new. steps.
+  { specialize (E2 k'). steps. }
+  { subst. steps. } .**/
+      }                                                                    /**. .**/
+      return i;                                                            /**. .**/
+    }                                                                      /*?.
+  step. step. steps. step.
+  { exfalso.
+    match goal with
+    | H: map_all_keys _ _ = true |- _ =>
+         rewrite map_all_keys_spec in H; specialize (H k0); prove_ante H
+    end.
+    steps. eapply map_ith_key_in. eassumption. steps. }
+  exists i0. exists k0. exists keys_new. exists vals_new. steps.
+  { assert (\[i] <= \[n]) by steps.
+    match goal with
+    | H: _ \/ finished <> /[0] |- _ => destruct H
+    end.
+    - assert (i = n) by hwlia. subst i.
+      enough (i0 + (\[n] - 1) < map_size c) by hwlia.
+      match goal with
+      | H: forall _, 0 <= _ < \[n] -> _ /\ _ |- _ =>
+           specialize (H (\[n] - 1)); prove_ante H; [ lia | ]
+      end.
+      steps.
+      eapply map_ith_key_i_bounds. eassumption.
+    - steps.
+      enough (i0 + (\[i] - 1) = map_size c - 1) by hwlia.
+      assert (map_ith_key c (i0 + (\[i] - 1)) = Some k_it). {
+        match goal with
+        | H: forall _, 0 <= _ < \[i] -> _ /\ _ |- _ =>
+             specialize (H (\[i] - 1)); prove_ante H; [ lia | ]
+        end.
+        steps. congruence. }
+      eapply map_ith_key_inj.
+      + eassumption.
+      + apply map_ith_key_last with (k:=k_it); steps.
+        eapply map_ith_key_in. eassumption. } .**/
+  }                                                                        /**. .**/
+}                                                                          /**.
+Qed.
 
 (* END CBT IMPL *)
 
