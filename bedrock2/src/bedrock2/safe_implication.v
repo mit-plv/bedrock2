@@ -75,8 +75,8 @@ Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.SepLib.
 
 Section WithMem.
-  Context {width: Z}{BW: Bitwidth width}{word: word.word width}
-    {mem: map.map word Byte.byte}.
+  Context {width: Z}{BW: Bitwidth width}{word: word.word width}{word_ok: word.ok word}
+    {mem: map.map word Byte.byte}{mem_ok: map.ok mem}.
 
   (* Note: Not safe if elem doesn't fully determine its value *)
   Lemma array_impl_from_values_eq[E: Type](elem: E -> word -> mem -> Prop)
@@ -84,12 +84,21 @@ Section WithMem.
     safe_implication (vs1 = vs2) (impl1 (array elem n vs1 p) (array elem n vs2 p)).
   Proof. unfold safe_implication. intros. subst. reflexivity. Qed.
 
+  Lemma uintptr_from_uint: forall a w z,
+      safe_implication (w = word.of_Z z) (impl1 (uint width z a) (uintptr w a)).
+  Proof. unfold safe_implication. intros. subst. apply uint_to_uintptr. Qed.
+
+  Lemma uint_from_uintptr: forall a w z,
+      safe_implication (z = word.unsigned w) (impl1 (uintptr w a) (uint width z a)).
+  Proof. unfold safe_implication. intros. subst. apply uintptr_to_uint. Qed.
 End WithMem.
 
 #[export] Hint Resolve
   list_app_eq_l
   list_app_eq_r
   array_impl_from_values_eq
+  uintptr_from_uint
+  uint_from_uintptr
   : safe_implication.
 
 Global Hint Transparent PredicateSize : safe_implication.

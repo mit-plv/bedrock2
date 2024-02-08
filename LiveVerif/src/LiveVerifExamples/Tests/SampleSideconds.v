@@ -37,7 +37,7 @@ Proof.
     exfalso. apply C. exists a. assumption.
 Qed.
 
-Inductive Name := mkName (f: unit -> unit).
+Inductive Name: Set := mkName (f: unit -> unit).
 Notation "'name:(' x )" := (mkName (fun x: unit => x)) (format "name:( x )").
 
 Definition smtFalseAlias := False.

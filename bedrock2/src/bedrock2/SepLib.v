@@ -360,6 +360,29 @@ Section WithMem.
       eapply array_1_to_anybytes in H. rewrite List.map_length in H. exact H.
     - clear m bs addr H. unfold impl1. eapply uint8_to_ptsto.
   Qed.
+
+  Lemma uint_to_uintptr: forall a z,
+      impl1 (uint width z a) (uintptr (word.of_Z z) a).
+  Proof.
+    unfold uint, uintptr. intros.
+    eapply impl1_l_sep_emp. intros.
+    unfold scalar, truncated_word, truncated_scalar.
+    rewrite word.unsigned_of_Z_nowrap by assumption.
+    unfold nbits_to_nbytes, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite Z.max_r by apply word.width_nonneg.
+    reflexivity.
+  Qed.
+
+  Lemma uintptr_to_uint: forall a w,
+      impl1 (uintptr w a) (uint width (word.unsigned w) a) .
+  Proof.
+    unfold uint, uintptr. intros.
+    eapply impl1_r_sep_emp. split. 1: eapply word.unsigned_range.
+    unfold scalar, truncated_word, truncated_scalar.
+    unfold nbits_to_nbytes, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite Z.max_r by apply word.width_nonneg.
+    reflexivity.
+  Qed.
 End WithMem.
 
 Notation "'EX' x .. y , p" := (ex1 (fun x => .. (ex1 (fun y => p)) ..))

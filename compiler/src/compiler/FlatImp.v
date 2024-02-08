@@ -18,7 +18,7 @@ Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Word.Interface.
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
-Inductive bbinop: Type :=
+Inductive bbinop: Set :=
 | BEq
 | BNe
 | BLt
@@ -97,7 +97,7 @@ Section Syntax.
         list_union veq (modVars_as_list veq s1) (modVars_as_list veq s2)
     | SCall binds _ _ | SInteract binds _ _ => list_union veq binds []
     end.
-  
+
   Definition ForallVars_bcond_gen{R: Type}(and: R -> R -> R)(P: varname -> R)(cond: bcond): R :=
     match cond with
     | CondBinary _ x y => and (P x) (P y)
@@ -173,7 +173,7 @@ Section Syntax.
              | |- andb _ _ = true => apply Bool.andb_true_iff
              | |- _ /\ _ => split
              | |- (_ <=? _)%nat = true => eapply Nat.leb_le
-             | y: operand |- _ => destruct y   
+             | y: operand |- _ => destruct y
              end;
       eauto using List.Forall_to_forallb, List.forallb_to_Forall.
   Qed.
@@ -544,9 +544,11 @@ Module exec.
         try solve [econstructor; eauto | exfalso; congruence].
 
       - (* SInteract *)
-        pose proof ext_spec.unique_mGive_footprint as P.
-        specialize P with (1 := H1) (2 := H14).
-        destruct (map.split_diff P H H7). subst mKeep0 mGive0.
+        pose proof ext_spec.mGive_unique as P.
+        specialize P with (1 := H) (2 := H7) (3 := H1) (4 := H14).
+        subst mGive0.
+        destruct (map.split_diff (map.same_domain_refl mGive) H H7) as (? & _).
+        subst mKeep0.
         eapply @interact.
         + eassumption.
         + eassumption.

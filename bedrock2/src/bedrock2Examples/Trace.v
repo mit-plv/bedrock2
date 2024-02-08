@@ -16,11 +16,11 @@ Module Import IOMacros.
 
   Class Interface := {
     width : Z;
-    BW :> Bitwidth width;
-    word :> Word.Interface.word width;
-    mem :> map.map word Byte.byte;
-    locals :> map.map String.string word;
-    ext_spec :> ExtSpec;
+    #[global] BW :: Bitwidth width;
+    #[global] word :: Word.Interface.word width;
+    #[global] mem :: map.map word Byte.byte;
+    #[global] locals :: map.map String.string word;
+    #[global] ext_spec :: ExtSpec;
 
     (* macros to be inlined to read or write a word
        TODO it's not so nice that we need to foresee the number of temp vars
