@@ -114,7 +114,7 @@ Section WithMem.
              (List.map (fun d => /[d.(rx_desc_addr)]) (s.(rx_queue) ++ new_descs)%list)
         }> mGive ->
       e1000_step s ((mGive, "MMIOWRITE", [| /[E1000_RDT]; new_RDT |]), (map.empty, nil))
-        s{{ rx_queue := (s.(rx_queue) ++ new_descs)%list (* TODO *) }}
+        s{{ rx_queue := (s.(rx_queue) ++ new_descs)%list }}
         (* no need to update rx_queue_tail because it is inferred from
            rx_queue_head and len rx_queue *)
   .

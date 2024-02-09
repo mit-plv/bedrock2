@@ -87,7 +87,30 @@ Section WithMem.
             s{{ rx_queue := s.(rx_queue)[:len packets];
                 rx_queue_head := (s.(rx_queue_head) + len packets) mod
                                  s.(rx_queue_capacity) }}) ->
-      e1000_step s map.empty "MMIOREAD" [| /[E1000_RDH] |] post.
+      e1000_step s map.empty "MMIOREAD" [| /[E1000_RDH] |] post
+  (* write RDT: software may set new RDT to anywhere between old RDT (incl) and
+     RDH (excl, because otherwise queue considered empty), and by doing so, abandons
+     the memory chunks corresponding to these descriptors and the buffers pointed to
+     by them, thus providing more space for hardware to store received packets *)
+  | write_RDT_step: forall s mGive new_RDT new_descs rdba (fillable: list buf) post,
+      (* Note: strict < because otherwise we had head=tail which would be interpreted
+         as an empty circular buffer *)
+      len s.(rx_queue) + len fillable < s.(rx_queue_capacity) ->
+      s.(get_e1000_config).(rx_queue_base_addr) = Some rdba ->
+      \[new_RDT] = (s.(rx_queue_head) + len s.(rx_queue) + len fillable)
+                     mod s.(rx_queue_capacity) ->
+      len fillable = len new_descs ->
+      <{ * circular_buffer_slice rx_desc_t s.(rx_queue_capacity) s.(rx_queue_head)
+                  (s.(rx_queue) ++ new_descs)%list /[rdba]
+         * scattered_array (array (uint 8) s.(rx_buf_size)) fillable
+             (List.map (fun d => /[d.(rx_desc_addr)]) (s.(rx_queue) ++ new_descs)%list)
+        }> mGive ->
+      post map.empty nil s{{ rx_queue := (s.(rx_queue) ++ new_descs)%list }} ->
+        (* no need to update rx_queue_tail because it is inferred from
+           rx_queue_head and len rx_queue *)
+      e1000_step s mGive "MMIOWRITE" [| /[E1000_RDT]; new_RDT |] post
+  .
+
 
   Lemma weaken_e1000_step: forall s mGive action args post1 post2,
       e1000_step s mGive action args post1 ->
@@ -96,7 +119,37 @@ Section WithMem.
   Proof.
     intros. inversion H; subst; clear H.
     - eapply read_RDH_step. 1: eassumption. eauto.
+    - eapply write_RDT_step; eauto.
   Qed.
+
+  Definition is_unique_field{S F: Type}(R: S -> (S -> Prop) -> Prop)(field: S -> F)
+    (s1 s2: S): Prop :=
+    forall post1 post2,
+      R s1 post1 ->
+      R s2 post2 ->
+      exists f, R s1 (fun s1' => post1 s1' /\ field s1' = f) /\
+                R s2 (fun s2' => post2 s2' /\ field s2' = f).
+
+  Lemma rx_queue_head_unique_initial: forall s1 s2,
+      is_initial_e1000_state s1 ->
+      is_initial_e1000_state s2 ->
+      is_unique_field (fun s post => post s) rx_queue_head s1 s2.
+  Proof.
+    unfold is_unique_field, is_initial_e1000_state.
+    intros. fwd. eexists. eauto.
+  Qed.
+
+  Lemma rx_queue_head_unique_step: forall s1 s2 mGive action args,
+      s1.(rx_queue_head) = s2.(rx_queue_head) ->
+      is_unique_field (fun s post => e1000_step s mGive action args
+                                       (fun mRcv rets s' => post s'))
+        rx_queue_head s1 s2.
+  Proof.
+    unfold is_unique_field. intros.
+    inversion H0; subst; clear H0; inversion H1; subst; clear H1.
+    - eexists. split; econstructor; try eassumption; intros; split; eauto.
+      + record.simp.
+  Abort.
 
   Definition trace_state_satisfies: trace -> (e1000_state -> Prop) -> Prop :=
     trace_leads_to_state_satisfying is_initial_e1000_state e1000_step.
