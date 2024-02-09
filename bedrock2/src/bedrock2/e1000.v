@@ -13,6 +13,7 @@ These network cards were launched in the 2000s and discontinued in the 2010s, bu
 Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
@@ -27,209 +28,24 @@ Require Import bedrock2.Map.SeparationLogic.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2.RecordPredicates.
+Require Import bedrock2.e1000_state.
 
-(* Consider a circular buffer of size `modulus` whose elements are indexed from
-   `0` to `modulus-1`. Given a `candidate` and a (potentially-wrapping) interval from
-   `start` (inclusive) to `past_end` (exclusive), is `candidate` inside that range?
-   Note that `start=past_end` is treated as the empty interval, so it is not possible
-   to express an interval that covers the whole buffer. *)
-Definition in_circular_interval(modulus candidate start past_end: Z): Prop :=
-  (candidate - start) mod modulus < (past_end - start) mod modulus.
-
-(* Not part of the spec, but a convention we chose to hardcode here: *)
-Definition E1000_REGS := 0x40000000.
-
-Local Notation R x := (E1000_REGS + x) (only parsing).
-
-(* E1000 register offsets from Section 13.4 *)
-Definition E1000_RDBAL := R 0x2800. (* base addr (lo 32 bits) of receive descriptor queue *)
-Definition E1000_RDBAH := R 0x2804. (* base addr (hi 32 bits) of receive descriptor queue *)
-Definition E1000_RDLEN := R 0x2808. (* length of receive descriptor queue in bytes *)
-Definition E1000_RDH := R 0x2810. (* receive descriptor queue head *)
-Definition E1000_RDT := R 0x2818. (* receive descriptor queue tail *)
-Definition E1000_TDBAL := R 0x3800. (* base addr (lo 32 bits) of transmit descriptor queue *)
-Definition E1000_TDBAH := R 0x3804. (* base addr (hi 32 bits) of transmit descriptor queue *)
-Definition E1000_TDLEN := R 0x3808. (* length of transmit descriptor queue in bytes *)
-Definition E1000_TDH := R 0x3810. (* transmit descriptor queue head *)
-Definition E1000_TDT := R 0x3818. (* transmit descriptor queue tail *)
-
-(* Receive Descriptors (Section 3.2.3) *)
-Record rx_desc: Set := {
-  (* 64 bits *) rx_desc_addr: Z; (* address of buffer to write to *)
-  (* 16 bits *) rx_desc_length: Z; (* length of packet received *)
-  (* 16 bits *) rx_desc_csum: Z; (* checksum *)
-  (*  8 bits *) rx_desc_status: Z;
-  (*  8 bits *) rx_desc_errors: Z;
-  (* 16 bits *) rx_desc_special: Z;
-}.
-
-(* Transmit Descriptors (Section 3.3.3) *)
-Record tx_desc: Set := {
-  (* 64 bits *) tx_desc_addr: Z; (* address of buffer to read from *)
-  (* 16 bits *) tx_desc_length: Z; (* length of packet to be sent *)
-  (*  8 bits *) tx_desc_cso: Z; (* checksum offset: where to insert checksum (if enabled) *)
-  (*  8 bits *) tx_desc_cmd: Z; (* command bitfield *)
-  (*  8 bits *) tx_desc_status: Z;
-  (*  8 bits *) tx_desc_css: Z; (* checksum start: where to begin computing checksum *)
-  (* 16 bits *) tx_desc_special: Z;
-}.
-
-(* The Receive Queue
-
-   The queue between head (RDH) and tail (RDT) is a queue of descriptors
-   pointing to buffers that software has provided to hardware, and
-   the buffers in this queue are waiting to be filled by hardware.
-   Hardware pushes new packets at head and increases head.
-   If head reaches tail, it means there's no more space for new
-   packets, so hardware starts discarding packets.
-   Software adds new receive descriptors by setting the tail pointer to
-   one beyond the last valid descriptor that is ready to be filled.
-   Note from Section 3.2.6:
-   > HARDWARE OWNS ALL DESCRIPTORS BETWEEN [HEAD AND TAIL]. Any descriptor
-   > not in this range is owned by software.
-
-
-   The Transmit Queue
-
-   The queue between head (TDH) and tail (TDT) is a queue of descriptors
-   pointing to buffers that software has provided to hardware and that
-   hardware is supposed to sent over the network.
-   Hardware sends the packets at head and increases head.
-   Software adds new transmit descriptors at tail and increases tail, but
-   must stop before tail equals head, because that is interpreted as an
-   empty queue, not a full queue.
-   From Section 3.4:
-   > Descriptors passed to hardware should not be manipulated by software
-   > until the head pointer has advanced past them.
-*)
-
-(* Note: The Ethernet card treats memory as little-endian (see Section 2.4), and so does
-   RISC-V, but most network protocols encode multi-byte fields in big-endian order, but
-   this file is not about protocols, so everything in the current file is little-endian. *)
-
-Definition buf := list Z. (* Zs representing bytes *)
-
-Definition z_to_buf_map: map.map Z buf := SortedListZ.map buf.
-
-Record e1000_config: Set := {
-  rx_queue_base_addr: Z; (* RDBAL/RDBAH, 64-bit total *)
-  tx_queue_base_addr: Z; (* TDBAL/TDBAH, 64-bit *)
-  rx_queue_capacity: Z; (* RDLEN / 16 *)
-  tx_queue_capacity: Z; (* TDLEN / 16 *)
-  (* Size of the receive buffers. If a packet doesn't fit, it is split into multiple
-     buffers, using multiple descriptors.
-     Hardware supports the following receive buffer sizes:
-     256 B, 512 B, 1024 B, 2048 B, 4096 B, 8192 B, 16384 B (Section 3.2.2).
-     The buffer size is controlled using RCTL.BSIZE and RCTL.BSEX (Section 13.4.22). *)
-  rx_buf_size: Z;
-}.
-
-Record e1000_state := {
-  get_e1000_config :> e1000_config;
-  rx_queue: list rx_desc;
-  tx_queue: list tx_desc;
-  rx_queue_head: Z; (* RDH *)
-  tx_queue_head: Z; (* TDH *)
-  (* We keep track of tx buffers because these remain unchanged when handed back to
-     software. Its keys are Z because the spec says that buffer addresses are always
-     64-bit addresses, even if the processor is 32-bit, and we use "word" only for
-     "word of bitwidth of processor". *)
-  tx_bufs: z_to_buf_map;
-}.
-
-Definition rx_queue_tail(s: e1000_state): Z := (* RDT *)
-  (s.(rx_queue_head) + len s.(rx_queue)) mod s.(rx_queue_capacity).
-
-Definition tx_queue_tail(s: e1000_state): Z := (* TDT *)
-  (s.(tx_queue_head) + len s.(tx_queue)) mod s.(tx_queue_capacity).
-
-Record e1000_ok(cfg: e1000_config)(s: e1000_state): Prop := {
-  config_matches: s.(get_e1000_config) = cfg;
-  RDH_bounded: 0 <= s.(rx_queue_head) < cfg.(rx_queue_capacity);
-  TDH_bounded: 0 <= s.(tx_queue_head) < cfg.(tx_queue_capacity);
-  rx_queue_bounded: len s.(rx_queue) <= cfg.(rx_queue_capacity);
-  tx_queue_bounded: len s.(tx_queue) <= cfg.(tx_queue_capacity);
-  tx_bufs_present: forall txd, List.In txd s.(tx_queue) ->
-                   exists bs, map.get s.(tx_bufs) txd.(tx_desc_addr) = Some bs /\
-                              len bs = txd.(tx_desc_length);
-}.
-
-Definition is_initial_e1000_state(s: e1000_state) :=
-  (* we don't know anything about the initial values of the registers, but we know
-     that it initially does not own any memory *)
-  s.(rx_queue) = nil /\ s.(tx_queue) = nil /\ s.(tx_bufs) = map.empty.
-
-Section WithMem.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {mem: map.map word Byte.byte}.
-
-  (* TODO move,
-     and maybe this could be used to define array and sepapps more conveniently? *)
-  Section WithElem.
-    Context {E: Type}.
-
-    Definition layout_absolute(ps: list (word -> mem -> Prop))(addrs: list word) :=
-      seps' (List.map (fun '(p, a) => p a) (List.combine ps addrs)).
-
-    Definition layout_offsets(ps: list (word -> mem -> Prop))(offsets: list Z)(addr: word):
-      mem -> Prop :=
-      layout_absolute ps (List.map (fun ofs => word.add addr (word.of_Z ofs)) offsets).
-
-    Definition scattered_array(elem: E -> word -> mem -> Prop)
-                              (vs: list E)(addrs: list word): mem -> Prop :=
-      layout_absolute (List.map elem vs) addrs.
-
-    Definition array'(elem: E -> word -> mem -> Prop){sz: PredicateSize elem}
-                     (vs: list E): word -> mem -> Prop :=
-      layout_offsets (List.map elem vs)
-             (List.map (fun i => sz * Z.of_nat i) (List.seq O (List.length vs))).
-
-    (* starts with 0 and has same length as given list, so the last element sum
-       excludes the last element *)
-    Fixpoint prefix_sums_starting_at(s: Z)(l: list Z): list Z :=
-      match l with
-      | nil => nil
-      | cons h t => cons (s + h) (prefix_sums_starting_at (s + h) t)
-      end.
-    Definition prefix_sums: list Z -> list Z := prefix_sums_starting_at 0.
-
-    Definition sepapps'(l: list sized_predicate): word -> mem -> Prop :=
-      layout_offsets (List.map proj_predicate l) (prefix_sums (List.map proj_size l)).
-
-    Definition circular_interval(modulus start: Z)(count: nat): list Z :=
-      List.unfoldn (fun x => (x + 1) mod modulus) count start.
-
-    (* The address a passed to this predicate is the base address. The area
-       occupied by the whole buffer is a..a+modulus*sz, but there might actually
-       be nothing at a, since the slice starts at a+startIndex*sz. *)
-    Definition circular_buffer_slice(elem: E -> word -> mem -> Prop)
-      {sz: PredicateSize elem}(modulus startIndex: Z)(vs: list E): word -> mem -> Prop :=
-      layout_offsets (List.map elem vs)
-             (List.map (Z.mul sz) (circular_interval modulus startIndex (List.length vs))).
-  End WithElem.
-
-  Definition rx_desc_t(r: rx_desc): word -> mem -> Prop := .**/
-    typedef struct __attribute__ ((__packed__)) {
-      uint64_t rx_desc_addr;
-      uint16_t rx_desc_length;
-      uint16_t rx_desc_csum;
-      uint8_t rx_desc_status;
-      uint8_t rx_desc_errors;
-      uint16_t rx_desc_special;
-    } rx_desc_t;
-  /**.
-
-  Definition tx_desc_t(r: tx_desc): word -> mem -> Prop := .**/
-    typedef struct __attribute__ ((__packed__)) {
-      uint64_t tx_desc_addr;
-      uint16_t tx_desc_length;
-      uint8_t tx_desc_cso;
-      uint8_t tx_desc_cmd;
-      uint8_t tx_desc_status;
-      uint8_t tx_desc_css;
-      uint16_t tx_desc_special;
-    } tx_desc_t;
-  /**.
+Lemma mod_add_unique: forall [l b x1 x2 m],
+    l = (b + x1) mod m ->
+    l = (b + x2) mod m ->
+    0 <= x1 < m ->
+    0 <= x2 < m ->
+    x1 = x2.
+Proof.
+  intros.
+  rewrite H in H0. clear H.
+  apply (f_equal (fun a => (a - b) mod m)) in H0.
+  rewrite 2Zminus_mod_idemp_l in H0.
+  replace (b + x1 - b) with x1 in H0 by ring.
+  replace (b + x2 - b) with x2 in H0 by ring.
+  rewrite 2Z.mod_small in H0 by assumption.
+  exact H0.
+Qed.
 
 (* Operations:
 
@@ -252,6 +68,10 @@ Section WithMem.
     the descriptor chunks and the buffers pointed to by them to hardware
 *)
 
+Section WithMem.
+  Context {width: Z} {BW: Bitwidth width}
+          {word: word.word width} {mem: map.map word Byte.byte}.
+
   Definition read_RDH(s: e1000_state)(post: word -> e1000_state -> Prop): Prop :=
     False. (* TODO add is mGive and mReceive *)
 
@@ -262,13 +82,14 @@ Section WithMem.
   (* read RDH: new RDH can be anywhere between old RDH (incl) and old RDT (excl),
      we receive the memory chunk for each descriptor between old and new RDH,
      as well as the buffers pointed to by them, which contain newly received packets *)
-  | read_RDH_step: forall s mRcv new_RDH (packets: list buf),
-      len packets <= len s.(rx_queue) ->
+  | read_RDH_step: forall s mRcv new_RDH rdba (packets: list buf),
+      s.(get_e1000_config).(rx_queue_base_addr) = Some rdba ->
+      len packets <= len s.(rx_queue) < s.(rx_queue_capacity) ->
       \[new_RDH] = (s.(rx_queue_head) + len packets) mod s.(rx_queue_capacity) ->
       (* we get back a (wrapping) slice of the rx queue as well as the corresponding
          buffers *)
       <{ * circular_buffer_slice rx_desc_t s.(rx_queue_capacity) s.(rx_queue_head)
-                                 s.(rx_queue)[:len packets] /[s.(rx_queue_base_addr)]
+                                 s.(rx_queue)[:len packets] /[rdba]
          * scattered_array (array (uint 8) s.(rx_buf_size)) packets
              (List.map (fun d => /[d.(rx_desc_addr)]) s.(rx_queue)[:len packets])
         }> mRcv ->
@@ -279,15 +100,16 @@ Section WithMem.
      RDH (excl, because otherwise queue considered empty), and by doing so, abandons
      the memory chunks corresponding to these descriptors and the buffers pointed to
      by them, thus providing more space for hardware to store received packets *)
-  | write_RDT_step: forall s mGive new_RDT new_descs (fillable: list buf),
+  | write_RDT_step: forall s mGive new_RDT new_descs rdba (fillable: list buf),
       (* Note: strict < because otherwise we had head=tail which would be interpreted
          as an empty circular buffer *)
       len s.(rx_queue) + len fillable < s.(rx_queue_capacity) ->
+      s.(get_e1000_config).(rx_queue_base_addr) = Some rdba ->
       \[new_RDT] = (s.(rx_queue_head) + len s.(rx_queue) + len fillable)
                      mod s.(rx_queue_capacity) ->
       len fillable = len new_descs ->
       <{ * circular_buffer_slice rx_desc_t s.(rx_queue_capacity) s.(rx_queue_head)
-                  (s.(rx_queue) ++ new_descs)%list /[s.(rx_queue_base_addr)]
+                  (s.(rx_queue) ++ new_descs)%list /[rdba]
          * scattered_array (array (uint 8) s.(rx_buf_size)) fillable
              (List.map (fun d => /[d.(rx_desc_addr)]) (s.(rx_queue) ++ new_descs)%list)
         }> mGive ->
@@ -301,6 +123,40 @@ Section WithMem.
     StateMachineBasedExtSpec.ext_spec is_initial_e1000_state e1000_step.
 
   Axiom TODO: False.
+
+  Lemma steps_agree_on_unique_state_fields: forall s1 s2 e s1' s2',
+      agree_on_unique_state_fields s1 s2 ->
+      e1000_step s1 e s1' ->
+      e1000_step s2 e s2' ->
+      agree_on_unique_state_fields s1' s2'.
+  Proof.
+    unfold is_initial_e1000_state, agree_on_unique_state_fields.
+    intros. destruct s1 as [ [ ] ]; destruct s2 as [ [ ] ]; cbn -[map.empty] in *.
+    inversion H0; clear H0; subst; inversion H1; clear H1; subst; record.simp; fwd.
+    - lazymatch goal with
+      | H1: _ = (_ + _) mod _, H2: _ = (_ + _) mod _ |- _ =>
+          rewrite <- (mod_add_unique H1 H2 ltac:(lia) ltac:(lia)) in *
+      end.
+      auto 10.
+    - lazymatch goal with
+      | H1: _ = (_ + _) mod _, H2: _ = (_ + _) mod _ |- _ =>
+          pose proof (mod_add_unique H1 H2 ltac:(lia) ltac:(lia)) as H_len_fillable
+      end.
+      rewrite H_len_fillable in *.
+      assert (len new_descs = len new_descs0) as H_len_new_descs by lia.
+      replace new_descs with new_descs0 in * by case TODO. (* because in same mGive *)
+      auto 10.
+  Qed.
+
+  Lemma states_of_same_trace_agree_on_unique_state_fields: forall [t s1 s2],
+      trace_can_lead_to is_initial_e1000_state e1000_step t s1 ->
+      trace_can_lead_to is_initial_e1000_state e1000_step t s2 ->
+      agree_on_unique_state_fields s1 s2.
+  Proof.
+    induction t; simpl; intros.
+    - apply initial_states_agree_on_unique_state_fields; assumption.
+    - fwd. eapply steps_agree_on_unique_state_fields. 2-3: eassumption. eauto.
+  Qed.
 
   Global Instance ext_spec_ok: ext_spec.ok ext_spec.
   Proof.
@@ -316,25 +172,23 @@ Section WithMem.
       | H: sep _ _ _ |- _ => destruct H as (mGive1a & mGive1b & D1 & M1a & M1b)
       end.
       (* uniqueness stuff: *)
-      replace (rx_queue s2) with (rx_queue s1) in * by case TODO.
-      replace (rx_queue_base_addr s2) with (rx_queue_base_addr s1) in * by case TODO.
-      replace (rx_queue_capacity s2) with (rx_queue_capacity s1) in * by case TODO.
-      replace (rx_buf_size s2) with (rx_buf_size s1) in * by case TODO.
-      replace (rx_queue_head s2) with (rx_queue_head s1) in * by case TODO.
+      lazymatch goal with
+      | H1: trace_can_lead_to _ _ _ _, H2: trace_can_lead_to _ _ _ _ |- _ =>
+          pose proof (states_of_same_trace_agree_on_unique_state_fields H1 H2) as HU
+      end.
+      unfold agree_on_unique_state_fields in HU.
+      fwd.
+      replace (rx_queue s2) with (rx_queue s1) in * by congruence.
+      replace (rx_queue_base_addr s2) with (rx_queue_base_addr s1) in * by congruence.
+      replace (rx_queue_capacity s2) with (rx_queue_capacity s1) in * by congruence.
+      replace (rx_buf_size s2) with (rx_buf_size s1) in * by congruence.
+      replace (rx_queue_head s2) with (rx_queue_head s1) in * by congruence.
       rename fillable0 into fillable2, fillable into fillable1.
       rename new_descs0 into new_descs2, new_descs into new_descs1.
-      assert (len fillable1 = len fillable2). {
-        assert (
-          (rx_queue_head s1 + len (rx_queue s1) + len fillable1) mod rx_queue_capacity s1 =
-          (rx_queue_head s1 + len (rx_queue s1) + len fillable2) mod rx_queue_capacity s1)
-          by lia.
-        assert (
-          (len fillable1) mod rx_queue_capacity s1 =
-          (len fillable2) mod rx_queue_capacity s1)
-          as Hlf by case TODO.
-        rewrite 2Z.mod_small in Hlf by lia.
-        exact Hlf.
-      }
+      lazymatch goal with
+      | H1: _ = (_ + _) mod _, H2: _ = (_ + _) mod _ |- _ =>
+          pose proof (mod_add_unique H1 H2 ltac:(lia) ltac:(lia)) as H_len_fillable
+      end.
       assert (len new_descs1 = len new_descs2) by lia.
       (* In M1a and M2a, we have the same base address, start index, modulus, and
          list length, so: *)
@@ -382,7 +236,8 @@ Section WithMem.
   (* read RDH: new RDH can be anywhere between old RDH (incl) and old RDT (excl),
      we receive the memory chunk for each descriptor between old and new RDH,
      as well as the buffers pointed to by them, which contain newly received packets *)
-  Lemma wp_read_RDH: forall e cfg old_RDH old_rx_descs t m l r post,
+  Lemma wp_read_RDH: forall e cfg old_RDH old_rx_descs rdba t m l r post,
+      cfg.(rx_queue_base_addr) = Some rdba ->
       trace_state_satisfies t (fun s => e1000_ok cfg s /\
          s.(rx_queue_head) = old_RDH /\ s.(rx_queue) = old_rx_descs) ->
       (forall (m' mRcv: mem) (packets: list buf),
@@ -392,7 +247,7 @@ Section WithMem.
           (* we get back a (wrapping) slice of the rx queue as well as the corresponding
              buffers *)
           <{ * circular_buffer_slice rx_desc_t cfg.(rx_queue_capacity) old_RDH
-                                     old_rx_descs[:len packets] /[cfg.(rx_queue_base_addr)]
+                                     old_rx_descs[:len packets] /[rdba]
              * scattered_array (array (uint 8) cfg.(rx_buf_size)) packets
                    (List.map (fun d => /[d.(rx_desc_addr)]) (old_rx_descs[:len packets]))
           }> mRcv ->
