@@ -16,7 +16,7 @@ Require Import Coq.micromega.Lia.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
 Require coqutil.Map.SortedListZ.
 Require Import coqutil.Datatypes.ZList.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
@@ -47,27 +47,6 @@ Proof.
   exact H0.
 Qed.
 
-(* Operations:
-
-- receive-related:
-  + read RDH: new RDH can be anywhere between old RDH (incl) and RDT (excl),
-    we receive the memory chunk for each descriptor between old and new RDH,
-    as well as the buffers pointed to by them, which contain newly received packets
-  + write RDT: software may set new RDT to anywhere between old RDT (incl) and
-    RDH (excl, because otherwise queue considered empty), and by doing so, abandons
-    the memory chunks corresponding to these descriptors and the buffers pointed to
-    by them, thus providing more space for hardware to store received packets
-- transmit-related:
-  + read TDH: new TDH can be anywhere between old TDH (incl) and TDT (excl),
-    increased TDH means some packets were sent, and we get back the memory chunk
-    for each descriptor between old and new TDH, as well as the buffers pointed to
-    by them, so we can start reusing these descriptors & buffers for new packets
-  + write TDT: software may set new TDT to anywhere between old TDT (incl) and
-    TDH (excl, because otherwise queue considered empty), and by doing so, indicates
-    that between old and new TDT, there are new packets to be sent, and yields
-    the descriptor chunks and the buffers pointed to by them to hardware
-*)
-
 Section WithMem.
   Context {width: Z} {BW: Bitwidth width}
           {word: word.word width} {mem: map.map word Byte.byte}.
@@ -79,6 +58,8 @@ Section WithMem.
   Local Open Scope string_scope.
 
   Inductive e1000_step: e1000_state -> LogItem -> e1000_state -> Prop :=
+  (* ## receive-related: *)
+
   (* read RDH: new RDH can be anywhere between old RDH (incl) and old RDT (excl),
      we receive the memory chunk for each descriptor between old and new RDH,
      as well as the buffers pointed to by them, which contain newly received packets *)
@@ -96,6 +77,7 @@ Section WithMem.
       e1000_step s ((map.empty, "MMIOREAD", [| /[E1000_RDH] |]), (mRcv, [|new_RDH|]))
         s{{ rx_queue := s.(rx_queue)[:len packets];
             rx_queue_head := (s.(rx_queue_head) + len packets) mod s.(rx_queue_capacity) }}
+
   (* write RDT: software may set new RDT to anywhere between old RDT (incl) and
      RDH (excl, because otherwise queue considered empty), and by doing so, abandons
      the memory chunks corresponding to these descriptors and the buffers pointed to
@@ -109,20 +91,69 @@ Section WithMem.
                      mod s.(rx_queue_capacity) ->
       len fillable = len new_descs ->
       <{ * circular_buffer_slice rx_desc_t s.(rx_queue_capacity) s.(rx_queue_head)
-                  (s.(rx_queue) ++ new_descs)%list /[rdba]
+                                 new_descs /[rdba]
          * scattered_array (array (uint 8) s.(rx_buf_size)) fillable
-             (List.map (fun d => /[d.(rx_desc_addr)]) (s.(rx_queue) ++ new_descs)%list)
+             (List.map (fun d => /[d.(rx_desc_addr)]) new_descs)
         }> mGive ->
       e1000_step s ((mGive, "MMIOWRITE", [| /[E1000_RDT]; new_RDT |]), (map.empty, nil))
         s{{ rx_queue := (s.(rx_queue) ++ new_descs)%list }}
         (* no need to update rx_queue_tail because it is inferred from
            rx_queue_head and len rx_queue *)
+
+  (* ## transmit-related *)
+
+  (* read TDH: new TDH can be anywhere between old TDH (incl) and TDT (excl),
+     increased TDH means some packets were sent, and we get back the memory chunk
+     for each descriptor between old and new TDH, as well as the buffers pointed to
+     by them, so we can start reusing these descriptors & buffers for new packets *)
+  | read_TDH_step: forall s mRcv new_TDH tdba buf_addrs (packets: list buf),
+      s.(get_e1000_config).(tx_queue_base_addr) = Some tdba ->
+      len packets <= len s.(tx_queue) < s.(tx_queue_capacity) ->
+      buf_addrs = List.map (fun d => d.(tx_desc_addr)) s.(tx_queue)[:len packets] ->
+      map.getmany_of_list s.(tx_bufs) buf_addrs = Some packets ->
+      \[new_TDH] = (s.(tx_queue_head) + len packets) mod s.(tx_queue_capacity) ->
+      (* we get back a (wrapping) slice of the tx queue as well as the corresponding
+         buffers *)
+      <{ * circular_buffer_slice tx_desc_t s.(tx_queue_capacity) s.(tx_queue_head)
+                                 s.(tx_queue)[:len packets] /[tdba]
+         * layout_absolute (List.map (fun pkt => array' (uint 8) pkt) packets)
+                           (List.map word.of_Z buf_addrs)
+        }> mRcv ->
+      e1000_step s ((map.empty, "MMIOREAD", [| /[E1000_TDH] |]), (mRcv, [|new_TDH|]))
+        s{{ tx_queue := s.(tx_queue)[:len packets];
+            tx_queue_head := (s.(tx_queue_head) + len packets) mod s.(tx_queue_capacity);
+            tx_bufs := map.remove_many s.(tx_bufs) buf_addrs }}
+
+  (* write TDT: software may set new TDT to anywhere between old TDT (incl) and
+     TDH (excl, because otherwise queue considered empty), and by doing so, indicates
+     that between old and new TDT, there are new packets to be sent, and yields
+     the descriptor chunks and the buffers pointed to by them to hardware *)
+  | write_TDT_step: forall s mGive new_TDT tdba new_descs buf_addrs tx_bufs'
+                           (packets: list buf),
+      s.(get_e1000_config).(tx_queue_base_addr) = Some tdba ->
+      len s.(tx_queue) + len packets < s.(tx_queue_capacity) ->
+      buf_addrs = List.map (fun d => d.(tx_desc_addr)) new_descs ->
+      map.putmany_of_list_zip buf_addrs packets s.(tx_bufs) = Some tx_bufs' ->
+      \[new_TDT] = (s.(tx_queue_head) + len s.(tx_queue) + len packets)
+                     mod s.(tx_queue_capacity) ->
+      (* we get back a (wrapping) slice of the tx queue as well as the corresponding
+         buffers *)
+      <{ * circular_buffer_slice tx_desc_t s.(tx_queue_capacity) s.(tx_queue_head)
+                                 new_descs /[tdba]
+         * layout_absolute (List.map (fun pkt => array' (uint 8) pkt) packets)
+                           (List.map word.of_Z buf_addrs)
+        }> mGive ->
+      e1000_step s ((mGive, "MMIOWRITE", [| /[E1000_TDT]; new_TDT |]), (map.empty, nil))
+        s{{ tx_queue := (s.(tx_queue) ++ new_descs)%list;
+            tx_bufs := tx_bufs' }}
   .
 
   Global Instance ext_spec: ExtSpec :=
     StateMachineBasedExtSpec.ext_spec is_initial_e1000_state e1000_step.
 
   Axiom TODO: False.
+
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Lemma steps_agree_on_unique_state_fields: forall s1 s2 e s1' s2',
       agree_on_unique_state_fields s1 s2 ->
@@ -131,8 +162,15 @@ Section WithMem.
       agree_on_unique_state_fields s1' s2'.
   Proof.
     unfold is_initial_e1000_state, agree_on_unique_state_fields.
-    intros. destruct s1 as [ [ ] ]; destruct s2 as [ [ ] ]; cbn -[map.empty] in *.
+    intros. destruct s1 as [ [ ] ]; destruct s2 as [ [ ] ]; cbn -[map.empty map.rep] in *.
     inversion H0; clear H0; subst; inversion H1; clear H1; subst; record.simp; fwd.
+    all: try lazymatch goal with
+      | H: /[_] = /[_] |- _ =>
+          eapply word.of_Z_inj_small in H;
+          [ discriminate H
+          | destruct width_cases as [W | W]; rewrite W; cbv;
+            clear; intuition congruence .. ]
+      end.
     - lazymatch goal with
       | H1: _ = (_ + _) mod _, H2: _ = (_ + _) mod _ |- _ =>
           rewrite <- (mod_add_unique H1 H2 ltac:(lia) ltac:(lia)) in *
@@ -143,6 +181,24 @@ Section WithMem.
           pose proof (mod_add_unique H1 H2 ltac:(lia) ltac:(lia)) as H_len_fillable
       end.
       rewrite H_len_fillable in *.
+      assert (len new_descs = len new_descs0) as H_len_new_descs by lia.
+      replace new_descs with new_descs0 in * by case TODO. (* because in same mGive *)
+      auto 10.
+    - lazymatch goal with
+      | H1: _ = (_ + _) mod _, H2: _ = (_ + _) mod _ |- _ =>
+          pose proof (mod_add_unique H1 H2 ltac:(lia) ltac:(lia)) as H_len_packets
+      end.
+      rewrite H_len_packets in *.
+      auto 10.
+    - lazymatch goal with
+      | H1: _ = (_ + _) mod _, H2: _ = (_ + _) mod _ |- _ =>
+          pose proof (mod_add_unique H1 H2 ltac:(lia) ltac:(lia)) as H_len_packets
+      end.
+      rewrite H_len_packets in *.
+      do 2 match goal with
+      | H: _ |- _ => eapply map.putmany_of_list_zip_sameLength in H
+      end.
+      rewrite List.map_length in *.
       assert (len new_descs = len new_descs0) as H_len_new_descs by lia.
       replace new_descs with new_descs0 in * by case TODO. (* because in same mGive *)
       auto 10.
@@ -162,6 +218,13 @@ Section WithMem.
   Proof.
     apply StateMachineBasedExtSpec.ext_spec_ok.
     intros. inversion H3; subst; clear H3; inversion H4; subst; clear H4.
+    all: try lazymatch goal with
+      | H: /[_] = /[_] |- _ =>
+          eapply word.of_Z_inj_small in H;
+          [ discriminate H
+          | destruct width_cases as [W | W]; rewrite W; cbv;
+            clear; intuition congruence .. ]
+      end.
     - (* read_RDH_step *)
       reflexivity.
     - (* write_RDT_step *)
@@ -199,8 +262,7 @@ Section WithMem.
       subst mGive2a. clear Hsd.
       (* But now, M1a and M2a imply: *)
       replace new_descs2 with new_descs1 in * by case TODO.
-      set (addrs := (List.map (fun d : rx_desc => /[rx_desc_addr d])
-                       (rx_queue s1 ++ new_descs1))) in *.
+      set (addrs := (List.map (fun d : rx_desc => /[rx_desc_addr d]) new_descs1)) in *.
       move M1b at bottom. move M2b at bottom.
       (* same addresses in M1b and M2b and same element size means same footprint: *)
       assert (map.same_domain mGive1b mGive2b) as Hsd by case TODO.
@@ -214,6 +276,8 @@ Section WithMem.
       destruct D1 as (? & D1). destruct D2 as (? & D2).
       subst mGive1 mGive2.
       reflexivity.
+    - reflexivity.
+    - case TODO.
   Qed.
 
   Definition trace_state_satisfies(t: trace)(P: e1000_state -> Prop): Prop :=
