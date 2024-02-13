@@ -599,7 +599,7 @@ Section Riscv.
     destruct mach as [regs pc npc m xAddrs log].
     cbn -[load_bytes HList.tuple Nat.mul] in *.
     subst.
-    revert dependent m. revert minst. revert a v pc H H2 H3 H4 R.
+    generalize dependent m. revert minst. revert a v pc H H2 H3 H4 R.
     clear log npc regs.
     induction insts; cbn -[load_bytes HList.tuple Nat.mul]; intros.
     - unfold isXAddr4 in H3. apply proj1 in H3. simpl in H3. contradiction H3.
@@ -854,14 +854,14 @@ Section Riscv.
         assert (array_exmem : forall T (P:word->T->mem->Prop) p a l m,
           array P p a l m -> Forall (fun e => exists a m, P a e m) l).
         { clear.
-          intros. revert dependent a; revert p; revert P; revert m.
+          intros. generalize dependent a; revert p; revert P; revert m.
           induction l; cbn [array]; eauto; intros.
           inversion H as (?&?&?&?&HI); eapply IHl in HI; eauto. }
 
         assert (array_Forall : forall T (Q:T->Prop) (P:word->T->mem->Prop) p a l m,
           Forall Q l -> array P p a l m -> array (fun a e => sep (emp (Q e)) (P a e)) p a l m).
         { clear.
-          intros. revert dependent a; revert p; revert P; revert m.
+          intros. generalize dependent a; revert p; revert P; revert m.
           induction l; cbn [array]; eauto; intros.
           inversion H; subst; clear H.
           eapply sep_assoc, sep_emp_l; split; trivial.

@@ -19,7 +19,7 @@ Require Import coqutil.Datatypes.List.
 *)
 
 Module reg_class.
-  Inductive t := neg | zero | ra | sp | gp | tp | temp | saved | arg | stack_slot.
+  Inductive t: Set := neg | zero | ra | sp | gp | tp | temp | saved | arg | stack_slot.
   Scheme Equality for t.
   Definition eqb := t_beq.
   Local Open Scope bool_scope.

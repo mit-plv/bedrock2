@@ -110,7 +110,7 @@ Module Examples_TODO_move.
   Definition ARPOperationRequest: Z := 1.
   Definition ARPOperationReply: Z := 2.
 
-  Record ARPPacket := mkARPPacket {
+  Record ARPPacket: Set := mkARPPacket {
     htype: Z; (* hardware type *)
     ptype: Z; (* protocol type *)
     hlen: Z;  (* hardware address length (6 for MAC addresses) *)
@@ -122,13 +122,13 @@ Module Examples_TODO_move.
     tpa: list Z; (* target protocol address *)
   }.
 
-  Record EthernetHeader := mkEthernetHeader {
+  Record EthernetHeader: Set := mkEthernetHeader {
     dstMAC: list Z;
     srcMAC: list Z;
     etherType: Z;
   }.
 
-  Record var_size_foo := {
+  Record var_size_foo: Set := {
     foo_size: Z;
     foo_stuff: Z;
     foo_payload: list Z;
