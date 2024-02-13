@@ -14,7 +14,7 @@ Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
 Require Import coqutil.Z.BitOps.
 Require coqutil.Map.SortedListZ.
 Require Import coqutil.Datatypes.ZList.
@@ -179,7 +179,7 @@ Section WithMem.
     write v := ret map.empty nil;
   |}.
 
-  Definition e1000_step: ExtSpec :=
+  Global Instance e1000_step: ExtSpec :=
     fun (t: trace)(mGive: mem)(action: String.string)(args: list word)
         (ret: mem -> list word -> Prop) =>
       exists mNIC, externally_owned_mem t mNIC /\
@@ -288,5 +288,140 @@ Section WithMem.
     - (* intersect *)
       case TODO.
   Qed.
+
+  (* getters in non-CPS (direct) style *)
+
+  Definition getRDH(t: trace)(ret: word): Prop :=
+    get_rw_reg0 t (register_address E1000_RDH) = Some ret.
+
+  Definition getTDH(t: trace)(ret: word): Prop :=
+    get_rw_reg0 t (register_address E1000_TDH) = Some ret.
+
+  Definition getRDBAL(t: trace)(ret: word): Prop :=
+    exists rdbal, get_rw_reg0 t (register_address E1000_RDBAL) = Some rdbal /\
+    ret = /[Z.land (Z.lnot 0xf) \[rdbal]].
+
+  Definition getRDBAH(t: trace)(ret: word): Prop. Admitted.
+
+  Definition getRDBA(t: trace)(ret: word): Prop. Admitted. (*
+    let/c rdbal := getRDBAL t in
+    let/c rdbah := getRDBAH t in
+    exists rdba, \[rdba] = \[rdbal] + \[rdbah] * 2^32 /\ ret rdba. *)
+
+  Definition getTDBAL(t: trace)(ret: word): Prop. Admitted. (*
+    let/c tdbal := getrw_reg E1000_TDBAL t in
+    ret /[Z.land (Z.lnot 0xf) \[tdbal]].*)
+
+  Definition getTDBAH(t: trace)(ret: word): Prop. Admitted.
+
+  Definition getTDBA(t: trace)(ret: word): Prop. Admitted. (*
+    let/c tdbal := getTDBAL t in
+    let/c tdbah := getTDBAH t in
+    exists tdba, \[tdba] = \[tdbal] + \[tdbah] * 2^32 /\ ret tdba. *)
+
+  Definition get_receive_queue_cap(t: trace)(ret: Z): Prop. Admitted. (* :=
+    let/c rdlen := getdescriptor_length E1000_RDLEN t in
+    exists n, n * 16 = \[rdlen] /\ ret n.*)
+
+  Definition get_transmit_queue_cap(t: trace)(ret: Z): Prop. Admitted. (*
+    let/c tdlen := getdescriptor_length E1000_TDLEN t in
+    exists n, n * 16 = \[tdlen] /\ ret n.*)
+
+  (* Size of the receive buffers. If a packet doesn't fit, it is split into multiple
+     buffers, using multiple descriptors.
+     If RCTL.BSEX = 0b: 00b =   2048 B, 01b =  1024 B, 10b =  512 B, 11b =  256 B.
+     If RCTL.BSEX = 1b: 00b = Reserved, 01b = 16384 B, 10b = 8192 B, 11b = 4096 B. *)
+  Definition get_receive_buf_size(t: trace)(ret: Z): Prop :=
+    exists rctl, get_rw_reg0 t (register_address E1000_RCTL) = Some rctl /\
+    let bsex := Z.testbit \[rctl] RCTL.BSEX in
+    let bsize := bitSlice \[rctl] RCTL.BSIZE_start RCTL.BSIZE_pastend in
+    if bsex then
+      match bsize with
+      | 1 => ret = 16384
+      | 2 => ret = 8192
+      | 3 => ret = 4096
+      | _ => False
+      end
+    else
+      match bsize with
+      | 0 => ret = 2048
+      | 1 => ret = 1024
+      | 2 => ret = 512
+      | 3 => ret = 256
+      | _ => False
+      end.
+
+  Context {locals: map.map String.string word}.
+
+  (* TODO move to bedrock2.Semantics *)
+  Lemma exec_interact_cps{ext_spec: ExtSpec}:
+    forall e binds action arges args t m l post mKeep mGive,
+      map.split m mKeep mGive ->
+      eval_call_args m l arges = Some args ->
+      ext_spec t mGive action args (fun mReceive resvals =>
+          exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
+          forall m', map.split m' mKeep mReceive ->
+          post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l') ->
+      exec e (cmd.interact binds action arges) t m l post.
+  Proof. intros. eauto using exec.interact. Qed.
+
+  Local Open Scope string_scope.
+
+  (* read RDH: new RDH can be anywhere between old RDH (incl) and old RDT (excl),
+     we receive the memory chunk for each descriptor between old and new RDH,
+     as well as the buffers pointed to by them, which contain newly received packets *)
+  Lemma wp_read_RDH: forall e mNIC rdh tdh old_rx_descs rx_queue_cap tx_queue_cap
+                            rdba tdba rx_buf_size t m l r post
+                            rxq txq rx_bufs tx_bufs,
+      externally_owned_mem t mNIC ->
+      (* begin NIC invariant, TODO factor out *)
+      getRDBA t rdba ->
+      getRDH t rdh ->
+      get_receive_queue_cap t rx_queue_cap ->
+      get_receive_buf_size t rx_buf_size ->
+      getTDBA t tdba ->
+      getTDH t tdh ->
+      get_transmit_queue_cap t tx_queue_cap ->
+      let rx_buf_addrs := List.map (fun d => /[d.(rx_desc_addr)]) rxq in
+      let tx_buf_addrs := List.map (fun d => /[d.(tx_desc_addr)]) txq in
+      <{ (* receive-related: *)
+          * circular_buffer_slice rx_desc_t rx_queue_cap \[rdh] rxq rdba
+          * scattered_array (array (uint 8) rx_buf_size) rx_bufs rx_buf_addrs
+          (* transmit-related: *)
+          * circular_buffer_slice tx_desc_t tx_queue_cap \[tdh] txq tdba
+          * layout_absolute (List.map (fun pkt => array' (uint 8) pkt) tx_bufs) tx_buf_addrs
+        }> mNIC ->
+      (* end of NIC invariant *)
+      (forall (m' mRcv: mem) (packets: list buf),
+          map.split m' mRcv m ->
+          len packets <= len rxq ->
+          let new_RDH := /[(\[rdh] + len packets) mod rx_queue_cap] in
+          (* we get back a (wrapping) slice of the rx queue as well as the corresponding
+             buffers *)
+          <{ * circular_buffer_slice rx_desc_t rx_queue_cap \[rdh]
+                                     old_rx_descs[:len packets] rdba
+             * scattered_array (array (uint 8) rx_buf_size) packets
+                   (List.map (fun d => /[d.(rx_desc_addr)]) (old_rx_descs[:len packets]))
+          }> mRcv ->
+          post (cons ((map.empty, "MMIOREAD", [| register_address E1000_RDH |]),
+                      (mRcv, [|new_RDH|])) t)
+               m' (map.put l r new_RDH)) ->
+      exec e (cmd.interact [|r|] "MMIOREAD" [|expr.literal \[register_address E1000_RDH]|])
+           t m l post.
+  Proof.
+    intros.
+    eapply exec_interact_cps.
+    2: {
+      cbn [eval_call_args eval_expr]. rewrite word.of_Z_unsigned. reflexivity.
+    }
+    2: {
+      unfold e1000_step.
+      eexists. split. 1: eassumption. right.
+      cbn [dispatch String.eqb].
+      rewrite (word.eqb_eq _ _ (eq_refl (register_address E1000_RDH))).
+      cbn [read].
+      (* looks promising, but still need to determine ?mGive and ?mKeep,
+         and need to consolidate cps vs non-cps style *)
+  Abort.
 
 End WithMem.
