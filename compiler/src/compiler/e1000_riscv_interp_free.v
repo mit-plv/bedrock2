@@ -6,8 +6,11 @@ Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Logic.PropExtensionality.
+Require Import bedrock2.mmio_read_write_step_based_ext_spec.
+(* import this early because bedrock2.Memory.load_bytes vs riscv.Platform.Memory.load_bytes *)
 Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.MonadNotations.
+Require Import riscv.Utility.FreeMonad.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Machine.
 Require Import riscv.Utility.Utility.
@@ -15,62 +18,65 @@ Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Export riscv.Platform.RiscvMachine.
+Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Export riscv.Platform.MetricRiscvMachine.
-Require Import riscv.Platform.MinimalMMIO.
 Require Import riscv.Platform.MetricLogging.
 Require Export riscv.Platform.MetricMaterializeRiscvProgram.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
+Require Import coqutil.Tactics.fwd.
 
 Local Open Scope Z_scope.
 Local Open Scope bool_scope.
 
 Section Riscv.
   Context {width: Z} {BW: Bitwidth width} {word: word width} {word_ok: word.ok word}.
-  Context {Mem: map.map word byte} {Registers: map.map Register word}.
+  Context {mem: map.map word byte} {Registers: map.map Register word}.
 
-  (* TODO remove *)
-  Context {mmio_spec: MMIOSpec}.
+  Notation trace := (list LogItem).
+
+  Context {mmio_spec: MMIOExtCalls}.
 
   Local Notation M := (free action result).
   Import free.
+  Import riscv.Platform.RiscvMachine.
+  Local Open Scope string_scope. Local Open Scope Z_scope.
 
-  Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
-    word.of_Z (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
-
-  Definition mmioLoadEvent(addr: word){n: nat}(v: HList.tuple byte n): LogItem :=
-    ((map.empty, "MMIOREAD"%string, [addr]), (map.empty, [signedByteTupleToReg v])).
-
-  Definition mmioStoreEvent(addr: word){n: nat}(v: HList.tuple byte n): LogItem :=
-    ((map.empty, "MMIOWRITE"%string, [addr; signedByteTupleToReg v]), (map.empty, [])).
-
-  Definition nonmem_store(n: nat)(ctxid: SourceType) a v mach post :=
-    isMMIOAddr a /\ isMMIOAligned n a /\
-    post (withXAddrs (invalidateWrittenXAddrs n a mach.(getXAddrs))
-         (withLogItem (@mmioStoreEvent a n v)
-         mach)).
-
-  Definition store(n: nat)(ctxid: SourceType) a v mach post :=
-    match Memory.store_bytes n mach.(getMem) a v with
-    | Some m => post (withXAddrs (invalidateWrittenXAddrs n a mach.(getXAddrs)) (withMem m mach))
-    | None => nonmem_store n ctxid a v mach post
-    end.
-
-  Definition nonmem_load(n: nat)(ctxid: SourceType) a mach (post: _ -> _ -> Prop) :=
-    isMMIOAddr a /\ isMMIOAligned n a
-    (* there exists at least one valid MMIO read value (set is nonempty) *)
-    /\ (exists v : HList.tuple byte n, MMIOReadOK n (getLog mach) a (signedByteTupleToReg v))
-    (* ...and postcondition holds for all valid read values *)
-    /\ forall v,
-        MMIOReadOK n (getLog mach) a (signedByteTupleToReg v) ->
-        post v (withLogItem (@mmioLoadEvent a n v) mach).
+  Definition nonmem_load(n: nat)(kind: SourceType)(addr: word)(mach: RiscvMachine)
+                        (post: HList.tuple byte n -> RiscvMachine -> Prop) :=
+    n = 4%nat /\
+    read_step (getLog mach) addr (fun v mRcv =>
+      forall m', map.split m' (getMem mach) mRcv ->
+      post (LittleEndian.split n (word.unsigned v))
+           (withLogItem ((map.empty, "MMIOREAD", [addr]), (mRcv, [v])) (withMem m' mach))).
 
   Definition load(n: nat)(ctxid: SourceType) a mach post :=
     (ctxid = Fetch -> isXAddr4 a mach.(getXAddrs)) /\
     match Memory.load_bytes n mach.(getMem) a with
     | Some v => post v mach
     | None => nonmem_load n ctxid a mach post
+    end.
+
+  Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
+    word.of_Z (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
+
+  Definition nonmem_store(n: nat)(ctxid: SourceType)(addr: word)(val: HList.tuple byte n)
+                         (mach: RiscvMachine)(post: RiscvMachine -> Prop) :=
+    n = 4%nat /\
+    exists mKeep mGive, map.split (getMem mach) mKeep mGive /\
+    let v := signedByteTupleToReg val in
+    write_step (getLog mach) addr v mGive /\
+    post (withXAddrs (invalidateWrittenXAddrs n addr mach.(getXAddrs))
+         (withLogItem ((mGive, "MMIOWRITE", [addr; v]), (map.empty, []))
+         (withMem mKeep
+         mach))).
+
+  Definition store(n: nat)(ctxid: SourceType) a v mach post :=
+    match Memory.store_bytes n mach.(getMem) a v with
+    | Some m => post (withXAddrs (invalidateWrittenXAddrs n a mach.(getXAddrs))
+                        (withMem m mach))
+    | None => nonmem_store n ctxid a v mach post
     end.
 
   Definition updatePc(mach: RiscvMachine): RiscvMachine :=
@@ -121,18 +127,10 @@ Section Riscv.
         => fun postF postA => False
     end.
 
-  Definition MinimalMMIOPrimitivesParams:
-    PrimitivesParams (free riscv_primitive primitive_result) RiscvMachine :=
-  {|
-    Primitives.mcomp_sat A m mach postF :=
-      @free.interpret _ _ _ interpret_action A m mach postF (fun _ => False);
-    Primitives.is_initial_register_value x := True;
-    Primitives.nonmem_load := nonmem_load;
-    Primitives.nonmem_store := nonmem_store;
-    Primitives.valid_machine mach :=
-      map.undef_on mach.(getMem) isMMIOAddr /\
-      PropSet.disjoint (PropSet.of_list mach.(getXAddrs)) isMMIOAddr;
-  |}.
+  Hypothesis weaken_read_step: forall t a post1 post2,
+      read_step t a post1 ->
+      (forall v mRcv, post1 v mRcv -> post2 v mRcv) ->
+      read_step t a post2.
 
   Lemma load_weaken_post n c a m (post1 post2:_->_->Prop)
     (H: forall r s, post1 r s -> post2 r s)
@@ -147,7 +145,9 @@ Section Riscv.
     : store n c a v m post1 -> store n c a v m post2.
   Proof.
     cbv [store nonmem_store].
-    destruct (Memory.store_bytes n (getMem m) a); intuition eauto.
+    destruct (Memory.store_bytes n (getMem m) a).
+    - eauto.
+    - intros. fwd. eauto 10.
   Qed.
 
   Lemma interpret_action_weaken_post a (postF1 postF2: _ -> _ -> Prop) (postA1 postA2: _ -> Prop):
@@ -169,34 +169,37 @@ Section Riscv.
   Arguments Memory.store_bytes: simpl never.
   Arguments LittleEndian.combine: simpl never.
 
-  Global Instance MetricMinimalMMIOPrimitivesParams: PrimitivesParams M MetricRiscvMachine :=
+  Axiom TODO_valid_machine_and_isMMIOAddr: Prop.
+
+  Global Instance primitivesParams: PrimitivesParams M MetricRiscvMachine :=
   {
     Primitives.mcomp_sat := @free.interp _ _ _ interp_action;
     Primitives.is_initial_register_value x := True;
-    Primitives.nonmem_load := Primitives.nonmem_load (PrimitivesParams := MinimalMMIOPrimitivesParams);
-    Primitives.nonmem_store := Primitives.nonmem_store (PrimitivesParams := MinimalMMIOPrimitivesParams);
-    Primitives.valid_machine mach :=
-      map.undef_on mach.(getMem) isMMIOAddr /\
-      PropSet.disjoint (PropSet.of_list mach.(getXAddrs)) isMMIOAddr;
+    Primitives.nonmem_load := nonmem_load;
+    Primitives.nonmem_store := nonmem_store;
+    Primitives.valid_machine mach := TODO_valid_machine_and_isMMIOAddr;
+(*    map.undef_on mach.(getMem) isMMIOAddr /\
+      PropSet.disjoint (PropSet.of_list mach.(getXAddrs)) isMMIOAddr; *)
   }.
 
-  Global Instance MinimalMMIOSatisfies_mcomp_sat_spec: mcomp_sat_spec MetricMinimalMMIOPrimitivesParams.
+  Global Instance satisfies_mcomp_sat_spec: mcomp_sat_spec primitivesParams.
   Proof.
-    split; cbv [mcomp_sat MetricMinimalMMIOPrimitivesParams free.Monad_free Bind Return].
+    split; cbv [mcomp_sat primitivesParams free.Monad_free Bind Return].
     { symmetry. eapply free.interp_bind_ex_mid; intros.
-      eapply MinimalMMIO.interpret_action_weaken_post; eauto; cbn; eauto. }
+      eapply interpret_action_weaken_post; eauto; cbn; eauto. }
     { symmetry. rewrite free.interp_ret; eapply iff_refl. }
   Qed.
 
   Lemma interp_action_weaken_post a (post1 post2:_->_->Prop)
     (H: forall r s, post1 r s -> post2 r s) s
     : interp_action a s post1 -> interp_action a s post2.
-  Proof. eapply MinimalMMIO.interpret_action_weaken_post; eauto. Qed.
+  Proof. eapply interpret_action_weaken_post; eauto. Qed.
   Lemma interp_action_appendonly' a s post :
     interp_action a s post ->
     interp_action a s (fun v s' => post v s' /\ List.endswith s'.(getLog) s.(getLog)).
-  Proof. eapply MinimalMMIO.interpret_action_appendonly''; eauto. Qed.
-  Lemma interp_action_total{memOk: map.ok Mem} a s post :
+  Proof. Admitted. (*eapply interpret_action_appendonly''; eauto. Qed.*)
+(*
+  Lemma interp_action_total{mem_ok: map.ok mem} a s post :
     map.undef_on s.(getMachine).(getMem) isMMIOAddr ->
     PropSet.disjoint (PropSet.of_list s.(getMachine).(getXAddrs)) isMMIOAddr ->
     interp_action a s post ->
@@ -219,38 +222,49 @@ Section Riscv.
     intros U D I.
     unshelve epose proof (MinimalMMIO.interpret_action_preserves_valid' _ _ _ U D I) as H0; eauto.
   Qed.
+*)
 
-  Global Instance MetricMinimalMMIOPrimitivesSane{memOk: map.ok Mem} :
-    MetricPrimitivesSane MetricMinimalMMIOPrimitivesParams.
+  Global Instance primitivesSane{mem_ok: map.ok mem}: MetricPrimitivesSane primitivesParams.
   Proof.
-    split; cbv [mcomp_sane valid_machine MetricMinimalMMIOPrimitivesParams];
+    split; cbv [mcomp_sane valid_machine primitivesParams].
+(*
       intros *; intros [U D] M;
       (split; [ exact (interp_action_total _ st _ U D M)
               | eapply interp_action_preserves_valid; try eassumption;
                 eapply interp_action_appendonly'; try eassumption ]).
   Qed.
+*)
+  Admitted.
 
-  Global Instance MetricMinimalMMIOSatisfiesPrimitives{memOk: map.ok Mem}:
-    MetricPrimitives MetricMinimalMMIOPrimitivesParams.
+  Ltac t :=
+    match goal with
+    | _ => progress subst
+    | _ => progress fwd_step
+    | _ => progress cbn -[Platform.Memory.load_bytes Platform.Memory.store_bytes HList.tuple
+                          LittleEndian.split_deprecated] in *
+    | _ => progress cbv
+             [id valid_register is_initial_register_value load store
+                Platform.Memory.loadByte Platform.Memory.loadHalf
+                Platform.Memory.loadWord Platform.Memory.loadDouble
+                Platform.Memory.storeByte Platform.Memory.storeHalf
+                Platform.Memory.storeWord Platform.Memory.storeDouble] in *
+    | H : exists _, _ |- _ => destruct H
+    | H : _ /\ _ |- _ => destruct H
+    | |- _ => solve [ intuition (eauto || blia) ]
+    | H : _ \/ _ |- _ => destruct H
+    | |- context[match ?x with _ => _ end] => destruct x eqn:?
+    | |- _ => progress unfold getReg, setReg
+    | |-_ /\ _ => split
+    end.
+
+  Global Instance primitivesParams_ok{mem_ok: map.ok mem}:
+    MetricPrimitives primitivesParams.
   Proof.
     split; try exact _.
-    all : cbv [mcomp_sat spec_load spec_store MetricMinimalMMIOPrimitivesParams invalidateWrittenXAddrs].
-    all: intros; destruct initialL;
-      repeat match goal with
-      | _ => progress subst
-      | _ => Option.inversion_option
-      | _ => progress cbn -[Memory.load_bytes Memory.store_bytes HList.tuple] in *
-      | _ => progress cbv [id valid_register is_initial_register_value load store Memory.loadByte Memory.loadHalf Memory.loadWord Memory.loadDouble Memory.storeByte Memory.storeHalf Memory.storeWord Memory.storeDouble] in *
-      | H : exists _, _ |- _ => destruct H
-      | H : _ /\ _ |- _ => destruct H
-      | |- _ => solve [ intuition (eauto || blia) ]
-      | H : _ \/ _ |- _ => destruct H
-      | |- context[match ?x with _ => _ end] => destruct x eqn:?
-      | |- _ => progress unfold getReg, setReg
-      | |-_ /\ _ => split
-      end.
-      (* setRegister *)
-      destruct getMachine; eassumption.
+    all: cbv [mcomp_sat spec_load spec_store primitivesParams invalidateWrittenXAddrs].
+    all: intros; destruct initialL.
+    all: repeat t.
+    destruct getMachine; eassumption.
   Qed.
 
 End Riscv.
