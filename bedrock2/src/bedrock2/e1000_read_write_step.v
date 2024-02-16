@@ -28,7 +28,7 @@ Require Import bedrock2.SepLib.
 Require Import bedrock2.SepBulletPoints. Local Open Scope sep_bullets_scope.
 Require Import bedrock2.RecordPredicates.
 Require Import bedrock2.TraceInspection.
-Require Import bedrock2.mmio_read_write_step_based_ext_spec.
+Require Import bedrock2.memory_mapped_ext_spec.
 Require Import bedrock2.e1000_state. (* for rx/tx_desc and separation logic definitions *)
 
 (* Not part of the spec, but a convention we chose to hardcode here: *)
@@ -194,6 +194,7 @@ Section WithMem.
            s.(rx_queue_cap) s.(tx_queue_head) txq s.(tx_queue_base_addr) }>.
 
   Inductive e1000_read_step:
+    nat -> (* number of bytes to read *)
     trace -> (* trace of events that happened so far *)
     word -> (* address to be read *)
     (word -> mem -> Prop) -> (* postcondition on returned value and memory *)
@@ -213,10 +214,11 @@ Section WithMem.
           circular_buffer_slice (rxq_elem s.(rx_buf_size))
             s.(rx_queue_cap) s.(rx_queue_head) done s.(rx_queue_base_addr) mRcv ->
           post /[(s.(rx_queue_head) + len done) mod s.(rx_queue_cap)] mRcv) ->
-      e1000_read_step t (register_address E1000_RDH) post
+      e1000_read_step 4 t (register_address E1000_RDH) post
   .
 
   Inductive e1000_write_step:
+    nat -> (* number of bytes to write *)
     trace -> (* trace of events that happened so far *)
     word -> (* address to be written *)
     word -> (* value to be written *)
@@ -236,12 +238,14 @@ Section WithMem.
    So the status field needs to be written by the NIC and concurrently be read by software,
    so we can't strictly assign this piece of memory to either NIC or software! *)
 
-  Global Instance e1000_MMIOExtCalls: MMIOExtCalls := {
-    read_step := e1000_read_step;
-    write_step := e1000_write_step;
+  Global Instance e1000_MemoryMappedExtCalls: MemoryMappedExtCalls := {
+    mmio_read_step := e1000_read_step;
+    mmio_write_step := e1000_write_step;
+    shared_mem_read_step _ _ _ _ := False;
+    shared_mem_write_step _ _ _ _ _ := False;
   }.
 
-  Global Instance e1000_MMIOExtCallsOk: MMIOExtCallsOk e1000_MMIOExtCalls.
+  Global Instance e1000_MemoryMappedExtCallsOk: MemoryMappedExtCallsOk e1000_MemoryMappedExtCalls.
   Proof.
   Admitted.
 

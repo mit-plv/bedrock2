@@ -1,12 +1,12 @@
 (* Based on riscv.Platform.MinimalMMIO and riscv.Platform.MetricMinimalMMIO,
    but with a different nonmem_load and nonmem_store *)
-(* TODO actually adapt, this is mostly just copied *)
 
 Require Import Coq.Strings.String.
+Require coqutil.Datatypes.String.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Logic.PropExtensionality.
-Require Import bedrock2.mmio_read_write_step_based_ext_spec.
+Require Import bedrock2.memory_mapped_ext_spec.
 (* import this early because bedrock2.Memory.load_bytes vs riscv.Platform.Memory.load_bytes *)
 Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.MonadNotations.
@@ -36,7 +36,7 @@ Section Riscv.
 
   Notation trace := (list LogItem).
 
-  Context {mmio_spec: MMIOExtCalls}.
+  Context {ext_calls: MemoryMappedExtCalls}.
 
   Local Notation M := (free action result).
   Import free.
@@ -45,11 +45,18 @@ Section Riscv.
 
   Definition nonmem_load(n: nat)(kind: SourceType)(addr: word)(mach: RiscvMachine)
                         (post: HList.tuple byte n -> RiscvMachine -> Prop) :=
-    n = 4%nat /\
-    read_step (getLog mach) addr (fun v mRcv =>
+    mmio_read_step n (getLog mach) addr (fun v mRcv =>
       forall m', map.split m' (getMem mach) mRcv ->
-      post (LittleEndian.split n (word.unsigned v))
-           (withLogItem ((map.empty, "MMIOREAD", [addr]), (mRcv, [v])) (withMem m' mach))).
+      post (LittleEndian.split n (word.signed v))
+           (withLogItem ((map.empty, ("MMIO_READ" ++ String.of_nat (n * 8)), [addr]),
+                         (mRcv, [v]))
+              (withMem m' mach))) \/
+    shared_mem_read_step n (getLog mach) addr (fun v mRcv =>
+      forall m', map.split m' (getMem mach) mRcv ->
+      post (LittleEndian.split n (word.signed v))
+           (withLogItem ((map.empty, ("SHARED_MEM_READ" ++ String.of_nat (n * 8)), [addr]),
+                         (mRcv, [v]))
+              (withMem m' mach))).
 
   Definition load(n: nat)(ctxid: SourceType) a mach post :=
     (ctxid = Fetch -> isXAddr4 a mach.(getXAddrs)) /\
@@ -63,14 +70,15 @@ Section Riscv.
 
   Definition nonmem_store(n: nat)(ctxid: SourceType)(addr: word)(val: HList.tuple byte n)
                          (mach: RiscvMachine)(post: RiscvMachine -> Prop) :=
-    n = 4%nat /\
     exists mKeep mGive, map.split (getMem mach) mKeep mGive /\
-    let v := signedByteTupleToReg val in
-    write_step (getLog mach) addr v mGive /\
+    exists v: word, LittleEndian.split n (word.signed v) = val /\
+    exists prefix,
+    (prefix = "MMIO_WRITE" /\ mmio_write_step n (getLog mach) addr v mGive \/
+     prefix = "SHARED_MEM_WRITE" /\ shared_mem_write_step n (getLog mach) addr v mGive) /\
     post (withXAddrs (invalidateWrittenXAddrs n addr mach.(getXAddrs))
-         (withLogItem ((mGive, "MMIOWRITE", [addr; v]), (map.empty, []))
-         (withMem mKeep
-         mach))).
+         (withLogItem ((mGive, prefix ++ (String.of_nat (n * 8)), [addr; v]),
+                       (map.empty, []))
+         (withMem mKeep mach))).
 
   Definition store(n: nat)(ctxid: SourceType) a v mach post :=
     match Memory.store_bytes n mach.(getMem) a v with
@@ -127,15 +135,14 @@ Section Riscv.
         => fun postF postA => False
     end.
 
-  Hypothesis weaken_read_step: forall t a post1 post2,
-      read_step t a post1 ->
-      (forall v mRcv, post1 v mRcv -> post2 v mRcv) ->
-      read_step t a post2.
+  Context {ext_calls_ok: MemoryMappedExtCallsOk ext_calls}.
 
   Lemma load_weaken_post n c a m (post1 post2:_->_->Prop)
     (H: forall r s, post1 r s -> post2 r s)
     : load n c a m post1 -> load n c a m post2.
   Proof.
+    pose proof weaken_mmio_read_step.
+    pose proof weaken_shared_mem_read_step.
     cbv [load nonmem_load].
     destruct (Memory.load_bytes n (getMem m) a); intuition eauto.
   Qed.
