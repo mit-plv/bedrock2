@@ -95,11 +95,11 @@ Section WithMem.
      have "ignore on write" semantics and thus need a special get_rw_REGNAME.
      How can we enforce one never forgets to use the special getter if there is one? *)
 
-  Definition getRDH(t: trace)(ret: word): Prop :=
-    get_rw_reg0 t (register_address E1000_RDH) = Some ret.
+  Definition getRDH(t: trace)(ret: Z): Prop :=
+    exists r, get_rw_reg0 t (register_address E1000_RDH) = Some r /\ \[r] = ret.
 
-  Definition getTDH(t: trace)(ret: word): Prop :=
-    get_rw_reg0 t (register_address E1000_TDH) = Some ret.
+  Definition getTDH(t: trace)(ret: Z): Prop :=
+    exists r, get_rw_reg0 t (register_address E1000_TDH) = Some r /\ \[r] = ret.
 
   Definition getRDBAL(t: trace)(ret: word): Prop :=
     exists rdbal, get_rw_reg0 t (register_address E1000_RDBAL) = Some rdbal /\
@@ -155,11 +155,66 @@ Section WithMem.
       | _ => False
       end.
 
+  (* This are just the registers, and do not include the owned memory or the queues *)
+  Record initialized_e1000_state := {
+    rx_queue_base_addr: word; (* RDBAL/RDBAH, 64 bits total, but need to fit into a word *)
+    tx_queue_base_addr: word; (* TDBAL/TDBAH, 64 bits total, but need to fit into a word *)
+    rx_queue_cap: Z; (* RDLEN / 16 *)
+    tx_queue_cap: Z; (* TDLEN / 16 *)
+    (* Size of the receive buffers. If a packet doesn't fit, it is split into multiple
+       buffers, using multiple descriptors.
+       Hardware supports the following receive buffer sizes:
+       256 B, 512 B, 1024 B, 2048 B, 4096 B, 8192 B, 16384 B (Section 3.2.2).
+       The buffer size is controlled using RCTL.BSIZE and RCTL.BSEX (Section 13.4.22). *)
+    rx_buf_size: Z;
+    rx_queue_head: Z; (* RDH *)
+    tx_queue_head: Z; (* TDH *)
+  }.
+
+  Definition e1000_initialized(s: initialized_e1000_state)(t: trace): Prop :=
+    getRDBA t s.(rx_queue_base_addr) /\
+    getTDBA t s.(tx_queue_base_addr) /\
+    get_receive_queue_cap t s.(rx_queue_cap) /\
+    get_transmit_queue_cap t s.(tx_queue_cap) /\
+    get_receive_buf_size t s.(rx_buf_size) /\
+    getRDH t s.(rx_queue_head) /\
+    getTDH t s.(tx_queue_head).
+
+  (* Potential notations for (circular_buffer_slice elem n i vs addr):
+     * addr |-(->i, mod n)-> vs
+     * addr [⇥i ⟳n]-> vs
+     * addr [shift i, mod size]-> vs
+     * vs @[+i, mod n] addr  *)
+
+  Definition e1000_invariant(s: initialized_e1000_state)
+    (rxq: list (rx_desc * buf))(txq: list (tx_desc * buf)): mem -> Prop :=
+    <{ * circular_buffer_slice (rxq_elem s.(rx_buf_size))
+           s.(rx_queue_cap) s.(rx_queue_head) rxq s.(rx_queue_base_addr)
+       * circular_buffer_slice txq_elem
+           s.(rx_queue_cap) s.(tx_queue_head) txq s.(tx_queue_base_addr) }>.
+
   Inductive e1000_read_step:
     trace -> (* trace of events that happened so far *)
     word -> (* address to be read *)
     (word -> mem -> Prop) -> (* postcondition on returned value and memory *)
-    Prop := .
+    Prop :=
+  (* new RDH can be anywhere between old RDH (incl) and old RDT (excl),
+     we receive the memory chunk for each descriptor between old and new RDH,
+     as well as the buffers pointed to by them, which contain newly received
+     packets *)
+  | read_RDH_step: forall t mNIC s rxq txq post,
+      externally_owned_mem t mNIC ->
+      e1000_initialized s t ->
+      e1000_invariant s rxq txq mNIC ->
+      (forall mRcv (done: list (rx_desc * buf)),
+          len done <= len rxq ->
+          List.map fst done = List.map fst rxq[:len done] ->
+          (* snd (new buffer) can be any bytes *)
+          circular_buffer_slice (rxq_elem s.(rx_buf_size))
+            s.(rx_queue_cap) s.(rx_queue_head) done s.(rx_queue_base_addr) mRcv ->
+          post /[(s.(rx_queue_head) + len done) mod s.(rx_queue_cap)] mRcv) ->
+      e1000_read_step t (register_address E1000_RDH) post
+  .
 
   Inductive e1000_write_step:
     trace -> (* trace of events that happened so far *)
@@ -167,69 +222,6 @@ Section WithMem.
     word -> (* value to be written *)
     mem -> (* memory whose ownership is passed to the external world *)
     Prop := .
-
-(*
-      exists mNIC, externally_owned_mem t mNIC /\
-      (((* Initialization operations: only allowed if no memory owned by NIC.
-           Might be a bit more restrictive than needed, but e.g. changing the
-           queue size on-the-fly sounds a bit scary, so we require that software
-           refrains from performing such dubious operations. *)
-        mNIC = map.empty /\
-        mGive = map.empty /\
-        dispatch action args [|
-          (E1000_RDBAL, get_set get_RDBAL t ret);
-          (E1000_RDBAH, get_set get_RDBAH t ret);
-          (E1000_RDLEN, get_set_descriptor_length E1000_RDLEN t ret);
-          (E1000_TDBAL, get_set get_TDBAL t ret);
-          (E1000_TDBAH, get_set get_TDBAH t ret);
-          (E1000_TDLEN, get_set_descriptor_length E1000_TDLEN t ret)
-        |]) \/
-       ((* Main operations: only allowed if rx and tx functionality of NIC both are
-           initialized. Might also be a bit more restrictive than needed, but we
-           don't currently need a setup where only one of rx/tx is initialized, and
-           we already want to use it without initializing the other. *)
-         let/c rdba := get_RDBA t in
-         let/c rdh := get_rw_reg E1000_RDH t in
-         let/c rx_queue_cap := get_rx_queue_cap t in
-         let/c rx_buf_size := get_rx_buf_size t in
-         let/c tdba := get_TDBA t in
-         let/c tdh := get_rw_reg E1000_TDH t in
-         let/c tx_queue_cap := get_tx_queue_cap t in
-         exists rxq txq rx_bufs tx_bufs, (* <- ghost vars determined by mNIC *)
-         let rx_buf_addrs := List.map (fun d => /[d.(rx_desc_addr)]) rxq in
-         let tx_buf_addrs := List.map (fun d => /[d.(tx_desc_addr)]) txq in
-         <{ (* receive-related: *)
-            * circular_buffer_slice rx_desc_t rx_queue_cap \[rdh] rxq rdba
-            * scattered_array (array (uint 8) rx_buf_size) rx_bufs rx_buf_addrs
-            (* transmit-related: *)
-            * circular_buffer_slice tx_desc_t tx_queue_cap \[tdh] txq tdba
-            * layout_absolute (List.map (fun pkt => array' (uint 8) pkt) tx_bufs)
-                              tx_buf_addrs
-         }> mNIC /\
-         dispatch action args [|
-           (E1000_RDH, {|
-              (* new RDH can be anywhere between old RDH (incl) and old RDT (excl),
-                 we receive the memory chunk for each descriptor between old and new RDH,
-                 as well as the buffers pointed to by them, which contain newly received
-                 packets *)
-              read := (* nondeterministic choices: *)
-                forall (new_rdh: word) (new_bufs: list buf) (mReceive: mem),
-                (* constrained as follows: *)
-                len new_bufs <= len rxq ->
-                \[new_rdh] = (\[rdh] + len new_bufs) mod rx_queue_cap ->
-                (* we get back a (wrapping) slice of the rx queue as well as the
-                   corresponding buffers *)
-                <{ * circular_buffer_slice rx_desc_t rx_queue_cap \[rdh]
-                       rxq[:len new_bufs] rdba
-                   * scattered_array (array (uint 8) rx_buf_size) new_bufs
-                       (List.map (fun d => /[d.(rx_desc_addr)]) rxq[:len new_bufs])
-                }> mReceive ->
-                (* end of constraints to assume, now follows what we need to prove
-                   to prove ext_spec: *)
-                ret mReceive [|new_rdh|];
-              write v := False (* because hardware controls the pointer (see 13.4.28) *)|})
-         |])).
-*)
 
 (* TODO what about 13.4.28 "Reading the descriptor head to determine which buffers are
    finished is not reliable" and 13.4.39 "Reading the transmit descriptor head to
@@ -275,7 +267,7 @@ Section WithMem.
 
   (* read RDH: new RDH can be anywhere between old RDH (incl) and old RDT (excl),
      we receive the memory chunk for each descriptor between old and new RDH,
-     as well as the buffers pointed to by them, which contain newly received packets *)
+     as well as the buffers pointed to by them, which contain newly received packets
   Lemma wp_read_RDH: forall e mNIC rdh tdh old_rx_descs rx_queue_cap tx_queue_cap
                             rdba tdba rx_buf_size t m l r post
                             rxq txq rx_bufs tx_bufs,
@@ -324,6 +316,6 @@ Section WithMem.
       unfold ext_spec. left. do 2 (split; [reflexivity | ]).
       eexists. split. 1: reflexivity.
       (* looks promising, but still need to determine ?mGive and ?mKeep *)
-  Abort.
+  Abort. *)
 
 End WithMem.

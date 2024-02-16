@@ -244,6 +244,13 @@ Section WithMem.
     } rx_desc_t;
   /**.
 
+  (* A receive descriptor together with the buffer it points to *)
+  (* Note: buf_len is the total allocated amount and usually bigger than
+     rx_desc_length, which is the actual length of the received packet *)
+  Definition rxq_elem(buf_len: Z)(v: rx_desc * buf)(addr: word): mem -> Prop :=
+    sep (rx_desc_t (fst v) addr)
+        (array (uint 8) buf_len (snd v) /[rx_desc_addr (fst v)]).
+
   Definition tx_desc_t(r: tx_desc): word -> mem -> Prop := .**/
     typedef struct __attribute__ ((__packed__)) {
       uint64_t tx_desc_addr;
@@ -256,4 +263,17 @@ Section WithMem.
     } tx_desc_t;
   /**.
 
+  (* A transmit descriptor together with the buffer it points to *)
+  (* Note: length of buffer is given by tx_desc_length field *)
+  Definition txq_elem(v: tx_desc * buf)(addr: word): mem -> Prop :=
+    sep (tx_desc_t (fst v) addr)
+        (array (uint 8) (tx_desc_length (fst v)) (snd v) /[tx_desc_addr (fst v)]).
+
 End WithMem.
+
+(* For the purpose of laying out rx/tx queue elements contiguously in memory,
+   only the size of the first part (the descriptor) matters: *)
+#[export] Hint Extern 1 (PredicateSize (rxq_elem _)) => exact (sizeof rx_desc_t)
+  : typeclass_instances.
+#[export] Hint Extern 1 (PredicateSize txq_elem) => exact (sizeof tx_desc_t)
+  : typeclass_instances.
