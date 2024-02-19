@@ -102,6 +102,17 @@ Section WithMem.
       mGive1 = mGive2;
   }.
 
+  Lemma weaken_ext_spec{mmio_ext_calls: MemoryMappedExtCalls}
+    {mmio_ext_calls_ok: MemoryMappedExtCallsOk mmio_ext_calls}:
+    forall t mGive a args post1 post2,
+      (forall mRcv rets, post1 mRcv rets -> post2 mRcv rets) ->
+      ext_spec t mGive a args post1 ->
+      ext_spec t mGive a args post2.
+  Proof.
+    intros; inversion H0; subst; clear H0;
+      constructor; eauto using weaken_mmio_read_step, weaken_shared_mem_read_step.
+  Qed.
+
   Instance ext_spec_ok(mmio_ext_calls: MemoryMappedExtCalls)
     {mmio_ext_calls_ok: MemoryMappedExtCallsOk mmio_ext_calls}: ext_spec.ok ext_spec.
   Proof.
@@ -111,11 +122,7 @@ Section WithMem.
         fwd; eauto using mmio_write_step_unique_mGive, shared_mem_write_step_unique_mGive.
     - (* weaken *)
       unfold Morphisms.Proper, Morphisms.respectful, Morphisms.pointwise_relation,
-        Basics.impl.
-      intros.
-      inversion H0; subst; clear H0;
-        constructor;
-        eauto using weaken_mmio_read_step, weaken_shared_mem_read_step.
+        Basics.impl. eapply weaken_ext_spec.
     - (* intersect *)
       intros. inversion H; subst; clear H; inversion H0; subst; clear H0; fwd;
         constructor;

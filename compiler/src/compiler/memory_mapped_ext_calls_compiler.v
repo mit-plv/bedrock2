@@ -47,10 +47,10 @@ Definition compile_store(action: string): Z -> Z -> Z -> Instruction :=
   if (action =? "MMIO_WRITE16") || (action =? "SHARED_MEM_WRITE16") then Sh else Sb.
 
 Definition compile_interact(results: list Z)(a: string)(args: list Z): list Instruction :=
-  match results, args with
-  | [res], [addr] => [compile_load a res addr 0]
-  | [], [addr; val] => [compile_store a addr val 0]
-  | _, _ => [] (* invalid, excluded by ext_spec *)
+  match args with
+  | [addr; val] => [compile_store a addr val 0]
+  | [addr] => [compile_load a (List.hd 0 results) addr 0]
+  | _ => [] (* invalid, excluded by ext_spec *)
   end.
 
 Local Arguments Z.mul: simpl never.
@@ -148,21 +148,84 @@ Section MMIO.
     end.
 
   (* these are abstract and used both on the bedrock2 level and in riscv *)
-  Context {mmio_ext_calls: MemoryMappedExtCalls}.
+  Context {mmio_ext_calls: MemoryMappedExtCalls}
+          {mmio_ext_calls_ok: MemoryMappedExtCallsOk mmio_ext_calls}.
+
+  Lemma invert_ext_spec_load_or_store: forall t mGive a args post,
+      ext_spec t mGive a args post ->
+      (* in any case: *)
+      exists prefix n, a = prefix ++ String.of_nat (n * 8) /\
+        (* load: *)
+        (mGive = map.empty /\
+         exists addr, args = [addr] /\
+           ((prefix = "MMIO_READ" /\
+               mmio_read_step n t addr (fun v mRcv => post mRcv [v])) \/
+            (prefix = "SHARED_MEM_READ" /\
+               shared_mem_read_step n t addr (fun v mRcv => post mRcv [v])))) \/
+        (* store: *)
+        (exists addr val, args = [addr; val] /\ post map.empty [] /\
+           (prefix = "MMIO_WRITE" /\ mmio_write_step n t addr val mGive \/
+            prefix = "SHARED_MEM_WRITE" /\ shared_mem_write_step n t addr val mGive)).
+  Proof. inversion 1; subst; eauto 10. Qed.
+
+  Lemma invert_interact_cps: forall e resvars action argvars t m l mc post,
+      FlatImp.exec e (SInteract resvars action argvars) t m l mc post ->
+      exists argvals mKeep mGive,
+        map.getmany_of_list l argvars = Some argvals /\
+        map.split m mKeep mGive /\
+        ext_spec t mGive action argvals (fun mRcv resvals => exists l': locals,
+          map.putmany_of_list_zip resvars resvals l = Some l' /\
+          forall m', map.split m' mKeep mRcv ->
+                     post ((mGive, action, argvals, (mRcv, resvals)) :: t) m' l'
+                       (bedrock2.MetricLogging.addMetricInstructions 1
+                          (bedrock2.MetricLogging.addMetricStores 1
+                             (bedrock2.MetricLogging.addMetricLoads 2 mc)))).
+  Proof.
+    intros. inversion H; subst; clear H.
+    do 3 eexists. do 2 (split; [eassumption| ]).
+    eapply weaken_ext_spec. 2: eassumption. 1: eassumption.
+  Qed.
 
   Lemma compile_ext_call_correct: forall resvars extcall argvars,
       FlatToRiscvCommon.compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
         (FlatImp.SInteract resvars extcall argvars).
   Proof.
     unfold FlatToRiscvCommon.compiles_FlatToRiscv_correctly. simpl. intros.
-    inversion H.
-    subst resvars0 extcall argvars0 initialTrace initialMH initialRegsH
-      initialMetricsH postH. clear H.
+    eapply invert_interact_cps in H.
     destruct H5 as (? & ? & V_resvars & V_argvars).
+    unfold goodMachine in *|-.
     fwd.
     lazymatch goal with
-    | H: ext_spec _ _ _ _ _ |- _ => inversion H
+    | H: ext_spec _ _ _ _ _ |- _ =>
+        apply invert_ext_spec_load_or_store in H; rename H into HExt
     end.
+    fwd.
+    apply one_step.
+    lazymatch goal with
+    | H: map.getmany_of_list _ argvars = Some argvals |- _ =>
+        pose proof (map.getmany_of_list_length _ _ _ H) as Hl
+    end.
+    destruct g. FlatToRiscvCommon.simpl_g_get.
+    match goal with
+    | H: iff1 allx  _ |- _ => apply iff1ToEq in H; subst allx
+    end.
+    unfold compile_interact in *.
+    destruct_RiscvMachine initialL. subst.
+    destruct HExt as [HExt | HExt]; fwd.
+    - (* load *)
+      destruct argvars as [ |addr_reg argvars]. 1: discriminate Hl.
+      destruct argvars. 2: discriminate Hl. clear Hl.
+      eapply go_fetch_inst; simpl_MetricRiscvMachine_get_set.
+      { reflexivity. }
+      { eapply rearrange_footpr_subset. 1: eassumption. wwcancel. }
+      { wcancel_assumption. }
+      { unfold not_InvalidInstruction, compile_load.
+        repeat match goal with
+               | |- _ => exact I
+               | |- _ => progress cbn
+               | |- context[String.eqb ?l ?r] => destruct (String.eqb l r)
+               end. }
+      (* TODO only allow valid n's in ext_spec *)
   Abort.
 
 End MMIO.
