@@ -25,10 +25,6 @@ Require Import compiler.SeparationLogic.
 Require Import coqutil.Datatypes.Option.
 Require Import compiler.RiscvWordProperties.
 Require Import coqutil.Datatypes.ListSet.
-
-(* Goal of this file: compile from this (bedrock2 ext calls): *)
-Require Import bedrock2.memory_mapped_ext_spec.
-(* to this (risc-v "ext calls" implemented by load and store instructions): *)
 Require Import compiler.memory_mapped_ext_calls_riscv.
 
 Import ListNotations.
@@ -37,14 +33,14 @@ Local Open Scope bool_scope.
 Local Open Scope string_scope.
 
 Definition compile_load(action: string): Z -> Z -> Z -> Instruction :=
-  if (action =? "MMIO_READ64") || (action =? "SHARED_MEM_READ64") then Ld else
-  if (action =? "MMIO_READ32") || (action =? "SHARED_MEM_READ32") then Lw else
-  if (action =? "MMIO_READ16") || (action =? "SHARED_MEM_READ16") then Lh else Lb.
+  if action =? "memory_mapped_extcall_read64" then Ld else
+  if action =? "memory_mapped_extcall_read32" then Lw else
+  if action =? "memory_mapped_extcall_read16" then Lh else Lb.
 
 Definition compile_store(action: string): Z -> Z -> Z -> Instruction :=
-  if (action =? "MMIO_WRITE64") || (action =? "SHARED_MEM_WRITE64") then Sd else
-  if (action =? "MMIO_WRITE32") || (action =? "SHARED_MEM_WRITE32") then Sw else
-  if (action =? "MMIO_WRITE16") || (action =? "SHARED_MEM_WRITE16") then Sh else Sb.
+  if action =? "memory_mapped_extcall_write64" then Sd else
+  if action =? "memory_mapped_extcall_write32" then Sw else
+  if action =? "memory_mapped_extcall_write16" then Sh else Sb.
 
 Definition compile_interact(results: list Z)(a: string)(args: list Z): list Instruction :=
   match args with
@@ -148,57 +144,18 @@ Section MMIO.
     end.
 
   (* these are abstract and used both on the bedrock2 level and in riscv *)
-  Context {mmio_ext_calls: MemoryMappedExtCalls}
-          {mmio_ext_calls_ok: MemoryMappedExtCallsOk mmio_ext_calls}.
-
-  Lemma invert_ext_spec_load_or_store: forall t mGive a args post,
-      ext_spec t mGive a args post ->
-      (* in any case: *)
-      exists prefix n, a = prefix ++ String.of_nat (n * 8) /\
-        (* load: *)
-        (mGive = map.empty /\
-         exists addr, args = [addr] /\
-           ((prefix = "MMIO_READ" /\
-               mmio_read_step n t addr (fun v mRcv => post mRcv [v])) \/
-            (prefix = "SHARED_MEM_READ" /\
-               shared_mem_read_step n t addr (fun v mRcv => post mRcv [v])))) \/
-        (* store: *)
-        (exists addr val, args = [addr; val] /\ post map.empty [] /\
-           (prefix = "MMIO_WRITE" /\ mmio_write_step n t addr val mGive \/
-            prefix = "SHARED_MEM_WRITE" /\ shared_mem_write_step n t addr val mGive)).
-  Proof. inversion 1; subst; eauto 10. Qed.
-
-  Lemma invert_interact_cps: forall e resvars action argvars t m l mc post,
-      FlatImp.exec e (SInteract resvars action argvars) t m l mc post ->
-      exists argvals mKeep mGive,
-        map.getmany_of_list l argvars = Some argvals /\
-        map.split m mKeep mGive /\
-        ext_spec t mGive action argvals (fun mRcv resvals => exists l': locals,
-          map.putmany_of_list_zip resvars resvals l = Some l' /\
-          forall m', map.split m' mKeep mRcv ->
-                     post ((mGive, action, argvals, (mRcv, resvals)) :: t) m' l'
-                       (bedrock2.MetricLogging.addMetricInstructions 1
-                          (bedrock2.MetricLogging.addMetricStores 1
-                             (bedrock2.MetricLogging.addMetricLoads 2 mc)))).
-  Proof.
-    intros. inversion H; subst; clear H.
-    do 3 eexists. do 2 (split; [eassumption| ]).
-    eapply weaken_ext_spec. 2: eassumption. 1: eassumption.
-  Qed.
+  Context {ext_spec: ExtSpec} {ext_spec_ok: ext_spec.ok ext_spec}.
 
   Lemma compile_ext_call_correct: forall resvars extcall argvars,
       FlatToRiscvCommon.compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
         (FlatImp.SInteract resvars extcall argvars).
   Proof.
     unfold FlatToRiscvCommon.compiles_FlatToRiscv_correctly. simpl. intros.
-    eapply invert_interact_cps in H.
+    inversion H.
+    subst resvars0 extcall argvars0 initialTrace initialMH initialRegsH
+      initialMetricsH postH. clear H.
     destruct H5 as (? & ? & V_resvars & V_argvars).
     unfold goodMachine in *|-.
-    fwd.
-    lazymatch goal with
-    | H: ext_spec _ _ _ _ _ |- _ =>
-        apply invert_ext_spec_load_or_store in H; rename H into HExt
-    end.
     fwd.
     apply one_step.
     lazymatch goal with
@@ -211,6 +168,8 @@ Section MMIO.
     end.
     unfold compile_interact in *.
     destruct_RiscvMachine initialL. subst.
+    (* need to make sure that all ext_specs can be compiled to loads or stores,
+       i.e. need to restrict action names and arg/retval counts
     destruct HExt as [HExt | HExt]; fwd.
     - (* load *)
       destruct argvars as [ |addr_reg argvars]. 1: discriminate Hl.
@@ -225,7 +184,7 @@ Section MMIO.
                | |- _ => progress cbn
                | |- context[String.eqb ?l ?r] => destruct (String.eqb l r)
                end. }
-      (* TODO only allow valid n's in ext_spec *)
+       TODO only allow valid n's in ext_spec *)
   Abort.
 
 End MMIO.

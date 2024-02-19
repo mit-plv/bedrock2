@@ -6,8 +6,7 @@ Require coqutil.Datatypes.String.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Logic.PropExtensionality.
-Require Import bedrock2.memory_mapped_ext_spec.
-(* import this early because bedrock2.Memory.load_bytes vs riscv.Platform.Memory.load_bytes *)
+Require Import bedrock2.Semantics. (* For ext_spec. Import this early because bedrock2.Memory.load_bytes vs riscv.Platform.Memory.load_bytes *)
 Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.MonadNotations.
 Require Import riscv.Utility.FreeMonad.
@@ -33,30 +32,21 @@ Local Open Scope bool_scope.
 Section Riscv.
   Context {width: Z} {BW: Bitwidth width} {word: word width} {word_ok: word.ok word}.
   Context {mem: map.map word byte} {Registers: map.map Register word}.
+  Context {ext_spec: ExtSpec}.
 
-  Notation trace := (list LogItem).
-
-  Context {ext_calls: MemoryMappedExtCalls}.
-
-  Local Notation M := (free action result).
   Import free.
   Import riscv.Platform.RiscvMachine.
   Local Open Scope string_scope. Local Open Scope Z_scope.
 
   Definition nonmem_load(n: nat)(kind: SourceType)(addr: word)(mach: RiscvMachine)
                         (post: HList.tuple byte n -> RiscvMachine -> Prop) :=
-    mmio_read_step n (getLog mach) addr (fun v mRcv =>
+    let mGive := map.empty in
+    let action := "memory_mapped_extcall_read" ++ String.of_nat (n * 8) in
+    ext_spec (getLog mach) mGive action [addr] (fun mRcv retvals =>
+      exists v, retvals = [v] /\
       forall m', map.split m' (getMem mach) mRcv ->
       post (LittleEndian.split n (word.signed v))
-           (withLogItem ((map.empty, ("MMIO_READ" ++ String.of_nat (n * 8)), [addr]),
-                         (mRcv, [v]))
-              (withMem m' mach))) \/
-    shared_mem_read_step n (getLog mach) addr (fun v mRcv =>
-      forall m', map.split m' (getMem mach) mRcv ->
-      post (LittleEndian.split n (word.signed v))
-           (withLogItem ((map.empty, ("SHARED_MEM_READ" ++ String.of_nat (n * 8)), [addr]),
-                         (mRcv, [v]))
-              (withMem m' mach))).
+           (withLogItem ((mGive, action, [addr]), (mRcv, [v])) (withMem m' mach))).
 
   Definition load(n: nat)(ctxid: SourceType) a mach post :=
     (ctxid = Fetch -> isXAddr4 a mach.(getXAddrs)) /\
@@ -65,19 +55,15 @@ Section Riscv.
     | None => nonmem_load n ctxid a mach post
     end.
 
-  Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
-    word.of_Z (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
-
   Definition nonmem_store(n: nat)(ctxid: SourceType)(addr: word)(val: HList.tuple byte n)
                          (mach: RiscvMachine)(post: RiscvMachine -> Prop) :=
     exists mKeep mGive, map.split (getMem mach) mKeep mGive /\
     exists v: word, LittleEndian.split n (word.signed v) = val /\
-    exists prefix,
-    (prefix = "MMIO_WRITE" /\ mmio_write_step n (getLog mach) addr v mGive \/
-     prefix = "SHARED_MEM_WRITE" /\ shared_mem_write_step n (getLog mach) addr v mGive) /\
+    let action := "memory_mapped_extcall_write" ++ String.of_nat (n * 8) in
+    ext_spec (getLog mach) mGive action [addr; v]
+      (fun mRcv retvals => mRcv = map.empty /\ retvals = []) /\
     post (withXAddrs (invalidateWrittenXAddrs n addr mach.(getXAddrs))
-         (withLogItem ((mGive, prefix ++ (String.of_nat (n * 8)), [addr; v]),
-                       (map.empty, []))
+         (withLogItem ((mGive, action, [addr; v]), (map.empty, []))
          (withMem mKeep mach))).
 
   Definition store(n: nat)(ctxid: SourceType) a v mach post :=
@@ -135,16 +121,17 @@ Section Riscv.
         => fun postF postA => False
     end.
 
-  Context {ext_calls_ok: MemoryMappedExtCallsOk ext_calls}.
+  Context {ext_spec_ok: ext_spec.ok ext_spec}.
 
   Lemma load_weaken_post n c a m (post1 post2:_->_->Prop)
     (H: forall r s, post1 r s -> post2 r s)
     : load n c a m post1 -> load n c a m post2.
   Proof.
-    pose proof weaken_mmio_read_step.
-    pose proof weaken_shared_mem_read_step.
     cbv [load nonmem_load].
     destruct (Memory.load_bytes n (getMem m) a); intuition eauto.
+    eapply ext_spec.weaken. 2: eassumption.
+    unfold Morphisms.Proper, Morphisms.respectful, Morphisms.pointwise_relation, Basics.impl.
+    clear -H. intros. fwd. eauto.
   Qed.
 
   Lemma store_weaken_post n c a v m (post1 post2:_->Prop)
@@ -178,7 +165,8 @@ Section Riscv.
 
   Axiom TODO_valid_machine_and_isMMIOAddr: Prop.
 
-  Global Instance primitivesParams: PrimitivesParams M MetricRiscvMachine :=
+  Global Instance primitivesParams:
+    PrimitivesParams (free action result) MetricRiscvMachine :=
   {
     Primitives.mcomp_sat := @free.interp _ _ _ interp_action;
     Primitives.is_initial_register_value x := True;
