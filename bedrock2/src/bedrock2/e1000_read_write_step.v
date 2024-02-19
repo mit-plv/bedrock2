@@ -239,10 +239,8 @@ Section WithMem.
    so we can't strictly assign this piece of memory to either NIC or software! *)
 
   Global Instance e1000_MemoryMappedExtCalls: MemoryMappedExtCalls := {
-    mmio_read_step := e1000_read_step;
-    mmio_write_step := e1000_write_step;
-    shared_mem_read_step _ _ _ _ := False;
-    shared_mem_write_step _ _ _ _ _ := False;
+    read_step := e1000_read_step;
+    write_step := e1000_write_step;
   }.
 
   Global Instance e1000_MemoryMappedExtCallsOk: MemoryMappedExtCallsOk e1000_MemoryMappedExtCalls.

@@ -6,7 +6,7 @@ Require coqutil.Datatypes.String.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Logic.PropExtensionality.
-Require Import bedrock2.Semantics. (* For ext_spec. Import this early because bedrock2.Memory.load_bytes vs riscv.Platform.Memory.load_bytes *)
+Require Import bedrock2.memory_mapped_ext_spec. (* import this early because bedrock2.Memory.load_bytes vs riscv.Platform.Memory.load_bytes *)
 Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.MonadNotations.
 Require Import riscv.Utility.FreeMonad.
@@ -32,7 +32,7 @@ Local Open Scope bool_scope.
 Section Riscv.
   Context {width: Z} {BW: Bitwidth width} {word: word width} {word_ok: word.ok word}.
   Context {mem: map.map word byte} {Registers: map.map Register word}.
-  Context {ext_spec: ExtSpec}.
+  Context {ext_calls: MemoryMappedExtCalls}.
 
   Import free.
   Import riscv.Platform.RiscvMachine.
@@ -40,13 +40,12 @@ Section Riscv.
 
   Definition nonmem_load(n: nat)(kind: SourceType)(addr: word)(mach: RiscvMachine)
                         (post: HList.tuple byte n -> RiscvMachine -> Prop) :=
-    let mGive := map.empty in
     let action := "memory_mapped_extcall_read" ++ String.of_nat (n * 8) in
-    ext_spec (getLog mach) mGive action [addr] (fun mRcv retvals =>
-      exists v, retvals = [v] /\
+    read_step n (getLog mach) addr (fun v mRcv =>
       forall m', map.split m' (getMem mach) mRcv ->
-      post (LittleEndian.split n (word.signed v))
-           (withLogItem ((mGive, action, [addr]), (mRcv, [v])) (withMem m' mach))).
+      post (LittleEndian.split n (word.unsigned v))
+           (withLogItem ((map.empty, action, [addr]), (mRcv, [v]))
+           (withMem m' mach))).
 
   Definition load(n: nat)(ctxid: SourceType) a mach post :=
     (ctxid = Fetch -> isXAddr4 a mach.(getXAddrs)) /\
@@ -57,11 +56,10 @@ Section Riscv.
 
   Definition nonmem_store(n: nat)(ctxid: SourceType)(addr: word)(val: HList.tuple byte n)
                          (mach: RiscvMachine)(post: RiscvMachine -> Prop) :=
-    exists mKeep mGive, map.split (getMem mach) mKeep mGive /\
-    exists v: word, LittleEndian.split n (word.signed v) = val /\
     let action := "memory_mapped_extcall_write" ++ String.of_nat (n * 8) in
-    ext_spec (getLog mach) mGive action [addr; v]
-      (fun mRcv retvals => mRcv = map.empty /\ retvals = []) /\
+    exists mKeep mGive, map.split (getMem mach) mKeep mGive /\
+    let v := word.of_Z (LittleEndian.combine n val) in
+    write_step n (getLog mach) addr v mGive /\
     post (withXAddrs (invalidateWrittenXAddrs n addr mach.(getXAddrs))
          (withLogItem ((mGive, action, [addr; v]), (map.empty, []))
          (withMem mKeep mach))).
@@ -121,17 +119,16 @@ Section Riscv.
         => fun postF postA => False
     end.
 
-  Context {ext_spec_ok: ext_spec.ok ext_spec}.
+  Context {ext_calls_ok: MemoryMappedExtCallsOk ext_calls}.
 
   Lemma load_weaken_post n c a m (post1 post2:_->_->Prop)
     (H: forall r s, post1 r s -> post2 r s)
     : load n c a m post1 -> load n c a m post2.
   Proof.
     cbv [load nonmem_load].
-    destruct (Memory.load_bytes n (getMem m) a); intuition eauto.
-    eapply ext_spec.weaken. 2: eassumption.
-    unfold Morphisms.Proper, Morphisms.respectful, Morphisms.pointwise_relation, Basics.impl.
-    clear -H. intros. fwd. eauto.
+    destruct (Memory.load_bytes n (getMem m) a).
+    - intuition eauto.
+    - intros. fwd. eauto using weaken_read_step.
   Qed.
 
   Lemma store_weaken_post n c a v m (post1 post2:_->Prop)
@@ -158,6 +155,17 @@ Section Riscv.
                           (post : primitive_result (snd a) -> MetricRiscvMachine -> Prop) :=
     interpret_action (snd a) (metmach.(getMachine)) (fun r mach =>
       post r (mkMetricRiscvMachine mach (fst a (metmach.(getMetrics))))) (fun _ => False).
+
+  Lemma interp_action_bind[A B: Type]: forall m (f: A -> free action result B) s post,
+      interp interp_action m s (fun b s' => interp interp_action (f b) s' post) ->
+      interp interp_action (bind m f) s post.
+  Proof.
+    intros.
+    eapply free.interp_bind_ex_mid; intros.
+    { eapply interpret_action_weaken_post; eauto; cbn; eauto. }
+    eexists. split. 1: exact H.
+    cbv beta. intros. assumption.
+  Qed.
 
   Arguments Memory.load_bytes: simpl never.
   Arguments Memory.store_bytes: simpl never.

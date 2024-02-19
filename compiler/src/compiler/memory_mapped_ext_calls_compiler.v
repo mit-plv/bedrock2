@@ -25,6 +25,10 @@ Require Import compiler.SeparationLogic.
 Require Import coqutil.Datatypes.Option.
 Require Import compiler.RiscvWordProperties.
 Require Import coqutil.Datatypes.ListSet.
+
+(* Goal of this file: compile from this (bedrock2 ext calls): *)
+Require Import bedrock2.memory_mapped_ext_spec.
+(* to this (risc-v "ext calls" implemented by load and store instructions): *)
 Require Import compiler.memory_mapped_ext_calls_riscv.
 
 Import ListNotations.
@@ -32,17 +36,22 @@ Import ListNotations.
 Local Open Scope bool_scope.
 Local Open Scope string_scope.
 
-Definition compile_load(action: string): Z -> Z -> Z -> Instruction :=
+(* Note: RISC-V has are no unsigned XLEN-bit load operations because they are the
+   same as signed, so we need an extra case distinction for 32-bit loads, and 64-bit load
+   is Ld because Ldu doesn't exist *)
+Definition compile_load{width: Z}{BW: Bitwidth width}
+  (action: string): Z -> Z -> Z -> Instruction :=
   if action =? "memory_mapped_extcall_read64" then Ld else
-  if action =? "memory_mapped_extcall_read32" then Lw else
-  if action =? "memory_mapped_extcall_read16" then Lh else Lb.
+  if action =? "memory_mapped_extcall_read32" then (if Z.eqb width 32 then Lw else Lwu) else
+  if action =? "memory_mapped_extcall_read16" then Lhu else Lbu.
 
 Definition compile_store(action: string): Z -> Z -> Z -> Instruction :=
   if action =? "memory_mapped_extcall_write64" then Sd else
   if action =? "memory_mapped_extcall_write32" then Sw else
   if action =? "memory_mapped_extcall_write16" then Sh else Sb.
 
-Definition compile_interact(results: list Z)(a: string)(args: list Z): list Instruction :=
+Definition compile_interact{width: Z}{BW: Bitwidth width}
+  (results: list Z)(a: string)(args: list Z): list Instruction :=
   match args with
   | [addr; val] => [compile_store a addr val 0]
   | [addr] => [compile_load a (List.hd 0 results) addr 0]
@@ -144,7 +153,59 @@ Section MMIO.
     end.
 
   (* these are abstract and used both on the bedrock2 level and in riscv *)
-  Context {ext_spec: ExtSpec} {ext_spec_ok: ext_spec.ok ext_spec}.
+  Context {mmio_ext_calls: MemoryMappedExtCalls}
+          {mmio_ext_calls_ok: MemoryMappedExtCallsOk mmio_ext_calls}.
+
+  Axiom TODO: False.
+
+  Lemma go_ext_call_load: forall n action x a addr (initialL: MetricRiscvMachine) post f,
+      action = "memory_mapped_extcall_read" ++ String.of_nat (n * 8) ->
+      (n = 1%nat \/ n = 2%nat \/ n = 4%nat \/ n = 8%nat /\ width = 64) ->
+      valid_register x ->
+      valid_register a ->
+      map.get initialL.(getRegs) a = Some addr ->
+      Memory.load_bytes n initialL.(getMem) addr = None ->
+      read_step n initialL.(getLog) addr (fun v mRcv =>
+        forall m' : mem,
+        map.split m' (getMem initialL) mRcv ->
+        mcomp_sat (f tt)
+          (withRegs (map.put initialL.(getRegs) x v)
+          (updateMetrics (addMetricLoads 1)
+          (withLogItem ((map.empty, action, [addr]), (mRcv, [v]))
+          (withMem m' initialL)))) post) ->
+      mcomp_sat (Bind (Execute.execute
+           (compile_load action x a 0)) f)
+        initialL post.
+  Proof.
+    destruct width_cases as [W | W]; subst width;
+    intros; subst action;
+    unfold compile_load, Execute.execute;
+    match goal with
+    | H: _ |- _ => destruct H as [? | [? | [? | [? ?] ] ] ]; subst n
+    end;
+    lazymatch goal with
+    | |- context[match ?i with _ => _ end] =>
+        let i' := eval hnf in i in change i with i'
+    end;
+    cbv iota;
+    unfold ExecuteI.execute, ExecuteI64.execute;
+    eapply go_associativity;
+    (eapply go_getRegister; [ eassumption | eassumption | ]);
+    eapply go_associativity;
+    eapply go_associativity;
+    unfold mcomp_sat, Primitives.mcomp_sat, primitivesParams, Bind, free.Monad_free in *;
+    repeat step;
+    (split; [ discriminate 1 | ]);
+    unfold ZToReg, Utility.add, MachineWidth_XLEN;
+    rewrite word.add_0_r;
+    rewrite_match;
+    unfold nonmem_load;
+    (eapply weaken_read_step; [eassumption | cbv beta]);
+    intros; repeat step;
+    unfold uInt8ToReg, uInt16ToReg, int32ToReg, uInt32ToReg, int64ToReg, MachineWidth_XLEN;
+    rewrite LittleEndian.combine_split.
+    (* TODO read_step must ensure that 0 <= v < 2 ^ (n * 8), maybe use tuples? *)
+  Admitted.
 
   Lemma compile_ext_call_correct: forall resvars extcall argvars,
       FlatToRiscvCommon.compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
@@ -166,25 +227,24 @@ Section MMIO.
     match goal with
     | H: iff1 allx  _ |- _ => apply iff1ToEq in H; subst allx
     end.
-    unfold compile_interact in *.
     destruct_RiscvMachine initialL. subst.
-    (* need to make sure that all ext_specs can be compiled to loads or stores,
-       i.e. need to restrict action names and arg/retval counts
-    destruct HExt as [HExt | HExt]; fwd.
+    lazymatch goal with
+    | H: ext_spec _ _ _ _ _ |- _ => destruct H as (n & nValid & HExt)
+    end.
+    destruct HExt; fwd.
     - (* load *)
       destruct argvars as [ |addr_reg argvars]. 1: discriminate Hl.
       destruct argvars. 2: discriminate Hl. clear Hl.
+      unfold compile_interact in *. cbn [List.length] in *.
       eapply go_fetch_inst; simpl_MetricRiscvMachine_get_set.
       { reflexivity. }
       { eapply rearrange_footpr_subset. 1: eassumption. wwcancel. }
       { wcancel_assumption. }
       { unfold not_InvalidInstruction, compile_load.
-        repeat match goal with
-               | |- _ => exact I
-               | |- _ => progress cbn
-               | |- context[String.eqb ?l ?r] => destruct (String.eqb l r)
-               end. }
-       TODO only allow valid n's in ext_spec *)
+        repeat destruct nValid as [nValid|nValid]; [..|apply proj1 in nValid]; subst n.
+        all: try exact I.
+        destruct width_cases as [W | W]; rewrite W; exact I. }
+      eapply go_ext_call_load.
   Abort.
 
 End MMIO.
