@@ -1,9 +1,14 @@
 Require Import Coq.Strings.String. Local Open Scope string_scope.
 Require Import Coq.ZArith.ZArith.
+Require Import Coq.micromega.Lia.
 Require Import Coq.Lists.List. Import ListNotations. Local Open Scope list_scope.
+Require Import coqutil.Datatypes.HList.
+Require coqutil.Word.LittleEndian.
+Require Import coqutil.Byte.
 Require Import coqutil.Tactics.fwd coqutil.Tactics.autoforward.
 Require coqutil.Datatypes.String.
 Require Import coqutil.Map.Interface coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Properties.
 Require Import bedrock2.Semantics.
 Local Open Scope string_scope.
 
@@ -19,17 +24,15 @@ Qed.
 
 Class MemoryMappedExtCalls{width: Z}{BW: Bitwidth width}
                           {word: word.word width}{mem: map.map word Byte.byte} := {
-  read_step:
-    nat -> (* how many bytes to read *)
+  read_step: forall (sz: nat),
     trace -> (* trace of events that happened so far *)
     word -> (* address to be read *)
-    (word -> mem -> Prop) -> (* postcondition on returned value and memory *)
+    (tuple byte sz -> mem -> Prop) -> (* postcondition on returned value and memory *)
     Prop;
-  write_step:
-    nat -> (* how many bytes to write *)
+  write_step: forall (sz: nat),
     trace -> (* trace of events that happened so far *)
     word -> (* address to be written *)
-    word -> (* value to be written *)
+    tuple byte sz -> (* value to be written *)
     mem -> (* memory whose ownership is passed to the external world *)
     Prop;
 }.
@@ -39,17 +42,21 @@ Section WithMem.
           {word: word.word width} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word}.
 
+  (* Note: This ext_spec is crafted in such a way that no matter how liberal
+     read_step and write_step are, all ext calls allowed by this ext_spec can
+     be compiled to a RISC-V load or store instruction *)
   Definition ext_spec{mmio_ext_calls: MemoryMappedExtCalls}: ExtSpec :=
     fun (t: trace) (mGive: mem) (action: string) (args: list word)
         (post: mem -> list word -> Prop) =>
       exists n, (n = 1 \/ n = 2 \/ n = 4 \/ (n = 8 /\ width = 64%Z))%nat /\
       ((action = "memory_mapped_extcall_read" ++ String.of_nat (n * 8) /\
         exists addr, args = [addr] /\ mGive = map.empty /\
-                     read_step n t addr (fun v mRcv => post mRcv [v])) \/
+                     read_step n t addr (fun v mRcv =>
+                         post mRcv [word.of_Z (LittleEndian.combine n v)])) \/
        (action = "memory_mapped_extcall_write" ++ String.of_nat (n * 8) /\
-        exists addr val, args = [addr; val] /\
-                         write_step n t addr val mGive /\
-                         post map.empty nil)).
+        exists addr v, args = [addr; word.of_Z (LittleEndian.combine n v)] /\
+                       write_step n t addr v mGive /\
+                       post map.empty nil)).
 
   Class MemoryMappedExtCallsOk(ext_calls: MemoryMappedExtCalls): Prop := {
     weaken_read_step: forall t addr n post1 post2,
@@ -84,7 +91,20 @@ Section WithMem.
     constructor.
     - (* mGive unique *)
       unfold ext_spec. intros. fwd. destruct H1p1; destruct H2p1; fwd; try congruence.
-      inversion H1p1. fwd. eauto using write_step_unique_mGive.
+      inversion H1p1. fwd. subst n0.
+      eapply (f_equal word.unsigned) in H2.
+      pose proof (LittleEndian.combine_bound v).
+      pose proof (LittleEndian.combine_bound v0).
+      assert (2 ^ (8 * Z.of_nat n) <= 2 ^ width). {
+        destruct width_cases as [W | W]; rewrite W;
+        match goal with
+        | H: _ |- _ => destruct H as [? | [? | [? | [? ?] ] ] ]; subst n
+        end;
+        cbv; congruence.
+      }
+      rewrite 2word.unsigned_of_Z_nowrap in H2 by lia.
+      apply LittleEndian.combine_inj in H2. subst v0.
+      eauto using write_step_unique_mGive.
     - (* weaken *)
       unfold Morphisms.Proper, Morphisms.respectful, Morphisms.pointwise_relation,
         Basics.impl. eapply weaken_ext_spec.

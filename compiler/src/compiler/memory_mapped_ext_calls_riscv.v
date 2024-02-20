@@ -43,8 +43,9 @@ Section Riscv.
     let action := "memory_mapped_extcall_read" ++ String.of_nat (n * 8) in
     read_step n (getLog mach) addr (fun v mRcv =>
       forall m', map.split m' (getMem mach) mRcv ->
-      post (LittleEndian.split n (word.unsigned v))
-           (withLogItem ((map.empty, action, [addr]), (mRcv, [v]))
+      post v
+           (withLogItem ((map.empty, action, [addr]),
+                         (mRcv, [word.of_Z (LittleEndian.combine n v)]))
            (withMem m' mach))).
 
   Definition load(n: nat)(ctxid: SourceType) a mach post :=
@@ -54,14 +55,14 @@ Section Riscv.
     | None => nonmem_load n ctxid a mach post
     end.
 
-  Definition nonmem_store(n: nat)(ctxid: SourceType)(addr: word)(val: HList.tuple byte n)
+  Definition nonmem_store(n: nat)(ctxid: SourceType)(addr: word)(v: HList.tuple byte n)
                          (mach: RiscvMachine)(post: RiscvMachine -> Prop) :=
     let action := "memory_mapped_extcall_write" ++ String.of_nat (n * 8) in
     exists mKeep mGive, map.split (getMem mach) mKeep mGive /\
-    let v := word.of_Z (LittleEndian.combine n val) in
     write_step n (getLog mach) addr v mGive /\
     post (withXAddrs (invalidateWrittenXAddrs n addr mach.(getXAddrs))
-         (withLogItem ((mGive, action, [addr; v]), (map.empty, []))
+         (withLogItem ((mGive, action, [addr; word.of_Z (LittleEndian.combine n v)]),
+                       (map.empty, []))
          (withMem mKeep mach))).
 
   Definition store(n: nat)(ctxid: SourceType) a v mach post :=

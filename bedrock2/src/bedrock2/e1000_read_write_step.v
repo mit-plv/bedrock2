@@ -15,6 +15,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
+Require Import coqutil.Datatypes.HList coqutil.Byte.
 Require Import coqutil.Z.BitOps.
 Require coqutil.Map.SortedListZ.
 Require Import coqutil.Datatypes.ZList.
@@ -194,10 +195,10 @@ Section WithMem.
            s.(rx_queue_cap) s.(tx_queue_head) txq s.(tx_queue_base_addr) }>.
 
   Inductive e1000_read_step:
-    nat -> (* number of bytes to read *)
+    forall (sz: nat), (* number of bytes to read *)
     trace -> (* trace of events that happened so far *)
     word -> (* address to be read *)
-    (word -> mem -> Prop) -> (* postcondition on returned value and memory *)
+    (tuple byte sz -> mem -> Prop) -> (* postcondition on returned value and memory *)
     Prop :=
   (* new RDH can be anywhere between old RDH (incl) and old RDT (excl),
      we receive the memory chunk for each descriptor between old and new RDH,
@@ -213,15 +214,15 @@ Section WithMem.
           (* snd (new buffer) can be any bytes *)
           circular_buffer_slice (rxq_elem s.(rx_buf_size))
             s.(rx_queue_cap) s.(rx_queue_head) done s.(rx_queue_base_addr) mRcv ->
-          post /[(s.(rx_queue_head) + len done) mod s.(rx_queue_cap)] mRcv) ->
+          post (LittleEndian.split 4 ((s.(rx_queue_head) + len done) mod s.(rx_queue_cap))) mRcv) ->
       e1000_read_step 4 t (register_address E1000_RDH) post
   .
 
   Inductive e1000_write_step:
-    nat -> (* number of bytes to write *)
+    forall (sz: nat), (* number of bytes to write *)
     trace -> (* trace of events that happened so far *)
     word -> (* address to be written *)
-    word -> (* value to be written *)
+    tuple byte sz -> (* value to be written *)
     mem -> (* memory whose ownership is passed to the external world *)
     Prop := .
 
