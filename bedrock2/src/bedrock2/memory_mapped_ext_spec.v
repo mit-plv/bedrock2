@@ -10,6 +10,7 @@ Require coqutil.Datatypes.String.
 Require Import coqutil.Map.Interface coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import coqutil.Word.Properties.
 Require Import bedrock2.Semantics.
+Require Import bedrock2.TraceInspection.
 Local Open Scope string_scope.
 
 #[local] Instance string_of_nbytes_inj: forall nbytes1 nbytes2,
@@ -35,6 +36,7 @@ Class MemoryMappedExtCalls{width: Z}{BW: Bitwidth width}
     tuple byte sz -> (* value to be written *)
     mem -> (* memory whose ownership is passed to the external world *)
     Prop;
+  mmio_addrs: word -> Prop;
 }.
 
 Section WithMem.
@@ -58,6 +60,15 @@ Section WithMem.
                        write_step n t addr v mGive /\
                        post map.empty nil)).
 
+  Definition shared_mem_addrs(t: trace)(addr: word): Prop :=
+      exists mShared, externally_owned_mem t mShared /\ map.get mShared addr <> None.
+
+  Definition ext_call_addrs{ext_calls: MemoryMappedExtCalls}(t: trace): word -> Prop :=
+    PropSet.union mmio_addrs (shared_mem_addrs t).
+
+  Definition footprint_list(addr: word)(n: nat): list word :=
+    List.unfoldn (word.add (word.of_Z 1)) n addr.
+
   Class MemoryMappedExtCallsOk(ext_calls: MemoryMappedExtCalls): Prop := {
     weaken_read_step: forall t addr n post1 post2,
       read_step n t addr post1 ->
@@ -73,6 +84,12 @@ Section WithMem.
       write_step n t addr val mGive1 ->
       write_step n t addr val mGive2 ->
       mGive1 = mGive2;
+    read_step_addrs_ok: forall n t addr post,
+      read_step n t addr post ->
+      PropSet.subset (PropSet.of_list (footprint_list addr n)) (ext_call_addrs t);
+    write_step_addrs_ok: forall n t addr val mGive,
+      write_step n t addr val mGive ->
+      PropSet.subset (PropSet.of_list (footprint_list addr n)) (ext_call_addrs t);
   }.
 
   Lemma weaken_ext_spec{mmio_ext_calls: MemoryMappedExtCalls}

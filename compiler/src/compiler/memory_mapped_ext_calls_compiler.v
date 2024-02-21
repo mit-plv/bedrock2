@@ -244,7 +244,8 @@ Section MMIO.
       write_step n initialL.(getLog) addr (LittleEndian.split n (word.unsigned val)) mGive ->
       mcomp_sat (f tt)
         (updateMetrics (addMetricStores 1)
-        (withXAddrs (invalidateWrittenXAddrs n addr (getXAddrs initialL))
+        (withXAddrs (list_diff word.eqb initialL.(getXAddrs)
+                        (list_union word.eqb (footprint_list addr n) (map.keys mGive)))
         (withLogItem ((mGive, action, [addr; val]),
                       (map.empty, nil))
         (withMem mKeep initialL)))) post ->
@@ -383,6 +384,7 @@ Section MMIO.
       { wcancel_assumption. }
       { reflexivity. }
       { case TODO. (* valid_machine *) }
+      { case TODO. (* valid_machine *) }
     - (* store *)
       destruct argvars as [ |addr_reg argvars]. 1: discriminate Hl.
       destruct argvars. 1: discriminate Hl.
@@ -461,6 +463,7 @@ Section MMIO.
         unfold map.split in *. fwd.
         eapply map.disjoint_putmany_l in Dp1. apply Dp1. }
       { reflexivity. }
+      { case TODO. (* valid_machine *) }
       { case TODO. (* valid_machine *) }
   Qed.
 

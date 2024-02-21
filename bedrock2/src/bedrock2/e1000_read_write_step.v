@@ -242,6 +242,7 @@ Section WithMem.
   Global Instance e1000_MemoryMappedExtCalls: MemoryMappedExtCalls := {
     read_step := e1000_read_step;
     write_step := e1000_write_step;
+    mmio_addrs a := 0x40000000 <= \[a] < 0x50000000; (* <-- TODO *)
   }.
 
   Global Instance e1000_MemoryMappedExtCallsOk: MemoryMappedExtCallsOk e1000_MemoryMappedExtCalls.
