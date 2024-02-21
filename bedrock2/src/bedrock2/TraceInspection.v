@@ -153,9 +153,11 @@ Section WithMem.
     match t with
     | nil => m = map.empty
     | cons ((mGive, action, args), (mReceive, rets)) tail =>
-        exists m_prev, externally_owned_mem tail m_prev /\
-                       exists mKeep, map.split m_prev mKeep mGive /\
-                                     map.split m mKeep mReceive
+        (* Note: The names  "mGive" and "mReceive" are from the CPU's perspective,
+           which is the opposite of the NIC's perspective *)
+        exists mExtPrev, externally_owned_mem tail mExtPrev /\
+        exists mExtBigger, map.split mExtBigger mExtPrev mGive /\
+        map.split mExtBigger m mReceive
     end.
 
   Lemma externally_owned_mem_unique: forall t m1 m2,
@@ -166,10 +168,9 @@ Section WithMem.
     induction t; simpl; intros.
     - subst. reflexivity.
     - destruct a as (((mGive & action) & args) & (mReceive & rets)). fwd.
-      specialize IHt with (1 := H0p0) (2 := Hp0). subst m_prev0.
-      pose proof (proj1 (map.split_diff (map.same_domain_refl _) Hp1p0 H0p1p0)).
-      subst mKeep0.
-      apply proj1 in Hp1p1. apply proj1 in H0p1p1. subst m1 m2. reflexivity.
+      specialize IHt with (1 := H0p0) (2 := Hp0). subst mExtPrev0.
+      pose proof (map.split_det Hp1p0 H0p1p0). subst mExtBigger0.
+      apply (proj1 (map.split_diff (map.same_domain_refl _) Hp1p1 H0p1p1)).
   Qed.
 
   Definition dispatch(action: String.string)(args: list word):

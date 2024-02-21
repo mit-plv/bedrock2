@@ -357,7 +357,7 @@ Section MMIO.
       destruct HM' as (mm & mL & D & ? & HmL). subst mm.
       eapply grow_eq_sep in HM. 2: exact Hsp.
       unfold mcomp_sat, Primitives.mcomp_sat, primitivesParams, Bind, free.Monad_free.
-      repeat step. unfold goodMachine. cbn -[String.append].
+      repeat step. unfold goodMachine. cbn -[String.append valid_machine].
       repeat match goal with
              | |- exists _, _  => eexists
              | |- _ /\ _ => split
@@ -383,7 +383,6 @@ Section MMIO.
       { reflexivity. }
       { wcancel_assumption. }
       { reflexivity. }
-      { case TODO. (* valid_machine *) }
       { case TODO. (* valid_machine *) }
     - (* store *)
       destruct argvars as [ |addr_reg argvars]. 1: discriminate Hl.
@@ -435,7 +434,7 @@ Section MMIO.
       end.
       fwd.
       unfold mcomp_sat, Primitives.mcomp_sat, primitivesParams, Bind, free.Monad_free.
-      repeat step. unfold goodMachine. cbn -[String.append].
+      repeat step. unfold goodMachine. cbn -[String.append valid_machine].
       repeat match goal with
              | |- exists _, _  => eexists
              | |- _ /\ _ => split
@@ -463,7 +462,6 @@ Section MMIO.
         unfold map.split in *. fwd.
         eapply map.disjoint_putmany_l in Dp1. apply Dp1. }
       { reflexivity. }
-      { case TODO. (* valid_machine *) }
       { case TODO. (* valid_machine *) }
   Qed.
 

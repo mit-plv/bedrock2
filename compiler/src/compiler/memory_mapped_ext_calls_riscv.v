@@ -69,6 +69,55 @@ Module map.
   End WithMap.
 End map.
 
+(* TODO move *)
+Section split_mcomp_sane.
+
+  Context {width: Z} {BW: Bitwidth width} {word: word width} {word_ok: word.ok word}.
+  Context {Registers: map.map Register word}.
+  Context {mem: map.map word byte}.
+
+  Context {M: Type -> Type}.
+  Context {MM: Monad M}.
+  Context {RVM: RiscvProgram M word}.
+  Context {RVS: @Spec.Machine.RiscvMachine M word _ _ RVM}.
+  Context {p: PrimitivesParams M MetricRiscvMachine}.
+
+  Definition mcomp_nonempty{A: Type}(comp: M A): Prop :=
+    forall (st: MetricRiscvMachine) (post: A -> MetricRiscvMachine -> Prop),
+      valid_machine st ->
+      mcomp_sat comp st post ->
+      exists a st', post a st'.
+
+  Definition mcomp_preserves_valid{A: Type}(comp: M A): Prop :=
+    forall (st: MetricRiscvMachine) (post: A -> MetricRiscvMachine -> Prop),
+      valid_machine st ->
+      mcomp_sat comp st post ->
+      mcomp_sat comp st (fun a st' => post a st' /\ valid_machine st').
+
+  Definition mcomp_append_only{A: Type}(comp: M A): Prop :=
+    forall (st: MetricRiscvMachine) (post: A -> MetricRiscvMachine -> Prop),
+      valid_machine st ->
+      mcomp_sat comp st post ->
+      mcomp_sat comp st (fun a st' => post a st' /\ List.endswith st'.(getLog) st.(getLog)).
+
+  Lemma build_mcomp_sane{A: Type}(comp: M A):
+    mcomp_nonempty comp ->
+    mcomp_preserves_valid comp ->
+    mcomp_append_only comp ->
+    mcomp_sane comp.
+  Proof.
+    unfold mcomp_nonempty, mcomp_preserves_valid, mcomp_append_only, mcomp_sane.
+    intros NE PR AP. intros *. intros V C.
+    split.
+    - specialize PR with (1 := V) (2 := C).
+      specialize NE with (1 := V) (2 := PR). cbv beta in NE.
+      exact NE.
+    - eapply PR. 1: exact V.
+      eapply AP. 1: exact V.
+      exact C.
+  Qed.
+End split_mcomp_sane.
+
 Section Riscv.
   Context {width: Z} {BW: Bitwidth width} {word: word width} {word_ok: word.ok word}.
   Context {mem: map.map word byte} {Registers: map.map Register word}.
@@ -222,7 +271,9 @@ Section Riscv.
     Primitives.nonmem_store := nonmem_store;
     Primitives.valid_machine mach :=
       PropSet.subset (PropSet.of_list mach.(getXAddrs)) (map.domain mach.(getMem)) /\
-      PropSet.disjoint (map.domain mach.(getMem)) (ext_call_addrs mach.(getLog));
+      PropSet.disjoint (map.domain mach.(getMem)) mmio_addrs /\
+      exists mExt, externally_owned_mem mach.(getLog) mExt /\
+                   map.disjoint mach.(getMem) mExt;
   }.
 
   Global Instance satisfies_mcomp_sat_spec: mcomp_sat_spec primitivesParams.
@@ -241,13 +292,14 @@ Section Riscv.
   Axiom read_step_nonempty: forall n t a post,
       read_step n t a post -> exists v mRcv, post v mRcv.
 
-  Axiom read_step_returns_owned_mem: forall n t a post,
+  Axiom read_step_returns_owned_mem: forall n t a post mExt,
+      externally_owned_mem t mExt ->
       read_step n t a post ->
-      exists m, externally_owned_mem t m /\
-                read_step n t a (fun v mRcv => post v mRcv /\
-                                               exists m', map.split m m' mRcv).
+      read_step n t a (fun v mRcv => post v mRcv /\ exists mExt', map.split mExt mExt' mRcv).
 
-  Lemma shared_mem_addrs_to_ext_owned_domain{mem_ok: map.ok mem}: forall t m,
+  Context {mem_ok: map.ok mem}.
+
+  Lemma shared_mem_addrs_to_ext_owned_domain: forall t m,
       externally_owned_mem t m -> shared_mem_addrs t = map.domain m.
   Proof.
     unfold shared_mem_addrs, map.domain. intros.
@@ -257,116 +309,145 @@ Section Riscv.
     - eauto.
   Qed.
 
-  Lemma ext_call_addrs_cons: forall mGive mRcv a args rets t,
-      ext_call_addrs (cons ((mGive, a, args), (mRcv, rets)) t) =
-      PropSet.diff (PropSet.union (map.domain mGive) (ext_call_addrs t)) (map.domain mRcv).
-  Proof.
-    unfold ext_call_addrs, shared_mem_addrs, PropSet.union, PropSet.diff, PropSet.elem_of.
-    intros.
-    extensionality addr. eapply PropExtensionality.propositional_extensionality.
-    split; intros.
-    - destruct H as [H | H].
-      + split.
-        * right. left. assumption.
-        *
-  Abort.
-
-  Lemma load_total{mem_ok: map.ok mem} n k a (mach: RiscvMachine) post mc':
-    PropSet.subset (PropSet.of_list mach.(getXAddrs)) (map.domain mach.(getMem)) ->
-    PropSet.disjoint (map.domain mach.(getMem)) (ext_call_addrs mach.(getLog)) ->
+  Lemma load_nonempty n k a (mach: RiscvMachine) post mc mc':
+    valid_machine {| getMachine := mach; getMetrics := mc |} ->
     load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |}) ->
-    exists v (mach': MetricRiscvMachine), post v mach' /\
-      PropSet.subset (PropSet.of_list mach'.(getXAddrs)) (map.domain mach'.(getMem)) /\
-      PropSet.disjoint (map.domain mach'.(getMem)) (ext_call_addrs mach'.(getLog)).
+    exists v (mach': MetricRiscvMachine), post v mach'.
   Proof.
-    intros HS HD HI.
+    unfold valid_machine, primitivesParams.
+    intros (HS & HD & (mExt & HO & DE)) HI.
     unfold load in HI. destruct HI as (HF & HI). destruct_one_match_hyp. 1: eauto.
     unfold nonmem_load in HI.
-    eapply read_step_returns_owned_mem in HI. destruct HI as (m & EO & HI).
+    eapply read_step_returns_owned_mem in HI. 2: exact HO.
     pose proof (read_step_nonempty _ _ _ _ HI) as P.
     destruct P as (v & mRcv & (N1 & N2)).
-    destruct N2 as (m' & Sp).
+    destruct N2 as (mExt' & Sp).
     destruct mach.
     eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _) _).
     cbn -[HList.tuple String.append] in *.
-    ssplit.
-    - eapply N1. clear N1 HI.
-      unfold map.split. split. 1: reflexivity.
-      unfold ext_call_addrs in HD.
-      eapply PropSet.disjoint_union_r_iff in HD. apply proj2 in HD.
-      erewrite shared_mem_addrs_to_ext_owned_domain in HD by eassumption.
-      eapply map.shrink_disjoint_r.
-      2: { eapply map.split_comm. exact Sp. }
-      eapply map.disjoint_from_domain_disjoint.
-      assumption.
-    - rewrite map.domain_putmany.
-      eapply PropSet.subset_union_rl.
-      exact HS.
-    - rewrite map.domain_putmany.
-      clear N1 HI.
-      eapply PropSet.disjoint_union_l_iff. split.
-  Admitted.
+    eapply N1. clear N1 HI.
+    unfold map.split. split. 1: reflexivity.
+    unfold map.split in Sp. destruct Sp as (? & D). subst mExt.
+    eapply map.disjoint_putmany_r in DE. apply (proj2 DE).
+  Qed.
 
-  Lemma store_total{mem_ok: map.ok mem} n k a val (mach: RiscvMachine) post mc' :
-    PropSet.subset (PropSet.of_list mach.(getXAddrs)) (map.domain mach.(getMem)) ->
-    PropSet.disjoint (map.domain mach.(getMem)) (ext_call_addrs mach.(getLog)) ->
+  Lemma store_nonempty n k a val (mach: RiscvMachine) post mc mc' :
+    valid_machine {| getMachine := mach; getMetrics := mc |} ->
     store n k a val mach (fun (mach': RiscvMachine) =>
           post {| getMachine := mach'; getMetrics := mc' |}) ->
-    exists (mach': MetricRiscvMachine), post mach' /\
-      PropSet.subset (PropSet.of_list mach'.(getXAddrs)) (map.domain mach'.(getMem)) /\
-      PropSet.disjoint (map.domain mach'.(getMem)) (ext_call_addrs mach'.(getLog)).
+    exists (mach': MetricRiscvMachine), post mach'.
   Proof.
-    intros HS HD HI.
-  Admitted.
+    unfold valid_machine, primitivesParams.
+    intros (HS & HD & (mExt & HO & DE)) HI.
+    unfold store in HI. destruct_one_match_hyp. 1: eauto.
+    unfold nonmem_store in HI. fwd. eauto.
+  Qed.
 
-  Lemma interp_action_total{mem_ok: map.ok mem} a (mach: MetricRiscvMachine) post :
-    PropSet.subset (PropSet.of_list mach.(getXAddrs)) (map.domain mach.(getMem)) ->
-    PropSet.disjoint (map.domain mach.(getMem)) (ext_call_addrs mach.(getLog)) ->
-    interp_action a mach post ->
-    exists v (mach': MetricRiscvMachine), post v mach' /\
-      PropSet.subset (PropSet.of_list mach'.(getXAddrs)) (map.domain mach'.(getMem)) /\
-      PropSet.disjoint (map.domain mach'.(getMem)) (ext_call_addrs mach'.(getLog)).
+  Lemma interp_action_nonempty: forall (a: (MetricLog -> MetricLog) * riscv_primitive),
+      mcomp_nonempty (act a ret).
   Proof.
-    intros HS HD HI.
-    only_destruct_RiscvMachine mach. cbn -[HList.tuple] in *.
-    destruct a as (f & p). destruct p; cbn -[HList.tuple] in *;
+    unfold mcomp_nonempty, mcomp_sat. cbn -[valid_machine].
+    intros. destruct a as (f & p). destruct st as (mach & mc).
+    destruct p; cbn -[valid_machine HList.tuple] in *;
     repeat destruct_one_match;
-    try solve [intuition eauto using load_total, store_total].
-    1-4: eapply load_total; try eassumption; eassumption.
-    all: exists tt; eapply store_total; try eassumption; eassumption.
+    try solve [intuition eauto].
+    1-4: eapply load_nonempty; eassumption.
+    all: exists tt; eapply store_nonempty; eassumption.
   Qed.
 
-(*
-  Lemma interp_action_preserves_valid{memOk: map.ok Mem} a s post :
-    map.undef_on s.(getMachine).(getMem) isMMIOAddr ->
-    PropSet.disjoint (PropSet.of_list s.(getMachine).(getXAddrs)) isMMIOAddr ->
-    interp_action a s post ->
-    interp_action a s (fun v s' =>
-        post v s' /\
-        map.undef_on s'.(getMem) isMMIOAddr /\
-        PropSet.disjoint (PropSet.of_list s'.(getMachine).(getXAddrs)) isMMIOAddr).
+  Lemma load_preserves_valid n k a (mach: RiscvMachine) post mc mc':
+    valid_machine {| getMachine := mach; getMetrics := mc |} ->
+    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+          post v {| getMachine := mach'; getMetrics := mc' |}) ->
+    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+          post v {| getMachine := mach'; getMetrics := mc' |} /\
+          valid_machine {| getMachine := mach'; getMetrics := mc' |}).
   Proof.
-    intros U D I.
-    unshelve epose proof (MinimalMMIO.interpret_action_preserves_valid' _ _ _ U D I) as H0; eauto.
-  Qed.
-*)
-  Lemma interp_action_appendonly' a s post :
-    interp_action a s post ->
-    interp_action a s (fun v s' => post v s' /\ List.endswith s'.(getLog) s.(getLog)).
-  Proof. Admitted. (*eapply interpret_action_appendonly''; eauto. Qed.*)
-
-  Global Instance primitivesSane{mem_ok: map.ok mem}: MetricPrimitivesSane primitivesParams.
-  Proof.
-    split; cbv [mcomp_sane valid_machine primitivesParams].
-(*
-      intros *; intros [U D] M;
-      (split; [ exact (interp_action_total _ st _ U D M)
-              | eapply interp_action_preserves_valid; try eassumption;
-                eapply interp_action_appendonly'; try eassumption ]).
-  Qed.
-*)
+    unfold valid_machine, primitivesParams.
+    intros (HS & HD & (mExtOld & HO & DE)) HI.
+    unfold load in *. destruct HI as (HF & HI). split. 1: assumption.
+    destruct mach.
+    cbn -[HList.tuple String.append] in *.
+    destruct_one_match. 1: eauto 10.
+    unfold nonmem_load in *.
+    cbn -[HList.tuple String.append] in *.
+    eapply read_step_returns_owned_mem in HI. 2: exact HO.
+    eapply weaken_read_step. 1: exact HI. clear HI. cbv beta. intros. fwd.
+    rename mExt' into mExtNew.
+    split. 1: solve [eauto].
+    clear Hp0. unfold map.split in H0. destruct H0 as (? & D). subst m'.
+    rewrite map.domain_putmany.
+    ssplit.
+    - eapply PropSet.subset_trans. 1: eassumption.
+      eapply PropSet.subset_union_rl.
+      eapply PropSet.subset_refl.
+    - eapply PropSet.disjoint_union_l_iff. split. 1: exact HD.
+      (* need stronger invariant: mmio_addrs need to be disjoint not only from
+         owned mem, but also from external mem *)
+      admit.
+    - eexists. split.
+      + eexists. split. 1: eassumption.
+        eexists. split. 1: eapply map.split_empty_r; reflexivity.
+        eassumption.
+      + destruct Hp1 as (? & D1). subst mExtOld.
+        eapply map.disjoint_putmany_r in DE.
+        eapply map.disjoint_putmany_l. split.
+        * apply (proj1 DE).
+        * eapply map.disjoint_comm. exact D1.
   Admitted.
+
+  Lemma store_preserves_valid n k a val (mach: RiscvMachine) post mc mc' :
+    valid_machine {| getMachine := mach; getMetrics := mc |} ->
+    store n k a val mach (fun (mach': RiscvMachine) =>
+          post {| getMachine := mach'; getMetrics := mc' |}) ->
+    store n k a val mach (fun (mach': RiscvMachine) =>
+          post {| getMachine := mach'; getMetrics := mc' |} /\
+          valid_machine {| getMachine := mach'; getMetrics := mc' |}).
+  Proof.
+    unfold valid_machine, primitivesParams.
+    intros (HS & HD & (mExt & HO & DE)) HI.
+    unfold store in *. destruct mach. cbn -[HList.tuple String.append] in *.
+    destruct_one_match.
+    { split. 1: assumption.
+      clear HI.
+  Admitted.
+
+  Lemma interp_action_preserves_valid:
+    forall (a: (MetricLog -> MetricLog) * riscv_primitive),
+      mcomp_preserves_valid (act a ret).
+  Proof.
+    unfold mcomp_preserves_valid, mcomp_sat. cbn -[valid_machine].
+    intros. destruct a as (f & p). destruct st as [ [ ] ].
+    destruct p; cbn -[valid_machine HList.tuple] in *;
+    repeat destruct_one_match;
+    try solve [intuition eauto].
+    1-4: eapply load_preserves_valid; eassumption.
+    all: eapply store_preserves_valid; eassumption.
+  Qed.
+
+  Lemma interp_action_append_only:
+    forall (a: (MetricLog -> MetricLog) * riscv_primitive), mcomp_append_only (act a ret).
+  Proof.
+    destruct a as (f & p). unfold mcomp_append_only.
+    intros [ [ ] ] post V M; destruct p;
+      cbn -[footprint_list HList.tuple] in *;
+      cbv [load store nonmem_load nonmem_store] in *;
+      cbn -[footprint_list HList.tuple] in *;
+      repeat destruct_one_match;
+      fwd;
+      intuition eauto 10 using weaken_read_step, List.endswith_refl, List.endswith_cons_l.
+  Qed.
+
+  Global Instance primitivesSane: MetricPrimitivesSane primitivesParams.
+  Proof.
+    split; intros; eapply build_mcomp_sane; simpl;
+      match goal with
+      | |- mcomp_nonempty (act ?a ret) => eapply (interp_action_nonempty a)
+      | |- mcomp_preserves_valid (act ?a ret) => eapply (interp_action_preserves_valid a)
+      | |- mcomp_append_only (act ?a ret) => eapply (interp_action_append_only a)
+      end.
+  Qed.
 
   (* TODO move *)
   Lemma removeb_list_diff_comm{A: Type}{aeqb: A -> A -> bool}{aeq_dec: EqDecider aeqb}:
@@ -418,8 +499,7 @@ Section Riscv.
     | |-_ /\ _ => split
     end.
 
-  Global Instance primitivesParams_ok{mem_ok: map.ok mem}:
-    MetricPrimitives primitivesParams.
+  Global Instance primitivesParams_ok: MetricPrimitives primitivesParams.
   Proof.
     split; try exact _.
     all: cbv [mcomp_sat spec_load spec_store primitivesParams].
