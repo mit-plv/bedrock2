@@ -44,6 +44,33 @@ Module map.
     Context {ok: map.ok map}.
     Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
 
+    (* TODO move next to map.keys *)
+    Lemma in_keys_inv: forall (k: key) (m: map), In k (map.keys m) -> map.get m k <> None.
+    Proof.
+      unfold map.keys. intros.
+      pose proof (map.fold_to_list (fun acc k v => k :: acc) [] m) as P.
+      destruct P as (l & E & G).
+      rewrite E in H.
+      assert (exists v, In (k, v) l) as HI. {
+        clear -H. revert H. induction l; simpl; intros. 1: contradiction.
+        destruct a as (k' & v). simpl in H. destruct H as [H | H].
+        - subst k'. clear. eauto.
+        - specialize (IHl H). clear -IHl. destruct IHl. eauto.
+      }
+      destruct HI as (v & HI). specialize (G k v). apply proj1 in G. specialize (G HI).
+      congruence.
+    Qed.
+
+    Lemma domain_is_of_list_keys: forall m,
+        domain m = PropSet.of_list (map.keys m).
+    Proof.
+      intros. unfold domain, PropSet.of_list.
+      extensionality k. eapply PropExtensionality.propositional_extensionality.
+      split; intro.
+      - destr (map.get m k). 2: congruence. eapply map.in_keys. eassumption.
+      - intro C. eapply in_keys_inv in H. congruence.
+    Qed.
+
     Lemma disjoint_from_domain_disjoint: forall m1 m2,
         PropSet.disjoint (domain m1) (domain m2) ->
         map.disjoint m1 m2.
@@ -51,6 +78,17 @@ Module map.
       unfold PropSet.disjoint, map.disjoint, domain, PropSet.elem_of.
       intros.
       specialize (H k). destruct H as [H | H]; apply H; congruence.
+    Qed.
+
+    Lemma disjoint_to_domain_disjoint: forall m1 m2,
+        map.disjoint m1 m2 ->
+        PropSet.disjoint (domain m1) (domain m2).
+    Proof.
+      unfold PropSet.disjoint, map.disjoint, domain, PropSet.elem_of.
+      intros.
+      specialize (H x).
+      destruct (map.get m1 x); destruct (map.get m2 x); try intuition congruence.
+      exfalso. eauto.
     Qed.
 
     Lemma domain_putmany: forall m1 m2,
@@ -66,6 +104,18 @@ Module map.
       - rewrite map.get_putmany_dec. destruct H; destruct_one_match; congruence.
     Qed.
 
+    Lemma same_domain_alt: forall m1 m2,
+        map.same_domain m1 m2 -> domain m1 = domain m2.
+    Proof.
+      unfold map.same_domain, map.sub_domain, domain.
+      intros * (S1 & S2).
+      extensionality k. eapply PropExtensionality.propositional_extensionality.
+      split; intros G C.
+      - destruct (map.get m1 k) as [v | ] eqn: E. 2: apply G; reflexivity.
+        specialize S1 with (1 := E). destruct S1 as (v' & S1). congruence.
+      - destruct (map.get m2 k) as [v | ] eqn: E. 2: apply G; reflexivity.
+        specialize S2 with (1 := E). destruct S2 as (v' & S2). congruence.
+    Qed.
   End WithMap.
 End map.
 
@@ -271,9 +321,9 @@ Section Riscv.
     Primitives.nonmem_store := nonmem_store;
     Primitives.valid_machine mach :=
       PropSet.subset (PropSet.of_list mach.(getXAddrs)) (map.domain mach.(getMem)) /\
-      PropSet.disjoint (map.domain mach.(getMem)) mmio_addrs /\
       exists mExt, externally_owned_mem mach.(getLog) mExt /\
-                   map.disjoint mach.(getMem) mExt;
+      exists mAll, map.split mAll mach.(getMem) mExt /\
+      PropSet.disjoint (map.domain mAll) mmio_addrs;
   }.
 
   Global Instance satisfies_mcomp_sat_spec: mcomp_sat_spec primitivesParams.
@@ -289,25 +339,7 @@ Section Riscv.
     : interp_action a s post1 -> interp_action a s post2.
   Proof. eapply interpret_action_weaken_post; eauto. Qed.
 
-  Axiom read_step_nonempty: forall n t a post,
-      read_step n t a post -> exists v mRcv, post v mRcv.
-
-  Axiom read_step_returns_owned_mem: forall n t a post mExt,
-      externally_owned_mem t mExt ->
-      read_step n t a post ->
-      read_step n t a (fun v mRcv => post v mRcv /\ exists mExt', map.split mExt mExt' mRcv).
-
   Context {mem_ok: map.ok mem}.
-
-  Lemma shared_mem_addrs_to_ext_owned_domain: forall t m,
-      externally_owned_mem t m -> shared_mem_addrs t = map.domain m.
-  Proof.
-    unfold shared_mem_addrs, map.domain. intros.
-    extensionality addr. eapply PropExtensionality.propositional_extensionality.
-    split; intros; fwd.
-    - pose proof (externally_owned_mem_unique _ _ _ H H0p0). subst mShared. assumption.
-    - eauto.
-  Qed.
 
   Lemma load_nonempty n k a (mach: RiscvMachine) post mc mc':
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
@@ -316,7 +348,7 @@ Section Riscv.
     exists v (mach': MetricRiscvMachine), post v mach'.
   Proof.
     unfold valid_machine, primitivesParams.
-    intros (HS & HD & (mExt & HO & DE)) HI.
+    intros (HS & mExt & HO & mAll & HA & DM) HI.
     unfold load in HI. destruct HI as (HF & HI). destruct_one_match_hyp. 1: eauto.
     unfold nonmem_load in HI.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
@@ -329,7 +361,7 @@ Section Riscv.
     eapply N1. clear N1 HI.
     unfold map.split. split. 1: reflexivity.
     unfold map.split in Sp. destruct Sp as (? & D). subst mExt.
-    eapply map.disjoint_putmany_r in DE. apply (proj2 DE).
+    apply proj2 in HA. eapply map.disjoint_putmany_r in HA. apply (proj2 HA).
   Qed.
 
   Lemma store_nonempty n k a val (mach: RiscvMachine) post mc mc' :
@@ -365,7 +397,7 @@ Section Riscv.
           valid_machine {| getMachine := mach'; getMetrics := mc' |}).
   Proof.
     unfold valid_machine, primitivesParams.
-    intros (HS & HD & (mExtOld & HO & DE)) HI.
+    intros (HS & mExt & HO & mAll & HA & DM) HI.
     unfold load in *. destruct HI as (HF & HI). split. 1: assumption.
     destruct mach.
     cbn -[HList.tuple String.append] in *.
@@ -378,24 +410,27 @@ Section Riscv.
     split. 1: solve [eauto].
     clear Hp0. unfold map.split in H0. destruct H0 as (? & D). subst m'.
     rewrite map.domain_putmany.
-    ssplit.
+    split.
     - eapply PropSet.subset_trans. 1: eassumption.
       eapply PropSet.subset_union_rl.
       eapply PropSet.subset_refl.
-    - eapply PropSet.disjoint_union_l_iff. split. 1: exact HD.
-      (* need stronger invariant: mmio_addrs need to be disjoint not only from
-         owned mem, but also from external mem *)
-      admit.
     - eexists. split.
-      + eexists. split. 1: eassumption.
-        eexists. split. 1: eapply map.split_empty_r; reflexivity.
-        eassumption.
-      + destruct Hp1 as (? & D1). subst mExtOld.
-        eapply map.disjoint_putmany_r in DE.
-        eapply map.disjoint_putmany_l. split.
-        * apply (proj1 DE).
-        * eapply map.disjoint_comm. exact D1.
-  Admitted.
+      + eexists. split. 1: exact HO.
+        eexists. split. 1: eapply map.split_empty_r; reflexivity. eassumption.
+      + unfold map.split in *. destruct HA as (? & HA). destruct Hp1 as (? & D1).
+        subst.
+        eexists. ssplit. 1: reflexivity.
+        * eapply map.disjoint_putmany_l.
+          eapply map.disjoint_putmany_r in HA. destruct HA as (HA1 & HA2).
+          split. 2: eapply map.disjoint_comm. 1-2: assumption.
+        * eapply PropSet.disjoint_sameset. 2: eassumption.
+          rewrite ?map.domain_putmany.
+          unfold PropSet.sameset.
+          split;
+            repeat apply PropSet.subset_union_l;
+            eauto using PropSet.subset_union_rl, PropSet.subset_union_rr,
+                        PropSet.subset_refl.
+  Qed.
 
   Lemma store_preserves_valid n k a val (mach: RiscvMachine) post mc mc' :
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
@@ -406,12 +441,59 @@ Section Riscv.
           valid_machine {| getMachine := mach'; getMetrics := mc' |}).
   Proof.
     unfold valid_machine, primitivesParams.
-    intros (HS & HD & (mExt & HO & DE)) HI.
+    intros (HS & mExt & HO & mAll & HA & DM) HI.
     unfold store in *. destruct mach. cbn -[HList.tuple String.append] in *.
     destruct_one_match.
-    { split. 1: assumption.
+    - split. 1: assumption.
       clear HI.
-  Admitted.
+      eapply Memory.store_bytes_preserves_domain in E.
+      eapply map.same_domain_alt in E.
+      split.
+      + rewrite <- E. eapply PropSet.subset_trans. 2: eassumption. apply subset_of_list_diff.
+      + eexists. split. 1: eassumption. eexists. split.
+        * unfold map.split in *. split. 1: reflexivity.
+          apply map.disjoint_from_domain_disjoint.
+          apply proj2 in HA.
+          apply map.disjoint_to_domain_disjoint in HA.
+          rewrite <- E. exact HA.
+        * unfold map.split in HA. apply proj1 in HA. subst mAll.
+          rewrite map.domain_putmany in *. rewrite <- E. exact DM.
+    - cbv [nonmem_store] in *. cbn -[HList.tuple String.append] in *.
+      destruct HI as (mKeep & mGive & Sp & W & P).
+      do 2 eexists. ssplit; try eassumption; clear P.
+      + rewrite of_list_list_diff, of_list_list_union.
+        destruct Sp as (? & Sp). subst getMem.
+        rewrite map.domain_putmany in HS.
+        rewrite <- map.domain_is_of_list_keys.
+        clear -HS mem_ok.
+        forget (PropSet.of_list getXAddrs) as X.
+        forget (PropSet.of_list (footprint_list a n)) as F.
+        forget (map.domain mKeep) as K.
+        forget (map.domain mGive) as G.
+        unfold PropSet.subset, PropSet.union, PropSet.diff, PropSet.elem_of,
+          PropSet.set in *.
+        forget (@word.rep _ word) as T. clear -HS. firstorder.
+      + unfold map.split in *. destruct HA as (? & HA). destruct Sp as (? & Sp). subst.
+        eexists. split.
+        * eexists. split. 1: eassumption. eexists. split.
+          2: eapply map.split_empty_r; reflexivity.
+          unfold map.split. split. 1: reflexivity.
+          eapply map.disjoint_putmany_l in HA. apply proj2 in HA.
+          apply map.disjoint_comm. exact HA.
+        * eexists. split.
+          -- unfold map.split. split. 1: reflexivity.
+             eapply map.disjoint_putmany_l in HA. destruct HA as (HA1 & HA2).
+             eapply map.disjoint_putmany_r. split. 1: exact HA1. exact Sp.
+          -- rewrite ?map.domain_putmany in *.
+             match goal with
+             | H: PropSet.disjoint ?s1 mmio_addrs |- PropSet.disjoint ?s2 mmio_addrs =>
+                 replace s2 with s1; [exact H | ]
+             end.
+             clear.
+             unfold PropSet.subset, PropSet.union, PropSet.elem_of, PropSet.set in *.
+             extensionality k. eapply PropExtensionality.propositional_extensionality.
+             intuition.
+  Qed.
 
   Lemma interp_action_preserves_valid:
     forall (a: (MetricLog -> MetricLog) * riscv_primitive),

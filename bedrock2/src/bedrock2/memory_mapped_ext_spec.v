@@ -60,11 +60,12 @@ Section WithMem.
                        write_step n t addr v mGive /\
                        post map.empty nil)).
 
+  (* not used at the moment, TODO can we remove these?
   Definition shared_mem_addrs(t: trace)(addr: word): Prop :=
       exists mShared, externally_owned_mem t mShared /\ map.get mShared addr <> None.
 
   Definition ext_call_addrs{ext_calls: MemoryMappedExtCalls}(t: trace): word -> Prop :=
-    PropSet.union mmio_addrs (shared_mem_addrs t).
+    PropSet.union mmio_addrs (shared_mem_addrs t). *)
 
   Definition footprint_list(addr: word)(n: nat): list word :=
     List.unfoldn (word.add (word.of_Z 1)) n addr.
@@ -78,18 +79,26 @@ Section WithMem.
       read_step n t addr post1 ->
       read_step n t addr post2 ->
       read_step n t addr (fun v mRcv => post1 v mRcv /\ post2 v mRcv);
+    read_step_nonempty: forall n t a post,
+      read_step n t a post -> exists v mRcv, post v mRcv;
+    read_step_returns_owned_mem: forall n t a post mExt,
+      externally_owned_mem t mExt ->
+      read_step n t a post ->
+      read_step n t a (fun v mRcv => post v mRcv /\ exists mExt', map.split mExt mExt' mRcv);
     write_step_unique_mGive: forall m t n mKeep1 mKeep2 mGive1 mGive2 addr val,
       map.split m mKeep1 mGive1 ->
       map.split m mKeep2 mGive2 ->
       write_step n t addr val mGive1 ->
       write_step n t addr val mGive2 ->
       mGive1 = mGive2;
+    (* not currently needed, TODO remove
     read_step_addrs_ok: forall n t addr post,
       read_step n t addr post ->
       PropSet.subset (PropSet.of_list (footprint_list addr n)) (ext_call_addrs t);
     write_step_addrs_ok: forall n t addr val mGive,
       write_step n t addr val mGive ->
       PropSet.subset (PropSet.of_list (footprint_list addr n)) (ext_call_addrs t);
+    *)
   }.
 
   Lemma weaken_ext_spec{mmio_ext_calls: MemoryMappedExtCalls}
