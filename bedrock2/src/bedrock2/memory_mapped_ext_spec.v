@@ -7,7 +7,8 @@ Require coqutil.Word.LittleEndian.
 Require Import coqutil.Byte.
 Require Import coqutil.Tactics.fwd coqutil.Tactics.autoforward.
 Require coqutil.Datatypes.String.
-Require Import coqutil.Map.Interface coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Map.Interface coqutil.Map.Domain.
+Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import coqutil.Word.Properties.
 Require Import bedrock2.Semantics.
 Require Import bedrock2.TraceInspection.
@@ -60,13 +61,6 @@ Section WithMem.
                        write_step n t addr v mGive /\
                        post map.empty nil)).
 
-  (* not used at the moment, TODO can we remove these?
-  Definition shared_mem_addrs(t: trace)(addr: word): Prop :=
-      exists mShared, externally_owned_mem t mShared /\ map.get mShared addr <> None.
-
-  Definition ext_call_addrs{ext_calls: MemoryMappedExtCalls}(t: trace): word -> Prop :=
-    PropSet.union mmio_addrs (shared_mem_addrs t). *)
-
   Definition footprint_list(addr: word)(n: nat): list word :=
     List.unfoldn (word.add (word.of_Z 1)) n addr.
 
@@ -91,14 +85,16 @@ Section WithMem.
       write_step n t addr val mGive1 ->
       write_step n t addr val mGive2 ->
       mGive1 = mGive2;
-    (* not currently needed, TODO remove
-    read_step_addrs_ok: forall n t addr post,
+    read_step_addrs_ok: forall n t addr post mExt,
       read_step n t addr post ->
-      PropSet.subset (PropSet.of_list (footprint_list addr n)) (ext_call_addrs t);
-    write_step_addrs_ok: forall n t addr val mGive,
+      externally_owned_mem t mExt ->
+      PropSet.subset (PropSet.of_list (footprint_list addr n)) mmio_addrs \/
+      PropSet.subset (PropSet.of_list (footprint_list addr n)) (map.domain mExt);
+    write_step_addrs_ok: forall n t addr val mGive mExt,
       write_step n t addr val mGive ->
-      PropSet.subset (PropSet.of_list (footprint_list addr n)) (ext_call_addrs t);
-    *)
+      externally_owned_mem t mExt ->
+      PropSet.subset (PropSet.of_list (footprint_list addr n)) mmio_addrs \/
+      PropSet.subset (PropSet.of_list (footprint_list addr n)) (map.domain mExt);
   }.
 
   Lemma weaken_ext_spec{mmio_ext_calls: MemoryMappedExtCalls}

@@ -22,6 +22,7 @@ Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Export riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Platform.MetricLogging.
 Require Export riscv.Platform.MetricMaterializeRiscvProgram.
+Require Import coqutil.Map.Domain.
 Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
@@ -31,93 +32,6 @@ Require Import coqutil.Tactics.fwd.
 
 Local Open Scope Z_scope.
 Local Open Scope bool_scope.
-
-(* TODO move *)
-Module map.
-  Section WithMap.
-    Context {key value} {map: map.map key value}.
-
-    Definition domain(m: map): PropSet.set key := fun k => map.get m k <> None.
-
-    Definition range(m: map): PropSet.set value := fun v => exists k, map.get m k = Some v.
-
-    Context {ok: map.ok map}.
-    Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
-
-    (* TODO move next to map.keys *)
-    Lemma in_keys_inv: forall (k: key) (m: map), In k (map.keys m) -> map.get m k <> None.
-    Proof.
-      unfold map.keys. intros.
-      pose proof (map.fold_to_list (fun acc k v => k :: acc) [] m) as P.
-      destruct P as (l & E & G).
-      rewrite E in H.
-      assert (exists v, In (k, v) l) as HI. {
-        clear -H. revert H. induction l; simpl; intros. 1: contradiction.
-        destruct a as (k' & v). simpl in H. destruct H as [H | H].
-        - subst k'. clear. eauto.
-        - specialize (IHl H). clear -IHl. destruct IHl. eauto.
-      }
-      destruct HI as (v & HI). specialize (G k v). apply proj1 in G. specialize (G HI).
-      congruence.
-    Qed.
-
-    Lemma domain_is_of_list_keys: forall m,
-        domain m = PropSet.of_list (map.keys m).
-    Proof.
-      intros. unfold domain, PropSet.of_list.
-      extensionality k. eapply PropExtensionality.propositional_extensionality.
-      split; intro.
-      - destr (map.get m k). 2: congruence. eapply map.in_keys. eassumption.
-      - intro C. eapply in_keys_inv in H. congruence.
-    Qed.
-
-    Lemma disjoint_from_domain_disjoint: forall m1 m2,
-        PropSet.disjoint (domain m1) (domain m2) ->
-        map.disjoint m1 m2.
-    Proof.
-      unfold PropSet.disjoint, map.disjoint, domain, PropSet.elem_of.
-      intros.
-      specialize (H k). destruct H as [H | H]; apply H; congruence.
-    Qed.
-
-    Lemma disjoint_to_domain_disjoint: forall m1 m2,
-        map.disjoint m1 m2 ->
-        PropSet.disjoint (domain m1) (domain m2).
-    Proof.
-      unfold PropSet.disjoint, map.disjoint, domain, PropSet.elem_of.
-      intros.
-      specialize (H x).
-      destruct (map.get m1 x); destruct (map.get m2 x); try intuition congruence.
-      exfalso. eauto.
-    Qed.
-
-    Lemma domain_putmany: forall m1 m2,
-        domain (map.putmany m1 m2) = PropSet.union (domain m1) (domain m2).
-    Proof.
-      intros.
-      extensionality k. eapply PropExtensionality.propositional_extensionality.
-      unfold domain, PropSet.union, PropSet.elem_of.
-      split; intros.
-      - rewrite map.get_putmany_dec in H. destruct_one_match_hyp.
-        + right. congruence.
-        + left. assumption.
-      - rewrite map.get_putmany_dec. destruct H; destruct_one_match; congruence.
-    Qed.
-
-    Lemma same_domain_alt: forall m1 m2,
-        map.same_domain m1 m2 -> domain m1 = domain m2.
-    Proof.
-      unfold map.same_domain, map.sub_domain, domain.
-      intros * (S1 & S2).
-      extensionality k. eapply PropExtensionality.propositional_extensionality.
-      split; intros G C.
-      - destruct (map.get m1 k) as [v | ] eqn: E. 2: apply G; reflexivity.
-        specialize S1 with (1 := E). destruct S1 as (v' & S1). congruence.
-      - destruct (map.get m2 k) as [v | ] eqn: E. 2: apply G; reflexivity.
-        specialize S2 with (1 := E). destruct S2 as (v' & S2). congruence.
-    Qed.
-  End WithMap.
-End map.
 
 (* TODO move *)
 Section split_mcomp_sane.

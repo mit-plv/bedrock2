@@ -1,6 +1,7 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Tactics.fwd.
+Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.Domain.
 Require Import compiler.util.Common.
 Require Import bedrock2.Semantics.
 Require Import riscv.Utility.Monads.
@@ -143,11 +144,7 @@ Section MMIO.
 
   Ltac contrad := contradiction || discriminate || congruence.
 
-  (* TODO: why are these here? *)
-  Arguments LittleEndian.combine: simpl never. (* TODO can we put this next to its definition? *)
-  Arguments mcomp_sat: simpl never.
-  Arguments LittleEndian.split: simpl never.
-  Local Arguments String.eqb: simpl never.
+  Local Arguments mcomp_sat: simpl never.
 
   Ltac step :=
     match goal with
@@ -292,6 +289,64 @@ Section MMIO.
     end.
   Qed.
 
+  (* TODO move tactics to coqutil *)
+
+  Ltac specialize_hyp A :=
+    repeat match goal with
+      | H: _ |- _ => specialize A with (1 := H)
+      end.
+
+  Ltac pose_specialized_as pf name :=
+    pose proof pf as name;
+    specialize_hyp name.
+
+  Lemma disjoint_load_bytes_is_None: forall m (addr: word) n,
+      (0 < n)%nat ->
+      disjoint (map.domain m) (of_list (footprint_list addr n)) ->
+      Memory.load_bytes n m addr = None.
+  Proof.
+    unfold disjoint, of_list, footprint_list, map.domain, PropSet.elem_of.
+    intros.
+    destruct n. 1: inversion H. cbn.
+    destr (map.get m addr). 2: reflexivity. exfalso.
+    specialize (H0 addr). destruct H0; apply H0; clear H0. 1: congruence.
+    simpl. left. reflexivity.
+  Qed.
+
+  Lemma load_bytes_in_mmio_or_ext_mem_is_None: forall n mAll m mExt (addr : word),
+      (0 < n)%nat ->
+      subset (of_list (footprint_list addr n)) mmio_addrs \/
+      subset (of_list (footprint_list addr n)) (map.domain mExt) ->
+      map.split mAll m mExt ->
+      disjoint (map.domain mAll) mmio_addrs ->
+      Memory.load_bytes n m addr = None.
+  Proof.
+    intros.
+    eapply disjoint_load_bytes_is_None. 1: assumption.
+    lazymatch goal with
+    | H: map.split _ m _ |- _ => destruct H as (? & D)
+    end.
+    subst.
+    lazymatch goal with
+    | H: disjoint (map.domain (map.putmany _ _)) mmio_addrs |- _ =>
+        rewrite map.domain_putmany in H; rename H into D2
+    end.
+    apply disjoint_union_l_iff in D2. destruct D2 as (D2 & D3).
+    destruct H0 as [A | A]; (eapply subset_disjoint_r; [exact A | ]).
+    1: exact D2.
+    eapply map.disjoint_to_domain_disjoint. assumption.
+  Qed.
+
+  (* TODO move *)
+  Lemma diff_disjoint_same[A: Type](a b: set A): disjoint a b -> diff a b = a.
+  Proof.
+    clear.
+    unfold disjoint, diff, elem_of. intros.
+    Import FunctionalExtensionality. extensionality x.
+    apply PropExtensionality.propositional_extensionality.
+    firstorder.
+  Qed.
+
   Lemma compile_ext_call_correct: forall resvars extcall argvars,
       FlatToRiscvCommon.compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
         (FlatImp.SInteract resvars extcall argvars).
@@ -340,10 +395,16 @@ Section MMIO.
           unfold valid_FlatImp_var, valid_register in *. lia. }
       { unfold valid_FlatImp_var, valid_register in *. lia. }
       { cbn. unfold map.extends in *. eauto. }
-      { cbn. case TODO. (* TODO memory-mapped extcalls disjoint from memory *) }
+      { cbn. pose_specialized_as read_step_addrs_ok A.
+        assert (0 < n)%nat by lia.
+        eauto using load_bytes_in_mmio_or_ext_mem_is_None. }
       cbn -[String.append].
-      eapply weaken_read_step. 1: eassumption.
+      eapply weaken_read_step.
+      { (* Note: we need to foresee that we'll need this stronger postcondition of
+           read_step later *)
+        eapply read_step_returns_owned_mem; eassumption. }
       cbv beta. intros v mRcv HO mL' Hsp.
+      destruct HO as (HO & mExt' & HsE).
       lazymatch goal with
       | H: forall _ _, outcome _ _ -> _ |- _ =>
           specialize H with (1 := HO); destruct H as (l' & Hp & HPost)
@@ -383,7 +444,47 @@ Section MMIO.
       { reflexivity. }
       { wcancel_assumption. }
       { reflexivity. }
-      { case TODO. (* valid_machine *) }
+      { cbn -[String.append].
+        split.
+        - destruct Hsp as (? & Hsp). subst mL'. rewrite map.domain_putmany.
+          eapply subset_union_rl. assumption.
+        - eexists. split.
+          + eexists. split. 1: eassumption.
+            eexists. split. 1: eapply map.split_empty_r; reflexivity.
+            exact HsE.
+          + repeat match goal with
+                   | H: ?T |- _ => lazymatch T with
+                                   | map.split _ _ _ => fail
+                                   | map.ok _ => fail
+                                   | word.ok _ => fail
+                                   | disjoint _ _ => fail
+                                   | _ => clear H
+                                   end
+                   end.
+            unfold map.split in *.
+            repeat match goal with
+                   | H: _ /\ _ |- _ => destruct H
+                   | |- _ => progress subst
+                   | H: map.disjoint (map.putmany _ _) _ |- _ =>
+                       eapply map.disjoint_putmany_l in H
+                   | H: map.disjoint _ (map.putmany _ _) |- _ =>
+                       eapply map.disjoint_putmany_r in H
+                   end.
+            eexists. ssplit. 1: reflexivity.
+            * repeat lazymatch goal with
+              | |- map.disjoint (map.putmany _ _) _ => eapply map.disjoint_putmany_l
+              | |- map.disjoint _ (map.putmany _ _) => eapply map.disjoint_putmany_r
+              | |- _ /\ _ => split
+              end.
+              all: (idtac + apply map.disjoint_comm); assumption.
+            * rewrite ?map.domain_putmany in *.
+              match goal with
+              | H: disjoint ?s1 mmio_addrs |- disjoint ?s2 mmio_addrs =>
+                  replace s2 with s1; [exact H| ]
+              end.
+              unfold union, elem_of. Import FunctionalExtensionality. extensionality x.
+              apply PropExtensionality.propositional_extensionality.
+              clear. intuition. }
     - (* store *)
       destruct argvars as [ |addr_reg argvars]. 1: discriminate Hl.
       destruct argvars. 1: discriminate Hl.
@@ -417,7 +518,9 @@ Section MMIO.
       { cbn. unfold map.extends in *. eauto. }
       { cbn. unfold map.extends in *. eauto. }
       { rewrite word.unsigned_of_Z_nowrap; lia. }
-      { cbn. case TODO. (* TODO memory-mapped extcalls disjoint from memory *) }
+      { cbn. pose_specialized_as write_step_addrs_ok A.
+        assert (0 < n)%nat by lia.
+        eauto using load_bytes_in_mmio_or_ext_mem_is_None. }
       { cbn. clear HM.
         unfold map.split in D, HmH|-*.
         destruct D as (? & D1). destruct HmH as (? & D2). subst initialL_mem mH.
@@ -449,7 +552,36 @@ Section MMIO.
       { assumption. }
       { assumption. }
       { reflexivity. }
-      { case TODO. (* instruction still a subset of invalidated XAddrs *) }
+      { eapply subset_trans. 1: eassumption.
+        rewrite of_list_list_diff. rewrite of_list_list_union.
+        rewrite diff_disjoint_same. 1: apply subset_refl.
+        eapply disjoint_union_r_iff.
+        pose_specialized_as write_step_addrs_ok A.
+        split.
+        - eapply subset_disjoint_l. 1: eassumption.
+          destruct A as [A | A].
+          + eapply subset_disjoint_r. 1: exact A.
+            lazymatch goal with
+            | H: map.split mAll initialL_mem _ |- _ => destruct H as (? & D1)
+            end.
+            subst mAll.
+            lazymatch goal with
+            | H: disjoint (map.domain (map.putmany initialL_mem mExt)) mmio_addrs |- _ =>
+                rename H into D2; move D2 at bottom
+            end.
+            rewrite map.domain_putmany in D2.
+            eapply disjoint_union_l_iff in D2.
+            apply (proj1 D2).
+          + eapply subset_disjoint_r. 1: exact A.
+            eapply map.disjoint_to_domain_disjoint.
+            match goal with
+            | H: map.split _ ?a ?b |- map.disjoint ?a ?b => apply H
+            end.
+        - (* TODO need to show that source language execution does not give away xaddrs,
+             but what if the high-level memory that we give away is in xaddrs?
+             xaddrs contains at least all instructions,
+             and at most all of RiscvMachine.getMem *)
+          case TODO. }
       { reflexivity. }
       { reflexivity. }
       { eenough (sep (eq mKeep) _ (map.putmany mKeep mL)).
@@ -462,7 +594,30 @@ Section MMIO.
         unfold map.split in *. fwd.
         eapply map.disjoint_putmany_l in Dp1. apply Dp1. }
       { reflexivity. }
-      { case TODO. (* valid_machine *) }
+      { cbn -[String.append].
+        split.
+        - rewrite of_list_list_diff, of_list_list_union.
+          (* removing (footprint_list addr n) is a no-op, and removing (map.keys mGive)
+             is what's also removed in the right *)
+          case TODO.
+        - eexists. split.
+          + eexists. split. 1: eassumption.
+            eexists. split.
+            * split; [reflexivity | ].
+              lazymatch goal with
+              | H: map.split mAll _ _ |- _ => move H at bottom; rename H into HA
+              end.
+              case TODO. (* ok *)
+            * eapply map.split_empty_r. reflexivity.
+          + eexists. split.
+            * split. 1: reflexivity.
+              case TODO. (* ok *)
+            * rewrite ?map.domain_putmany.
+              lazymatch goal with
+              | H: disjoint (map.domain mAll) mmio_addrs |- _ => rename H into Dm
+              end.
+              move Dm at bottom.
+              case TODO. (* ok *) }
   Qed.
 
 End MMIO.
