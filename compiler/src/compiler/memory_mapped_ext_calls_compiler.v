@@ -287,17 +287,6 @@ Section MMIO.
     end.
   Qed.
 
-  (* TODO move tactics to coqutil *)
-
-  Ltac specialize_hyp A :=
-    repeat match goal with
-      | H: _ |- _ => specialize A with (1 := H)
-      end.
-
-  Ltac pose_specialized_as pf name :=
-    pose proof pf as name;
-    specialize_hyp name.
-
   Lemma disjoint_load_bytes_is_None: forall m (addr: word) n,
       (0 < n)%nat ->
       disjoint (map.domain m) (of_list (footprint_list addr n)) ->
@@ -334,36 +323,6 @@ Section MMIO.
     1: exact D2.
     eapply map.disjoint_to_domain_disjoint. assumption.
   Qed.
-
-  (* TODO move *)
-  Lemma diff_disjoint_same[A: Type](a b: set A): disjoint a b -> diff a b = a.
-  Proof.
-    clear.
-    unfold disjoint, diff, elem_of. intros.
-    Import FunctionalExtensionality. extensionality x.
-    apply PropExtensionality.propositional_extensionality.
-    firstorder.
-  Qed.
-
-  Lemma subset_discard_diff_r[A: Type]: forall (a b r: set A),
-      disjoint a r ->
-      subset a b ->
-      subset a (diff b r).
-  Proof. clear. unfold diff, disjoint, subset, elem_of. firstorder. Qed.
-
-  Lemma diff_union_r[A: Type]: forall (a b c: set A),
-      diff a (union b c) = diff (diff a b) c.
-  Proof.
-    clear. unfold diff, union, elem_of. intros.
-    extensionality x.
-    apply PropExtensionality.propositional_extensionality.
-    firstorder.
-  Qed.
-
-  (* The converse direction also holds, but requires decidability of membership for r *)
-  Lemma subset_union_r_to_diff_l[A: Type]: forall (a b r: set A),
-      subset a (union b r) -> subset (diff a r) b.
-  Proof. clear. unfold subset, diff, union, elem_of. firstorder. Qed.
 
   Lemma subset_footpr_domain: forall (P R: mem -> Prop) m,
       sep P R m ->

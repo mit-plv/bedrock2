@@ -445,23 +445,6 @@ Section Riscv.
       end.
   Qed.
 
-  (* TODO move *)
-  Lemma removeb_list_diff_comm{A: Type}{aeqb: A -> A -> bool}{aeq_dec: EqDecider aeqb}:
-    forall l r rs,
-      List.removeb aeqb r (list_diff aeqb l rs) =
-      list_diff aeqb (List.removeb aeqb r l) rs.
-  Proof.
-    induction l; intros.
-    - simpl. rewrite list_diff_empty_l. reflexivity.
-    - simpl. rewrite list_diff_cons.
-      destr (aeqb r a); simpl; destr (find (aeqb a) rs).
-      + apply IHl.
-      + simpl. destr (aeqb a a). 2: congruence. simpl. apply IHl.
-      + rewrite list_diff_cons. rewrite E0. apply IHl.
-      + simpl. destr (negb (aeqb r a)). 2: congruence. rewrite list_diff_cons.
-        rewrite E0. f_equal. apply IHl.
-  Qed.
-
   Lemma invalidateWrittenXAddrs_alt: forall n (a: word) xaddrs,
       invalidateWrittenXAddrs n a xaddrs = list_diff word.eqb xaddrs (footprint_list a n).
   Proof.

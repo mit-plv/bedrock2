@@ -17,14 +17,6 @@ Require Import bedrock2.SepLib.
 Require Import bedrock2.enable_frame_trick.
 Require Import LiveVerif.LiveExpr.
 
-(* TODO move and avoid duplication in generated code *)
-Module Import Syntax.
-  Module cmd.
-    Definition dowhile(body: Syntax.cmd)(cond: Syntax.expr): Syntax.cmd :=
-      cmd.seq body (cmd.while cond body).
-  End cmd.
-End Syntax.
-
 Module Import Semantics.
   Module exec.
     Section WithParams.

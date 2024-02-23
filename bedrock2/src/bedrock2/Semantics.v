@@ -212,6 +212,21 @@ Module exec. Section WithParams.
 
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
 
+  Lemma interact_cps: forall binds action arges args t m l post mKeep mGive,
+      map.split m mKeep mGive ->
+      eval_call_args m l arges = Some args ->
+      ext_spec t mGive action args (fun mReceive resvals =>
+          exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
+          forall m', map.split m' mKeep mReceive ->
+          post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l') ->
+      exec (cmd.interact binds action arges) t m l post.
+  Proof. intros. eauto using interact. Qed.
+
+  Lemma seq_cps: forall c1 c2 t m l post,
+      exec c1 t m l (fun t' m' l' => exec c2 t' m' l' post) ->
+      exec (cmd.seq c1 c2) t m l post.
+  Proof. intros. eauto using seq. Qed.
+
   Lemma weaken: forall t l m s post1,
       exec s t m l post1 ->
       forall post2,

@@ -2,22 +2,6 @@
 (* fmalloc: fixed-size malloc *)
 Require Import LiveVerif.LiveVerifLib.
 
-(* TODO move *)
-(*
-C                 Separation Logic   Description
------------------ ------------------ -----------------------------------------------------
-uintptr_t         uintptr            32 or 64 bit, value is of type word
-uint8/16/32/64_t  uint 8/16/32/64    value is of type Z, and predicate ensures bounds on Z
-size_t            uint 32/64         value is of type Z, and predicate ensures bounds on Z
-*)
-Ltac exact_uint_of_bitwidth :=
-  let bw := constr:(_ : Bitwidth _) in
-  lazymatch type of bw with
-  | Bitwidth ?w => exact (uint w)
-  end.
-Notation "'size_t'" := (ltac:(exact_uint_of_bitwidth))
-  (in custom c_type_as_predicate, only parsing).
-
 Load LiveVerif.
 
 Record fmalloc_state := {

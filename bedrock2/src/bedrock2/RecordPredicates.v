@@ -72,6 +72,21 @@ Notation "'uint16_t'" := (uint 16) (in custom c_type_as_predicate).
 Notation "'uint8_t'" := (uint 8) (in custom c_type_as_predicate).
 Notation "'NOT_C!(' x )" := x (in custom c_type_as_predicate, x constr).
 
+(*
+C                 Separation Logic   Description
+----------------- ------------------ -----------------------------------------------------
+uintptr_t         uintptr            32 or 64 bit, value is of type word
+uint8/16/32/64_t  uint 8/16/32/64    value is of type Z, and predicate ensures bounds on Z
+size_t            uint 32/64         value is of type Z, and predicate ensures bounds on Z
+*)
+Ltac exact_uint_of_bitwidth :=
+  let bw := constr:(_ : Bitwidth _) in
+  lazymatch type of bw with
+  | Bitwidth ?w => exact (uint w)
+  end.
+Notation "'size_t'" := (ltac:(exact_uint_of_bitwidth))
+  (in custom c_type_as_predicate, only parsing).
+
 Declare Custom Entry c_struct_field.
 Declare Scope c_struct_field_scope.
 Open Scope c_struct_field_scope.

@@ -255,18 +255,6 @@ Section WithMem.
 
   Context {locals: map.map String.string word}.
 
-  (* TODO move to bedrock2.Semantics *)
-  Lemma exec_interact_cps{ext_spec: ExtSpec}:
-    forall e binds action arges args t m l post mKeep mGive,
-      map.split m mKeep mGive ->
-      eval_call_args m l arges = Some args ->
-      ext_spec t mGive action args (fun mReceive resvals =>
-          exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
-          forall m', map.split m' mKeep mReceive ->
-          post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l') ->
-      exec e (cmd.interact binds action arges) t m l post.
-  Proof. intros. eauto using exec.interact. Qed.
-
   Local Open Scope string_scope.
 
   (* read RDH: new RDH can be anywhere between old RDH (incl) and old RDT (excl),
@@ -312,7 +300,7 @@ Section WithMem.
            t m l post.
   Proof.
     intros.
-    eapply exec_interact_cps.
+    eapply exec.interact_cps.
     2: {
       cbn [eval_call_args eval_expr]. rewrite word.of_Z_unsigned. reflexivity.
     }

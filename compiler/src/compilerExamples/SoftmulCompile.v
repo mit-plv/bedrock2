@@ -654,24 +654,6 @@ Section Riscv.
     eapply softmul_ok. 1: reflexivity. eapply rpmul.rpmul_ok. reflexivity.
   Qed.
 
-  Import FunctionalExtensionality PropExtensionality.
-
-  Lemma of_list_app_eq[E: Type]: forall (l1 l2: list E),
-      of_list (l1 ++ l2) = union (of_list l1) (of_list l2).
-  Proof.
-    intros. extensionality x. eapply propositional_extensionality.
-    unfold of_list, union, elem_of. eapply in_app_iff.
-  Qed.
-
-  (* TODO move to bedrock2.footpr *)
-  Lemma rearrange_footpr_subset_impl1: forall {key value : Type} {map : map.map key value}
-                                        (P Q : map -> Prop) (A : key -> Prop),
-      subset (footpr P) A -> impl1 P Q -> subset (footpr Q) A.
-  Proof.
-    unfold subset, impl1, footpr, footprint_underapprox, elem_of. intros.
-    eapply H. intros. specialize (H0 _ H2). exact (H1 _ H0).
-  Qed.
-
   Lemma mul_correct: forall initial a_regs regvals invalidIInst R (post: State -> Prop)
                             ret_addr stack_start stack_pastend rd rs1 rs2,
       word.unsigned initial.(pc) mod 4 = 0 ->
