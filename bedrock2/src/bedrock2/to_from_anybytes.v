@@ -164,6 +164,56 @@ Section WithMem.
   Lemma uint64_fillable: fillable (uint 64) 8.
   Proof. apply uint_fillable; reflexivity. Qed.
 
+  Lemma array_fillable: forall T (elem: T -> word -> mem -> Prop) (sz: PredicateSize elem) n,
+      0 < sz ->
+      fillable elem sz ->
+      fillable (array elem n) (sz * n).
+  Proof.
+    unfold fillable, array, anyval. intros. intros m; split; intro Hm.
+    - destruct Hm as [vs Hm]. eapply sep_emp_l in Hm. destruct Hm as [Hl Hm].
+      replace n with (Z.of_nat (Z.to_nat n)) in * by lia.
+      forget (Z.to_nat n) as N. clear n.
+      revert vs addr m Hl Hm. induction N; intros.
+      + simpl in Hl. rewrite Z.mul_0_r in Hl. destruct vs; try discriminate Hl; [].
+        exists nil. eapply sep_emp_l. split. 1: reflexivity. simpl in *. exact Hm.
+      + rewrite <- (List.firstn_skipn (Z.to_nat sz) vs) in Hm.
+        eapply Array.array_append in Hm.
+        destruct Hm as (m1 & m2 & D & Hm1 & Hm2).
+        specialize IHN with (2 := Hm2).
+        rewrite List.skipn_length in IHN.
+        specialize (IHN ltac:(lia)).
+        destruct IHN as (xs & IH).
+        eapply sep_emp_l in IH.
+        destruct IH as (IHl & IH).
+        rename H0 into HE.
+        specialize (HE addr m1).
+        apply proj1 in HE.
+        destruct HE as (x & HE).
+        { eexists. eapply sep_emp_l. split. 2: exact Hm1.
+          rewrite List.firstn_length. lia. }
+        exists (cons x xs). eapply sep_emp_l. simpl (length _). split. 1: lia.
+        simpl. exists m1, m2. ssplit; try assumption.
+        eqapply IH. rewrite List.firstn_length.
+        f_equal. f_equal. rewrite word.unsigned_of_Z_1. lia.
+    - destruct Hm as [vs Hm]. eapply sep_emp_l in Hm. destruct Hm as (Hl & Hm).
+      revert n addr m Hl Hm. induction vs; intros.
+      + simpl in Hl. subst n. exists nil. eapply sep_emp_l.
+        rewrite Z.mul_0_r. split. 1: reflexivity.
+        simpl in *. assumption.
+      + simpl length in Hl. simpl in Hm. destruct Hm as (m1 & m2 & D & Hm1 & Hm2).
+        specialize IHvs with (2 := Hm2). specialize (IHvs (n-1) ltac:(lia)).
+        destruct IHvs as (bs & IH).
+        eapply sep_emp_l in IH. destruct IH as (IHl & IH).
+        rename H0 into HE.
+        specialize (HE addr m1).
+        apply proj2 in HE.
+        destruct HE as (bs0 & HE).
+        { eexists. exact Hm1. }
+        eapply sep_emp_l in HE. destruct HE as (Hl0 & HE).
+        exists (List.app bs0 bs). eapply sep_emp_l. rewrite List.app_length.
+        split. 1: lia. eapply Array.array_append. exists m1, m2. ssplit; try assumption.
+        eqapply IH. f_equal. f_equal. rewrite word.unsigned_of_Z_1. lia.
+  Qed.
 
   (* TODO make non-fake *)
   Lemma array_fake_contiguous: forall T (elem: T -> word -> mem -> Prop)
@@ -241,6 +291,10 @@ Create HintDb fillable.
   uint16_fillable
   uint32_fillable
   uint64_fillable
+: fillable.
+
+#[export] Hint Extern 1 (fillable (array ?elem ?n) _) =>
+  eapply array_fillable; [ xlia zchecker | eauto with fillable ]
 : fillable.
 
 #[export] Hint Extern 20 (contiguous ?p ?n) =>

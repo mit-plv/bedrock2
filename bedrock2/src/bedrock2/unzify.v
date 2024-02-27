@@ -1081,4 +1081,10 @@ Section Tests.
     lia.
   Succeed Qed. Abort.
 
+  (* not supported yet: *)
+  Goal forall (a: word),
+      \[a] < 2 ^ 32 ->
+      word.divu (/[2] ^* a) /[2] = a.
+  Abort.
+
 End Tests.

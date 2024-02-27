@@ -121,6 +121,7 @@ Ltac _stats := don't_print_stats.
 
 Tactic Notation "stats" tactic0(f) := _stats f.
 
+(* used by bedrock2.LogSidecond, which is used to log simplifications by bottom_up_simpl: *)
 #[export] Hint Extern 1 (SidecondIrrelevant (with_mem _ _)) =>
   constructor : typeclass_instances.
 #[export] Hint Extern 1 (SidecondIrrelevant (scope_marker _)) =>
@@ -721,6 +722,8 @@ Ltac default_careful_reflexivity_step :=
       lazymatch goal with
       | |- _ (sepapps _ _) (sepapps _ _) => idtac
       end
+  | |- eq (uintptr _) (uintptr _) => eapply f_equal
+  | |- eq (uint ?nbits _) (uint ?nbits _) => eapply f_equal
   | |- _ ?l ?r => subst l
   | |- _ ?l ?r => subst r
   | |- _ => turn_relation_into_eq; syntactic_f_equal_with_ZnWords
@@ -1015,6 +1018,65 @@ Ltac sidecond_step logger := first
                       specialized intros that rename and move new hyps *)
         end ].
 
+(* means: already logged or tried to log *)
+Inductive already_logged: Type := mk_already_logged.
+Ltac clear_already_logged :=
+  lazymatch goal with
+  | H: already_logged |- _ => clear H
+  | |- _ => idtac
+  end.
+
+Global Set Printing Depth 1000000.
+
+Ltac log_goal :=
+  lazymatch goal with
+  | H: already_logged |- _ => idtac
+  | |- if _ then _ else _ => idtac
+  | |- wp_cmd _ _ _ _ _ _ => idtac
+  | |- impl1 _ _ => idtac
+  | |- context[@map.get] => idtac
+  | |- context[@map.put] => idtac
+  | |- context[@map.remove] => idtac
+  | |- ?g =>
+      let H := fresh "already_logged_marker" in pose proof mk_already_logged as H;
+      (* make sure the goal is not too easy: *)
+      tryif assert_fails (unzify; solve [intuition auto | congruence | lia])
+      then
+        tryif (assert_fails
+          (assert g by (repeat (first [step_hook | sidecond_step ignore_logger_thunk]))))
+        then
+          (* goal not provable and we don't know if it's provable, so we don't log it *)
+          idtac
+        else
+          (* solvable and not too easy: log *)
+          assert_fails ((* to revert all effects *)
+              idtac "<<<<<<";
+              unzify;
+              repeat lazymatch goal with
+                | H: ?t |- _ =>
+                    lazymatch t with
+                    | already_logged => clear H
+                    | with_mem _ _ => clear H
+                    | scope_marker _ => clear H
+                    | currently _ => clear H
+                    | ExtSpec => clear H
+                    | ext_spec.ok _ => clear H
+                    | DisjointUnion.mmap.du _ _ = _ => clear H
+                    | functions_correct _ _ => clear H
+                    | _ => lazymatch type of t with
+                           | Prop => revert H
+                           | _ => clear H || revert H
+                           end
+                    end
+                end;
+              lazymatch goal with
+              | |- ?g => idtac g; idtac ">>>>>>"
+              end;
+              fail)
+      else idtac (* goal is too easy, not logging, but still succeeding so
+                    that already_logged stays around *)
+  end.
+
 Ltac final_program_logic_step logger :=
   (* Note: Here, the logger has to be invoked *after* the tactic, because we only
      find out whether it's the right one by running it.
@@ -1027,7 +1089,7 @@ Ltac final_program_logic_step logger :=
            cleanup_step) in hyps so that (retvs = [| ... |]) gets exposed *)
         put_into_current_locals;
         logger ltac:(fun _ => idtac "put_into_current_locals")
-      | sidecond_step logger
+      | (*log_goal;*) sidecond_step logger
       | lazymatch goal with
         | |- if _ then _ else _ =>
             logger ltac:(fun _ => idtac "split if");
@@ -1068,10 +1130,11 @@ Ltac predicates_safe_to_cancel hypPred conclPred :=
     [ predicates_safe_to_cancel_hook hypPred conclPred
     | lazymatch conclPred with
       | uintptr ?v2 => lazymatch hypPred with
-                       | uintptr ?v1 => is_evar v2; unify v1 v2
+                       | uintptr ?v1 => tryif is_evar v2 then unify v1 v2 else idtac
                        end
       | uint ?nbits ?v2 => lazymatch hypPred with
-                           | uint nbits ?v1 => is_evar v2; unify v1 v2
+                           | uint nbits ?v1 =>
+                               tryif is_evar v2 then unify v1 v2 else idtac
                            end
       | array ?elem ?n2 ?vs2 => lazymatch hypPred with
                                 | array elem ?n1 ?vs1 =>
@@ -1079,6 +1142,15 @@ Ltac predicates_safe_to_cancel hypPred conclPred :=
                                                        by (zify_goal; xlia zchecker));
                                     tryif is_evar vs2 then unify vs1 vs2 else idtac
                                 end
+      | sepapps nil => lazymatch hypPred with
+                       | sepapps nil => idtac
+                       end
+      | sepapps (cons (mk_sized_predicate ?P2 ?Psize) ?rest2) =>
+            lazymatch hypPred with
+            | sepapps (cons (mk_sized_predicate ?P1 Psize) ?rest1) =>
+               tryif constr_eq P1 P2 then idtac else predicates_safe_to_cancel P1 P2;
+               predicates_safe_to_cancel (sepapps rest1) (sepapps rest2)
+            end
       end ].
 
 (* can instantiate evars in goalClause *)

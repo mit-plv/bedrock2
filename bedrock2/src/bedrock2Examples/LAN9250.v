@@ -738,7 +738,7 @@ Section WithParameters.
     { rewrite Properties.word.unsigned_sru_nowrap by (rewrite word.unsigned_of_Z; exact eq_refl).
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
       rewrite Z.shiftr_div_pow2 by blia.
-      revert dependent a; clear; intros.
+      generalize dependent a; clear; intros.
       change 0x400 with (4*256) in *.
       Z.div_mod_to_equations. blia. }
     { rewrite Properties.word.unsigned_and_nowrap.

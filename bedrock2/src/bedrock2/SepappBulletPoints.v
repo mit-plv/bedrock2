@@ -4,6 +4,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Map.Interface coqutil.Word.Interface.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
+Require Import bedrock2.SepLib.
 Require Import bedrock2.sepapp.
 
 Declare Scope sepapp_bullets_scope.
@@ -14,7 +15,15 @@ Notation "<{ + x + .. + y + z }>" :=
   (sepapps (cons (mk_sized_predicate x _) ..
               (cons (mk_sized_predicate y _) (cons (mk_sized_predicate z _) nil)) ..))
   (at level 0, x at level 39, y at level 39, z at level 39,
+   only printing,
    format "<{ '[v '  +  '[' x ']' '//' +  ..  '//' +  '[' y ']' '//' +  '[' z ']'  ']' }>")
+  : sepapp_bullets_scope.
+
+Notation "<{ + x + .. + y + z }>" :=
+  (sepapps (cons (mk_inferred_size_predicate x) ..
+              (cons (mk_inferred_size_predicate y) (cons (mk_inferred_size_predicate z) nil)) ..))
+  (at level 0, x at level 39, y at level 39, z at level 39,
+   only parsing)
   : sepapp_bullets_scope.
 
 Require Import bedrock2.SepBulletPoints.

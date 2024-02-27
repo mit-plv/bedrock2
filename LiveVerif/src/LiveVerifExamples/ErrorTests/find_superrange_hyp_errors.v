@@ -19,6 +19,25 @@ Definition bar(n: Z)(b: bar_t): word -> mem -> Prop := record!
 
 Ltac check_for_warnings_hook ::= continue_if_warning.
 
+#[export] Instance spec_of_superfluous_mem: fnspec :=                                .**/
+
+void superfluous_mem(uintptr_t p) /**#
+  ghost_args := n b (R1 R2: mem -> Prop);
+  requires t m := <{ * bar n b p
+                     * R1
+                     * R2 }> m;
+  ensures t' m' := t' = t /\
+                   <{ * R1
+                      * bar n b p
+                     (* oops, forgot R2 *) }> m' #**/                      /**.
+Derive superfluous_mem SuchThat (fun_correct! superfluous_mem) As
+  superfluous_mem_ok.                                                           .**/
+{                                                                          /**. .**/
+}                                                                          /**.
+(* Test that it does not infinitely go back and forth between find_hyp_for_range
+   and canceling *)
+Abort.
+
 #[export] Instance spec_of_swap_barAB: fnspec :=                                .**/
 
 void swap_barAB(uintptr_t p) /**#

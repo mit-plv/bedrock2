@@ -1,7 +1,7 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
 
-Class malloc_constants := {
+Class malloc_constants: Set := {
   malloc_state_ptr: Z;
   malloc_block_size: Z;
 }.
@@ -31,7 +31,7 @@ Inductive fixed_size_free_list(block_size: Z): word -> mem -> Prop :=
 | fixed_size_free_list_cons p q m:
   p <> /[0] ->
   <{ * <{ + uintptr q
-          + anyval (array (uint 8) (block_size - 4)) }> p
+          + anyval (array (uint 8) (block_size - sizeof uintptr)) }> p
      * fixed_size_free_list block_size q }> m ->
   fixed_size_free_list block_size p m.
 
@@ -46,7 +46,7 @@ Definition allocator_with_potential_failure(f: option Z): mem -> Prop :=
                        malloc_block_size < n
            | None => True
            end)
-    * emp (8 <= malloc_block_size < 2 ^ 32)
+    * emp (2 * sizeof uintptr <= malloc_block_size < 2 ^ bitwidth)
   }>).
 
 Definition allocator: mem -> Prop :=
@@ -123,9 +123,9 @@ Axiom TODO: False.
 
 void Malloc_init (uintptr_t p, uintptr_t n) /**#
   ghost_args := (R: mem -> Prop);
-  requires t m := 8 <= malloc_block_size < 2 ^ 32 /\
+  requires t m := 2 * sizeof uintptr <= malloc_block_size < 2 ^ bitwidth /\
                   \[n] mod malloc_block_size = 0 /\
-                  \[p] + \[n] < 2 ^ 32 /\ (* <-- no wrap around because otherwise
+                  \[p] + \[n] < 2 ^ bitwidth /\ (* <-- no wrap around because otherwise
                                              some pointers in free list might be null *)
                   <{ * array (uint 8) (sizeof malloc_state_t) ? /[malloc_state_ptr]
                      * array (uint 8) \[n] ? p
@@ -158,16 +158,16 @@ Derive Malloc_init SuchThat (fun_correct! Malloc_init) As Malloc_init_ok.       
   forget (map.empty (map := mem)) as m.
   change (m |= fixed_size_free_list malloc_block_size tail) in A.
   delete #(tail = ??).
-  let h := find #(8 <= malloc_block_size) in move h after tail.
+  let h := find #(?? <= malloc_block_size < ??) in move h after tail.
   delete #(?? mod malloc_block_size = 0).
-  prove (c * malloc_block_size < 2 ^ 32).
+  prove (c * malloc_block_size < 2 ^ bitwidth).
   delete #(\[n] = ??). (* try to not use n any more *)
   loop invariant above tail.
                                                                                 .**/
   while (head != p) /* decreases c */ {                                    /**. .**/
     head = head - malloc_block_size;                                       /**.
 
-    assert (\[head ^- p] + 4 <= c * malloc_block_size). {
+    assert (\[head ^- p] + sizeof uintptr <= c * malloc_block_size). {
       (* TODO can we automate this proof so that the assertion is not needed
          any more, because the subrange check that needs it finds it on its own? *)
       subst head.

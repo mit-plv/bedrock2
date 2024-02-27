@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: update_all clone_all coqutil riscv-coq bedrock2_noex bedrock2_ex LiveVerif_noex LiveVerif_ex compiler_noex compiler_ex kami processor end2end all clean_coqutil clean_riscv-coq clean_bedrock2 clean_LiveVerif clean_compiler clean_kami clean_processor clean_end2end clean_manglenames clean install_coqutil install_kami install_riscv-coq install_bedrock2 install_bedrock2_ex install_bedrock2_noex install_LiveVerif install_LiveVerif_ex install_LiveVerif_noex install_compiler install_processor install_end2end install
+.PHONY: update_all clone_all coqutil riscv-coq bedrock2_noex bedrock2_ex LiveVerif_noex LiveVerif_ex LiveVerifEx64 compiler_noex compiler_ex kami processor end2end all clean_coqutil clean_riscv-coq clean_bedrock2 clean_LiveVerif clean_LiveVerifEx64 clean_compiler clean_kami clean_processor clean_end2end clean_manglenames clean install_coqutil install_kami install_riscv-coq install_bedrock2 install_bedrock2_ex install_bedrock2_noex install_LiveVerif install_LiveVerifEx64 install_LiveVerif_ex install_LiveVerif_noex install_compiler install_processor install_end2end install
 
 clone_all:
 	git submodule update --init --recursive
@@ -116,6 +116,15 @@ install_LiveVerif:
 install_LiveVerif_noex:
 	$(MAKE) -C $(ABS_ROOT_DIR)/LiveVerif install_noex
 
+LiveVerifEx64: LiveVerif_noex
+	$(MAKE) -C $(ABS_ROOT_DIR)/LiveVerifEx64
+
+clean_LiveVerifEx64:
+	$(MAKE) -C $(ABS_ROOT_DIR)/LiveVerifEx64 clean
+
+install_LiveVerifEx64:
+	$(MAKE) -C $(ABS_ROOT_DIR)/LiveVerifEx64 install
+
 install_LiveVerif_ex:
 	$(MAKE) -C $(ABS_ROOT_DIR)/LiveVerif install_ex
 
@@ -149,12 +158,12 @@ clean_end2end:
 install_end2end:
 	$(MAKE) -C $(ABS_ROOT_DIR)/end2end install
 
-all: bedrock2_ex LiveVerif_ex compiler_ex processor end2end
+all: bedrock2_ex LiveVerif_ex LiveVerifEx64 compiler_ex processor end2end
 
-clean: clean_bedrock2 clean_LiveVerif clean_compiler clean_processor clean_end2end
+clean: clean_bedrock2 clean_LiveVerif clean_LiveVerifEx64 clean_compiler clean_processor clean_end2end
 
 clean_deps: clean_coqutil clean_kami clean_riscv-coq
 
 clean_all: clean_deps clean
 
-install: install_bedrock2 install_LiveVerif install_compiler install_processor install_end2end
+install: install_bedrock2 install_LiveVerif install_LiveVerifEx64 install_compiler install_processor install_end2end

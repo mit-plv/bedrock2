@@ -107,13 +107,6 @@ Section Connect.
        morphism (word.ring_morph (word := Consistency.word)),
        constants [word_cst]).
 
-  Goal True.
-  epose (_ : PrimitivesParams (FreeMonad.free MetricMinimalMMIO.action MetricMinimalMMIO.result)
-                              MetricRiscvMachine).
-  Abort.
-
-  Existing Instance MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives.
-
   Definition states_related :=
     states_related instrMemSizeLg memSizeLg (proj1 instrMemSizeLg_bounds) (proj2 instrMemSizeLg_bounds).
 

@@ -30,6 +30,13 @@ Ltac can_have_PredicateSize PredTp :=
   end
 : typeclass_instances.
 
+Notation invisible_cast T x :=
+  match Set return T with
+  | _ => x
+  end.
+
+Notation sizeof p := (invisible_cast (PredicateSize p) _).
+
 Definition array{width}{BW: Bitwidth width}{word: word width}
   {mem: map.map word Byte.byte}[T: Type]
   (elem: T -> word -> mem -> Prop){elemSize: PredicateSize elem}
@@ -149,6 +156,9 @@ Proof. unfold purify. intros. constructor. Qed.
 #[export] Hint Resolve purify_uintptr : purify.
 
 #[export] Hint Extern 1 (cannot_purify (uintptr ? _))
+=> constructor : suppressed_warnings.
+
+#[export] Hint Extern 1 (cannot_purify (uint _ ? _))
 => constructor : suppressed_warnings.
 
 #[export] Hint Extern 1 (cannot_purify (if _ then _ else _))
@@ -349,6 +359,29 @@ Section WithMem.
     - eapply (array_map ptsto Byte.byte.of_Z addr bs (word.of_Z 1)) in H.
       eapply array_1_to_anybytes in H. rewrite List.map_length in H. exact H.
     - clear m bs addr H. unfold impl1. eapply uint8_to_ptsto.
+  Qed.
+
+  Lemma uint_to_uintptr: forall a z,
+      impl1 (uint width z a) (uintptr (word.of_Z z) a).
+  Proof.
+    unfold uint, uintptr. intros.
+    eapply impl1_l_sep_emp. intros.
+    unfold scalar, truncated_word, truncated_scalar.
+    rewrite word.unsigned_of_Z_nowrap by assumption.
+    unfold nbits_to_nbytes, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite Z.max_r by apply word.width_nonneg.
+    reflexivity.
+  Qed.
+
+  Lemma uintptr_to_uint: forall a w,
+      impl1 (uintptr w a) (uint width (word.unsigned w) a) .
+  Proof.
+    unfold uint, uintptr. intros.
+    eapply impl1_r_sep_emp. split. 1: eapply word.unsigned_range.
+    unfold scalar, truncated_word, truncated_scalar.
+    unfold nbits_to_nbytes, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite Z.max_r by apply word.width_nonneg.
+    reflexivity.
   Qed.
 End WithMem.
 

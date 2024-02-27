@@ -71,7 +71,7 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
   .**/ uintptr_t i = 0; /**.
 
   (* invariants - true at the beginning of the loop *)
-  assert (0 <= \[i] <= \[n]) by ZnWords.
+  assert (0 <= \[i] <= \[n]) by hwlia.
   assert (len arr = \[n]-\[i]) as lenArrR by hwlia.
   assert (len (sort nil) = \[i]) as lenArrL by
       (bottom_up_simpl_in_goal; rewrite sort_nil; auto).
@@ -96,7 +96,7 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
     (* claim: if we're in the loop, the array is not empty,
        so we can pull an element *)
     destruct arrR as [ | x arrR' ].
-    { simpl in *; exfalso; ZnWords. }
+    { simpl in *; exfalso; hwlia. }
 
     (* structure it so we can call insert *)
     rewrite List.assoc_app_cons in *.
@@ -110,7 +110,7 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
   .**/ } /**.
 
 (* at the end of the loop now. arrR should be empty. *)
-  assert (len arrR = 0) by ZnWords.
+  assert (len arrR = 0) by hwlia.
   assert (arrR = nil) by (destruct arrR; try discriminate; auto).
   subst.
 

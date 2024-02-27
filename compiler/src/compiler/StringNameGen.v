@@ -72,7 +72,7 @@ Qed.
 Lemma two_to_number_of_digits_lower_bound: forall n,
     n < 2 ^ N.of_nat (String.length (rev_binary n)).
 Proof.
-  intros. remember (rev_binary n) as s. revert dependent n.
+  intros. remember (rev_binary n) as s. generalize dependent n.
   induction s; intros.
   - symmetry in Heqs. apply rev_binary_nonempty in Heqs. contradiction.
   - destruct n.
@@ -127,7 +127,7 @@ Lemma start_state_spec: forall (l : list string) (v : string),
 Proof.
   unfold fresh_string_var, all_from, start_state, PropSet.subset, PropSet.elem_of; intros.
   intro C. destruct C as [state [E C]]. subst v.
-  revert dependent l. induction l; simpl; intros.
+  generalize dependent l. induction l; simpl; intros.
   - assumption.
   - destruct H.
     + subst. simpl in *.

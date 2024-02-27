@@ -599,7 +599,7 @@ Section Riscv.
     destruct mach as [regs pc npc m xAddrs log].
     cbn -[load_bytes HList.tuple Nat.mul] in *.
     subst.
-    revert dependent m. revert minst. revert a v pc H H2 H3 H4 R.
+    generalize dependent m. revert minst. revert a v pc H H2 H3 H4 R.
     clear log npc regs.
     induction insts; cbn -[load_bytes HList.tuple Nat.mul]; intros.
     - unfold isXAddr4 in H3. apply proj1 in H3. simpl in H3. contradiction H3.
@@ -652,24 +652,6 @@ Section Riscv.
   Lemma link_softmul_bedrock2: spec_of_softmul (map.of_list funimplsList).
   Proof.
     eapply softmul_ok. 1: reflexivity. eapply rpmul.rpmul_ok. reflexivity.
-  Qed.
-
-  Import FunctionalExtensionality PropExtensionality.
-
-  Lemma of_list_app_eq[E: Type]: forall (l1 l2: list E),
-      of_list (l1 ++ l2) = union (of_list l1) (of_list l2).
-  Proof.
-    intros. extensionality x. eapply propositional_extensionality.
-    unfold of_list, union, elem_of. eapply in_app_iff.
-  Qed.
-
-  (* TODO move to bedrock2.footpr *)
-  Lemma rearrange_footpr_subset_impl1: forall {key value : Type} {map : map.map key value}
-                                        (P Q : map -> Prop) (A : key -> Prop),
-      subset (footpr P) A -> impl1 P Q -> subset (footpr Q) A.
-  Proof.
-    unfold subset, impl1, footpr, footprint_underapprox, elem_of. intros.
-    eapply H. intros. specialize (H0 _ H2). exact (H1 _ H0).
   Qed.
 
   Lemma mul_correct: forall initial a_regs regvals invalidIInst R (post: State -> Prop)
@@ -854,14 +836,14 @@ Section Riscv.
         assert (array_exmem : forall T (P:word->T->mem->Prop) p a l m,
           array P p a l m -> Forall (fun e => exists a m, P a e m) l).
         { clear.
-          intros. revert dependent a; revert p; revert P; revert m.
+          intros. generalize dependent a; revert p; revert P; revert m.
           induction l; cbn [array]; eauto; intros.
           inversion H as (?&?&?&?&HI); eapply IHl in HI; eauto. }
 
         assert (array_Forall : forall T (Q:T->Prop) (P:word->T->mem->Prop) p a l m,
           Forall Q l -> array P p a l m -> array (fun a e => sep (emp (Q e)) (P a e)) p a l m).
         { clear.
-          intros. revert dependent a; revert p; revert P; revert m.
+          intros. generalize dependent a; revert p; revert P; revert m.
           induction l; cbn [array]; eauto; intros.
           inversion H; subst; clear H.
           eapply sep_assoc, sep_emp_l; split; trivial.

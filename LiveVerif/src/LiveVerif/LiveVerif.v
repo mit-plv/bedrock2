@@ -1,8 +1,15 @@
 (* This file needs to be included with `Load LiveVerif`, after importing LiveVerifLib *)
 
+(* Somewhere on the load path, there needs to be a file named LiveVerifBitwidth.v which
+   contains either
+   `Require Import coqutil.Word.Bitwidth32.` or
+   `Require Import coqutil.Word.Bitwidth64.`
+  The current file doesn't contain this because it is designed to be bitwidth-independent. *)
+Load LiveVerifBitwidth.
+
 Section LiveVerif.
   Import Coq.Strings.String.
-  Context {word: word.word 32} {mem: map.map word Byte.byte}.
+  Context {word: word.word bitwidth} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Local Open Scope word_scope.
   Local Open Scope string_scope. Local Open Scope Z_scope.

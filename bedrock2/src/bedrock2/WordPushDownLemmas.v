@@ -40,6 +40,13 @@ Module word.
         word.unsigned (word.mul a b) = ua * ub.
     Proof. intros. subst. apply word.unsigned_mul_nowrap. assumption. Qed.
 
+    Lemma unsigned_divu_eq_nowrap: forall [a b: word] [ua ub: Z],
+        word.unsigned a = ua ->
+        word.unsigned b = ub ->
+        ub <> 0 ->
+        word.unsigned (word.divu a b) = ua / ub. (* note: division is not LIA *)
+    Proof. intros. subst. apply word.unsigned_divu_nowrap. assumption. Qed.
+
     (* Pushing down word.unsigned, using modulos expressed as (dividend - k * divisor),
        with k being a division that can be treated opaquely *)
 
