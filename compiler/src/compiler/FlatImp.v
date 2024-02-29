@@ -81,11 +81,9 @@ Section Syntax.
 
   Lemma stmt_size_nonneg: forall s, 0 <= stmt_size s.
   Proof.
-    induction s; simpl; try blia.
-    assert (0 <= (Z.of_nat (Datatypes.length t) + 3) / 4). {
-      apply Z.div_pos; blia.
-    }
-    blia.
+    induction s; simpl; try blia;
+    assert (0 <= (Z.of_nat (Datatypes.length t) + 3) / 4);
+      try apply Z.div_pos; blia.
   Qed.
 
   Fixpoint modVars_as_list(veq: varname -> varname -> bool)(s: stmt): list varname :=

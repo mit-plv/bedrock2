@@ -100,11 +100,9 @@ Section ExprImp1.
 
     Lemma expr_size_pos: forall exp, expr_size exp > 0.
     Proof.
-      induction exp; simpl; try blia.
-      assert (0 <= (Z.of_nat (Datatypes.length table) + 3) / 4). {
-        apply Z.div_pos; blia.
-      }
-      blia.
+      induction exp; simpl; try blia;
+      assert (0 <= (Z.of_nat (Datatypes.length table) + 3) / 4);
+        try apply Z.div_pos; blia.
     Qed.
 
     Definition exprs_size(es: list expr): Z := fold_right (fun e res => res + expr_size e) 0 es.
@@ -524,4 +522,3 @@ Section ExprImp2.
 
 End ExprImp2.
 
-(*Goal True. idtac "End of ExprImp.v". Abort.*)
