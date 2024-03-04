@@ -51,8 +51,9 @@ Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Require Import compiler.LowerPipeline.
 Require Import bedrock2.WeakestPreconditionProperties.
-Require Import compiler.UseImmediateDef.
-Require Import compiler.UseImmediate.
+Require Export compiler.UseImmediateDef.
+Require Export compiler.UseImmediate.
+Require Export compiler.DeadAssignmentDef.
 Import Utility.
 
 Section WithWordAndMem.
@@ -300,6 +301,42 @@ Section WithWordAndMem.
       - eauto.
     Qed.
 
+    Lemma deadassignment_functions_NoDup: forall funs funs',
+        (forall f argnames retnames body,
+          map.get funs f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames) ->
+        (deadassignment_functions funs = Success funs') ->
+        forall f argnames retnames body,
+          map.get funs' f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames.
+    Proof.
+      unfold deadassignment_functions. intros.
+      eapply map.try_map_values_bw in H0.
+      2: { eassumption.  }
+      unfold deadassignment_function in *.
+      fwd.
+      eapply H.
+      eassumption.
+    Qed.
+
+    Lemma deadassignment_correct: phase_correct FlatWithStrVars FlatWithStrVars deadassignment_functions.
+    Proof.
+      unfold FlatWithStrVars.
+      split; cbn.
+      { unfold map.forall_values, ParamsNoDup. intros.
+        destruct v as  ((argnames & retnames) & body).
+        eapply deadassignment_functions_NoDup; try eassumption.
+        intros. specialize H0 with (1 := H2).
+        simpl in H0. assumption.
+      }
+
+      unfold locals_based_call_spec. intros. fwd.
+      pose proof H0 as GI.
+      unfold  deadassignment_functions in GI.
+      eapply map.try_map_values_fw in GI. 2: eassumption.
+      unfold deadassignment_function in GI. fwd.
+      eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption.
+      intros.
+    Admitted.
+
     Lemma regalloc_functions_NoDup: forall funs funs',
         regalloc_functions funs = Success funs' ->
         forall f argnames retnames body,
@@ -441,7 +478,8 @@ Section WithWordAndMem.
       (compose_phases (useimmediate_functions is5BitImmediate is12BitImmediate)
       (compose_phases regalloc_functions
       (compose_phases spill_functions
-                      (riscvPhase compile_ext_call))))).
+         (riscvPhase compile_ext_call))))).
+
 
     Lemma composed_compiler_correct: phase_correct SrcLang RiscvLang composed_compile.
     Proof.
@@ -460,6 +498,24 @@ Section WithWordAndMem.
       | Failure e => Failure e
       end.
 
+    (* only for testing the dead assignment phase, remove in the future *)
+    Definition composed_compile':
+      string_keyed_map (list string * list string * cmd) ->
+      result (list Instruction * string_keyed_map Z * Z) :=
+      (compose_phases flatten_functions
+      (compose_phases (useimmediate_functions is5BitImmediate is12BitImmediate)
+      (compose_phases deadassignment_functions
+      (compose_phases regalloc_functions
+      (compose_phases spill_functions
+         (riscvPhase compile_ext_call)))))).
+
+    (* only for testing the dead assignment phase, remove in the future *)
+     Definition compile'(funs: list (string * (list string * list string * cmd))):
+      result (list Instruction * list (string * Z) * Z) :=
+      match composed_compile' (map.of_list funs) with
+      | Success (insts, pos, space) => Success (insts, map.tuples pos, space)
+      | Failure e => Failure e
+      end.
     Definition valid_src_fun: (string * (list string * list string * cmd)) -> bool :=
       fun '(name, (args, rets, body)) =>
         andb (List.list_eqb String.eqb (List.dedup String.eqb args) args)
