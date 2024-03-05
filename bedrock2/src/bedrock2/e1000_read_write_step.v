@@ -7,7 +7,7 @@ PCI/PCI-X Family of Gigabit Ethernet Controllers Software Developer's Manual
 82540EP/EM, 82541xx, 82544GC/EI, 82545GM/EM, 82546GB/EB, and 82547xx
 https://www.intel.com/content/dam/doc/manual/pci-pci-x-family-gbe-controllers-software-dev-manual.pdf
 
-These network cards were launched in the 2000s and discontinued in the 2010s, but continue to be a popular choice for virtualization, where they are often referred to as "e1000".
+These network cards were launched in the 2000s and discontinued in the 2010s, but continue to be a popular choice for virtualization, and are often referred to as "e1000".
  *)
 
 Require Import Coq.Strings.String.
@@ -22,7 +22,6 @@ Require Import coqutil.Datatypes.ZList.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
 Require Import coqutil.Datatypes.RecordSetters. Import DoubleBraceUpdate.
 Require Import bedrock2.Syntax bedrock2.Semantics.
-Require Import bedrock2.StateMachineBasedExtSpec_wp.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import bedrock2.SepLib.

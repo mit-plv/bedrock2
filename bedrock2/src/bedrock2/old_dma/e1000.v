@@ -22,7 +22,7 @@ Require Import coqutil.Datatypes.ZList.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
 Require Import coqutil.Datatypes.RecordSetters. Import DoubleBraceUpdate.
 Require Import bedrock2.Syntax bedrock2.Semantics.
-Require Import bedrock2.StateMachineBasedExtSpec.
+Require Import bedrock2.old_dma.StateMachineBasedExtSpec.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import bedrock2.SepLib.
