@@ -12,6 +12,7 @@ These network cards were launched in the 2000s and discontinued in the 2010s, bu
 
 Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
@@ -182,6 +183,17 @@ Section WithMem.
     getRDH t s.(rx_queue_head) /\
     getTDH t s.(tx_queue_head).
 
+  Lemma e1000_initialized_unique: forall [s1 s2 t],
+      e1000_initialized s1 t ->
+      e1000_initialized s2 t ->
+      s1 = s2.
+  Proof.
+    unfold e1000_initialized.
+    intros. fwd.
+    destruct s1. destruct s2. cbn in *.
+    f_equal.
+  Admitted.
+
   (* Potential notations for (circular_buffer_slice elem n i vs addr):
      * addr |-(->i, mod n)-> vs
      * addr [⇥i ⟳n]-> vs
@@ -195,86 +207,93 @@ Section WithMem.
        * circular_buffer_slice txq_elem
            s.(rx_queue_cap) s.(tx_queue_head) txq s.(tx_queue_base_addr) }>.
 
-  Inductive e1000_read_step:
-    forall (sz: nat), (* number of bytes to read *)
-    trace -> (* trace of events that happened so far *)
-    word -> (* address to be read *)
-    (tuple byte sz -> mem -> Prop) -> (* postcondition on returned value and memory *)
+  Lemma rxq_txq_unique: forall [s rxq1 rxq2 txq1 txq2 m],
+      e1000_invariant s rxq1 txq1 m ->
+      e1000_invariant s rxq2 txq2 m ->
+      rxq1 = rxq2 /\ txq1 = txq2.
+  Admitted.
+
+  (* not using an Inductive because:
+     - some parts are shared between the different cases
+     - inversion creates existT equalities on dependently-typed postconditions *)
+  Definition e1000_read_step
+    (sz: nat) (* number of bytes to read *)
+    (t: trace) (* trace of events that happened so far *)
+    (addr: word) (* address to be read *)
+    (post: tuple byte sz -> mem -> Prop): (* postcondition on returned value and memory *)
     Prop :=
-  (* Hardware gives newly received packets to software:
-     New RDH can be anywhere between old RDH (incl) and old RDT (excl),
-     we receive the memory chunk for each descriptor between old and new RDH,
-     as well as the buffers pointed to by them, which contain newly received
-     packets *)
-  | read_RDH_step: forall t mNIC s rxq txq post,
-      externally_owned_mem t mNIC ->
-      e1000_initialized s t ->
-      e1000_invariant s rxq txq mNIC ->
-      (forall mRcv (done: list (rx_desc * buf)),
+    sz = 4%nat /\
+    exists s mNIC rxq txq,
+      externally_owned_mem t mNIC /\
+      e1000_initialized s t /\
+      e1000_invariant s rxq txq mNIC /\
+      ((addr = register_address E1000_RDH /\
+       (* Hardware gives newly received packets to software:
+          New RDH can be anywhere between old RDH (incl) and old RDT (excl),
+          we receive the memory chunk for each descriptor between old and new RDH,
+          as well as the buffers pointed to by them, which contain newly received
+          packets *)
+        forall mRcv (done: list (rx_desc * buf)),
           len done <= len rxq ->
           List.map fst done = List.map fst rxq[:len done] ->
           (* snd (new buffer) can be any bytes *)
           circular_buffer_slice (rxq_elem s.(rx_buf_size))
             s.(rx_queue_cap) s.(rx_queue_head) done s.(rx_queue_base_addr) mRcv ->
-          post (LittleEndian.split 4 ((s.(rx_queue_head) + len done)
-                                        mod s.(rx_queue_cap))) mRcv) ->
-      e1000_read_step 4 t (register_address E1000_RDH) post
-  (* Hardware gives back transmitted buffers to software:
-     New TDH can be anywhere between old TDH (incl) and TDT (excl),
-     increased TDH means some packets were sent, and we get back the memory chunk
-     for each descriptor between old and new TDH, as well as the buffers pointed to
-     by them, so we can start reusing these descriptors & buffers for new packets *)
-  | read_TDH_step: forall t mNIC s rxq txq post,
-      externally_owned_mem t mNIC ->
-      e1000_initialized s t ->
-      e1000_invariant s rxq txq mNIC ->
-      (forall mRcv nDone,
+          post (LittleEndian.split sz ((s.(rx_queue_head) + len done)
+                                        mod s.(rx_queue_cap))) mRcv)
+       \/
+      (addr = register_address E1000_TDH /\
+      (* Hardware gives back transmitted buffers to software:
+         New TDH can be anywhere between old TDH (incl) and TDT (excl),
+         increased TDH means some packets were sent, and we get back the memory chunk
+         for each descriptor between old and new TDH, as well as the buffers pointed to
+         by them, so we can start reusing these descriptors & buffers for new packets *)
+       forall mRcv nDone,
           0 <= nDone <= len txq ->
           circular_buffer_slice txq_elem
             s.(tx_queue_cap) s.(tx_queue_head) txq[:nDone] s.(tx_queue_base_addr) mRcv ->
-          post (LittleEndian.split 4 ((s.(tx_queue_head) + nDone)
-                                        mod s.(tx_queue_cap))) mRcv) ->
-      e1000_read_step 4 t (register_address E1000_TDH) post.
+          post (LittleEndian.split sz ((s.(tx_queue_head) + nDone)
+                                        mod s.(tx_queue_cap))) mRcv)).
 
-  Inductive e1000_write_step:
-    forall (sz: nat), (* number of bytes to write *)
-    trace -> (* trace of events that happened so far *)
-    word -> (* address to be written *)
-    tuple byte sz -> (* value to be written *)
-    mem -> (* memory whose ownership is passed to the external world *)
+  Definition e1000_write_step
+    (sz: nat) (* number of bytes to write *)
+    (t: trace) (* trace of events that happened so far *)
+    (addr: word) (* address to be written *)
+    (val: tuple byte sz) (* value to be written *)
+    (mGive: mem): (* memory whose ownership is passed to the external world *)
     Prop :=
-  (* Software gives fresh empty buffers to hardware:
-     Software may set new RDT to anywhere between old RDT (incl) and
-     RDH (excl, because otherwise queue considered empty), and by doing so, abandons
-     the memory chunks corresponding to these descriptors and the buffers pointed to
-     by them, thus providing more space for hardware to store received packets *)
-  | write_RDT_step: forall t mNIC s rxq txq newRDT (fresh: list (rx_desc * buf)) mGive,
-      externally_owned_mem t mNIC ->
-      e1000_initialized s t ->
-      e1000_invariant s rxq txq mNIC ->
-      len rxq + len fresh < s.(rx_queue_cap) ->
-      LittleEndian.combine 4 newRDT = (s.(rx_queue_head) + len rxq + len fresh)
-                                        mod s.(rx_queue_cap) ->
-      circular_buffer_slice (rxq_elem s.(rx_buf_size)) s.(rx_queue_cap)
-          ((s.(rx_queue_head) + len rxq) mod s.(rx_queue_cap))
-          fresh s.(rx_queue_base_addr) mGive ->
-      e1000_write_step 4 t (register_address E1000_RDT) newRDT mGive
-  (* Software gives buffers to be sent to hardware:
-     Software may set new TDT to anywhere between old TDT (incl) and
-     TDH (excl, because otherwise queue considered empty), and by doing so, indicates
-     that between old and new TDT, there are new packets to be sent, and yields
-     the descriptor chunks and the buffers pointed to by them to hardware *)
-  | write_TDT_step: forall t mNIC s rxq txq newTDT (toSend: list (tx_desc * buf)) mGive,
-      externally_owned_mem t mNIC ->
-      e1000_initialized s t ->
-      e1000_invariant s rxq txq mNIC ->
-      len txq + len toSend < s.(tx_queue_cap) ->
-      LittleEndian.combine 4 newTDT = (s.(tx_queue_head) + len txq + len toSend)
-                                        mod s.(tx_queue_cap) ->
-      circular_buffer_slice txq_elem s.(tx_queue_cap)
-          ((s.(tx_queue_head) + len txq) mod s.(tx_queue_cap))
-          toSend s.(tx_queue_base_addr) mGive ->
-      e1000_write_step 4 t (register_address E1000_TDT) newTDT mGive.
+    sz = 4%nat /\
+    exists s mNIC rxq txq,
+      externally_owned_mem t mNIC /\
+      e1000_initialized s t /\
+      e1000_invariant s rxq txq mNIC /\
+      ((addr = register_address E1000_RDT /\
+       (* Software gives fresh empty buffers to hardware:
+          Software may set new RDT to anywhere between old RDT (incl) and
+          RDH (excl, because otherwise queue considered empty), and by doing so, abandons
+          the memory chunks corresponding to these descriptors and the buffers pointed to
+          by them, thus providing more space for hardware to store received packets *)
+        exists (fresh: list (rx_desc * buf)),
+          len rxq + len fresh < s.(rx_queue_cap) /\
+          LittleEndian.combine sz val = (s.(rx_queue_head) + len rxq + len fresh)
+                                         mod s.(rx_queue_cap) /\
+          circular_buffer_slice (rxq_elem s.(rx_buf_size)) s.(rx_queue_cap)
+                                   ((s.(rx_queue_head) + len rxq) mod s.(rx_queue_cap))
+                                fresh s.(rx_queue_base_addr) mGive)
+       \/
+       (addr = register_address E1000_TDT /\
+       (* Software gives buffers to be sent to hardware:
+          Software may set new TDT to anywhere between old TDT (incl) and
+          TDH (excl, because otherwise queue considered empty), and by doing so, indicates
+          that between old and new TDT, there are new packets to be sent, and yields
+          the descriptor chunks and the buffers pointed to by them to hardware *)
+        exists (toSend: list (tx_desc * buf)),
+          len txq + len toSend < s.(tx_queue_cap) /\
+          LittleEndian.combine sz val = (s.(tx_queue_head) + len txq + len toSend)
+                                         mod s.(tx_queue_cap) /\
+          circular_buffer_slice txq_elem s.(tx_queue_cap)
+              ((s.(tx_queue_head) + len txq) mod s.(tx_queue_cap))
+              toSend s.(tx_queue_base_addr) mGive)).
 
 (* TODO what about 13.4.28 "Reading the descriptor head to determine which buffers are
    finished is not reliable" and 13.4.39 "Reading the transmit descriptor head to
@@ -297,28 +316,74 @@ Section WithMem.
 
   Axiom TODO: False.
 
+  Ltac destruct_or :=
+    lazymatch goal with
+    | H: _ \/ _ |- _ => destruct H
+    end.
+
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+
   Global Instance e1000_MemoryMappedExtCallsOk:
     MemoryMappedExtCallsOk e1000_MemoryMappedExtCalls.
   Proof.
-    constructor.
+    constructor;
+    unfold read_step, write_step, mmio_addrs, e1000_MemoryMappedExtCalls,
+      e1000_read_step, e1000_write_step; intros; fwd; subst n.
     - (* weaken_read_step *)
-      intros * H. revert post2.
-      (* we use `case` instead of `inversion` because `inversion` creates an
-         `existT` equality between post and post1 *)
-      case H; clear H t; intros; econstructor; eauto.
+      destruct_or; fwd; eauto 15.
     - (* intersect_read_step *)
-      intros.
-      case TODO.
+      lazymatch goal with
+      | H1: externally_owned_mem _ ?m1, H2: externally_owned_mem _ ?m2 |- _ =>
+          pose proof (externally_owned_mem_unique _ _ _ H1 H2); subst m1
+      end.
+      lazymatch goal with
+      | H1: e1000_initialized ?s1 ?t, H2: e1000_initialized ?s2 ?t |- _ =>
+          pose proof (e1000_initialized_unique H1 H2); subst s1
+      end.
+      lazymatch goal with
+      | H1: e1000_invariant _ ?rxq1 ?txq1 _, H2: e1000_invariant _ ?rxq2 ?txq2 _ |- _ =>
+          destruct (rxq_txq_unique H1 H2); subst rxq1 txq1
+      end.
+      do 2 destruct_or; fwd.
+      2,3:
+        exfalso;
+        lazymatch goal with
+        | H: register_address _ = register_address _ |- _ =>
+            cbn in H;
+            apply (f_equal word.unsigned) in H;
+            rewrite !word.unsigned_of_Z_nowrap in H
+                by (destruct width_cases as [W | W]; rewrite W in *; lia);
+            discriminate H
+        end.
+      all: eauto 15.
     - (* read_step_nonempty *)
-      case TODO.
+      destruct_or; fwd.
+      all: specialize (Hp1 map.empty).
+      1: specialize (Hp1 nil).
+      2: specialize (Hp1 0).
+      1: rewrite List.len_nil in Hp1.
+      all: rewrite Z.add_0_r in Hp1.
+      all: do 2 eexists; apply Hp1; cbn; try lia; unfold emp; repeat split.
     - (* read_step_returns_owned_mem *)
       case TODO.
     - (* write_step_unique_mGive *)
       case TODO.
     - (* read_step_addrs_ok *)
-      case TODO.
+      left.
+      destruct_or; fwd; cbn;
+        unfold PropSet.subset, PropSet.of_list, PropSet.elem_of, E1000_REGS;
+        rewrite <- ?word.ring_morph_add;
+        cbn; clear -word_ok BW; intros; repeat destruct_or; try contradiction; subst x;
+        (rewrite word.unsigned_of_Z_nowrap; [lia | ]);
+        destruct width_cases as [W | W]; rewrite W in *; lia.
     - (* write_step_addrs_ok *)
-      case TODO.
+      left.
+      destruct_or; fwd; cbn;
+        unfold PropSet.subset, PropSet.of_list, PropSet.elem_of, E1000_REGS;
+        rewrite <- ?word.ring_morph_add;
+        cbn; clear -word_ok BW; intros; repeat destruct_or; try contradiction; subst x;
+        (rewrite word.unsigned_of_Z_nowrap; [lia | ]);
+        destruct width_cases as [W | W]; rewrite W in *; lia.
   Qed.
 
   Local Open Scope string_scope.
