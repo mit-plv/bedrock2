@@ -31,6 +31,8 @@ Require Import bedrock2.TraceInspection.
 Require Import bedrock2.memory_mapped_ext_spec.
 Require Import bedrock2.e1000_state. (* for rx/tx_desc and separation logic definitions *)
 
+Definition E1000_MMIO_SPACE_SIZE := 0x20000. (* 128 KB, Section 13.1 *)
+
 (* Not part of the spec, but a convention we chose to hardcode here: *)
 Definition E1000_REGS := 0x40000000.
 
@@ -199,7 +201,8 @@ Section WithMem.
     word -> (* address to be read *)
     (tuple byte sz -> mem -> Prop) -> (* postcondition on returned value and memory *)
     Prop :=
-  (* new RDH can be anywhere between old RDH (incl) and old RDT (excl),
+  (* Hardware gives newly received packets to software:
+     New RDH can be anywhere between old RDH (incl) and old RDT (excl),
      we receive the memory chunk for each descriptor between old and new RDH,
      as well as the buffers pointed to by them, which contain newly received
      packets *)
@@ -213,9 +216,25 @@ Section WithMem.
           (* snd (new buffer) can be any bytes *)
           circular_buffer_slice (rxq_elem s.(rx_buf_size))
             s.(rx_queue_cap) s.(rx_queue_head) done s.(rx_queue_base_addr) mRcv ->
-          post (LittleEndian.split 4 ((s.(rx_queue_head) + len done) mod s.(rx_queue_cap))) mRcv) ->
+          post (LittleEndian.split 4 ((s.(rx_queue_head) + len done)
+                                        mod s.(rx_queue_cap))) mRcv) ->
       e1000_read_step 4 t (register_address E1000_RDH) post
-  .
+  (* Hardware gives back transmitted buffers to software:
+     New TDH can be anywhere between old TDH (incl) and TDT (excl),
+     increased TDH means some packets were sent, and we get back the memory chunk
+     for each descriptor between old and new TDH, as well as the buffers pointed to
+     by them, so we can start reusing these descriptors & buffers for new packets *)
+  | read_TDH_step: forall t mNIC s rxq txq post,
+      externally_owned_mem t mNIC ->
+      e1000_initialized s t ->
+      e1000_invariant s rxq txq mNIC ->
+      (forall mRcv nDone,
+          0 <= nDone <= len txq ->
+          circular_buffer_slice txq_elem
+            s.(tx_queue_cap) s.(tx_queue_head) txq[:nDone] s.(tx_queue_base_addr) mRcv ->
+          post (LittleEndian.split 4 ((s.(tx_queue_head) + nDone)
+                                        mod s.(tx_queue_cap))) mRcv) ->
+      e1000_read_step 4 t (register_address E1000_TDH) post.
 
   Inductive e1000_write_step:
     forall (sz: nat), (* number of bytes to write *)
@@ -223,7 +242,39 @@ Section WithMem.
     word -> (* address to be written *)
     tuple byte sz -> (* value to be written *)
     mem -> (* memory whose ownership is passed to the external world *)
-    Prop := .
+    Prop :=
+  (* Software gives fresh empty buffers to hardware:
+     Software may set new RDT to anywhere between old RDT (incl) and
+     RDH (excl, because otherwise queue considered empty), and by doing so, abandons
+     the memory chunks corresponding to these descriptors and the buffers pointed to
+     by them, thus providing more space for hardware to store received packets *)
+  | write_RDT_step: forall t mNIC s rxq txq newRDT (fresh: list (rx_desc * buf)) mGive,
+      externally_owned_mem t mNIC ->
+      e1000_initialized s t ->
+      e1000_invariant s rxq txq mNIC ->
+      len rxq + len fresh < s.(rx_queue_cap) ->
+      LittleEndian.combine 4 newRDT = (s.(rx_queue_head) + len rxq + len fresh)
+                                        mod s.(rx_queue_cap) ->
+      circular_buffer_slice (rxq_elem s.(rx_buf_size)) s.(rx_queue_cap)
+          ((s.(rx_queue_head) + len rxq) mod s.(rx_queue_cap))
+          fresh s.(rx_queue_base_addr) mGive ->
+      e1000_write_step 4 t (register_address E1000_RDT) newRDT mGive
+  (* Software gives buffers to be sent to hardware:
+     Software may set new TDT to anywhere between old TDT (incl) and
+     TDH (excl, because otherwise queue considered empty), and by doing so, indicates
+     that between old and new TDT, there are new packets to be sent, and yields
+     the descriptor chunks and the buffers pointed to by them to hardware *)
+  | write_TDT_step: forall t mNIC s rxq txq newTDT (toSend: list (tx_desc * buf)) mGive,
+      externally_owned_mem t mNIC ->
+      e1000_initialized s t ->
+      e1000_invariant s rxq txq mNIC ->
+      len txq + len toSend < s.(tx_queue_cap) ->
+      LittleEndian.combine 4 newTDT = (s.(tx_queue_head) + len txq + len toSend)
+                                        mod s.(tx_queue_cap) ->
+      circular_buffer_slice txq_elem s.(tx_queue_cap)
+          ((s.(tx_queue_head) + len txq) mod s.(tx_queue_cap))
+          toSend s.(tx_queue_base_addr) mGive ->
+      e1000_write_step 4 t (register_address E1000_TDT) newTDT mGive.
 
 (* TODO what about 13.4.28 "Reading the descriptor head to determine which buffers are
    finished is not reliable" and 13.4.39 "Reading the transmit descriptor head to
@@ -241,12 +292,34 @@ Section WithMem.
   Global Instance e1000_MemoryMappedExtCalls: MemoryMappedExtCalls := {
     read_step := e1000_read_step;
     write_step := e1000_write_step;
-    mmio_addrs a := 0x40000000 <= \[a] < 0x50000000; (* <-- TODO *)
+    mmio_addrs a := E1000_REGS <= \[a] < E1000_REGS + E1000_MMIO_SPACE_SIZE;
   }.
 
-  Global Instance e1000_MemoryMappedExtCallsOk: MemoryMappedExtCallsOk e1000_MemoryMappedExtCalls.
+  Axiom TODO: False.
+
+  Global Instance e1000_MemoryMappedExtCallsOk:
+    MemoryMappedExtCallsOk e1000_MemoryMappedExtCalls.
   Proof.
-  Admitted.
+    constructor.
+    - (* weaken_read_step *)
+      intros * H. revert post2.
+      (* we use `case` instead of `inversion` because `inversion` creates an
+         `existT` equality between post and post1 *)
+      case H; clear H t; intros; econstructor; eauto.
+    - (* intersect_read_step *)
+      intros.
+      case TODO.
+    - (* read_step_nonempty *)
+      case TODO.
+    - (* read_step_returns_owned_mem *)
+      case TODO.
+    - (* write_step_unique_mGive *)
+      case TODO.
+    - (* read_step_addrs_ok *)
+      case TODO.
+    - (* write_step_addrs_ok *)
+      case TODO.
+  Qed.
 
   Local Open Scope string_scope.
 
