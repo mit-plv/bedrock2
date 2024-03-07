@@ -388,8 +388,6 @@ Section WithMem.
 
   Local Open Scope string_scope.
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
-
   Context {locals: map.map String.string word}.
 
   Local Open Scope string_scope.
