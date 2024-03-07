@@ -13,7 +13,6 @@ Require Import bedrock2.MetricLogging.
 Require Import coqutil.Tactics.fwd.
 (*  below only for of_list_list_diff *)
 Require Import compiler.DeadCodeElimDef.
-Require Import compiler.DeadCodeElimHelper.
 
 Section WithArguments1.
   Context {width: Z}.
@@ -23,7 +22,40 @@ Section WithArguments1.
   Context {mem: map.map word (Init.Byte.byte : Type) } {mem_ok : map.ok mem } .
   Context {locals: map.map string word } {locals_ok : map.ok locals }.
   Context {ext_spec : Semantics.ExtSpec } {ext_spec_ok: Semantics.ext_spec.ok ext_spec } .
-
+  
+  Lemma subset_of_list_find_removeb:
+    forall a x l,
+      subset
+        (of_list
+           (if find (eqb a) (List.removeb eqb x l)
+            then List.removeb eqb x l
+            else a :: List.removeb eqb x l))
+        (of_list (if find (eqb a) l then l else a :: l)).
+  Proof.
+    unfold subset, of_list, elem_of in *; simpl; intros.
+    destr (find (eqb a) (List.removeb eqb x l)).
+    - destr (find (eqb a) l ).
+      + eapply List.In_removeb_weaken. eassumption.
+      + eapply in_cons. eapply List.In_removeb_weaken.
+        eassumption.
+    - eapply in_inv in H.
+      destr H.
+      + rewrite H in *.
+        destr (find (eqb x0)).
+        * inversion E.
+        * destr (find (eqb x0) l).
+          -- pose proof E1 as E1'.
+             eapply find_eqb in E1.
+             rewrite <- E1 in E1'.
+             eapply find_some.
+             eapply E1'.
+          -- eapply in_eq.
+      + destr (find (eqb a) l ).
+        * eapply List.In_removeb_weaken. eassumption.
+        * eapply in_cons. eapply List.In_removeb_weaken.
+          eassumption.
+  Qed.
+   
   Lemma agree_on_put_existsb_false:
     forall used_after x (l: locals) lL,
       map.agree_on (diff (of_list used_after) (singleton_set x)) l lL
