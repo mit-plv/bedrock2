@@ -134,6 +134,12 @@ install_LiveVerif_noex:
 install_LiveVerif_ex:
 	$(MAKE) -C $(ABS_ROOT_DIR)/LiveVerif install_ex
 
+LiveVerifCompile: LiveVerif_ex compiler_noex
+	$(MAKE) -C $(ABS_ROOT_DIR)/LiveVerifCompile all
+
+clean_LiveVerifCompile:
+	$(MAKE) -C $(ABS_ROOT_DIR)/LiveVerifCompile clean
+
 compiler_noex:
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler noex
 
