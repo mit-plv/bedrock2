@@ -1,142 +1,91 @@
-## A work-in-progress language and compiler for verified low-level programming
+Live Verification Artifact
+==========================
 
-This repository containts ongoing work on a low-level systems programming language. One piece of the puzzle is a verified compiler targeting RISC-V. The source language itself is also equipped with a simple program logic for proving correctness of the source programs. It is not ready yet, at least for most uses.
-
-This project has similar goals as [bedrock](https://github.com/mit-plv/bedrock), but uses a different design.
-No code is shared between bedrock and bedrock2.
-
-
-### Current Features
-
-The source language is a "C-like" language. It is an imperative language with expressions.
-Currently, the only data type is word (32-bit or 64-bit), and the memory is a partial map from words to bytes.
-
-### Non-features
-
-It is a design decision to *not* support the following features:
-*    Function pointers
-*    Recursive functions (we might add them later, but we always want to prove that we don't run out of stack space)
-*    Non-terminating programs (except for the top-level event loop)
+We provide two ways to evaluate our artifact:
+* Docker: Using a docker image with all software pre-installed and all files pre-compiled
+* From source: Does not require docker, but requires a system with Coq, an IDE for it (preferably ProofGeneral), and gcc, and up to 1 hour of compilation time
+The headings below indicate for which options they apply.
 
 
-### Build
+Getting Started (aka kick-the-tires phase)
+------------------------------------------
 
-You'll need [Coq](https://coq.inria.fr/). We try to support the latest released version as well as master. If unsure which version to pick, it's best to check the build log of the continuous integration server.
+### Install Docker [Docker only]
 
-In case you didn't clone with `--recursive`, use `make clone_all` to clone the git submodules.
+Install the Docker Engine (Docker CE) as described on https://docs.docker.com/engine/install/.
+The docs try to convince you to install Docker Desktop, but Docker Desktop is not necessary and we did not use it.
+We only use the Docker Engine (Docker CE). On the other hand, if you really like Docker Desktop, it probably also works with our image.
+We used Docker version 25.0.4, but other versions could work too.
+Note: On some systems (eg Fedora), after installing docker, you need to start the docker daemon explicitly using a command like eg `sudo systemctl start docker`, while on others, this seems to happen automatically.
 
-Then simply run `make` or `make -j` or `make -jN` where `N` is the number of cores to use. This will invoke the Makefiles of each subproject in the correct order, and also pass the `-j` switch to the recursive make.
+
+### Import & start the image [Docker only]
+
+Download `LiveVerifArtifactDockerImage.tar` and import it into docker:
+
+```
+sudo docker load -i /path/to/LiveVerifArtifactDockerImage.tar
+```
+
+After that, `sudo docker images` should list a "repository" named `LiveVerifArtifact`.
+Then the image:
+
+```
+sudo docker run -it LiveVerifArtifact
+```
+
+This should open a command prompt inside the docker image, where you can use `ls` and `cd` to look around to see what's there.
+`~/bedrock2-LiveVerifArtifact-coq-8.17.1` is the *toplevel directory* containing the artifact.
 
 
-### Project Overview
+### Install dependencies [from-source only]
 
-This repository is an umbrella repository integrating several sub-projects, allowing us to prove end-to-end theorems describing the I/O behavior of a pipelined processor executing a program written in the bedrock2 language, verified with our program logic, and compiled with our compiler.
+You need the following software:
+* Coq 8.17.1, installed using your preferred installation method. Versions < 8.17 will not work, version 8.18 and 8.19 probably work too.
+* An IDE for Coq. We use Emacs + Proof General, but if you are familiar with another IDE, that might work too.
+* GCC (we use version 9.4.0, but other versions probably work too)
 
-There are the following sub-projects:
 
-*    [coqutil](https://github.com/mit-plv/coqutil): Coq library for tactics, basic definitions, sets, maps
-*    [riscv-coq](https://github.com/mit-plv/riscv-coq): RISC-V specification in Coq
-*    [bedrock2/bedrock2](https://github.com/mit-plv/bedrock2/tree/master/bedrock2): The bedrock2 language, a simple C-like programming language with a program logic and a few verified sample programs
-*    [bedrock2/compiler](https://github.com/mit-plv/bedrock2/tree/master/compiler): A very simple compiler from the bedrock2 language to bare metal, position independent RISC-V machine code
-*    [kami](https://github.com/mit-plv/kami/tree/rv32i): Provides a 4-stage pipelined RISC-V processor
-*    [bedrock2/processor](https://github.com/mit-plv/bedrock2/tree/master/processor): Proves that the hardware-centric RISC-V specification of Kami matches the software-centric specification of riscv-coq
-*    [bedrock2/end2end](https://github.com/mit-plv/bedrock2/tree/master/end2end): Combines all the projects into an end-to-end theorem about a concrete program, the IoT lightbulb demo.
+### Compile Coq files [from-source only]
 
-The Kami processor can be extracted to [bluespec](https://github.com/B-Lang-org/bsc), which can be compiled to Verilog, and run on an FPGA.
+In the *toplevel directory* of the artifact, run `make LiveVerifCompile`.
+This might take up to an hour. If you have 16GB of RAM, it should be safe to add `-j4` to get some parallelism (but too much parallelism can cause the system to run out of memory).
+
+
+### Check that you can step through a proof in your IDE [docker & from-source]
+
+The following instructions are for emacs + proof general, but if you prefer a different Coq IDE, that should work too.
+
+In the *toplevel directory* of the artifact, run `emacs LiveVerif/src/LiveVerifExamples/memset.v`.
+Navigate to the line just after the one starting with `uintptr_t i = 0`.
+Process the proof up to that point (Ctrl-c Ctrl-Enter), and make sure you see the source window and the window with the proof goal.
+Process a few more lines of the proof (Ctrl-c Ctrl-n), and make sure you can see how this stepping affects the proof goal.
+
+
+Step-by-step instructions [docker & from-source]
+------------------------------------------------
+
+### Overview
+
+The artifact contains the following dependencies:
+* `deps/coqutil`: Generic Coq library
+* `deps/riscv-coq`: Specification of the RISC-V ISA
+* `bedrock2`: The bedrock2 source language
+* `compiler`: The bedrock2-to-RISC-V compiler
+
+And it contains the following directories related to the paper:
+* `LiveVerif/src/LiveVerif`: The LiveVerif framework
+* `LiveVerif/src/LiveVerifExamples`: Sample programs verified in the LiveVerif framework
+* `LiveVerifCompile`: A small demo illustrating that the bedrock2 compiler indeed compiles a LiveVerif-generated Bedrock2 program
 
 The project dependency structure looks as follows (right depends on left):
 
 ```
-         bedrock2
-       /          \
+                   LiveVerif
+                  /         \
+         bedrock2            LiveVerifCompile
+       /          \         /
 coqutil            compiler
-       \          /         \
-         riscv-coq           end2end
-                  \         /
-                   processor
-                  /
-              kami
+       \          /
+         riscv-coq
 ```
-
-
-### The IoT lightbulb demo
-
-<img alt="IoT lightbulb demo" src="img/lightbulb-on.jpg" width="700px"/>
-
-In the above picture, the FPGA at the bottom left is running the Kami processor, which executes a program proven correct using the bedrock2 program logic and compiled to bytes using the bedrock2 compiler.
-Through a set of blue wires (using SPI), the FPGA is connected to an ethernet card (which we do not verify), and through a red & black wire, it is connected to a power relay which can turn on and off a lightbulb.
-
-
-### Code Overview
-
-Throughout the compiler, we use (big-step) [omnisemantics](https://dl.acm.org/doi/10.1145/3579834), i.e. judgments of the form `exec c s P`, meaning "if we execude command `c` from starting state `s`, all possible final states satisfy the postcondition `P`, and none of the (nondeterministic) execution branches will fail.
-
-Here's a list of files that might be interesting to step through in your IDE:
-* The big-step omnisemantics of the bedrock2 language are in `bedrock2.Semantics`. You might also want to look at `compiler.FlatImp`, a flattened version of it, written down in more traditional syntax.
-* `bedrock2.WeakestPrecondition` contains the verification condition generator used by the program logic.
-* `bedrock2Examples.swap` is a small program logic proof.
-* `bedrock2.WeakestPreconditionProperties.sound_cmd` is not interesting, but confirms that the weakest precondition generator agrees with the bigstep omnisemantics formulation.
-* `compilerExamples.MMIO` shows how to instantiate external calls (which are kept abstract throughout the compiler) with memory-mapped I/O (MMIO).
-* To see how we connect omnisemantics to the traditional small-step semantics of Kami, you might want to start at `processor.KamiRiscv.riscv_to_kamiImplProcessor`, then look at `processor.KamiRiscvStep.kamiStep_sound`, and `compiler.CompilerInvariant.compiler_invariant_proofs` proves the assumptions made by `processor.KamiRiscv.riscv_to_kamiImplProcessor`, by using a "low level invariant" `ll_inv`, defined in `compiler.ToplevelLoop`, which says, "the current RISC-V state is a finite numer of steps away from a good state, where good state means a RISC-V state that is related to a bedrock2 state that can be observed at the end of an iteration of the toplevel event loop". Note that this "finite number of steps" might be different for each nondeterministic execution branch, so we can't just state it as `exists numberOfSteps, ...`. Instead, we use `riscv.Utility.runsToNonDet.runsTo` (that we write as ◊ in papers).
-* The semantics of each RISC-V instruction is defined in terms of the primitives given in `riscv.Spec.Machine.RiscvProgram`.
-* The function that executes a RISC-V instruction from the basic I extension is in `riscv.Spec.ExecuteI`, but since it has been translated from Haskell and Coq's beautify option is [broken](https://github.com/coq/coq/issues/11129), the Coq code is not very readable, so you have to read [ExecuteI.hs](https://github.com/mit-plv/riscv-semantics/blob/master/src/Spec/ExecuteI.hs) from the Haskell spec instead, or import the `MonadNotations` and do `Print ExecuteI.execute` inside Coq to read it.
-* To see how we instaniate this generic `RiscvProgram` monad with small-step omnisemantics, you can look at `riscv.Platform.MinimalMMIO`.
-
-
-### Compiler Overview
-
-Here are the names of the languages and the compiler phases between them (see `compiler.Pipeline` for more details):
-
-```
-Syntax.cmd
-  ↓ FlattenExpr
-FlatImp.stmt string
-  ↓ RegAlloc
-FlatImp.stmt Z
-  ↓ Spilling
-FlatImp.stmt Z
-  ↓ FlatToRiscv
-list Instruction
-  ↓ instrencode
-list byte
-```
-
-The compiler provides two interfaces:
-
-
-#### 1) The "more traditional" interface:
-
-Input:
--    list of bedrock2 functions
--    name of "main"
-
-Output:
--    Compiled functions as list of instructions
--    Relative position of main function
-
-Correctness theorem: `compiler.Pipeline.compiler_correct`:
--    If all high-level executions satisfy `post`, running the compiled functions from a "good" initial RISC-V machine leads only to machines whose memory and I/O trace satisfy `post`.
-
-
-#### 2) The event loop interface:
-
-Input:
--    list of bedrock2 functions, name of "init" and "loop". This will result in the following program being compiled:
-
-```
-init();
-while (true) {
-   loop();
-}
-```
-
-Output:
--    list of instructions to initialize the stack pointer, call `init()`, call `loop()`, jump back to calling `loop()` followed by the compiled functions
--    Meant to start execution at beginning of this list
-
-Correctness theorem: `compiler.CompilerInvariant.compiler_invariant_proofs`:
--    There is an invariant `inv` on RISC-V machines, and
-     *    Here's how to establish `inv`
-     *    Running the machine for one step preserves `inv`
-     *   `inv` implies that the I/O trace of the machine is good
-- We call this the "establish/preserve/use pattern"
