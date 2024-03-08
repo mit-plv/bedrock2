@@ -4,10 +4,6 @@
 [submodule "deps/coqutil"]
 	path = deps/coqutil
 	url = https://github.com/mit-plv/coqutil.git
-[submodule "deps/kami"]
-	path = deps/kami
-	url = https://github.com/mit-plv/kami.git
-	branch = rv32i
 [submodule "deps/coq-record-update"]
 	path = deps/coq-record-update
 	url = https://github.com/tchajed/coq-record-update.git
