@@ -28,7 +28,7 @@ sudo docker load -i /path/to/LiveVerifArtifactDockerImage.tar
 ```
 
 After that, `sudo docker images` should list a "repository" named `LiveVerifArtifact`.
-Then the image:
+Then run the image:
 
 ```
 sudo docker run -it LiveVerifArtifact
