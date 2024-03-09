@@ -97,9 +97,9 @@ coqutil            compiler
 In the following, section numbers refer to the submission version of the paper (which has been provided to the artifact reviewers through hotcrp).
 For each subsection, where applicable, we list the corresponding source files:
 
-* 1. Introduction
-* 2. Background
-* 3. User Interface
+1. Introduction
+2. Background
+3. User Interface
    * 3.1 Overview by an Example (`LiveVerif/src/LiveVerifExamples/memset.v`)
        * 3.1.1 Polyglot Source File Can be Read as C or Coq at the Same Time
            * `LiveVerif/src/LiveVerifExamples/memset_exported.h`
@@ -153,7 +153,7 @@ For each subsection, where applicable, we list the corresponding source files:
        * 3.5.5 Safe Steps -- Avoiding backtracking for better proof debuggability
            * `Ltac sidecond_step` in `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
            * `bedrock2/src/bedrock2/safe_implication.v`
-* 4. Implementation Notes
+4. Implementation Notes
    * 4.1 Parsing C in Coq
        * `LiveVerif/src/LiveVerif/LiveParsing.v`
        * `LiveVerif/src/LiveVerif/LiveSnippet.v`
@@ -171,7 +171,7 @@ For each subsection, where applicable, we list the corresponding source files:
        * `bedrock2/src/bedrock2/unzify.v`
    * 4.6 Undoable, Reusable Zification
        * `bedrock2/src/bedrock2/unzify.v`
-* 5. Discussion
+5. Discussion
    * 5.1 Why Not a Stand-Alone Tool?
    * 5.2 Limiting the Number of Conversions and Avoiding Operator Overloading
        * `deps/coqutil/src/coqutil/Datatypes/OperatorOverloading.v`
@@ -179,14 +179,14 @@ For each subsection, where applicable, we list the corresponding source files:
    * 5.3 Implementation Language
    * 5.4 Ltac1 vs Ltac2: When to prefer an untyped language with undocumented semantics
    * 5.5 Bitwidth Parameterization
-* 6. Evaluation
+6. Evaluation
    * 6.1 Scope of Sample Programs
        * `LiveVerif/src/LiveVerifExamples/`
    * 6.2 Qualitative Discussion of Loop-Invariants-As-Diff Approach
    * 6.3 Some Statistics
        * `LiveVerif/stats.py`
-* 7. Related Work
-* 8. Conclusion and Future Work
+7. Related Work
+8. Conclusion and Future Work
 
 
 Step-by-step instructions [docker & from-source]
