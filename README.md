@@ -2,8 +2,8 @@ Live Verification Artifact
 ==========================
 
 We provide two ways to evaluate our artifact:
-* Docker: Using a docker image with all software pre-installed and all files pre-compiled
-* From source: Does not require docker, but requires a system with Coq, an IDE for it (preferably ProofGeneral), and gcc, and up to 1 hour of compilation time
+* Docker: Using a docker image with all software pre-installed and all files pre-compiled. It uses the `amd64` architecture. We built and tested it on Ubuntu 22 and Fedora 39 hosts, and we believe that it should also run on other Linux distros with an Intel x86-64 / amd64 architecture and on Mac OS.
+* From source: Does not require docker, but requires a system with Coq, an IDE for it (preferably ProofGeneral), and gcc, and up to half an hour of compilation time
 The headings below indicate for which options they apply.
 
 
@@ -49,7 +49,9 @@ You need the following software:
 ### Compile Coq files [from-source only]
 
 In the *toplevel directory* of the artifact, run `make LiveVerifCompile`.
-This might take up to an hour. If you have 16GB of RAM, it should be safe to add `-j4` to get some parallelism (but too much parallelism can cause the system to run out of memory).
+This might take up to an hour. If you have 16GB of RAM, it should be safe to add `-j4` to get some parallelism (but too much parallelism can cause the system to run out of memory). On the author's (not so new) laptop, `make LiveVerifCompile -j4` took 18 minutes.
+
+The build prints a few thousand lines of output to the terminal, which contains many warnings that can all safely be ignored.
 
 
 ### Check that you can step through a proof in your IDE [docker & from-source]
@@ -89,3 +91,32 @@ coqutil            compiler
        \          /
          riscv-coq
 ```
+
+
+### Make yourself feel at home in Proof General (or your other preferred Coq IDE)
+
+To evaluate our artifact conveniently, a few editor settings are important.
+First, make sure your terminal, emacs, or other IDE is maximized to occupy your whole screen. In emacs, you should have enough space to have two windows side-by-side that each is at least 85 characters wide (you can run `M-x` `column-number-mode` to display the current column of your cursor).
+
+You also need a way to quickly move the cursor between different emacs windows (from the source window to the goal window and back). In the docker image, the `.emacs` file defines `C-c arrowkey` to jump to the window to the left/top/right/bottom of the current window.
+
+No matter what IDE you're using, you should make sure that you have almost all of the left half of your screen to display the source (`.v` file) and almost all of the right half of your screen to display the proof goal (seeing the response/output window of Coq is useful too, but less important).
+
+If you're using your own emacs (not in docker), the first time you open a LiveVerif example file (such as eg `LiveVerif/src/LiveVerifExamples/memset.v`, you will see the following message:
+
+```
+The local variables list in memset.v
+or .dir-locals.el contains values that may not be safe (*).
+
+Do you want to apply it?  You can type
+y  -- to apply the local variables list.
+n  -- to ignore the local variables list.
+!  -- to apply the local variables list, and permanently mark these
+      values (*) as safe (in the future, they will be set automatically.)
+i  -- to ignore the local variables list, and permanently mark these
+      values (*) as ignored
+
+  * eval : (load-file "../LiveVerif/live_verif_setup.el")
+```
+
+We suggest to answer `!`, so that it won't be displayed again. Its effect is that when opening a file starting with the line `(* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)`, emacs automatically executes the commands in `LiveVerif/src/LiveVerif/live_verif_setup.el`, which set up a few convenient shortcuts for the buffer of current file only.
