@@ -97,96 +97,96 @@ coqutil            compiler
 In the following, section numbers refer to the submission version of the paper (which has been provided to the artifact reviewers through hotcrp).
 For each subsection, where applicable, we list the corresponding source files:
 
-1. Introduction
-2. Background
-3. User Interface
-   3.1 Overview by an Example (`LiveVerif/src/LiveVerifExamples/memset.v`)
-       3.1.1 Polyglot Source File Can be Read as C or Coq at the Same Time
-           - `LiveVerif/src/LiveVerifExamples/memset_exported.h`
-       3.1.2 Function Signature Using Only One Type
-       3.1.3 Specifications Using Separation Logic and Z
-           - `bedrock2/src/bedrock2/SepBulletPoints.v`
-           - Notations at the end of `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
-       3.1.4 The Initial Proof Goal
-       3.1.5 C Snippets Acting As Proof-Script Steps
-       3.1.6 Applying Tailored Weakest-Precondition Rules
-           - `LiveVerif/src/LiveVerif/LiveRules.v`
-       3.1.7 Expressing the Loop Invariant as a Diff from the Current Symbolic State
-       3.1.8 Heapletwise Separation Logic
-           - `bedrock2/src/bedrock2/HeapletwiseHyps.v`
-       3.1.9 Accessing Memory That Is Part of a Bigger Separation-Logic Clause
-           - `bedrock2/src/bedrock2/HeapletwiseAutoSplitMerge.v`
-       3.1.10 Proving That The Current Symbolic State Satisfies Expectations
-   3.2 Tradeoffs Between Three Different Ways of Compiling
-       - `LiveVerif/src/LiveVerifExamples/Makefile`
-       - `LiveVerifCompile/src/LiveVerifCompile/compile_memset.v`
-   3.3 Concepts
-       3.3.1 Predicate size
-           - `bedrock2/src/bedrock2/SepLib.v`
-       3.3.2 Support for adjacent sep clauses `sepapp` and `sepapps`
-           - `bedrock2/src/bedrock2/sepapp.v`
-       3.3.3 `n`-fillable predicates
-           - `bedrock2/src/bedrock2/to_from_anybytes.v`
-   3.4 Features
-       3.4.1 Record Predicates
-           - `Bedrock2/src/Bedrock2/RecordPredicates.v`
-       3.4.2 IDE extensions
-           - `LiveVerif/src/LiveVerif/live_verif_setup.el`
-   3.5 Techniques
-       3.5.1 Expressing a Loop Invariant as a Diff from the Current Symbolic State
-           - `LiveVerif/src/LiveVerifExamples/memset.v`
-           - `LiveVerif/src/LiveVerif/PackageContext.v`
-           - `Ltac while` in `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
-           - `Lemma wp_while` in `LiveVerif/src/LiveVerif/LiveRules.v`
-       3.5.2 Treating While Loops as Tail-Recursive Calls
-           - Function `Strcmp` in `LiveVerif/src/LiveVerifExamples/nt_uint8_string.v`
-           - `Ltac while_tailrec_use_functionpost` in
+* 1. Introduction
+* 2. Background
+* 3. User Interface
+   * 3.1 Overview by an Example (`LiveVerif/src/LiveVerifExamples/memset.v`)
+       * 3.1.1 Polyglot Source File Can be Read as C or Coq at the Same Time
+           * `LiveVerif/src/LiveVerifExamples/memset_exported.h`
+       * 3.1.2 Function Signature Using Only One Type
+       * 3.1.3 Specifications Using Separation Logic and Z
+           * `bedrock2/src/bedrock2/SepBulletPoints.v`
+           * Notations at the end of `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
+       * 3.1.4 The Initial Proof Goal
+       * 3.1.5 C Snippets Acting As Proof-Script Steps
+       * 3.1.6 Applying Tailored Weakest-Precondition Rules
+           * `LiveVerif/src/LiveVerif/LiveRules.v`
+       * 3.1.7 Expressing the Loop Invariant as a Diff from the Current Symbolic State
+       * 3.1.8 Heapletwise Separation Logic
+           * `bedrock2/src/bedrock2/HeapletwiseHyps.v`
+       * 3.1.9 Accessing Memory That Is Part of a Bigger Separation-Logic Clause
+           * `bedrock2/src/bedrock2/HeapletwiseAutoSplitMerge.v`
+       * 3.1.10 Proving That The Current Symbolic State Satisfies Expectations
+   * 3.2 Tradeoffs Between Three Different Ways of Compiling
+       * `LiveVerif/src/LiveVerifExamples/Makefile`
+       * `LiveVerifCompile/src/LiveVerifCompile/compile_memset.v`
+   * 3.3 Concepts
+       * 3.3.1 Predicate size
+           * `bedrock2/src/bedrock2/SepLib.v`
+       * 3.3.2 Support for adjacent sep clauses `sepapp` and `sepapps`
+           * `bedrock2/src/bedrock2/sepapp.v`
+       * 3.3.3 `n`-fillable predicates
+           * `bedrock2/src/bedrock2/to_from_anybytes.v`
+   * 3.4 Features
+       * 3.4.1 Record Predicates
+           * `Bedrock2/src/Bedrock2/RecordPredicates.v`
+       * 3.4.2 IDE extensions
+           * `LiveVerif/src/LiveVerif/live_verif_setup.el`
+   * 3.5 Techniques
+       * 3.5.1 Expressing a Loop Invariant as a Diff from the Current Symbolic State
+           * `LiveVerif/src/LiveVerifExamples/memset.v`
+           * `LiveVerif/src/LiveVerif/PackageContext.v`
+           * `Ltac while` in `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
+           * `Lemma wp_while` in `LiveVerif/src/LiveVerif/LiveRules.v`
+       * 3.5.2 Treating While Loops as Tail-Recursive Calls
+           * Function `Strcmp` in `LiveVerif/src/LiveVerifExamples/nt_uint8_string.v`
+           * `Ltac while_tailrec_use_functionpost` in
              `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
-           - `Lemma wp_while_tailrec_use_functionpost` in
+           * `Lemma wp_while_tailrec_use_functionpost` in
              `LiveVerif/src/LiveVerif/LiveRules.v`
-       3.5.3 Variable-Naming Scheme
-           - `Ltac put_into_current_locals` in `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
-       3.5.4 Context Packaging and Merging for if-then-else
-           - `LiveVerif/src/LiveVerifExamples/sort3_separate_args.v`
-           - `Lemma wp_if_bool_dexpr` in `LiveVerif/src/LiveVerif/LiveRules.v`
-           - `LiveVerif/src/LiveVerif/PackageContext.v`, especially `Ltac after_if`
-       3.5.5 Safe Steps -- Avoiding backtracking for better proof debuggability
-           - `Ltac sidecond_step` in `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
-           - `bedrock2/src/bedrock2/safe_implication.v`
-4. Implementation Notes
-   4.1 Parsing C in Coq
-       - `LiveVerif/src/LiveVerif/LiveParsing.v`
-       - `LiveVerif/src/LiveVerif/LiveSnippet.v`
-       - `bedrock2/src/bedrock2/ident_to_string.v`
-       - `LiveVerif/src/LiveVerif/string_to_ident.v`
-   4.2 On-Demand Addition of Callee-Correctness Hypotheses
-       - `Ltac call` in `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
-   4.3 Extracting Pure Facts from Sep Clauses
-       - `bedrock2/src/bedrock2/PurifyHeapletwise.v`
-       - `bedrock2/src/bedrock2/PurifySep.v`
-   4.4 Pattern-Based Selective Warning Suppression
-       - `bedrock2/src/bedrock2/SuppressibleWarnings.v`
-   4.5 Mixed Word/Integer Arithmetic Side Conditions
-       - `bedrock2/src/bedrock2/WordPushDownLemmas.v`
-       - `bedrock2/src/bedrock2/unzify.v`
-   4.6 Undoable, Reusable Zification
-       - `bedrock2/src/bedrock2/unzify.v`
-5. Discussion
-   5.1 Why Not a Stand-Alone Tool?
-   5.2 Limiting the Number of Conversions and Avoiding Operator Overloading
-       - `deps/coqutil/src/coqutil/Datatypes/OperatorOverloading.v`
+       * 3.5.3 Variable-Naming Scheme
+           * `Ltac put_into_current_locals` in `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
+       * 3.5.4 Context Packaging and Merging for if-then-else
+           * `LiveVerif/src/LiveVerifExamples/sort3_separate_args.v`
+           * `Lemma wp_if_bool_dexpr` in `LiveVerif/src/LiveVerif/LiveRules.v`
+           * `LiveVerif/src/LiveVerif/PackageContext.v`, especially `Ltac after_if`
+       * 3.5.5 Safe Steps -- Avoiding backtracking for better proof debuggability
+           * `Ltac sidecond_step` in `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
+           * `bedrock2/src/bedrock2/safe_implication.v`
+* 4. Implementation Notes
+   * 4.1 Parsing C in Coq
+       * `LiveVerif/src/LiveVerif/LiveParsing.v`
+       * `LiveVerif/src/LiveVerif/LiveSnippet.v`
+       * `bedrock2/src/bedrock2/ident_to_string.v`
+       * `LiveVerif/src/LiveVerif/string_to_ident.v`
+   * 4.2 On-Demand Addition of Callee-Correctness Hypotheses
+       * `Ltac call` in `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
+   * 4.3 Extracting Pure Facts from Sep Clauses
+       * `bedrock2/src/bedrock2/PurifyHeapletwise.v`
+       * `bedrock2/src/bedrock2/PurifySep.v`
+   * 4.4 Pattern-Based Selective Warning Suppression
+       * `bedrock2/src/bedrock2/SuppressibleWarnings.v`
+   * 4.5 Mixed Word/Integer Arithmetic Side Conditions
+       * `bedrock2/src/bedrock2/WordPushDownLemmas.v`
+       * `bedrock2/src/bedrock2/unzify.v`
+   * 4.6 Undoable, Reusable Zification
+       * `bedrock2/src/bedrock2/unzify.v`
+* 5. Discussion
+   * 5.1 Why Not a Stand-Alone Tool?
+   * 5.2 Limiting the Number of Conversions and Avoiding Operator Overloading
+       * `deps/coqutil/src/coqutil/Datatypes/OperatorOverloading.v`
          (the heavy-weight approach we stopped using)
-   5.3 Implementation Language
-   5.4 Ltac1 vs Ltac2: When to prefer an untyped language with undocumented semantics
-   5.5 Bitwidth Parameterization
-6. Evaluation
-   6.1 Scope of Sample Programs
-       - `LiveVerif/src/LiveVerifExamples/`
-   6.2 Qualitative Discussion of Loop-Invariants-As-Diff Approach
-   6.3 Some Statistics
-       - `LiveVerif/stats.py`
-7. Related Work
-8. Conclusion and Future Work
+   * 5.3 Implementation Language
+   * 5.4 Ltac1 vs Ltac2: When to prefer an untyped language with undocumented semantics
+   * 5.5 Bitwidth Parameterization
+* 6. Evaluation
+   * 6.1 Scope of Sample Programs
+       * `LiveVerif/src/LiveVerifExamples/`
+   * 6.2 Qualitative Discussion of Loop-Invariants-As-Diff Approach
+   * 6.3 Some Statistics
+       * `LiveVerif/stats.py`
+* 7. Related Work
+* 8. Conclusion and Future Work
 
 
 Step-by-step instructions [docker & from-source]
