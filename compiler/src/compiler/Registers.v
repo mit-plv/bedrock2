@@ -19,7 +19,7 @@ Require Import coqutil.Datatypes.List.
 *)
 
 Module reg_class.
-  Inductive t := neg | zero | ra | sp | gp | tp | temp | saved | arg | stack_slot.
+  Inductive t: Set := neg | zero | ra | sp | gp | tp | temp | saved | arg | stack_slot.
   Scheme Equality for t.
   Definition eqb := t_beq.
   Local Open Scope bool_scope.
@@ -111,17 +111,6 @@ Proof.
   unfold RegisterNames.ra in P. blia.
 Qed.
 
-(* TODO move *)
-Lemma firstn_unfoldn{A: Type}(f: A -> A): forall n m start,
-    (n <= m)%nat ->
-    List.firstn n (List.unfoldn f m start) = List.unfoldn f n start.
-Proof.
-  induction n; intros.
-  - reflexivity.
-  - destruct m. 1: inversion H.
-    cbn. f_equal. eapply IHn. eapply le_S_n. assumption.
-Qed.
-
 Lemma all_arg_regs_alt:
   List.firstn 8 (reg_class.all reg_class.arg) = List.unfoldn (Z.add 1) 8 a0.
 Proof. reflexivity. Qed.
@@ -130,5 +119,5 @@ Lemma arg_regs_alt: forall n,
     (n <= 8)%nat ->
     List.firstn n (reg_class.all reg_class.arg) = List.unfoldn (Z.add 1) n a0.
 Proof.
-  intros. erewrite <- firstn_unfoldn by eassumption. reflexivity.
+  intros. erewrite <- List.firstn_unfoldn by eassumption. reflexivity.
 Qed.

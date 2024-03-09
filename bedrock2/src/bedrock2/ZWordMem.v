@@ -15,27 +15,6 @@ Require Import bedrock2.PurifySep.
 Import ZList.List.ZIndexNotations.
 Local Open Scope zlist_scope.
 
-(* TODO move *)
-Module List.
-  Section WithA.
-    Context [A: Type].
-
-    Lemma split_at: forall n (l: list A), l = l[:n] ++ l[n:].
-    Proof.
-      intros. unfold List.upto, List.from. symmetry. apply List.firstn_skipn.
-    Qed.
-
-    Lemma len_nil: len (@nil A) = 0.
-    Proof. intros. reflexivity. Qed.
-
-    Lemma len_cons: forall a (l: list A), len (a :: l) = 1 + len l.
-    Proof. intros. simpl (List.length (a :: l)). lia. Qed.
-
-    Lemma len_app: forall (l1 l2: list A), len (l1 ++ l2) = len l1 + len l2.
-    Proof. intros. rewrite List.app_length. lia. Qed.
-  End WithA.
-End List.
-
 Undelimit Scope sep_scope.
 
 (* PredTp equals `Z -> mem -> Prop` if the predicate takes any number of values

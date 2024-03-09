@@ -212,7 +212,7 @@ Section ptstos.
     specialize (H0 ltac:(blia)); clear H1.
     ring_simplify in H0.
     assert (0 <= q) by Lia.nia.
-    revert dependent bytes.
+    generalize dependent bytes.
     pattern q.
     refine (natlike_ind _ _ _ q H); clear -BW word_ok mem_ok; intros.
     { case bytes in *; cbn in *; ring_simplify in H0; try discriminate.

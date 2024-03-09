@@ -1,3 +1,4 @@
+Require Import coqutil.Tactics.invert_hyp.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Platform.RiscvMachine.
@@ -147,7 +148,7 @@ Section FlatToRiscvLiterals.
     - unfold compile_lit_64bit, compile_lit_32bit in *.
       remember (signExtend 12 (signExtend 32 (bitSlice v 32 64))) as mid.
       remember (signExtend 32 (signExtend 32 (bitSlice v 32 64))) as hi.
-      Simp.protect_equalities.
+      protect_equalities.
       cbv [List.app program array] in P.
       simpl in *. (* if you don't remember enough values, this might take forever *)
       repeat match type of X with
@@ -164,7 +165,7 @@ Section FlatToRiscvLiterals.
       match_apply_runsTo.
       f_equal; [|simpl; try solve_MetricLog].
       f_equal.
-      + rewrite! map.put_put_same. f_equal. Simp.unprotect_equalities. subst mid hi.
+      + rewrite! map.put_put_same. f_equal. unprotect_equalities. subst mid hi.
         apply word.unsigned_inj.
         assert (width = 64) as W64. {
           clear -E0 BW.

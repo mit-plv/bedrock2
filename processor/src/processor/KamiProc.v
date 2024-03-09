@@ -33,7 +33,7 @@ Section Parametrized.
   (** The auxiliary hardware state; this is for manipulating hardware state
    * without knowing much about Kami states.
    *)
-  Record pst :=
+  Record pst: Set :=
     mk { pc: Word.word addrSize;
          rf: Word.word rfIdx -> Word.word (dataBytes * BitsPerByte);
          pinit: bool;
