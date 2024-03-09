@@ -112,6 +112,8 @@ For each subsection, where applicable, we list the corresponding source files:
        * 3.1.6 Applying Tailored Weakest-Precondition Rules
            * `LiveVerif/src/LiveVerif/LiveRules.v`
        * 3.1.7 Expressing the Loop Invariant as a Diff from the Current Symbolic State
+           * `LiveVerif/src/LiveVerif/PackageContext.v`
+           * `Ltac while` in `LiveVerif/src/LiveVerif/LiveProgramLogic.v`
        * 3.1.8 Heapletwise Separation Logic
            * `bedrock2/src/bedrock2/HeapletwiseHyps.v`
        * 3.1.9 Accessing Memory That Is Part of a Bigger Separation-Logic Clause
@@ -229,12 +231,11 @@ List of claims from the paper supported by the artifact:
 1. LiveVerif Coq files become C files when prefixed with an opening C comment `/*` (§1.1)
 2. LiveVerif programs can be compiled with GCC (§3.1.1)
 
-where is which file
-
-evaluation
-
 List of claims from the paper not supported by the artifact
--
+- The intro claims that expressing loop invariants as a diff "potentially leads to an easier, more intuitive, and more enjoyable user experience and to proofs that are more robust against code changes, because diffs (edits) tend to be smaller than whole invariants". We have not yet collected numbers to support this claim, because, as we explain at the end of section 6.2, "our framework is still in an early prototype phase where most new examples that we verify point us to some bugs and limitations in the framework that we fix on the fly, but for a meaningful evaluation, one should not make fixes to the framework while verifying examples."
+- The row "Performance of compiled code" of Table 1: The focus of this paper is the verification of C programs, while integrating it into bigger stacks and evaluating its performance there is part of our future projects.
+- The star ratings in the table in Fig 5 are based on our perceived experience, not on numbers. We believe that if the artifact reviewers worked with our framework and other frameworks for a few weeks, they might come to similar ratings, but of course verifying this is out of scope of the artifact evaluation process.
+
 
 ### How to verify the claims
 
@@ -244,11 +245,11 @@ List of claims from the paper not supported by the artifact
 
 Open an exported file and the corresponding Coq file next to each other, eg by running `emacs memset_exported.h memset.v`, and observe that the `.h` file is the same as the `.v` file except for a prefix consisting of a few `#include` directives and an opening comment `/**.`.
 
-#### 2. LiveVerif programs can be compiled with GCC (§3.1.1)
+#### 2. LiveVerif files can be compiled with GCC (§3.1.1)
 
 `cd` into `LiveVerif/src/LiveVerifExamples` and run `make clean`.
 Then, to turn the `.v` files into `.h` files and compile and run them, run `make`.
-It prints the commands that it executes to the terminal. For each `FILE`, it should print the following commands:
+It prints the commands that it executes to the terminal. For each `FILE`, it should print and execute the following commands:
 
 ```
 cat prelude.h.snippet FILE.v > FILE_exported.h
@@ -256,4 +257,33 @@ cc -O2 FILE_test.c -o FILE_test.exe
 /path/to/FILE.exe > FILE_test.out
 ```
 
-ugly-print
+#### 3. LiveVerif ASTs can be compiled with GCC (§3.2)
+
+Open `LiveVerif/src/LiveVerifExamples/uglyprint_memset.v` and process it up to the line `Print memset_ast.`
+The response window should now contain the AST (containing `Syntax.cmd.seq`, `Syntax.cmd.while` etc) that was created by LiveVerif.
+
+Then, process up to the line `print_bytes string_bytes`.
+The response window should now contain a C prelude, followed by the `Memset` function obtained from the AST that was created using LiveVerif.
+
+Copy-paste the C output in the response window into a file called `Memset.c` and compile it using `gcc -c Memset.c`, which should create a `Memset.o` file.
+
+
+#### 4. Loop invariants can be expressed as a diff from the the current symbolic state (§3.1.7 and §3.5.1)
+
+Open `LiveVerif/src/LiveVerifExamples/memset.v` and process it upto and including the line starting with `uintptr_t i = 0` (by putting the cursor on the line after that line and hitting `C-c Enter` in emacs).
+Verify that the proof goal corresponds to Fig 2a.
+
+Process the next three Ltac commands (which also appear in Fig 2c) by hitting `C-c C-n` three times in Emacs and observe how this affects the proof goal aka symbolic state.
+Verify that it corresponds to Fig 2b.
+
+Uncomment the `Ltac log_packaged_context` at the top of the file, and process until just after the `/**.` after the `while`.
+In the response window, you can see the loop invariant that was generated from the generalized context.
+Verify that it corresponds to Fig 2d (up to a `packaged_mem_clause_marker` that we simplified away).
+
+Run `grep -R LiveVerif/src/LiveVerifExamples --include='*.v' -e while` to list more examples containing while loops and decide for yourself which ones you want to inspect further.
+
+#### 5. IDE extensions (§3.4.2)
+
+#### 6. Safe steps (§3.5.5)
+
+#### 7. Evaluation (§6)
