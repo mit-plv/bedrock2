@@ -64,6 +64,7 @@ Navigate to the line just after the one starting with `uintptr_t i = 0`.
 Process the proof up to that point (Ctrl-c Ctrl-Enter), and make sure you see the source window and the window with the proof goal.
 Process a few more lines of the proof (Ctrl-c Ctrl-n), and make sure you can see how this stepping affects the proof goal.
 
+If you got up to here, you have successfully kicked the tires!
 
 
 Overview
@@ -253,7 +254,7 @@ List of claims from the paper not supported by the artifact:
 
 #### 1. LiveVerif Coq files become C files when prefixed with an opening C comment `/*` (§1.1)
 
-`cd` into `LiveVerif/src/LiveVerifExamples` and run `ls *_exported.h` to see the C code files that was obtained from Coq files. Note that to simplify the build process, we use C header files (`.h`) instead of C files (`.c`).
+`cd` into `LiveVerif/src/LiveVerifExamples` and run `ls *_exported.h` to see the C code files that were obtained from Coq files. Note that to simplify the build process, we use C header files (`.h`) instead of C files (`.c`).
 
 Open an exported file and the corresponding Coq file next to each other, eg by running `emacs memset_exported.h memset.v`, and observe that the `.h` file is the same as the `.v` file except for a prefix consisting of a few `#include` directives and an opening comment `/**.`.
 
