@@ -234,7 +234,13 @@ In the following, section numbers refer to the submission version of the paper (
 
 List of claims from the paper supported by the artifact:
 1. LiveVerif Coq files become C files when prefixed with an opening C comment `/*` (§1.1)
-2. LiveVerif programs can be compiled with GCC (§3.1.1)
+2. LiveVerif files can be compiled with GCC (§3.1.1)
+3. LiveVerif ASTs can be compiled with GCC (§3.2)
+4. LiveVerif ASTs can be compiled with the Bedrock2 compiler (§3.2)
+5. Loop invariants can be expressed as a diff from the the current symbolic state (§3.1.7 and §3.5.1)
+5. We implemented Emacs keyboard shortcuts for three very common LiveVerif-related operations (§3.4.2)
+6. Inserting safe steps can help debug programs (§3.5.5)
+7. The statistics in Table 2 are reproducible (§6)
 
 List of claims from the paper not supported by the artifact:
 - The intro claims that expressing loop invariants as a diff "potentially leads to an easier, more intuitive, and more enjoyable user experience and to proofs that are more robust against code changes, because diffs (edits) tend to be smaller than whole invariants". We have not yet collected numbers to support this claim, because, as we explain at the end of section 6.2, "our framework is still in an early prototype phase where most new examples that we verify point us to some bugs and limitations in the framework that we fix on the fly, but for a meaningful evaluation, one should not make fixes to the framework while verifying examples."
@@ -331,6 +337,39 @@ Try to think whether any of these two claims might hold, maybe by running comman
 Conclude that these claims can't hold, and that therefore, something in the program before must be wrong, namely the `p-2` should be `p+2`.
 After making that replacement, and changing `/*?.` back into `/**.`, observe that processing this command now works and leads to a goal with `ready` in the conclusion, and a hypothesis `Def0 : tmp = /[barB b]` saying that the variable `tmp` now contains field `barB` of record `b`.
 
-#### 7. Evaluation (§6)
 
-TODO needs to copy build log into file
+#### 7. The statistics in Table 2 are reproducible (§6)
+
+Open `LiveVerif/src/LiveVerif/LiveProgramLogic.v` and replace the line
+
+```
+Ltac _stats := don't_print_stats.
+```
+
+by
+
+```
+Ltac _stats := print_stats.
+```
+
+and save the file.
+Then, in the *toplevel directory* of the artifact, run
+
+```
+TIMED=1 make LiveVerif_ex > log.txt 2>&1
+```
+
+This recompiles all example files with timing and snippet count statistics enabled, and might take about 15 minutes. DO NOT use any `-j` option, because that would make it impossible to attribute the statistics lines to the correct files.
+If you use the docker image, the file `log.txt` should already be there, so you could skip that step.
+While waiting for the build to complete, you could watch the content of the log grow by running `tail -f log.txt` in a new terminal.
+
+Once `make` has finished, run
+
+```
+python LiveVerif/stats.py log.txt
+```
+
+and check that its latex output looks similar to Table 2 in the paper.
+The Funcs, Snippets, and Lines columns should match exactly, and the Time[s] column should match approximately, depending on the speed of your computer.
+The final column, Loops, has to be checked by sampling manually:
+`while` loops with only a `decreases` clause are traditional while loops (counted as the first number `x`), whereas `while` loops with both a `decreases` clause and an `initial_ghosts` clause are those in the style popularized by Tuerk [2010] (counted as the second number `y`. Loops using the lemma `wp_while_tailrec` instead of the C notations are also of the second kind.
