@@ -222,6 +222,11 @@ i  -- to ignore the local variables list, and permanently mark these
 
 We suggest to answer `!`, so that it won't be displayed again. Its effect is that when opening a file starting with the line `(* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)`, emacs automatically executes the commands in `LiveVerif/src/LiveVerif/live_verif_setup.el`, which set up a few convenient shortcuts for the buffer of current file only.
 
+And finally, an inconvenience warning for emacs users:
+LiveVerif files end with the line `End LiveVerif. Comments .**/ //.`, which can greatly confuse Proof General's script management, to the point where you need to restart emacs.
+It is therefore recommended to only process files up to the second-to-last line.
+(But note that `coqc` of course processes the full files, and does not get confused).
+
 
 ### List of claims
 
@@ -231,10 +236,11 @@ List of claims from the paper supported by the artifact:
 1. LiveVerif Coq files become C files when prefixed with an opening C comment `/*` (§1.1)
 2. LiveVerif programs can be compiled with GCC (§3.1.1)
 
-List of claims from the paper not supported by the artifact
+List of claims from the paper not supported by the artifact:
 - The intro claims that expressing loop invariants as a diff "potentially leads to an easier, more intuitive, and more enjoyable user experience and to proofs that are more robust against code changes, because diffs (edits) tend to be smaller than whole invariants". We have not yet collected numbers to support this claim, because, as we explain at the end of section 6.2, "our framework is still in an early prototype phase where most new examples that we verify point us to some bugs and limitations in the framework that we fix on the fly, but for a meaningful evaluation, one should not make fixes to the framework while verifying examples."
 - The row "Performance of compiled code" of Table 1: The focus of this paper is the verification of C programs, while integrating it into bigger stacks and evaluating its performance there is part of our future projects.
 - The star ratings in the table in Fig 5 are based on our perceived experience, not on numbers. We believe that if the artifact reviewers worked with our framework and other frameworks for a few weeks, they might come to similar ratings, but of course verifying this is out of scope of the artifact evaluation process.
+- We do not include instructions on how to run RISC-V binaries created by the Bedrock2 compiler from LiveVerif programs, as this is not the focus of this paper (but we do run Bedrock2-compiler-generated RISC-V binaries in other not-yet-published projects, using qemu, both in user mode and system (bare-metal) mode, and also using spike, and also in a published project, using an FPGA running a verified processor, see [Erbsen et al. 2021]).
 
 
 ### How to verify the claims
@@ -268,7 +274,16 @@ The response window should now contain a C prelude, followed by the `Memset` fun
 Copy-paste the C output in the response window into a file called `Memset.c` and compile it using `gcc -c Memset.c`, which should create a `Memset.o` file.
 
 
-#### 4. Loop invariants can be expressed as a diff from the the current symbolic state (§3.1.7 and §3.5.1)
+#### 4. LiveVerif ASTs can be compiled with the Bedrock2 compiler (§3.2)
+
+Open `LiveVerifCompile/src/LiveVerifCompile/compile_memset.v` and process until just after `let r := eval cbv in memset_insts in idtac r.`
+In the response window, this command outputs the RISC-V assembly instructions produced by running the Bedrock2 compiler on the memset AST created by LifeVerif.
+
+Then, process up to just after `let r := eval cbv in memset_binary in idtac r.`
+In the response window, this command outputs the hex-encoded RISC-V binary produced by the bedrock2 compiler.
+
+
+#### 5. Loop invariants can be expressed as a diff from the the current symbolic state (§3.1.7 and §3.5.1)
 
 Open `LiveVerif/src/LiveVerifExamples/memset.v` and process it upto and including the line starting with `uintptr_t i = 0` (by putting the cursor on the line after that line and hitting `C-c Enter` in emacs).
 Verify that the proof goal corresponds to Fig 2a.
@@ -282,8 +297,40 @@ Verify that it corresponds to Fig 2d (up to a `packaged_mem_clause_marker` that 
 
 Run `grep -R LiveVerif/src/LiveVerifExamples --include='*.v' -e while` to list more examples containing while loops and decide for yourself which ones you want to inspect further.
 
-#### 5. IDE extensions (§3.4.2)
 
-#### 6. Safe steps (§3.5.5)
+#### 5. We implemented Emacs keyboard shortcuts for three very common LiveVerif-related operations (§3.4.2)
+
+This part only works fully in Emacs. Non-emacs users may skip it the first two shortcuts, because the paper's main claims also hold without these Emacs extensions.
+But non-emacs users should try to replicate the third shortcut manually by inserting and processing manually a few `step. step. step. ...`.
+
+**Processing one line of C with `C-c C-k`:**
+Open `LiveVerif/src/LiveVerifExamples/memset.v` and process it up to just after `store8(a + i, b);`. On the next line, write some dummy command, e.g. `i = 42;`. Then hit `C-c C-k`, and observe how this inserts spaces, a closing comment `/**.`, processes the buffer up to there, and inserts an opening comment `.**/`, a newline, and appropriate indentation, so that you can write the next command right away.
+
+**Showing/hiding the Ltac block under the cursor with `Shift-Tab`:**
+Place your cursor anywhere in the Ltac block just above the while loop. Hit `Shift-Tab` and observe how the Ltac code gets folded into `⋯`, and verify that the code now looks like in Figure 1. Hit `Shift-Tab` again to show the Ltac code again.
+
+**Debugging the proof automation using repeated `step. step. ...` with `C-c C-i`**:
+After `store8(a + i, b);`, replace the `/**.` by `/*?.`. This prevents proof automation from running after the snippet, so that you can debug it.
+Next, press `C-j` to insert a newline without any indentation (the default indentation procedure that runs when hitting `Enter` unfortunately gets confused and is not usable here).
+Then, press `C-c C-i` multiple times, and observe how `step.` gets inserted into the script and processed, and how the proof goal changes.
+Also observe that in the response window, each `step` prints a short description of what it did, which is useful for debugging: One can search for the printed description in the file `LiveVerif/src/LiveVerif/LiveProgramLogic.v` to get to the Ltac snippet piece that ran in the current step.
+After running `step.` 24 times, the conclusion of the goal should become just `ready` (which is a notation with an implicit argument to hide the actual goal, which is not important at this point).
+(Note that if you run more `step.` after that, it will fail).
+After insterting these 24 `step.` commands, processing the remainder of the program/proof until after the `Qed.` should still work.
+
+If you are interested how these shortcuts are implemented, you can find the source in `LiveVerif/src/LiveVerif/live_verif_setup.el`.
+
+
+#### 6. Inserting safe steps can help debug programs (§3.5.5)
+
+Open `LiveVerif/src/LiveVerifExamples/ErrorTests/find_superrange_hyp_errors.v` and process up to just after the first occurrence of `uintptr_t tmp = load16(p-2);`.
+After that command, replace the `/**.` by `/*?.`, and insert a few `step. step. step. ...` commands until `Error : "Exactly one of the following claims should hold:" [|subrange (p ^- /[2]) 2 p (8 + n * 4); inrange p (p ^- /[2]) 2|]` shows up as a hypothesis.
+
+Try to think whether any of these two claims might hold, maybe by running commands like `assert (subrange (p ^- /[2]) 2 p (8 + n * 4)).`, `assert (inrange p (p ^- /[2]) 2)`, `unfold subrange, inrange.`.
+
+Conclude that these claims can't hold, and that therefore, something in the program before must be wrong, namely the `p-2` should be `p+2`.
+After making that replacement, and changing `/*?.` back into `/**.`, observe that processing this command now works and leads to a goal with `ready` in the conclusion, and a hypothesis `Def0 : tmp = /[barB b]` saying that the variable `tmp` now contains field `barB` of record `b`.
 
 #### 7. Evaluation (§6)
+
+TODO needs to copy build log into file
