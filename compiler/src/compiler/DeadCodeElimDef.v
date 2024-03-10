@@ -14,7 +14,6 @@ Require Import coqutil.Tactics.fwd.
 (*  below only for of_list_list_diff *)
 Require Import Coq.Logic.PropExtensionality.
 Require Import Coq.Logic.FunctionalExtensionality.
-Require Export compiler.DeadCodeElimHelper.
 
 Section WithArguments1.
   Context {width: Z}.
@@ -210,6 +209,40 @@ Section WithArguments1.
     eapply H.
   Qed.
 
+    
+  Lemma subset_of_list_find_removeb:
+    forall a x l,
+      subset
+        (of_list
+           (if find (eqb a) (List.removeb eqb x l)
+            then List.removeb eqb x l
+            else a :: List.removeb eqb x l))
+        (of_list (if find (eqb a) l then l else a :: l)).
+  Proof.
+    unfold subset, of_list, elem_of in *; simpl; intros.
+    destr (find (eqb a) (List.removeb eqb x l)).
+    - destr (find (eqb a) l ).
+      + eapply List.In_removeb_weaken. eassumption.
+      + eapply in_cons. eapply List.In_removeb_weaken.
+        eassumption.
+    - eapply in_inv in H.
+      destr H.
+      + rewrite H in *.
+        destr (find (eqb x0)).
+        * inversion E.
+        * destr (find (eqb x0) l).
+          -- pose proof E1 as E1'.
+             eapply List.find_eqb in E1.
+             rewrite <- E1 in E1'.
+             eapply find_some.
+             eapply E1'.
+          -- eapply in_eq.
+      + destr (find (eqb a) l ).
+        * eapply List.In_removeb_weaken. eassumption.
+        * eapply in_cons. eapply List.In_removeb_weaken.
+          eassumption.
+  Qed.
+  
   Fixpoint live(s: stmt var)(l: list var): list var :=
     match s with
     | SInteract resvars _ argvars  =>

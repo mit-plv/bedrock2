@@ -341,11 +341,11 @@ Section WithWordAndMem.
       intros.
       eapply @exec.weaken.
       - eapply dce_correct_aux; eauto.
-        eapply agree_on_refl. eauto.
+        eapply MapEauto.agree_on_refl. 
       - unfold compile_post. intros. fwd.
         exists retvals.
         split.
-        + erewrite agree_on_getmany; [ eassumption | eapply String.eqb_spec | eauto | eapply agree_on_comm; [ eapply String.eqb_spec | eauto | eassumption ] ].
+        + erewrite MapEauto.agree_on_getmany; [ eauto | eapply MapEauto.agree_on_comm; [ eassumption ] ].
         + eassumption.
        Unshelve. eauto.
     Qed.
