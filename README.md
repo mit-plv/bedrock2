@@ -27,11 +27,11 @@ Download `LiveVerifArtifactDockerImage.tar` and import it into docker:
 sudo docker load -i /path/to/LiveVerifArtifactDockerImage.tar
 ```
 
-After that, `sudo docker images` should list a "repository" named `LiveVerifArtifact`.
+After that, `sudo docker images` should list a "repository" named `live_verif_artifact`.
 Then run the image:
 
 ```
-sudo docker run -it LiveVerifArtifact
+sudo docker run -it live_verif_artifact
 ```
 
 This should open a command prompt inside the docker image, where you can use `ls` and `cd` to look around to see what's there.
