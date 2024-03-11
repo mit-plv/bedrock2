@@ -314,7 +314,7 @@ But non-emacs users should try to replicate the third shortcut manually by inser
 Open `LiveVerif/src/LiveVerifExamples/memset.v` and process it up to just after `store8(a + i, b);`. On the next line, write some dummy command, e.g. `i = 42;`. Then hit `C-c C-k`, and observe how this inserts spaces, a closing comment `/**.`, processes the buffer up to there, and inserts an opening comment `.**/`, a newline, and appropriate indentation, so that you can write the next command right away.
 
 **Showing/hiding the Ltac block under the cursor with `Shift-Tab`:**
-Place your cursor anywhere in the Ltac block just above the while loop. Hit `Shift-Tab` and observe how the Ltac code gets folded into `⋯`, and verify that the code now looks like in Figure 1. Hit `Shift-Tab` again to show the Ltac code again.
+Place your cursor anywhere in the Ltac block just above the while loop. Hit `Shift-Tab` and observe how the Ltac code gets folded into `⋯` (or into some substitute character like `?` if your terminal doesn't support displaying the Unicode Character U+22EF Midline Horizontal Ellipsis `⋯`), and verify that the code now looks like in Figure 1. Hit `Shift-Tab` again to show the Ltac code again.
 
 **Debugging the proof automation using repeated `step. step. ...` with `C-c C-i`**:
 After `store8(a + i, b);`, replace the `/**.` by `/*?.`. This prevents proof automation from running after the snippet, so that you can debug it.
@@ -333,9 +333,10 @@ If you are interested how these shortcuts are implemented, you can find the sour
 Open `LiveVerif/src/LiveVerifExamples/ErrorTests/find_superrange_hyp_errors.v` and process up to just after the first occurrence of `uintptr_t tmp = load16(p-2);`.
 After that command, replace the `/**.` by `/*?.`, and insert a few `step. step. step. ...` commands until `Error : "Exactly one of the following claims should hold:" [|subrange (p ^- /[2]) 2 p (8 + n * 4); inrange p (p ^- /[2]) 2|]` shows up as a hypothesis.
 
-Try to think whether any of these two claims might hold, maybe by running commands like `assert (subrange (p ^- /[2]) 2 p (8 + n * 4)).`, `assert (inrange p (p ^- /[2]) 2)`, `unfold subrange, inrange.`.
+Try to think whether any of these two claims might hold, maybe by running commands like `assert (subrange (p ^- /[2]) 2 p (8 + n * 4)).`, `assert (inrange p (p ^- /[2]) 2)`, `unfold subrange, inrange.`, `Locate "\[ _ ]"`.
 
-Conclude that these claims can't hold, and that therefore, something in the program before must be wrong, namely the `p-2` should be `p+2`.
+Conclude that the first claim can't hold (because it results in an underflow), and that the second claim holds, but isn't useful to make progress, because using the fact that `p` is in the range of size 2 that starts at `p-2` to split that range would chop off an always-empty range.
+Conclude that therefore, something in the program before must be wrong, namely the `p-2` should be `p+2`.
 After making that replacement, and changing `/*?.` back into `/**.`, observe that processing this command now works and leads to a goal with `ready` in the conclusion, and a hypothesis `Def0 : tmp = /[barB b]` saying that the variable `tmp` now contains field `barB` of record `b`.
 
 
