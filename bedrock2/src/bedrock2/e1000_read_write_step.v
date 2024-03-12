@@ -394,55 +394,59 @@ Section WithMem.
 
   (* read RDH: new RDH can be anywhere between old RDH (incl) and old RDT (excl),
      we receive the memory chunk for each descriptor between old and new RDH,
-     as well as the buffers pointed to by them, which contain newly received packets
-  Lemma wp_read_RDH: forall e mNIC rdh tdh old_rx_descs rx_queue_cap tx_queue_cap
-                            rdba tdba rx_buf_size t m l r post
-                            rxq txq rx_bufs tx_bufs,
+     as well as the buffers pointed to by them, which contain newly received packets *)
+  Lemma wp_read_RDH: forall e t m l s r mNIC rxq txq post,
       externally_owned_mem t mNIC ->
-      (* begin NIC invariant, TODO factor out *)
-      getRDBA t rdba ->
-      getRDH t rdh ->
-      get_receive_queue_cap t rx_queue_cap ->
-      get_receive_buf_size t rx_buf_size ->
-      getTDBA t tdba ->
-      getTDH t tdh ->
-      get_transmit_queue_cap t tx_queue_cap ->
-      let rx_buf_addrs := List.map (fun d => /[d.(rx_desc_addr)]) rxq in
-      let tx_buf_addrs := List.map (fun d => /[d.(tx_desc_addr)]) txq in
-      <{ (* receive-related: *)
-          * circular_buffer_slice rx_desc_t rx_queue_cap \[rdh] rxq rdba
-          * scattered_array (array (uint 8) rx_buf_size) rx_bufs rx_buf_addrs
-          (* transmit-related: *)
-          * circular_buffer_slice tx_desc_t tx_queue_cap \[tdh] txq tdba
-          * layout_absolute (List.map (fun pkt => array' (uint 8) pkt) tx_bufs) tx_buf_addrs
-        }> mNIC ->
-      (* end of NIC invariant *)
-      (forall (m' mRcv: mem) (packets: list buf),
-          map.split m' mRcv m ->
-          len packets <= len rxq ->
-          let new_RDH := /[(\[rdh] + len packets) mod rx_queue_cap] in
-          (* we get back a (wrapping) slice of the rx queue as well as the corresponding
-             buffers *)
-          <{ * circular_buffer_slice rx_desc_t rx_queue_cap \[rdh]
-                                     old_rx_descs[:len packets] rdba
-             * scattered_array (array (uint 8) rx_buf_size) packets
-                   (List.map (fun d => /[d.(rx_desc_addr)]) (old_rx_descs[:len packets]))
-          }> mRcv ->
-          post (cons ((map.empty, "MMIOREAD", [| register_address E1000_RDH |]),
+      e1000_initialized s t ->
+      e1000_invariant s rxq txq mNIC ->
+      (forall m' mRcv (done: list (rx_desc * buf)) new_RDH,
+          (* need explicit mRcv because it appears in trace *)
+          map.split m' m mRcv ->
+          \[new_RDH] = (s.(rx_queue_head) + len done) mod s.(rx_queue_cap) ->
+          len done <= len rxq ->
+          List.map fst done = List.map fst rxq[:len done] ->
+          (* snd (new buffer) can be any bytes *)
+          circular_buffer_slice (rxq_elem s.(rx_buf_size))
+            s.(rx_queue_cap) s.(rx_queue_head) done s.(rx_queue_base_addr) mRcv ->
+          post (cons ((map.empty,
+                       "memory_mapped_extcall_read32",
+                       [| register_address E1000_RDH |]),
                       (mRcv, [|new_RDH|])) t)
                m' (map.put l r new_RDH)) ->
-      exec e (cmd.interact [|r|] "MMIOREAD" [|expr.literal \[register_address E1000_RDH]|])
-           t m l post.
+      exec e (cmd.interact [|r|] "memory_mapped_extcall_read32"
+                [|expr.literal \[register_address E1000_RDH]|]) t m l post.
   Proof.
     intros.
-    eapply exec.interact_cps.
-    2: {
-      cbn [eval_call_args eval_expr]. rewrite word.of_Z_unsigned. reflexivity.
-    }
-    2: {
-      unfold ext_spec. left. do 2 (split; [reflexivity | ]).
-      eexists. split. 1: reflexivity.
-      (* looks promising, but still need to determine ?mGive and ?mKeep *)
-  Abort. *)
+    eapply exec.interact_cps with (mGive := map.empty).
+    { eapply map.split_empty_r. reflexivity. }
+    { cbn [eval_call_args eval_expr]. rewrite word.of_Z_unsigned. reflexivity. }
+    { unfold ext_spec. exists 4%nat.
+      split; [solve [clear; auto] | ]. left.
+      split; [reflexivity | ].
+      eexists.
+      split; [reflexivity | ].
+      split; [reflexivity | ].
+      unfold read_step, e1000_MemoryMappedExtCalls, e1000_read_step.
+      split; [reflexivity | ].
+      exists s, mNIC, rxq, txq.
+      do 3 (split; [assumption | ]).
+      left.
+      split; [reflexivity | ].
+      intros mRcv done B F M.
+      rewrite LittleEndian.combine_split. cbn [map.putmany_of_list_zip].
+      change (Z.of_nat 4 * 8) with 32.
+      eexists.
+      split; [reflexivity | ].
+      intros m' Sp.
+      eapply H2.
+      - exact Sp.
+      - rewrite word.unsigned_of_Z_nowrap.
+        + case TODO. (* bound rx_queue_cap *)
+        + destruct width_cases as [W | W]; rewrite W;
+            Z.to_euclidean_division_equations; lia.
+      - eassumption.
+      - assumption.
+      - exact M. }
+  Qed.
 
 End WithMem.
