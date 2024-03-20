@@ -4,6 +4,7 @@ Require Import LiveVerifExamples.onesize_malloc.
 Require Import coqutil.Datatypes.PropSet.
 
 Require Coq.Bool.Bool.
+Require Import Coq.Classes.DecidableClass.
 
 (* sometimes used in a heuristic to differentiate between maps
    - representing memory
@@ -358,6 +359,7 @@ Ltac misc_simpl_step :=
        replace w2' with w1'; [ reflexivity | subst w1' w2' ]
 
   | H: ?Q, H2: ?Q -> ?P |- _ => specialize (H2 H)
+  | H: ?a = ?a -> _ |- _ => specialize (H eq_refl)
   | H: ?b = ?a, H2: ?a = ?b -> ?P |- _ => specialize (H2 (eq_sym H))
   | H: Some _ <> None |- _ => clear H
   | H: None <> Some _ |- _ => clear H
@@ -3278,14 +3280,23 @@ Fixpoint cbt_lookup_trace sk c k :=
   end.
 
 Lemma word_or_0_l : forall w, word.or /[0] w = w.
-Admitted.
+Proof.
+  intros. apply word.unsigned_inj. rewrite word.unsigned_or_nowrap.
+  rewrite word.unsigned_of_Z_0. apply Z.lor_0_l.
+Qed.
 
 Lemma word_or_0_r : forall w, word.or w /[0] = w.
-Admitted.
+Proof.
+  intros. apply word.unsigned_inj. rewrite word.unsigned_or_nowrap.
+  rewrite word.unsigned_of_Z_0. apply Z.lor_0_r.
+Qed.
 
 Lemma word_or_assoc : forall w1 w2 w3,
   word.or w1 (word.or w2 w3) = word.or (word.or w1 w2) w3.
-Admitted.
+Proof.
+  intros. apply word.unsigned_inj. repeat rewrite word.unsigned_or_nowrap.
+  apply Z.lor_assoc.
+Qed.
 
 #[export] Instance spec_of_cbt_best_with_trace: fnspec :=                       .**/
 uintptr_t cbt_best_with_trace(uintptr_t tp, uintptr_t k, uintptr_t trace_out,
@@ -3459,12 +3470,6 @@ Lemma set_bit_at_true : forall w i i',
   bit_at (set_bit_at w i') i = true.
 Admitted.
 
-Definition map_min_key_value (c: word_map) : option (word * word) := map.fold
-  (fun cur k v => match cur with
-                  | Some (k', _) => if \[k] <? \[k'] then Some (k, v) else cur
-                  | None => Some (k, v)
-                  end) None c.
-
 Lemma map_filter_empty : forall f, map_filter map.empty f = map.empty.
 Proof.
   unfold map_filter. auto using map.fold_empty.
@@ -3493,7 +3498,7 @@ Definition map_take_gt c k := map_filter c (fun k' => \[k] <? \[k']).
 
 Lemma map_take_ge_empty : forall k, map_take_ge map.empty k = map.empty.
 Proof.
-  unfold map_take_ge. auto using map_filter_empty.
+  intros. apply map_filter_empty.
 Qed.
 
 Lemma map_take_ge_get_ge : forall c k k',
@@ -3524,9 +3529,17 @@ Proof.
   specialize (Hsm k'' Hnn). lia.
 Qed.
 
+Lemma map_filter_get_nnone_ftrue : forall c f k,
+  map.get (map_filter c f) k <> None -> f k = true.
+Proof.
+  intros. rewrite map_filter_get in *. destruct (f k); steps.
+Qed.
+
 Lemma map_take_ge_get_nnone : forall c k k',
   map.get (map_take_ge c k) k' <> None -> \[k] <= \[k'].
-Admitted.
+Proof.
+  unfold map_take_ge. intros ? ? ? Hnn. apply map_filter_get_nnone_ftrue in Hnn. lia.
+Qed.
 
 Lemma map_take_ge_get_nnone' : forall c k k',
   \[k] <= \[k'] -> map.get c k' <> None -> map.get (map_take_ge c k) k' <> None.
@@ -3536,7 +3549,10 @@ Qed.
 
 Lemma map_filter_monotone : forall c c' f,
   map.extends c c' -> map.extends (map_filter c f) (map_filter c' f).
-Admitted.
+Proof.
+  intros ? ? ? Hext. unfold map.extends. intros k v Hsm. rewrite map_filter_get in *.
+  destruct (f k); [ | discriminate ]. eauto using map.extends_get.
+Qed.
 
 Lemma map_take_ge_monotone : forall c c' k,
   map.extends c c' -> map.extends (map_take_ge c k) (map_take_ge c' k).
@@ -3552,32 +3568,118 @@ Qed.
 
 Definition map_size (c: word_map) := map.fold (fun n _ _ => n + 1) 0 c.
 
-Lemma map_size_empty : map_size map.empty = 0.
+Lemma map_size_empty1 : map_size map.empty = 0.
 Proof.
   apply map.fold_empty.
 Qed.
 
+Lemma map_size_empty1_eq : forall c, c = map.empty -> map_size c = 0.
+Proof.
+  intros. subst. apply map_size_empty1.
+Qed.
+
+Lemma map_size_empty2 : forall c, map_size c = 0 -> c = map.empty.
+Proof.
+  intros c.
+  eassert (HP: _). eapply map.fold_spec
+    with (P:=fun m n => n >= 0 /\ (n = 0 -> m = map.empty)) (m:=c).
+  3: exact (proj2 HP).
+  { split; [ lia | trivial ]. }
+  steps.
+Qed.
+
+Lemma map_size_nonneg : forall c, map_size c >= 0.
+Proof.
+  intros c.
+  eassert (HP: _). eapply map.fold_spec
+    with (P:=fun m n => n >= 0) (m:=c).
+  3: exact HP.
+  all: steps.
+Qed.
+
 Definition map_is_emptyb c := map_size c =? 0.
 
-Lemma map_is_emptyb_eq_empty : forall c, map_is_emptyb c = true <-> c = map.empty.
-Admitted.
+Lemma map_is_emptyb_reflects : forall c, map_is_emptyb c = true <-> c = map.empty.
+Proof.
+  intros. unfold map_is_emptyb. rewrite Z.eqb_eq.
+  split; auto using map_size_empty1_eq, map_size_empty2.
+Qed.
 
-Lemma map_min_key_value_eq : forall c k v,
-  map.get c k = Some v ->
-  (forall k', map.get c k' <> None -> \[k] <= \[k']) ->
-  map_min_key_value c = Some (k, v).
-Admitted.
+
+Instance map_empty_dec (c : word_map) : Decidable (c = map.empty) := {
+  Decidable_spec := map_is_emptyb_reflects c
+}.
+
+Definition map_min_key_value (c: word_map) : option (word * word) := map.fold
+  (fun cur k v => match cur with
+                  | Some (k', _) => if \[k] <? \[k'] then Some (k, v) else cur
+                  | None => Some (k, v)
+                  end) None c.
 
 Lemma map_min_key_value_in : forall c k v,
   map_min_key_value c = Some (k, v) ->
   map.get c k = Some v.
-Admitted.
+Proof.
+  intros ? ? ? Heq.
+  eassert (HP: _). eapply map.fold_spec
+    with (P:=fun m state => forall k v, state = Some (k, v) -> map.get m k = Some v).
+  all: cycle 2. { eauto. } all: purge c; purge k; purge v; steps.
+  cbn in *. destruct r as [ [ rk rv ] | ].
+  - destruct (\[k] <? \[rk]) eqn:E; steps; subst.
+    match goal with
+    | H: forall _, _ |- _ => specialize (H k0 v0); prove_ante H; steps
+    end.
+    rewrite map.get_put_diff; [ assumption | ]. intro; congruence.
+  - steps.
+Qed.
+
+Lemma map_min_key_value_none_empty : forall c,
+  map_min_key_value c = None -> c = map.empty.
+Proof.
+  intros ?.
+  eassert (HP: _). eapply map.fold_spec
+    with (P:=fun m state => state = None -> m = map.empty).
+  all: cycle 2. { eassumption. }
+  all: steps. cbn in *. destruct r; steps; destruct (\[k] <? \[r]); steps.
+Qed.
 
 Lemma map_min_key_value_key_le : forall c k v k',
   map_min_key_value c = Some (k, v) ->
   map.get c k' <> None ->
   \[k] <= \[k'].
-Admitted.
+Proof.
+  intros ? ? ? ? Heq Hget'.
+  eassert (HP: _). eapply map.fold_spec
+    with (P:=fun m state => (state = None -> m = map.empty) /\
+      (forall k v k', state = Some (k, v) -> map.get m k' <> None -> \[k] <= \[k'])).
+  all: cycle 2. { apply proj2 in HP. eauto. }
+  all: purge c; purge k; purge v; purge k'; steps.
+  { match goal with
+    | H: context [ if ?cond then _ else _ ] |- _ => destruct cond; steps
+    end. }
+  destruct r as [ [ rk rv ] | ].
+  - match goal with
+    | H: forall _, _ |- _ => specialize (H rk rv); rename H into IH
+    end.
+    eq_neq_cases k k';
+    [ subst k' | specialize (IH k'); prove_ante IH; [ reflexivity | ] ];
+    destruct (\[k] <? \[rk]) eqn:E; steps; subst; steps.
+  - steps. subst. steps.
+Qed.
+
+Lemma map_min_key_value_eq : forall c k v,
+  map.get c k = Some v ->
+  (forall k', map.get c k' <> None -> \[k] <= \[k']) ->
+  map_min_key_value c = Some (k, v).
+Proof.
+  intros ? ? ? Hget Hleast. destruct (map_min_key_value c) as [ [ mnk mnv ] | ] eqn:E.
+  - specialize (Hleast mnk).
+    pose proof E as Hmnin. apply map_min_key_value_in in Hmnin.
+    prove_ante Hleast. { steps. }
+    eapply map_min_key_value_key_le in E; [ | rewrite Hget ]; steps.
+    assert (mnk = k); steps. subst. congruence.
+  - apply map_min_key_value_none_empty in E. steps.
+Qed.
 
 Lemma map_min_key_value_take_ge_has_min : forall c k v,
   map.get c k = Some v -> map_min_key_value (map_take_ge c k) = Some (k, v).
@@ -3949,14 +4051,6 @@ Derive cbt_next_ge_impl_at_cb SuchThat (fun_correct! cbt_next_ge_impl_at_cb)
     - intros k' Hink'. apply_forall. eauto with content_maps. }
 Qed.
 
-Require Import Coq.Classes.DecidableClass.
-
-Instance map_empty_dec (c : word_map) : Decidable (c = map.empty) := {
-  Decidable_spec := map_is_emptyb_eq_empty c
-}.
-
-Lemma map_is_emptyb_false : forall c, c <> map.empty -> map_is_emptyb c = false.
-Admitted.
 
 #[export] Instance spec_of_cbt_next_ge: fnspec :=                                .**/
 uintptr_t cbt_next_ge(uintptr_t tp, uintptr_t k,
@@ -4121,24 +4215,41 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
 }                                                                           /**.
 Qed.
 
+Lemma map_filter_impossible : forall c f,
+  (forall k, f k = false) -> map_filter c f = map.empty.
+Proof.
+  auto using map_filter_eq_empty.
+Qed.
+
 Lemma map_take_gt_max : forall c, map_take_gt c (word.opp /[1]) = map.empty.
-Admitted.
+Proof.
+  intros. apply map_filter_impossible. intros. hwlia.
+Qed.
 
 Lemma map_take_gt_get_gt : forall (c : word_map) (k k' : word),
   \[k] < \[k'] -> map.get (map_take_gt c k) k' = map.get c k'.
-Admitted.
+Proof.
+  intros. apply map_filter_get_pred_true. lia.
+Qed.
 
 Lemma map_take_gt_extends : forall (c : word_map) (k : word),
   map.extends c (map_take_gt c k).
-Admitted.
+Proof.
+  eauto using map_filter_extends.
+Qed.
 
 Lemma map_take_gt_get_nnone : forall (c : word_map) (k k' : word),
   map.get (map_take_gt c k) k' <> None -> \[k] < \[k'].
-Admitted.
+Proof.
+  intros ? ? ? Hnn. apply map_filter_get_nnone_ftrue in Hnn. lia.
+Qed.
 
 Lemma map_filter_ext : forall c f1 f2,
   (forall k, f1 k = f2 k) -> map_filter c f1 = map_filter c f2.
-Admitted.
+Proof.
+  intros ? ? ? Hfeqv. apply map.map_ext. intros k'. do 2 rewrite map_filter_get.
+  rewrite Hfeqv. reflexivity.
+Qed.
 
 #[export] Instance spec_of_cbt_next_gt: fnspec :=                                .**/
 uintptr_t cbt_next_gt(uintptr_t tp, uintptr_t k,
@@ -4195,12 +4306,6 @@ Proof.
   - simpl len in *. lia.
 Qed.
 
-Lemma map_key_next_exists : forall (c: word_map) k k',
-  (map.get c k' <> None /\ \[k] <= \[k']) ->
-  (exists knext, map.get c knext <> None /\ \[k] <= \[knext] /\
-    (forall k'', map.get c k'' <> None -> \[k] <= \[k''] -> \[knext] <= \[k''])).
-Admitted.
-
 Lemma array_len_1 : forall v a, impl1 (uintptr v a) (array uintptr 1 [|v|] a).
 Proof.
   steps. unfold impl1, array, Array.array. intro m'. steps.
@@ -4210,8 +4315,59 @@ Proof.
   unfold find_hyp_for_range, canceling, seps. steps.
 Qed.
 
+Lemma no_shared_byte : forall b1 b2 a (m : mem),
+  ~<{ * (fun m => m = map.singleton a b1)
+      * (fun m => m = map.singleton a b2)
+      * (fun _ => True) }> m.
+Proof.
+  intros. intro. steps.
+  match goal with
+  | H1: context [ b1 ], H2: context [ b2 ] |- _ =>
+    match type of H1 with
+    | ?tma |= _ => rename tma into ma; rename H1 into Ha
+    end;
+    match type of H2 with
+    | ?tmb |= _ => rename tmb into mb; rename H2 into Hb
+    end
+  end.
+  assert (Hdsj: map.disjoint ma mb).
+  { rewrite <- mmap.du_assoc in D.
+    destruct (ma ||| mb) as [ mcm | ] eqn:E; try discriminate.
+    rewrite <- split_du in E. unfold map.split in E. tauto. }
+  unfold "|=" in Ha. unfold "|=" in Hb. subst. unfold map.disjoint in *.
+  eapply Hdsj with (k:=a); unfold map.singleton; apply map.get_put_same.
+Qed.
+
+Lemma no_shared_uintptr : forall a m,
+  ~<{ * (EX v, uintptr v a) * (EX v, uintptr v a) * (fun _ => True) }> m.
+Proof.
+  intros. intro. steps.
+  unfold uintptr, scalar, truncated_word, truncated_scalar, littleendian, ptsto_bytes,
+         ptsto in *.
+  do 2 match goal with
+       | H: context [ Array.array ] |- _ => simpl in H
+       end.
+  match goal with
+  | H1: context [ byte.of_Z \[ ?v1 ] ], H2: context [ byte.of_Z \[ ?v2 ] ] |- _ =>
+        apply (no_shared_byte (byte.of_Z \[v1]) (byte.of_Z \[v2]) a m)
+  end.
+  steps.
+Qed.
+
 Lemma array_max_len : forall n l a m, array uintptr n l a m -> n <= 2 ^ 32 / 4.
-Admitted.
+Proof.
+  intros ? ? ? ? Har.
+  enough (~(2 ^ 32 / 4 < n)) by lia. intro. purify_hyp Har.
+  eapply split_array with (i := 2^32 / 4) in Har. 2: steps.
+  replace (a ^+ /[4 * (2 ^ 32 / 4)]) with a in * by hwlia.
+  repeat heapletwise_step.
+  do 2
+    match goal with
+    | H: _ |= array _ _ _ a |- _ =>
+         eapply split_off_elem_from_array with (i := 0) (a' := a) in H; steps
+    end.
+  apply (no_shared_uintptr a m). steps.
+Qed.
 
 Fixpoint sorted_word_word_insert (p : word * word) (l : list (word * word)) :=
   match l with
@@ -4221,17 +4377,310 @@ Fixpoint sorted_word_word_insert (p : word * word) (l : list (word * word)) :=
   | nil => cons p nil
   end.
 
+Lemma sorted_ww_insert_len : forall p l,
+  len (sorted_word_word_insert p l) = len l + 1.
+Proof.
+  induction l as [ | hd l ].
+  - reflexivity.
+  - destruct p as [ pk pv ]. destruct hd as [ hk hv ].
+    cbn [ sorted_word_word_insert fst ].
+    destruct (\[pk] <=? \[hk]); cbn [ List.length ]; lia.
+Qed.
+
+Lemma sorted_ww_insert_in : forall p p' l,
+  List.In p' (sorted_word_word_insert p l) -> p' = p \/ List.In p' l.
+Proof.
+  induction l as [ | hd l ]; cbn.
+  - steps. auto.
+  - destruct p as [ pk pv ]. destruct hd as [ hk hv ]. cbn [ fst ].
+    destruct (\[pk] <=? \[hk]); cbn; steps; repeat destruct_or; try tauto; auto.
+Qed.
+
+Lemma sorted_ww_insert_in' : forall p l,
+  List.In p (sorted_word_word_insert p l).
+Proof.
+  induction l as [ | hd l ]; cbn.
+  - auto.
+  - destruct p as [ pk pv ]. destruct hd as [ hk hv ]. cbn [ fst ].
+    destruct (\[pk] <=? \[hk]); cbn; tauto.
+Qed.
+
+Lemma sorted_ww_insert_in'' : forall p l,
+  List.incl l (sorted_word_word_insert p l).
+Proof.
+  induction l as [ | hd l ]; cbn.
+  - apply List.incl_nil_l.
+  - destruct p as [ pk pv ]. destruct hd as [ hk hv ]. cbn [ fst ].
+    destruct (\[pk] <=? \[hk]);
+    auto using List.incl_cons, List.incl_tl, List.in_eq, List.incl_refl.
+Qed.
+
+Instance product_inhabited X1 X2 `{ inhabited X1, inhabited X2 }
+  : inhabited (X1 * X2) := { default := (default, default) }.
+
+Definition ww_list_sorted (l : list (word * word)) : Prop :=
+  forall i j, 0 <= i < len l -> 0 <= j < len l -> i <= j ->
+  forall ki vi kj vj, l[i] = (ki, vi) -> l[j] = (kj, vj) -> \[ki] <= \[kj].
+
+Definition ww_list_unique_keys (l : list (word * word)) : Prop :=
+  forall i1 i2, 0 <= i1 < len l -> 0 <= i2 < len l -> fst l[i1] = fst l[i2] -> i1 = i2.
+
+Lemma ww_list_sorted_nil : ww_list_sorted nil.
+Proof.
+  unfold ww_list_sorted. cbn. steps.
+Qed.
+
+Lemma ww_list_sorted_singleton : forall p, ww_list_sorted [|p|].
+Proof.
+  unfold ww_list_sorted. cbn. intros. assert (i = 0) by lia. assert (j = 0) by lia.
+  subst. cbn in *. assert (ki = kj) by congruence. subst. reflexivity.
+Qed.
+
+Lemma ww_list_sorted_tail : forall p l, ww_list_sorted (p :: l) -> ww_list_sorted l.
+Proof.
+  intros ? ? Hsrt. intros i j ? ? ?. specialize (Hsrt (i + 1) (j + 1)).
+  do 3 (prove_ante Hsrt; [ cbn [ List.length ] in *; lia | ]).
+  intros ? ? ? ?. specialize (Hsrt ki vi kj vj). intros Hgeti Hgetj.
+  do 2 (prove_ante Hsrt ; [ steps | ]). assumption.
+Qed.
+
+Lemma ww_list_unique_keys_tail : forall p l,
+  ww_list_unique_keys (p :: l) -> ww_list_unique_keys l.
+Proof.
+  intros ? ? Huqk. intros i1 i2 ? ? ?. specialize (Huqk (i1 + 1) (i2 + 1)).
+  do 2 (prove_ante Huqk; [ cbn [ List.length ] in *; lia | ]).
+  prove_ante Huqk. { steps. } lia.
+Qed.
+
+Lemma ww_list_unique_keys_nil : ww_list_unique_keys nil.
+Proof.
+  unfold ww_list_unique_keys. cbn. steps.
+Qed.
+
+Lemma ww_list_unique_keys_singleton : forall p, ww_list_unique_keys [|p|].
+Proof.
+  unfold ww_list_unique_keys. cbn. intros. lia.
+Qed.
+
+Lemma list_get_cons_tail [A : Type] {inh : inhabited A} : forall n (a : A) l,
+  0 < n -> (a :: l)[n] = l[n - 1].
+Proof.
+  auto using push_down_get_tail.
+Qed.
+
+Lemma list_get_in1 [A : Type] {inh : inhabited A} : forall n (l : list A),
+  0 <= n < len l -> List.In (l[n]) l.
+Proof.
+  intros ? ? Hnr. unfold List.get. replace (n <? 0) with false by lia.
+  apply List.nth_In. lia.
+Qed.
+
+Lemma list_get_in1' [A : Type] {inh : inhabited A} : forall n (a : A) l,
+  0 <= n < len l -> l[n] = a -> List.In a l.
+Proof.
+  intros. subst. auto using list_get_in1.
+Qed.
+
+Lemma list_get_in2 [A : Type] {inh : inhabited A} : forall a (l : list A),
+  List.In a l -> exists n, 0 <= n < len l /\ l[n] = a.
+Proof.
+  intros ? ? Hlin. eapply List.In_nth in Hlin. destruct Hlin as [ nn [ Hrng Hlnth ] ].
+  exists (Z.of_nat nn). split. { lia. } unfold List.get.
+  replace (Z.of_nat nn <? 0) with false by lia. rewrite Nat2Z.id. eassumption.
+Qed.
+
+Lemma ww_list_sorted_prepend : forall kn vn k v l,
+  \[kn] <= \[k] -> ww_list_sorted ((k, v) :: l) ->
+  ww_list_sorted ((kn, vn) :: (k, v) :: l).
+Proof.
+  intros ? ? ? ? ? Hkcmp Hsrt. unfold ww_list_sorted. intros i j Hirng Hjrng Hijcmp.
+  assert (Hiv: i = 0 \/ i >= 1) by lia; destruct Hiv;
+  assert (Hjv: j = 0 \/ j >= 1) by lia; destruct Hjv;
+  subst; cbn; intros ? ? ? ? Hgeti Hgetj; steps; subst; steps;
+  [ specialize (Hsrt 0 (j - 1)) | specialize (Hsrt (i - 1) (j - 1)) ];
+  do 3 (prove_ante Hsrt; [ cbn [ List.length ] in *; lia | ]).
+  - specialize (Hsrt k v kj vj).
+    prove_ante Hsrt. { cbn. reflexivity. }
+    prove_ante Hsrt. { rewrite list_get_cons_tail in Hgetj by lia. assumption. }
+    lia.
+  - specialize (Hsrt ki vi kj vj).
+    apply Hsrt; erewrite <- list_get_cons_tail by lia; eassumption.
+Qed.
+
+Lemma sorted_ww_insert_sorted : forall p l,
+  ww_list_sorted l -> ww_list_sorted (sorted_word_word_insert p l).
+Proof.
+  induction l as [ | hd l ]; cbn.
+  - intros. apply ww_list_sorted_singleton.
+  - destruct p as [ pk pv ]. destruct hd as [ hk hv ]. cbn [ fst ]. intros Hsrt.
+    destruct (\[pk] <=? \[hk]) eqn:E.
+    + steps. auto using ww_list_sorted_prepend.
+    + prove_ante IHl. { eauto using ww_list_sorted_tail. }
+      destruct (sorted_word_word_insert (pk, pv) l) as [ | [ sk sv ] l' ] eqn:E2.
+      { apply ww_list_sorted_singleton. }
+      steps. apply ww_list_sorted_prepend; try assumption.
+      enough (Hin: List.In (sk, sv) (sorted_word_word_insert (pk, pv) l)).
+      * apply sorted_ww_insert_in in Hin. destruct Hin as [ ? | Hin ].
+        { steps. subst. steps. }
+        eapply list_get_in2 in Hin. destruct Hin as [ n [ Hnrng Hnget ] ].
+        specialize (Hsrt 0 (n + 1)).
+        do 3 (prove_ante Hsrt; [ cbn [ List.length ] in *; lia | ]).
+        specialize (Hsrt hk hv sk sv).
+        prove_ante Hsrt. { steps. } prove_ante Hsrt. { steps. eassumption. }
+        assumption.
+      * rewrite E2. cbn. tauto.
+Qed.
+
+Lemma ww_list_unique_keys_cons : forall k v l,
+  (forall v', ~List.In (k, v') l) -> ww_list_unique_keys l ->
+  ww_list_unique_keys ((k, v) :: l).
+Proof.
+  intros ? ? ? Hnin Huqk. intros i1 i2 Hrng1 Hrng2 Hkeq.
+  assert (Hcmp: i1 = 0 \/ i1 >= 1) by lia; destruct Hcmp;
+  assert (Hcmp: i2 = 0 \/ i2 >= 1) by lia; destruct Hcmp;
+  steps; subst; cbn [ List.length ] in *;
+  repeat match goal with
+         | Hi: ?i >= 1, Hl: context [ (?a :: ?l)[?i] ] |- _ =>
+               replace ((a :: l)[i]) with (l[i - 1]) in Hl by steps
+         end.
+  1-2:
+  exfalso; cbn in Hkeq;
+  match type of Hkeq with
+  | context [ ?l [?i - 1] ] => destruct (l[i - 1]) as [ fk fv] eqn:E
+  end;
+  cbn in Hkeq; subst fk; specialize (Hnin fv); apply Hnin;
+  eapply list_get_in1'; [ | eassumption ]; lia.
+  specialize (Huqk (i1 - 1) (i2 - 1)). do 2 (prove_ante Huqk; [ lia | ]). steps.
+Qed.
+
+Lemma ww_list_unique_keys_cons_in : forall k v v' l,
+  ww_list_unique_keys ((k, v) :: l) -> ~List.In (k, v') l.
+Proof.
+  intros ? ? ? ? Huqk Hin. eapply list_get_in2 in Hin.
+  destruct Hin as [ n [ Hrng Hget ] ]. specialize (Huqk 0 (n + 1)).
+  do 2 (prove_ante Huqk; [ cbn [ List.length ] in *; lia | ]).
+  prove_ante Huqk. { steps. rewrite Hget. steps. } lia.
+Qed.
+
+Lemma ww_list_unique_keys_cons_in' : forall a l,
+  ww_list_unique_keys (a :: l) -> ~List.In a l.
+Proof.
+  intros. destruct a. eauto using ww_list_unique_keys_cons_in.
+Qed.
+
+Lemma sorted_ww_insert_unique_keys : forall k v l,
+  (forall v', ~List.In (k, v') l) ->
+  ww_list_unique_keys l -> ww_list_unique_keys (sorted_word_word_insert (k, v) l).
+Proof.
+  induction l as [ | hd l ]; cbn.
+  - intros. apply ww_list_unique_keys_singleton.
+  - destruct hd as [ hk hv ]. intros Hninu Huqk. destruct (\[k] <=? \[hk]) eqn:E.
+    + steps.
+      apply ww_list_unique_keys_cons; [ | assumption ].
+      intros v' Hin. specialize (Hninu v'). apply Hninu. apply List.in_inv in Hin.
+      assumption.
+    + apply ww_list_unique_keys_cons.
+      * intros v' Hin. apply sorted_ww_insert_in in Hin.
+        destruct Hin. { steps. subst. steps. }
+        eapply ww_list_unique_keys_cons_in; eauto.
+      * apply IHl; [ | eauto using ww_list_unique_keys_tail ].
+        intros v' Hin. eapply Hninu. eauto.
+Qed.
+
+Lemma ww_list_sorted_head : forall k v l,
+  ww_list_sorted ((k, v) :: l) -> forall i, 0 <= i < len l -> \[k] <= \[fst l[i]].
+Proof.
+  intros ? ? ? Hsrt ? ?.
+  specialize (Hsrt 0 (i + 1)).
+  do 3 (prove_ante Hsrt; [ cbn [ List.length ] in *; lia | ]).
+  eapply Hsrt with (vi:=v) (vj:=snd l[i]); steps. destruct l[i]; steps.
+Qed.
+
+Lemma ww_list_sorted_head' : forall k v l,
+  ww_list_sorted ((k, v) :: l) -> forall k' v', List.In (k', v') l -> \[k] <= \[k'].
+Proof.
+  intros ? ? ? Hsrt ? ? Hlin.
+  eapply list_get_in2 in Hlin. destruct Hlin as [ n [ Hnrng Hlin ] ].
+  replace k' with (fst l[n]) by (rewrite Hlin; reflexivity).
+  eapply ww_list_sorted_head. { eassumption. } lia.
+Qed.
+
+Lemma ww_list_unique_keys_values : forall l, ww_list_unique_keys l ->
+  forall k v1 v2, List.In (k, v1) l -> List.In (k, v2) l -> v1 = v2.
+Proof.
+  intros ? Huqk ? ? ? Hin1 Hin2.
+  eapply list_get_in2 in Hin1. destruct Hin1 as [ n1 [ Hrng1 Hget1 ] ].
+  eapply list_get_in2 in Hin2. destruct Hin2 as [ n2 [ Hrng2 Hget2 ] ].
+  specialize (Huqk n1 n2). steps. rewrite Hget1 in Huqk. rewrite Hget2 in Huqk.
+  cbn [ fst ] in *. steps. congruence.
+Qed.
+
+Lemma list_incl_l_cons_tail [A : Type] {inh : inhabited A} :
+  forall (a : A) l l', List.incl (a :: l) l' -> List.incl l l'.
+Proof.
+  intros ? ? ? Hincl. apply List.incl_cons_inv in Hincl. tauto.
+Qed.
+
+Lemma list_incl_r_cons_tail [A : Type] {inh : inhabited A } :
+  forall (a : A) l l', ~List.In a l -> List.incl l (a :: l') -> List.incl l l'.
+Proof.
+  intros ? ? ? Hnin Hincl. intros a' Hin. specialize (Hincl a'). steps.
+  apply List.in_inv in Hincl. destruct_or; subst; tauto.
+Qed.
+
+Lemma ww_list_unique_sorted : forall l1 l2,
+  List.incl l1 l2 -> List.incl l2 l1 ->
+  ww_list_sorted l1 -> ww_list_sorted l2 ->
+  ww_list_unique_keys l1 -> ww_list_unique_keys l2 ->
+  l1 = l2.
+Proof.
+  intros. generalize dependent l2. induction l1 as [ | a1 l1 ]; intros.
+  - match goal with
+    | H: List.incl _ nil |- _ => apply List.incl_l_nil in H; subst; reflexivity
+    end.
+  - prove_ante IHl1. { eauto using ww_list_sorted_tail. }
+    prove_ante IHl1. { eauto using ww_list_unique_keys_tail. }
+    destruct l2 as [ | a2 l2 ].
+    { match goal with
+      | H: List.incl _ nil |- _ => apply List.incl_l_nil in H; discriminate
+      end. }
+    destruct a1 as [ k1 v1 ]. destruct a2 as [ k2 v2 ].
+    assert (\[k1] <= \[k2] /\ \[k2] <= \[k1]).
+    { split;
+      [ assert (Hlin: List.In (k2, v2) ((k1, v1) :: l1)) by (auto using List.in_eq)
+      | assert (Hlin: List.In (k1, v1) ((k2, v2) :: l2)) by (auto using List.in_eq) ];
+      apply List.in_inv in Hlin;
+      (destruct Hlin as [ Heq | Hlin ];
+       [ steps; subst; steps | eauto using ww_list_sorted_head' ]). }
+    assert (k1 = k2) by hwlia. subst k2. rename k1 into k.
+    assert (Hlin1: List.In (k, v1) ((k, v1) :: l1)) by (auto using List.in_eq).
+    assert (Hlin2: List.In (k, v2) ((k, v1) :: l1)) by (auto using List.in_eq).
+    match goal with
+    | H: ww_list_unique_keys (_ :: l1) |- _ => rename H into Huqk1
+    end.
+    epose proof (ww_list_unique_keys_values _ Huqk1 k v1 v2 Hlin1 Hlin2).
+    subst v2. rename v1 into v. f_equal. apply IHl1.
+    1-2: (eapply list_incl_r_cons_tail;
+      [ apply product_inhabited; apply word_inhabited
+      | eapply ww_list_unique_keys_cons_in'; eassumption
+      | eapply list_incl_l_cons_tail; try eassumption;
+        apply product_inhabited; apply word_inhabited ]).
+    eauto using ww_list_sorted_tail. eauto using ww_list_unique_keys_tail.
+Qed.
+
 Definition map_to_sorted_list : word_map -> list (word * word)
   := map.fold (fun l k v => sorted_word_word_insert (k, v) l) nil.
 
 Lemma map_to_sorted_list_length : forall c, len (map_to_sorted_list c) = map_size c.
-Admitted.
-
-Lemma map_size_empty' : forall c, map_size c = 0 -> c = map.empty.
-Admitted.
-
-Lemma map_size_nonneg : forall c, map_size c >= 0.
-Admitted.
+Proof.
+  intros.
+  unfold map_to_sorted_list, map_size.
+  eassert (HP: _). eapply map.fold_two_spec
+    with (P:=fun m s1 s2 => len s1 = s2) (m:=c).
+  all: cycle 2. { eassumption. }
+  - steps.
+  - steps. subst. apply sorted_ww_insert_len.
+Qed.
 
 Lemma map_to_sorted_list_empty : map_to_sorted_list map.empty = nil.
 Proof.
@@ -4239,22 +4688,127 @@ Proof.
 Qed.
 
 Lemma map_to_sorted_list_empty' : forall c, map_to_sorted_list c = nil -> c = map.empty.
-Admitted.
+Proof.
+  intros ? Hnil. f_apply (fun l : list (word * word) => len l) Hnil. cbn in Hnil.
+  rewrite map_to_sorted_list_length in Hnil. auto using map_size_empty2.
+Qed.
 
-Lemma map_filter_empty' : forall c f,
-  map_filter c f = map.empty -> (forall k, map.get c k <> None -> f k = false).
-Admitted.
+Lemma map_to_sorted_list_in : forall c k v,
+  List.In (k, v) (map_to_sorted_list c) <-> map.get c k = Some v.
+Proof.
+  intros ?.
+  eassert (HP: _). eapply map.fold_spec
+    with (P:=fun m state =>
+      forall k v, List.In (k, v) state <-> map.get m k = Some v).
+  all: cycle 2. { eassumption. }
+  - steps. split; steps. exfalso. eauto using List.in_nil.
+  - cbn. steps. split; steps.
+    + match goal with
+      | H: List.In _ _ |- _ => apply sorted_ww_insert_in in H; destruct_or; steps
+      end.
+      rewrite map.get_put_diff. { apply_forall. assumption. } intro. subst.
+      match goal with
+      | Hu: forall _, _, Hlin: List.In _ _ |- _ => apply Hu in Hlin
+      end.
+      congruence.
+    + eq_neq_cases k k0.
+      * subst. rewrite map.get_put_same in *. steps. subst. apply sorted_ww_insert_in'.
+      * rewrite map.get_put_diff in * by (symmetry; assumption).
+        apply sorted_ww_insert_in''. apply_forall. assumption.
+Qed.
 
-Instance product_inhabited X1 X2 `{ inhabited X1, inhabited X2 }
-  : inhabited (X1 * X2) := { default := (default, default) }.
+Lemma map_to_sorted_list_sorted : forall c,
+  ww_list_sorted (map_to_sorted_list c).
+Proof.
+  intros. unfold map_to_sorted_list.
+  eapply map.fold_spec; eauto using ww_list_sorted_nil, sorted_ww_insert_sorted.
+Qed.
+
+Lemma map_to_sorted_list_unique_keys : forall c,
+  ww_list_unique_keys (map_to_sorted_list c).
+Proof.
+  intros.
+  eassert (HP: _). eapply map.fold_spec
+    with (P:=fun m state => (forall k v, List.In (k, v) state -> map.get m k = Some v)
+                            /\ ww_list_unique_keys state).
+  all: cycle 2. { eapply proj2 in HP. eassumption. }
+  - split.
+    + intros. exfalso. eapply List.in_nil. eassumption.
+    + apply ww_list_unique_keys_nil.
+  - intros. cbn beta. steps.
+    + match goal with
+      | H: List.In _ _ |- _ => apply sorted_ww_insert_in in H; destruct H; steps
+      end.
+      eq_neq_cases k k0.
+      * exfalso. subst k0. eapply some_not_none; [ | eassumption ]. eauto.
+      * steps. auto.
+    + apply sorted_ww_insert_unique_keys; [ | assumption ]. intros v' Hin.
+      eapply some_not_none; [ | eassumption ]. eauto.
+Qed.
+
+Lemma map_size_empty'' : forall c,
+  c <> map.empty -> map_size c > 0.
+Proof.
+  intros c Hnem. enough (map_size c <> 0) by (pose proof map_size_nonneg c; lia).
+  intro Hsz0. apply_ne. auto using map_size_empty2.
+Qed.
 
 Lemma map_to_sorted_list_first : forall c,
   c <> map.empty -> map_min_key_value c = Some ((map_to_sorted_list c)[0]).
-Admitted.
+Proof.
+  intros. destruct ((map_to_sorted_list c)[0]) as [ k0 v0 ] eqn:E.
+  assert (map_size c > 0) by (auto using map_size_empty'').
+  apply map_min_key_value_eq.
+  - eapply map_to_sorted_list_in; try eassumption.
+    eapply list_get_in1'; [ | eassumption ]. rewrite map_to_sorted_list_length. lia.
+  - intros. destruct (map.get c k') as [ v' | ] eqn:E2; steps.
+    rewrite <- map_to_sorted_list_in in E2. eapply list_get_in2 in E2.
+    destruct E2 as [ n [ Hnrng Hnget ] ].
+    eapply map_to_sorted_list_sorted with (i:=0) (j:=n); try eassumption; lia.
+Qed.
 
 Lemma list_map_get (X Y : Type) { _ : inhabited X } { _ : inhabited Y }
   : forall (l : list X) (f : X -> Y) i,
   0 <= i < len l -> (List.map f l)[i] = f l[i].
+Proof.
+  intros. unfold List.get. replace (i <? 0) with false by lia.
+  rewrite <- List.map_nth with (f:=f).
+  apply List.nth_indep. rewrite List.map_length. lia.
+Qed.
+
+Lemma map_filter_some : forall c f k v,
+  map.get (map_filter c f) k = Some v -> map.get c k = Some v.
+Proof.
+  intros. rewrite map_filter_get in *. destruct (f k); congruence.
+Qed.
+
+Lemma map_take_gt_some : forall c k1 k2 v,
+  map.get (map_take_gt c k1) k2 = Some v -> map.get c k2 = Some v.
+Proof.
+  intros. unfold map_take_gt in *. eauto using map_filter_some.
+Qed.
+
+Lemma map_to_sorted_list_take_gt : forall c i k,
+  0 <= i < map_size c ->
+  fst ((map_to_sorted_list c)[i]) = k ->
+  map_to_sorted_list (map_take_gt c k) = (map_to_sorted_list c)[i + 1:].
+(*
+Proof.
+  intros. apply ww_list_unique_sorted.
+  - intros [ k' v' ] Hin. rewrite map_to_sorted_list_in in Hin.
+    assert (\[k] < \[k']) by (eauto using map_take_gt_get_nnone, some_not_none).
+    apply map_take_gt_some in Hin. rewrite <- map_to_sorted_list_in in Hin.
+    eapply list_get_in2 in Hin. destruct Hin as [ i' [ Hrng Hget ] ].
+    assert (Hsrt: ww_list_sorted (map_to_sorted_list c))
+      by (apply map_to_sorted_list_sorted).
+    assert (~(i' <= i)).
+    { intro. enough (\[k'] <= \[k]) by hwlia.
+      destruct ((map_to_sorted_list c)[i]) as [ kk v ] eqn:E. cbn [ fst ] in *. subst kk.
+      specialize (Hsrt i' i). rewrite <- map_to_sorted_list_length in *. steps.
+      specialize (Hsrt k' v' k v). eauto. }
+    eapply list_get_in1' with (n:=i' - (i + 1)); steps.
+  - (* CONTINUE HERE... *)
+ *)
 Admitted.
 
 Lemma map_to_sorted_list_key_gt_size : forall c i k,
@@ -4263,29 +4817,16 @@ Lemma map_to_sorted_list_key_gt_size : forall c i k,
   map_size (map_take_gt c k) = map_size c - 1 - i.
 Admitted.
 
-Lemma map_to_sorted_list_in : forall c i k,
+Lemma map_to_sorted_list_in'' : forall c i k,
   0 <= i < map_size c ->
   fst ((map_to_sorted_list c)[i]) = k ->
   map.get c k <> None.
-Admitted.
-
-Lemma map_to_sorted_list_take_gt : forall c i k,
-  0 <= i < map_size c ->
-  fst ((map_to_sorted_list c)[i]) = k ->
-  map_to_sorted_list (map_take_gt c k) = (map_to_sorted_list c)[i + 1:].
 Admitted.
 
 Lemma map_take_gt_take_ge : forall c k1 k2,
   \[k1] <= \[k2] ->
   map_take_gt (map_take_ge c k1) k2 = map_take_gt c k2.
 Admitted.
-
-Lemma map_size_empty'' : forall c,
-  c <> map.empty -> map_size c > 0.
-Proof.
-  intros c Hnem. enough (map_size c <> 0) by (pose proof map_size_nonneg c; lia).
-  intro Hsz0. apply_ne. auto using map_size_empty'.
-Qed.
 
 #[export] Instance spec_of_page_from_cbt: fnspec :=                         .**/
 uintptr_t page_from_cbt(uintptr_t tp, uintptr_t k, uintptr_t n,
@@ -4354,7 +4895,7 @@ Derive page_from_cbt SuchThat (fun_correct! page_from_cbt) As page_from_cbt_ok. 
   assert (Hszg0: 0 < map_size (map_take_ge c k)).
   { enough (map_size (map_take_ge c k) <> 0).
     { pose proof (map_size_nonneg (map_take_ge c k)). lia. }
-    intro Hsz0. apply map_size_empty' in Hsz0. tauto. }
+    intro Hsz0. apply map_size_empty2 in Hsz0. tauto. }
   assert (skeys[\[i] - 1] = k_it).
   { pose proof (map_to_sorted_list_first (map_take_ge c k)) as Hfrst.
     prove_ante Hfrst. { assumption. }
@@ -4419,7 +4960,7 @@ Derive page_from_cbt SuchThat (fun_correct! page_from_cbt) As page_from_cbt_ok. 
           i = i + 1;                                                       /**. .**/
         }                                                                  /*?.
   assert (\[k] <= \[k_it']).
-  { pose proof (map_to_sorted_list_in (map_take_ge c k) (\[i'] - 1) k_it') as Hkitin.
+  { pose proof (map_to_sorted_list_in'' (map_take_ge c k) (\[i'] - 1) k_it') as Hkitin.
     prove_ante Hkitin. lia. prove_ante Hkitin. subst skeys sl.
     match goal with
     | H: _ = k_it' |- _ => erewrite list_map_get in H
@@ -4500,9 +5041,9 @@ Derive page_from_cbt SuchThat (fun_correct! page_from_cbt) As page_from_cbt_ok. 
     rewrite map_take_gt_take_ge in Hsz.
     assert (map_size (map_take_gt c k_it) = 0).
     { assert (Htem: map_take_gt c k_it = map.empty) by auto. rewrite Htem.
-      apply map_size_empty. }
+      apply map_size_empty1. }
     lia.
-    eapply map_take_ge_get_nnone. subst skeys. eapply map_to_sorted_list_in; cycle 1.
+    eapply map_take_ge_get_nnone. subst skeys. eapply map_to_sorted_list_in''; cycle 1.
     match goal with
     | H: _ = k_it |- _ => erewrite list_map_get in H by steps
     end.
