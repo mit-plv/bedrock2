@@ -95,7 +95,7 @@ coqutil            compiler
 
 #### Paper-section-to-source-file mapping
 
-In the following, section numbers refer to the submission version of the paper (which has been provided to the artifact reviewers through hotcrp).
+In the following, section numbers refer to the [submission version of the paper](https://samuelgruetter.net/assets/liveverif_preprint_nov2023.pdf) (which has been provided to the artifact reviewers through hotcrp).
 For each subsection, where applicable, we list the corresponding source files:
 
 1. Introduction
@@ -231,7 +231,7 @@ It is therefore recommended to only process files up to the second-to-last line.
 
 ### List of claims
 
-In the following, section numbers refer to the submission version of the paper (which has been provided to the artifact reviewers through hotcrp).
+In the following, section numbers refer to the [submission version of the paper](https://samuelgruetter.net/assets/liveverif_preprint_nov2023.pdf) (which has been provided to the artifact reviewers through hotcrp).
 
 List of claims from the paper supported by the artifact:
 1. LiveVerif Coq files become C files when prefixed with an opening C comment `/*` (§1.1)
