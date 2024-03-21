@@ -3390,7 +3390,11 @@ Fixpoint cbt_max_key sk c :=
   end.
 
 Lemma cbt_max_key_in : forall sk c, acbt sk c -> map.get c (cbt_max_key sk c) <> None.
-Admitted.
+Proof.
+  induction sk; cbn; steps.
+  - rewrite map_some_key_singleton. steps.
+  - eauto using half_subcontent_get_nnone.
+Qed.
 
 Lemma cbt_max_key_max : forall sk c k,
   acbt sk c -> map.get c k <> None -> \[k] <= \[cbt_max_key sk c].
@@ -3439,11 +3443,8 @@ Lemma half_subcontent_in_false_true_lt : forall c k k',
   map.get (half_subcontent c false) k <> None ->
   map.get (half_subcontent c true) k' <> None ->
   \[k] < \[k'].
-Admitted.
+Proof.
 
-Lemma pfx_meet_emb_bit_at_eq : forall w1 w2 i,
-  0 <= i < pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2)) ->
-  bit_at w1 i = bit_at w2 i.
 Admitted.
 
 Lemma trace_bit_after_root : forall sk c k i,
@@ -3451,24 +3452,74 @@ Lemma trace_bit_after_root : forall sk c k i,
   pfx_len (pfx_mmeet c) <= i.
 Admitted.
 
-Lemma set_bit_at_bit_at_diff_ix : forall w i i',
-  0 <= i < 32 -> 0 <= i' < 32 -> i' <> i -> bit_at (set_bit_at w i) i' = bit_at w i'.
-Admitted.
-
 Lemma pfx_le_emb_bit_same_prefix : forall p w1 w2 i,
   pfx_le p (pfx_emb w1) -> pfx_le p (pfx_emb w2) -> 0 <= i < pfx_len p ->
   bit_at w1 i = bit_at w2 i.
-Admitted.
+Proof.
+  intros ? ? ? ? Hle1 Hle2 Hrng.
+  assert (pfx_len p <= 32). { apply pfx_le_len in Hle1. steps. }
+  enough (pfx_bit (pfx_emb w1) i = pfx_bit (pfx_emb w2) i).
+  { do 2 rewrite pfx_emb_spec in * by lia. steps. }
+  rewrite <- pfx_le_spec in *.
+  specialize (Hle1 i). specialize (Hle2 i). steps. congruence.
+Qed.
+
+Lemma pfx_meet_emb_bit_at_eq : forall w1 w2 i,
+  0 <= i < pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2)) ->
+  bit_at w1 i = bit_at w2 i.
+Proof.
+  intros. eapply pfx_le_emb_bit_same_prefix; try eassumption; steps.
+Qed.
+
+Lemma pfx_mmeet_snoc_le_node : forall sk1 sk2 c b,
+  acbt (Node sk1 sk2) c ->
+  pfx_le (pfx_snoc (pfx_mmeet c) b) (pfx_mmeet (half_subcontent c b)).
+Proof.
+  intros. apply pfx_mmeet_all_le. { cbn in *. destruct b; steps. }
+  intros ? Hget. apply pfx_snoc_ext_le. { apply pfx_mmeet_key_le. steps. }
+  apply half_subcontent_in_bit in Hget. rewrite <- Hget. apply pfx_emb_spec. steps.
+Qed.
 
 Lemma pfx_mmeet_len_lt_node : forall sk1 sk2 c b,
   acbt (Node sk1 sk2) c ->
   pfx_len (pfx_mmeet c) < pfx_len (pfx_mmeet (half_subcontent c b)).
-Admitted.
+Proof.
+  intros. eassert (Hle: _). { eapply pfx_mmeet_snoc_le_node with (b:=b). eassumption. }
+  apply pfx_le_len in Hle. rewrite pfx_snoc_len in Hle. lia.
+Qed.
+
+Lemma set_bit_at_bit_at : forall w i i',
+  0 <= i < 32 -> 0 <= i' < 32 ->
+  bit_at (set_bit_at w i) i' = bit_at w i' || (i =? i').
+Proof.
+  intros. do 2 rewrite <- Z_testbit_is_bit_at by lia. unfold set_bit_at.
+  rewrite word.unsigned_or_nowrap. rewrite Z.lor_spec. f_equal.
+  rewrite word.unsigned_slu by hwlia. steps. unfold word.wrap.
+  rewrite Z.mod_pow2_bits_low by lia. rewrite Z.shiftl_spec by lia. rewrite Z_bits_1.
+  lia.
+Qed.
+
+Lemma set_bit_at_bit_at' : forall w i i',
+  0 <= i < 32 -> 0 <= i' < 32 ->
+  bit_at (set_bit_at w i) i' = if i =? i' then true else bit_at w i'.
+Proof.
+  intros. rewrite set_bit_at_bit_at by assumption. destruct (i =? i'); steps.
+  apply Bool.orb_false_r.
+Qed.
 
 Lemma set_bit_at_true : forall w i i',
   0 <= i < 32 -> 0 <= i' < 32 -> bit_at w i = true ->
   bit_at (set_bit_at w i') i = true.
-Admitted.
+Proof.
+  intros ? ? ? ? ? Hba. rewrite set_bit_at_bit_at by assumption. rewrite Hba.
+  apply Bool.orb_true_l.
+Qed.
+
+Lemma set_bit_at_bit_at_diff_ix : forall w i i',
+  0 <= i < 32 -> 0 <= i' < 32 -> i' <> i -> bit_at (set_bit_at w i) i' = bit_at w i'.
+Proof.
+  intros. rewrite set_bit_at_bit_at' by assumption. steps.
+Qed.
 
 Lemma map_filter_empty : forall f, map_filter map.empty f = map.empty.
 Proof.
@@ -4776,6 +4827,14 @@ Proof.
   apply List.nth_indep. rewrite List.map_length. lia.
 Qed.
 
+Lemma list_from_get (X : Type) { _ : inhabited X }
+  : forall (l : list X) i1 i2, i1 >= 0 -> i2 >= 0 -> l[i1:][i2] = l[i1 + i2].
+Proof.
+  intros. unfold List.from. unfold List.get.
+  replace (i2 <? 0) with false by lia. replace (i1 + i2 <? 0) with false by lia.
+  rewrite List.nth_skipn. f_equal. lia.
+Qed.
+
 Lemma map_filter_some : forall c f k v,
   map.get (map_filter c f) k = Some v -> map.get c k = Some v.
 Proof.
@@ -4788,45 +4847,102 @@ Proof.
   intros. unfold map_take_gt in *. eauto using map_filter_some.
 Qed.
 
+Lemma ww_list_sorted_from : forall n l, ww_list_sorted l -> ww_list_sorted (l[n:]).
+Proof.
+  intros ? ? Hsrt.
+  assert (Hcmp: n < 0 \/ n >= 0) by lia.
+  destruct Hcmp. { rewrite List.from_beginning; steps. }
+  assert (Hcmp: n >= len l \/ n < len l) by lia.
+  destruct Hcmp. { rewrite List.from_pastend by lia. apply ww_list_sorted_nil. }
+  unfold ww_list_sorted. intros. rewrite list_from_get in * by lia.
+  rewrite List.len_from in * by lia.
+  eapply (Hsrt (n + i) (n + j)); try eassumption; lia.
+Qed.
+
+Lemma ww_list_unique_keys_from : forall n l,
+  ww_list_unique_keys l -> ww_list_unique_keys (l[n:]).
+Proof.
+  intros ? ? Huqk.
+  assert (Hcmp: n < 0 \/ n >= 0) by lia.
+  destruct Hcmp. { rewrite List.from_beginning; steps. }
+  assert (Hcmp: n >= len l \/ n < len l) by lia.
+  destruct Hcmp. { rewrite List.from_pastend by lia. apply ww_list_unique_keys_nil. }
+  unfold ww_list_unique_keys. intros. repeat rewrite list_from_get in * by lia.
+  rewrite List.len_from in * by lia.
+  enough (n + i1 = n + i2) by lia. eapply Huqk; steps.
+Qed.
+
 Lemma map_to_sorted_list_take_gt : forall c i k,
   0 <= i < map_size c ->
   fst ((map_to_sorted_list c)[i]) = k ->
   map_to_sorted_list (map_take_gt c k) = (map_to_sorted_list c)[i + 1:].
-(*
 Proof.
-  intros. apply ww_list_unique_sorted.
+  intros. apply ww_list_unique_sorted;
+  try apply ww_list_sorted_from; try apply map_to_sorted_list_sorted;
+  try apply ww_list_unique_keys_from; try apply map_to_sorted_list_unique_keys.
   - intros [ k' v' ] Hin. rewrite map_to_sorted_list_in in Hin.
     assert (\[k] < \[k']) by (eauto using map_take_gt_get_nnone, some_not_none).
     apply map_take_gt_some in Hin. rewrite <- map_to_sorted_list_in in Hin.
     eapply list_get_in2 in Hin. destruct Hin as [ i' [ Hrng Hget ] ].
-    assert (Hsrt: ww_list_sorted (map_to_sorted_list c))
-      by (apply map_to_sorted_list_sorted).
+    pose proof (map_to_sorted_list_sorted c) as Hsrt.
     assert (~(i' <= i)).
     { intro. enough (\[k'] <= \[k]) by hwlia.
       destruct ((map_to_sorted_list c)[i]) as [ kk v ] eqn:E. cbn [ fst ] in *. subst kk.
       specialize (Hsrt i' i). rewrite <- map_to_sorted_list_length in *. steps.
       specialize (Hsrt k' v' k v). eauto. }
     eapply list_get_in1' with (n:=i' - (i + 1)); steps.
-  - (* CONTINUE HERE... *)
- *)
-Admitted.
+  - intros [ k' v' ] Hin. rewrite map_to_sorted_list_in.
+    eapply list_get_in2 in Hin. destruct Hin as [ io [ Hrng Hget ] ].
+    rewrite <- map_to_sorted_list_length in *.
+    rewrite list_from_get in Hget by lia. rewrite List.len_from in Hrng by lia.
+    remember (i + 1 + io) as i'. assert (io = i' - i - 1) by lia. subst io. clear Heqi'.
+    rewrite map_take_gt_get_gt.
+    + rewrite <- map_to_sorted_list_in. eapply list_get_in1'; [ | eassumption ]. lia.
+    + pose proof (map_to_sorted_list_sorted c) as Hsrt.
+      destruct (map_to_sorted_list c)[i] as [ kk v ] eqn:E. cbn in *. subst kk.
+      assert (\[k] <= \[k']). { eapply (Hsrt i i'); try lia; eassumption. }
+      enough (k <> k') by hwlia. intro. subst k'.
+      enough (i = i') by steps.
+      pose proof (map_to_sorted_list_unique_keys c) as Huqk.
+      apply Huqk; steps. rewrite E. rewrite Hget. reflexivity.
+Qed.
 
 Lemma map_to_sorted_list_key_gt_size : forall c i k,
   0 <= i < map_size c ->
   fst ((map_to_sorted_list c)[i]) = k ->
   map_size (map_take_gt c k) = map_size c - 1 - i.
-Admitted.
+Proof.
+  intros ? ? ? Hirng Hel. pose proof (map_to_sorted_list_take_gt c i k Hirng Hel) as Heq.
+  f_apply (fun (l : list (word * word)) => len l) Heq.
+  rewrite <- (map_to_sorted_list_length c) in *.
+  rewrite map_to_sorted_list_length in Heq.
+  rewrite List.len_from in Heq; lia.
+Qed.
 
 Lemma map_to_sorted_list_in'' : forall c i k,
   0 <= i < map_size c ->
   fst ((map_to_sorted_list c)[i]) = k ->
   map.get c k <> None.
-Admitted.
+Proof.
+  intros. destruct ((map_to_sorted_list c)[i]) as [ kk v ] eqn:E. cbn in *. subst kk.
+  rewrite <- map_to_sorted_list_length in *. apply list_get_in1' in E; [ | assumption ].
+  rewrite map_to_sorted_list_in in E. steps.
+Qed.
+
+Lemma map_filter_strengthen : forall c f_weak f_strong,
+  (forall k, f_strong k = true -> f_weak k = true) ->
+  map_filter (map_filter c f_weak) f_strong = map_filter c f_strong.
+Proof.
+  intros ? ? ? Hst. apply map.map_ext. intros. repeat rewrite map_filter_get.
+  destruct (f_strong k) eqn:E; [ | reflexivity ].
+  apply Hst in E. rewrite E. reflexivity.
+Qed.
 
 Lemma map_take_gt_take_ge : forall c k1 k2,
-  \[k1] <= \[k2] ->
-  map_take_gt (map_take_ge c k1) k2 = map_take_gt c k2.
-Admitted.
+  \[k1] <= \[k2] -> map_take_gt (map_take_ge c k1) k2 = map_take_gt c k2.
+Proof.
+  intros. apply map_filter_strengthen. intros. hwlia.
+Qed.
 
 #[export] Instance spec_of_page_from_cbt: fnspec :=                         .**/
 uintptr_t page_from_cbt(uintptr_t tp, uintptr_t k, uintptr_t n,
