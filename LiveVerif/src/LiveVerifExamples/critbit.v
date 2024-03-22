@@ -380,7 +380,13 @@ Qed.
 (* END GENERAL *)
 (* BEGIN INDIVIDUAL BITS *)
 
-Definition bit_at (w: word) (i: Z) := word.eqb (word.and (w ^>> /[i]) /[1]) /[1].
+(* we want:
+   - in a CBT, nodes closer to the root to have lower c.b. indices
+   - to be able to efficiently use the CBT to find next key w.r.t. to the ordering of
+     keys interpreted as integers
+  -> therefore, we choose to have bit_at _ 0 give the most significant bit
+     and bit_at _ 31 give the least significant bit (and not the other way around) *)
+Definition bit_at (w: word) (i: Z) := word.eqb (word.and (w ^>> /[31 - i]) /[1]) /[1].
 
 Ltac step_hook ::=
   match goal with
@@ -390,34 +396,34 @@ Ltac step_hook ::=
   end.
 
 Lemma and_not_1_iff_bit_at_false : forall (w: word) (i: Z),
-  word.and (w ^>> /[i]) /[1] <> /[1] <-> bit_at w i = false.
+  word.and (w ^>> /[31 - i]) /[1] <> /[1] <-> bit_at w i = false.
 Proof.
   unfold bit_at. split; steps.
 Qed.
 
 Lemma and_not_1_iff_bit_at_false_w : forall w i: word,
-  word.and (w ^>> i) /[1] <> /[1] <-> bit_at w \[i] = false.
+  word.and (w ^>> (/[31] ^- i)) /[1] <> /[1] <-> bit_at w \[i] = false.
 Proof.
-  unfold bit_at. split; steps.
+  unfold bit_at. split; rewrite word.ring_morph_sub; steps.
 Qed.
 
 Lemma and_1_iff_bit_at_true : forall (w: word) (i: Z),
-  word.and (w ^>> /[i]) /[1] = /[1] <-> bit_at w i = true.
+  word.and (w ^>> /[31 - i]) /[1] = /[1] <-> bit_at w i = true.
 Proof.
   unfold bit_at. split; steps.
 Qed.
 
 Lemma and_1_iff_bit_at_true_w : forall w i: word,
-  word.and (w ^>> i) /[1] = /[1] <-> bit_at w \[i] = true.
+  word.and (w ^>> (/[31] ^- i)) /[1] = /[1] <-> bit_at w \[i] = true.
 Proof.
-  unfold bit_at. split; steps.
+  unfold bit_at. split; rewrite word.ring_morph_sub; steps.
 Qed.
 
 Lemma and_1_eq_bit_at : forall (w1 i1 w2 i2: word),
-  word.and (w1 ^>> i1) /[1] = word.and (w2 ^>> i2) /[1] ->
+  word.and (w1 ^>> (/[31] ^- i1)) /[1] = word.and (w2 ^>> (/[31] ^- i2)) /[1] ->
   bit_at w1 \[i1] = bit_at w2 \[i2].
 Proof.
-  unfold bit_at. steps.
+  unfold bit_at. steps; repeat rewrite word.ring_morph_sub; steps.
 Qed.
 
 Lemma Z_bits_1 : forall n : Z, Z.testbit 1 n = (n =? 0).
@@ -446,10 +452,10 @@ Proof.
 Qed.
 
 Lemma and_1_ne_bit_at : forall (w1 i1 w2 i2: word),
-  word.and (w1 ^>> i1) /[1] <> word.and (w2 ^>> i2) /[1] ->
+  word.and (w1 ^>> (/[31] ^- i1)) /[1] <> word.and (w2 ^>> (/[31] ^- i2)) /[1] ->
   bit_at w1 \[i1] <> bit_at w2 \[i2].
 Proof.
-  unfold bit_at. steps. intro. apply_ne.
+  unfold bit_at. steps. intro. apply_ne. repeat rewrite word.ring_morph_sub in *.
   match goal with
   | H: _ = word.eqb ?wa ?wb |- _ => destruct (word.eqb wa wb) eqn:E
   end; steps.
@@ -459,9 +465,9 @@ Proof.
 Qed.
 
 Lemma bit_at_expand : forall w i,
-  bit_at w i = word.eqb (word.and (w ^>> /[i]) /[1]) /[1].
+  bit_at w i = word.eqb (word.and (w ^>> (/[31] ^- /[i])) /[1]) /[1].
 Proof.
-  unfold bit_at. steps.
+  unfold bit_at. steps. rewrite word.ring_morph_sub. reflexivity.
 Qed.
 
 Ltac bit_at_step :=
@@ -474,13 +480,14 @@ Ltac bit_at_step :=
        apply and_1_eq_bit_at
   | H: word.and (_ ^>> _) /[1] <> word.and (_ ^>> _) /[1] |- _ =>
        apply and_1_ne_bit_at
-  | H: context [ word.eqb (word.and (?w ^>> /[?i]) /[1]) /[1] ] |- _ =>
+  | H: context [ word.eqb (word.and (?w ^>> (/[31] ^- /[?i])) /[1]) /[1] ] |- _ =>
        rewrite <- bit_at_expand in H
-  | |- context [ word.eqb (word.and (?w ^>> /[?i]) /[1]) /[1] ] =>
+  | |- context [ word.eqb (word.and (?w ^>> (/[31] ^- /[?i])) /[1]) /[1] ] =>
        rewrite <- bit_at_expand
   end.
 
-Lemma Z_testbit_is_bit_at : forall w i, 0 <= i < 32 -> Z.testbit \[w] i = bit_at w i.
+Lemma Z_testbit_is_bit_at : forall w i,
+  0 <= i < 32 -> Z.testbit \[w] i = bit_at w (31 - i).
 Proof.
   intros. unfold bit_at. rewrite word.unsigned_eqb. rewrite word.unsigned_and_nowrap.
   steps. rewrite word.unsigned_sru_nowrap by hwlia. replace \[/[i]] with i by hwlia.
@@ -2373,7 +2380,7 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   end.
   steps. destruct tree. { exfalso. steps. }
   rename w2 into aL. rename w3 into aR. .**/
-    if (((k >> load(p)) & 1) == 1) /* split */ {                             /**. .**/
+    if (((k >> (31 - load(p))) & 1) == 1) /* split */ {                       /**. .**/
       p = load(p + 8);                                                       /**. .**/
     }                                                                        /**.
   new_ghosts(p, half_subcontent c true,
@@ -2455,7 +2462,7 @@ Derive cbt_lookup_impl SuchThat (fun_correct! cbt_lookup_impl)
   end. steps.
   destruct sk. { exfalso. steps. }
   rename w2 into aL. rename w3 into aR. .**/
-    if (((k >> load(p)) & 1) == 1) /* split */ {                             /**. .**/
+    if (((k >> (31 - load(p))) & 1) == 1) /* split */ {                      /**. .**/
       p = load(p + 8);                                                       /**. .**/
     }                                                                        /**.
   new_ghosts(p, half_subcontent c true, <{ * R
@@ -2555,7 +2562,7 @@ Derive critical_bit SuchThat (fun_correct! critical_bit) As critical_bit_ok.    
   delete #(i = /[0]).
   loop invariant above H.
   move i at bottom. .**/
-  while (i < 31 && ((k1 >> i & 1) == ((k2 >> i & 1))))
+  while (i < 31 && ((k1 >> (31 - i) & 1) == ((k2 >> (31 - i) & 1))))
     /* decreases (32 - \[i]) */ {                                          /**. .**/
     i = i + 1;                                                             /**. .**/
   }                                                                        /**.
@@ -2628,7 +2635,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   end.
   steps. destruct sk. { exfalso. steps. }
   .**/
-    if (((k >> load(p)) & 1) == 1) /* split */ {                            /**. .**/
+    if (((k >> (31 - load(p))) & 1) == 1) /* split */ {                     /**. .**/
       p = load(p + 8);                                                      /**. .**/
     }                                                                       /**.
   new_ghosts(p, half_subcontent c true, <{ * R
@@ -2677,7 +2684,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   clear Error. destruct sk; simpl cbt' in *; steps. .**/
     else {                                                                   /**. .**/
       store(p, cb);                                                          /**. .**/
-      if (((k >> cb) & 1) == 1) /* split */ {                                /**. .**/
+      if (((k >> (31 - cb)) & 1) == 1) /* split */ {                         /**. .**/
         store(p + 4, new_node);                                              /**. .**/
         store(p + 8, new_leaf);                                              /**. .**/
         return tp;                                                           /**. .**/
@@ -2821,7 +2828,7 @@ Derive cbt_delete_from_nonleaf SuchThat
   simpl cbt' in *. repeat heapletwise_step.
   (* context packaging fails if we don't `simpl cbt'` before the `if`
      because of variables being introduced too late *) .**/
-  if (((k >> deref(par)) & 1) == 1) {                                      /**. .**/
+  if (((k >> (31 - deref(par))) & 1) == 1) {                               /**. .**/
     sib = load(par + 4);                                                   /**. .**/
     cur = load(par + 8);                                                   /**. .**/
   } else {                                                                 /**. .**/
@@ -2896,7 +2903,7 @@ Derive cbt_delete_from_nonleaf SuchThat
   | H: half_subcontent c brc = _ |- _ => rewrite H in *
   end. steps. } .**/
     par = cur;                                                             /**. .**/
-    if (((k >> load(par)) & 1) == 1) /* split */ {                         /**. .**/
+    if (((k >> (31 - load(par))) & 1) == 1) /* split */ {                  /**. .**/
       sib = load(par + 4);                                                 /**. .**/
       cur = load(par + 8);                                                 /**. .**/
     }                                                                      /**.
@@ -3102,13 +3109,139 @@ Proof.
   end; steps.
 Qed.
 
+Lemma Z_land_0_land_ldiff : forall c a b,
+  Z.land (Z.ldiff a c) (Z.land b c) = 0.
+Proof.
+  intros. apply Z.bits_inj'. intros. repeat rewrite Z.land_spec. rewrite Z.ldiff_spec.
+  rewrite Z.bits_0. destruct (Z.testbit c n); lia.
+Qed.
+
+Lemma Z_land_le : forall a b,
+  0 <= b -> Z.land a b <= b.
+Proof.
+  intros.
+  pose proof (bitblast.Z.or_to_plus _ _ (Z_land_0_land_ldiff a b b)).
+  rewrite Z.lor_ldiff_and in *.
+  assert (0 <= Z.ldiff b a). { rewrite Z.ldiff_nonneg. lia. } rewrite Z.land_comm. lia.
+Qed.
+
+Lemma Z_ones_nonneg : forall i, 0 <= i -> 0 <= Z.ones i.
+Proof.
+  intros. unfold Z.ones. rewrite Z.shiftl_1_l. lia.
+Qed.
+
+Lemma Z_testbit_lt : forall n1 n2 i,
+  Z.testbit n1 i = false -> Z.testbit n2 i = true ->
+  (forall j, i < j -> Z.testbit n1 j = Z.testbit n2 j) ->
+  n1 < n2.
+Proof.
+  intros. assert (0 <= i). { enough (Hni: ~(i < 0)) by lia. intro.
+    match goal with
+    | H: Z.testbit _ _ = true |- _ => rewrite Z.testbit_neg_r in H by lia
+    end. discriminate. }
+  remember (Z.ldiff n1 (Z.ones (i + 1))) as nc.
+  assert (n1 = Z.lor nc (Z.land n1 (Z.ones (i + 1)))).
+  { subst. symmetry. apply Z.lor_ldiff_and. }
+  assert (n2 = Z.lor nc (Z.land n2 (Z.ones (i + 1)))).
+  { subst. replace (Z.ldiff n1 (Z.ones (i + 1))) with (Z.ldiff n2 (Z.ones (i + 1))).
+    symmetry. apply Z.lor_ldiff_and. apply Z.bits_inj'. intros.
+    do 2 rewrite Z.ldiff_spec. assert (Hcmp: n <= i \/ i < n) by lia.
+    rewrite Z.testbit_ones_nonneg by lia.
+    destruct Hcmp; steps. replace (n <? i + 1) with false by lia. steps.
+    symmetry. eauto. }
+  do 2 match goal with
+       | H: _ = Z.lor _ _ |- _ =>
+            rewrite bitblast.Z.or_to_plus in H by (subst; apply Z_land_0_land_ldiff)
+       end.
+  do 2 match goal with
+       | H: _ = nc + _ |- _ => rewrite H; clear H
+       end.
+  apply Zplus_lt_compat_l.
+  enough (Hb: Z.land n1 (Z.ones (i + 1)) <= Z.ones i /\
+              Z.shiftl 1 i <= Z.land n2 (Z.ones (i + 1))).
+  { assert (1 <= Z.shiftl 1 (i + 1)). { rewrite Z.shiftl_1_l. lia. }
+    destruct Hb. unfold Z.ones in *. lia. }
+  split.
+  - replace (Z.land n1 (Z.ones (i + 1))) with (Z.land n1 (Z.ones i)).
+    { apply Z_land_le. auto using Z_ones_nonneg. }
+    apply Z.bits_inj'. intros. do 2 rewrite Z.land_spec.
+    do 2 rewrite bitblast.Z.testbit_ones_nonneg by lia.
+    eq_neq_cases n i. { subst.  match goal with | H: _ = false |- _ => rewrite H end.
+      steps. }
+    f_equal. lia.
+  - eassert (Hsub: _).
+    { apply (Z.sub_nocarry_ldiff (Z.land n2 (Z.ones (i + 1))) (Z.shiftl 1 i)).
+      apply Z.bits_inj'. intros. rewrite Z.bits_0. rewrite Z.ldiff_spec.
+      rewrite Z.shiftl_spec by lia. rewrite Z_bits_1. rewrite Z.land_spec.
+      rewrite Z.testbit_ones_nonneg by lia. destruct (Z.testbit n2 n) eqn:E; steps.
+      enough (n <> i) by lia. intro. subst. congruence. }
+    match type of Hsub with
+    | _ = ?r => assert (0 <= r)
+    end.
+    { rewrite Z.ldiff_nonneg. left. rewrite Z.land_nonneg.
+      right. apply Z_ones_nonneg. lia. }
+    lia.
+Qed.
+
+Lemma bit_at_lt : forall w1 w2 i, 0 <= i < 32 ->
+  (forall j, 0 <= j < i -> bit_at w1 j = bit_at w2 j) ->
+  bit_at w1 i = false -> bit_at w2 i = true ->
+  \[w1] < \[w2].
+Proof.
+  intros. eapply (Z_testbit_lt _ _ (31 - i)).
+  - rewrite Z_testbit_is_bit_at; steps.
+  - rewrite Z_testbit_is_bit_at; steps.
+  - intros. assert (Hcmp: 0 <= j < 32 \/ ~(0 <= j < 32)) by lia. destruct Hcmp.
+    + do 2 rewrite Z_testbit_is_bit_at by lia. apply_forall. lia.
+    + do 2 rewrite Z_testbit_past_word_width by assumption. reflexivity.
+Qed.
+
+Lemma bit_at_le : forall w1 w2 i, 0 <= i < 32 ->
+  (forall j, 0 <= j < i -> bit_at w1 j = bit_at w2 j) ->
+  bit_at w1 i = false -> bit_at w2 i = true ->
+  \[w1] <= \[w2].
+Proof.
+  intros. enough (\[w1] < \[w2]) by lia. eauto using bit_at_lt.
+Qed.
+
+Lemma pfx_le_bit_at_wlt : forall p w1 w2,
+  pfx_le p (pfx_emb w1) -> pfx_le p (pfx_emb w2) -> pfx_len p < 32 ->
+  bit_at w1 (pfx_len p) = false -> bit_at w2 (pfx_len p) = true -> \[w1] < \[w2].
+Proof.
+  intros. eapply bit_at_lt; try eassumption.
+  - pose proof (pfx_len_nneg p). lia.
+  - intros. rewrite <- pfx_le_spec in *.
+    do 2 match goal with
+         | Hfa: forall _, _, Hrng: _ <= _ < _ |- _ => specialize (Hfa _ Hrng)
+         end.
+    rewrite pfx_emb_spec in * by lia. congruence.
+Qed.
+
+(* TODO: hoist *)
+Lemma half_subcontent_in_false_true_lt : forall c k k',
+  map.get (half_subcontent c false) k <> None ->
+  map.get (half_subcontent c true) k' <> None ->
+  \[k] < \[k'].
+Proof.
+  intros. eapply pfx_le_bit_at_wlt with (p:=pfx_mmeet c);
+  eauto using half_subcontent_get_nnone, pfx_mmeet_key_le, half_subcontent_in_bit.
+  apply (pfx_mmeet_nonsingle_len _ k k'); eauto using half_subcontent_get_nnone.
+  intro. subst k'.
+  do 2 match goal with
+       | H: map.get _ _ <> None |- _ => apply half_subcontent_in_bit in H
+       end.
+  congruence.
+Qed.
+
 (* TODO: hoist *)
 (* actually, even `_lt` holds *)
 Lemma half_subcontent_in_false_true_le : forall c k k',
   map.get (half_subcontent c false) k <> None ->
   map.get (half_subcontent c true) k' <> None ->
   \[k] <= \[k'].
-Admitted.
+Proof.
+  intros. enough (\[k] < \[k']) by lia. eauto using half_subcontent_in_false_true_lt.
+Qed.
 
 #[export] Instance spec_of_cbt_get_min_impl: fnspec :=                          .**/
 void cbt_get_min_impl(uintptr_t tp, uintptr_t key_out, uintptr_t val_out) /**#
@@ -3267,7 +3400,7 @@ Derive cbt_get_max SuchThat (fun_correct! cbt_get_max) As cbt_get_max_ok.       
 }                                                                          /**.
 Qed.
 
-Definition set_bit_at (w: word) (i: Z) := word.or w (/[1] ^<< /[i]).
+Definition set_bit_at (w: word) (i: Z) := word.or w (/[1] ^<< /[31 - i]).
 
 Fixpoint cbt_lookup_trace sk c k :=
   match sk with
@@ -3332,8 +3465,8 @@ Derive cbt_best_with_trace SuchThat (fun_correct! cbt_best_with_trace)
   | H: _ |= cbt' _ _ tp |- _ => pose proof (purify_cbt' _ _ _ _ H);
                                 apply cbt_expose_fields in H
   end. steps. destruct sk. { exfalso; steps. } .**/
-    trace = trace | (1 << load(tp));                                       /**. .**/
-    if (((k >> load(tp)) & 1) == 1) /* split */ {                          /**. .**/
+    trace = trace | (1 << (31 - load(tp)));                                /**. .**/
+    if (((k >> (31 - load(tp))) & 1) == 1) /* split */ {                   /**. .**/
       tp = load(tp + 8);                                                   /**. .**/
     }                                                                      /**.
   new_ghosts(tp, half_subcontent c true, trace,
@@ -3346,7 +3479,8 @@ Derive cbt_best_with_trace SuchThat (fun_correct! cbt_best_with_trace)
   steps.
   { simpl cbt_best_lookup. steps. }
   { simpl cbt_lookup_trace. steps. subst trace. rewrite <- word_or_assoc.
-    unfold set_bit_at. f_equal. rewrite word.or_comm. steps. }
+    unfold set_bit_at. f_equal. rewrite word.or_comm. steps.
+    rewrite word.ring_morph_sub. steps. }
   { simpl cbt'. clear Error. steps. } .**/
     else {                                                                 /**. .**/
       tp = load(tp + 4);                                                   /**. .**/
@@ -3361,7 +3495,8 @@ Derive cbt_best_with_trace SuchThat (fun_correct! cbt_best_with_trace)
   steps.
   { simpl cbt_best_lookup. steps. }
   { simpl cbt_lookup_trace. steps. subst trace. rewrite <- word_or_assoc.
-    unfold set_bit_at. f_equal. rewrite word.or_comm. steps. }
+    unfold set_bit_at. f_equal. rewrite word.or_comm. steps.
+    rewrite word.ring_morph_sub. steps. }
   { simpl cbt'. clear Error. steps. } .**/
   }                                                                        /**.
   destruct sk; [ | exfalso; steps ]. .**/
@@ -3398,13 +3533,87 @@ Qed.
 
 Lemma cbt_max_key_max : forall sk c k,
   acbt sk c -> map.get c k <> None -> \[k] <= \[cbt_max_key sk c].
-Admitted.
+Proof.
+  induction sk.
+  - intros. cbn in *. steps. subst. rewrite map_some_key_singleton. reflexivity.
+  - intros.
+    match goal with
+    | H: map.get _ _ <> None |- _ => apply half_subcontent_get_nNone in H
+    end.
+    cbn in *. steps. destruct (bit_at k (pfx_len (pfx_mmeet c)));
+    eauto using cbt_max_key_in, half_subcontent_in_false_true_le.
+Qed.
+
+Lemma Z_testbit_is_bit_at' : forall w i,
+  0 <= i < 32 -> Z.testbit \[w] (31 - i) = bit_at w i.
+Proof.
+  intros. rewrite Z_testbit_is_bit_at; steps.
+Qed.
+
+Lemma bit_at_0 : forall i, 0 <= i < 32 -> bit_at /[0] i = false.
+Proof.
+  intros. rewrite <- Z_testbit_is_bit_at' by lia. steps. apply Z.bits_0.
+Qed.
+
+Lemma set_bit_at_bit_at : forall w i i',
+  0 <= i < 32 -> 0 <= i' < 32 ->
+  bit_at (set_bit_at w i) i' = bit_at w i' || (i =? i').
+Proof.
+  intros. do 2 rewrite <- Z_testbit_is_bit_at' by lia. unfold set_bit_at.
+  rewrite word.unsigned_or_nowrap. rewrite Z.lor_spec. f_equal.
+  rewrite word.unsigned_slu by hwlia. steps. unfold word.wrap.
+  rewrite Z.mod_pow2_bits_low by lia. rewrite Z.shiftl_spec by lia. rewrite Z_bits_1.
+  lia.
+Qed.
+
+Lemma set_bit_at_bit_at' : forall w i i',
+  0 <= i < 32 -> 0 <= i' < 32 ->
+  bit_at (set_bit_at w i) i' = if i =? i' then true else bit_at w i'.
+Proof.
+  intros. rewrite set_bit_at_bit_at by assumption. destruct (i =? i'); steps.
+  apply Bool.orb_false_r.
+Qed.
+
+Lemma set_bit_at_true : forall w i i',
+  0 <= i < 32 -> 0 <= i' < 32 -> bit_at w i = true ->
+  bit_at (set_bit_at w i') i = true.
+Proof.
+  intros ? ? ? ? ? Hba. rewrite set_bit_at_bit_at by assumption. rewrite Hba.
+  apply Bool.orb_true_l.
+Qed.
+
+Lemma set_bit_at_bit_at_diff_ix : forall w i i',
+  0 <= i < 32 -> 0 <= i' < 32 -> i' <> i -> bit_at (set_bit_at w i) i' = bit_at w i'.
+Proof.
+  intros. rewrite set_bit_at_bit_at' by assumption. steps.
+Qed.
+
+Lemma bit_at_set_true_invert : forall w i i',
+  0 <= i < 32 -> 0 <= i' < 32 ->
+  bit_at (set_bit_at w i') i = true -> i = i' \/ bit_at w i = true.
+Proof.
+  intros ? ? ? ? ? Hba. rewrite set_bit_at_bit_at' in Hba by lia. steps.
+  destruct Hba; auto.
+Qed.
 
 Lemma cbt_max_key_trace_bits : forall sk c i,
   acbt sk c -> 0 <= i < 32 ->
   bit_at (cbt_lookup_trace sk c (cbt_max_key sk c)) i = true ->
   bit_at (cbt_max_key sk c) i = true.
-Admitted.
+Proof.
+  induction sk.
+  - steps. cbn in *.
+    match goal with
+    | H: bit_at _ _ = _ |- _ => rewrite bit_at_0 in H by lia; discriminate
+    end.
+  - steps. assert (0 <= pfx_len (pfx_mmeet c) < 32) by steps. cbn in *. steps.
+    erewrite half_subcontent_in_bit in * by (eauto using cbt_max_key_in). steps.
+    match goal with
+    | H: bit_at _ _ = _ |- _ => apply bit_at_set_true_invert in H; steps; destruct H
+    end.
+    + subst. auto using half_subcontent_in_bit, cbt_max_key_in.
+    + auto.
+Qed.
 
 Lemma cbt_trace_fixes_prefix : forall sk c i k1 k2 bts,
   acbt sk c -> 0 <= i < 32 ->
@@ -3424,27 +3633,6 @@ Admitted.
 
 Lemma cbt_lookup_trace_best : forall sk c k,
   acbt sk c -> cbt_lookup_trace sk c (cbt_best_lookup sk c k) = cbt_lookup_trace sk c k.
-Admitted.
-
-Lemma bit_at_lt : forall w1 w2 i, 0 <= i < 32 ->
-  (forall j, 0 <= j < i -> bit_at w1 j = bit_at w2 j) ->
-  bit_at w1 i = false -> bit_at w2 i = true ->
-  \[w1] < \[w2].
-Admitted.
-
-Lemma bit_at_le : forall w1 w2 i, 0 <= i < 32 ->
-  (forall j, 0 <= j < i -> bit_at w1 j = bit_at w2 j) ->
-  bit_at w1 i = false -> bit_at w2 i = true ->
-  \[w1] <= \[w2].
-Admitted.
-
-(* TODO: hoist *)
-Lemma half_subcontent_in_false_true_lt : forall c k k',
-  map.get (half_subcontent c false) k <> None ->
-  map.get (half_subcontent c true) k' <> None ->
-  \[k] < \[k'].
-Proof.
-
 Admitted.
 
 Lemma trace_bit_after_root : forall sk c k i,
@@ -3486,39 +3674,6 @@ Lemma pfx_mmeet_len_lt_node : forall sk1 sk2 c b,
 Proof.
   intros. eassert (Hle: _). { eapply pfx_mmeet_snoc_le_node with (b:=b). eassumption. }
   apply pfx_le_len in Hle. rewrite pfx_snoc_len in Hle. lia.
-Qed.
-
-Lemma set_bit_at_bit_at : forall w i i',
-  0 <= i < 32 -> 0 <= i' < 32 ->
-  bit_at (set_bit_at w i) i' = bit_at w i' || (i =? i').
-Proof.
-  intros. do 2 rewrite <- Z_testbit_is_bit_at by lia. unfold set_bit_at.
-  rewrite word.unsigned_or_nowrap. rewrite Z.lor_spec. f_equal.
-  rewrite word.unsigned_slu by hwlia. steps. unfold word.wrap.
-  rewrite Z.mod_pow2_bits_low by lia. rewrite Z.shiftl_spec by lia. rewrite Z_bits_1.
-  lia.
-Qed.
-
-Lemma set_bit_at_bit_at' : forall w i i',
-  0 <= i < 32 -> 0 <= i' < 32 ->
-  bit_at (set_bit_at w i) i' = if i =? i' then true else bit_at w i'.
-Proof.
-  intros. rewrite set_bit_at_bit_at by assumption. destruct (i =? i'); steps.
-  apply Bool.orb_false_r.
-Qed.
-
-Lemma set_bit_at_true : forall w i i',
-  0 <= i < 32 -> 0 <= i' < 32 -> bit_at w i = true ->
-  bit_at (set_bit_at w i') i = true.
-Proof.
-  intros ? ? ? ? ? Hba. rewrite set_bit_at_bit_at by assumption. rewrite Hba.
-  apply Bool.orb_true_l.
-Qed.
-
-Lemma set_bit_at_bit_at_diff_ix : forall w i i',
-  0 <= i < 32 -> 0 <= i' < 32 -> i' <> i -> bit_at (set_bit_at w i) i' = bit_at w i'.
-Proof.
-  intros. rewrite set_bit_at_bit_at' by assumption. steps.
 Qed.
 
 Lemma map_filter_empty : forall f, map_filter map.empty f = map.empty.
@@ -3791,7 +3946,7 @@ Derive cbt_next_ge_impl_uptrace SuchThat (fun_correct! cbt_next_ge_impl_uptrace)
   | H: _ |= cbt' _ _ _ |- _ => apply cbt_expose_fields in H
   end.
   steps. destruct sk. { exfalso. steps. } repeat heapletwise_step. .**/
-    if (((k >> load(tp)) & 1) == 1) /* split */ {                          /**. .**/
+    if (((k >> (31 - load(tp))) & 1) == 1) /* split */ {                   /**. .**/
       tp = load(tp + 8);                                                   /**. .**/
     }                                                                      /**.
   new_ghosts(tp, half_subcontent c true,
@@ -4029,7 +4184,7 @@ Derive cbt_next_ge_impl_at_cb SuchThat (fun_correct! cbt_next_ge_impl_at_cb)
   | H: _ |= cbt' _ _ _ |- _ => apply cbt_expose_fields in H
   end.
   steps. destruct sk. { exfalso. steps. } repeat heapletwise_step. .**/
-    if (((k >> load(tp)) & 1) == 1) /* split */ {                          /**. .**/
+    if (((k >> (31 - load(tp))) & 1) == 1) /* split */ {                   /**. .**/
       tp = load(tp + 8);                                                   /**. .**/
     }                                                                      /**.
   new_ghosts(tp, half_subcontent c true,
@@ -4152,7 +4307,7 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
       uintptr_t trace = load(key_out);                                     /**. .**/
       uintptr_t cb = critical_bit(best_k, k);                              /**.
   instantiate (3:=emp True). steps. .**/
-      if (((k >> cb) & 1) == 1) /* split */ {                              /**. .**/
+      if (((k >> (31 - cb)) & 1) == 1) /* split */ {                       /**. .**/
         uintptr_t i = cb - 1;                                              /**.
   prove (forall j,
     (\[i ^+ /[1]] <= j < \[cb]) -> bit_at trace j = true -> bit_at k j = true).
@@ -4160,7 +4315,7 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
   prove (\[cb] <= \[i] -> i = /[-1]).
   delete #(i = cb ^- ??).
   loop invariant above i. .**/
-        while (i != -1 && (((trace >> i) & 1) != 1 || ((k >> i) & 1) == 1))
+        while (i != -1 && (((trace >> (31 - i)) & 1) != 1 || ((k >> (31 - i)) & 1) == 1))
           /* decreases (i ^+ /[1]) */ {                                    /**. .**/
           i = i - 1;                                                       /**. .**/
         }                                                                  /**.
