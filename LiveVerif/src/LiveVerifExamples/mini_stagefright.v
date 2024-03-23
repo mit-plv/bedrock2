@@ -1,10 +1,75 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
+Require Import LiveVerifExamples.memcpy.
 
 Load LiveVerif.
 
-(* src consists of length-type-value chunks:
-struct TLV { uint32_t length; uint32_t typ; uint32_t data[length]; }; *)
+#[export] Instance spec_of_safeCopySlice: fnspec :=                                .**/
+
+uintptr_t safeCopySlice(
+  uintptr_t src, uintptr_t srcOfs, uintptr_t srcLen,
+  uintptr_t unsafeN,
+  uintptr_t dst, uintptr_t dstOfs, uintptr_t dstLen
+) /**#
+  ghost_args := srcData dstData dstUninit (R: mem -> Prop);
+  requires t m :=
+    <{ * array (uint 8) \[srcLen] srcData src
+       * array (uint 8) \[dstLen] (dstData ++ dstUninit) dst
+       * R }> m /\
+    \[srcOfs] <= \[srcLen] /\
+    len dstData = \[dstOfs];
+  ensures t' m' r := t' = t /\ exists newData,
+    <{ * array (uint 8) \[srcLen] srcData src
+       * array (uint 8) \[dstLen] (dstData ++ newData ++ dstUninit[len newData :]) dst
+       * R }> m' /\
+    ((r = /[0] /\ newData = nil) \/
+     (r = /[1] /\ len newData = \[unsafeN] /\
+      newData = srcData[\[srcOfs]:][:\[unsafeN]])) #**/                       /**.
+Derive safeCopySlice SuchThat (fun_correct! safeCopySlice) As safeCopySlice_ok.    .**/
+{                                                                             /**. .**/
+  if (srcOfs + unsafeN <= srcLen && dstOfs + unsafeN <= dstLen) /*split*/ {   /**. .**/
+    Memcpy(dstOfs, srcOfs, unsafeN);                                          /**.
+
+assert (subrange dstOfs (\[unsafeN] * 1) dst (\[dstLen] * 1)). {
+  unfold subrange. clear Error.
+  bottom_up_simpl_in_goal.
+  (* Wait, `dstOfs ^- dst` makes no sense, because that subtracts an address from
+     an offset and could underflow, something must be wrong here, ahaa it should
+     be dst+dstOfs and src+srcOfs!
+     This bug is really stupid, but the author actually inadvertently wrote this bug
+     while developing this program with the deliberately inserted bug that follows next. *)
+Abort.
+
+Derive safeCopySlice SuchThat (fun_correct! safeCopySlice) As safeCopySlice_ok.    .**/
+{                                                                             /**. .**/
+  if (srcOfs + unsafeN <= srcLen && dstOfs + unsafeN <= dstLen) /*split*/ {   /**. .**/
+    Memcpy(dst + dstOfs, src + srcOfs, unsafeN);                              /**.
+
+assert (subrange (dst ^+ dstOfs) (\[unsafeN] * 1) dst (\[dstLen] * 1)). {
+  unfold subrange. clear Error.
+  bottom_up_simpl_in_goal.
+(* need to show:         \[dstOfs] + \[unsafeN] <= \[dstLen]
+   but we only have H1 : \[dstOfs ^+ unsafeN] <= \[dstLen]
+   So why did the system not simplify H1 into \[dstOfs ^+ unsafeN]? *)
+Search \[_ ^+ _].
+(* Lists the two hypotheses containing this pattern, followed by word.unsigned_add,
+   which shows that \[x ^+ y] = word.wrap (\[x] + \[y]), and word.unsigned_add_nowrap,
+   which shows that if \[x] + \[y] < 2 ^ width, then \[x ^+ y] = \[x] + \[y].
+   So I need to show \[dstOfs] + \[unsafeN] < 2 ^ width, but wait, that might not hold,
+   --> serious bug found!! *)
+Abort.
+
+Derive safeCopySlice SuchThat (fun_correct! safeCopySlice) As safeCopySlice_ok.    .**/
+{                                                                             /**. .**/
+  if (unsafeN <= srcLen - srcOfs && unsafeN <= dstLen - dstOfs) /*split*/ {   /**. .**/
+    Memcpy(dst + dstOfs, src + srcOfs, unsafeN);                              /**. .**/
+    return 1;                                                                 /**. .**/
+  }                                                                           /*?.
+
+step. step. step. step. step. step.
+step. step. step. step. step. step.
+step. step. step.
+Abort.
 
 #[export] Instance spec_of_parse_chunk_of_type_or_skip: fnspec :=                .**/
 
@@ -31,7 +96,7 @@ uintptr_t parse_chunk_of_type_or_skip(
     \[newSrcOfs] = \[srcOfs] + len newData /\
     \[newDstOfs] = \[dstOfs] + len newData /\
     ((r = /[0] /\ newData = nil) \/
-     (r = /[1] /\ newData = srcData[\[srcOfs]+2:][:len newData])) #**/        /**.
+     (r = /[1] /\ newData = srcData[\[srcOfs]+2:][:len newData])) #**/     /**.
 Derive parse_chunk_of_type_or_skip SuchThat (fun_correct! parse_chunk_of_type_or_skip)
   As parse_chunk_of_type_or_skip_ok.                                            .**/
 {                                                                          /**. .**/
