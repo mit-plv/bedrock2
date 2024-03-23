@@ -4,6 +4,16 @@ Require Import LiveVerifExamples.memcpy.
 
 Load LiveVerif.
 
+(* TODO this (or something similar) should be in the library *)
+Ltac step_hook ::=
+  lazymatch goal with
+  | |- ?A \/ ?B =>
+      tryif (assert_succeeds (assert (~ A) by (zify_goal; xlia zchecker)))
+      then right else
+      tryif (assert_succeeds (assert (~ B) by (zify_goal; xlia zchecker)))
+      then left else fail
+  end.
+
 #[export] Instance spec_of_safeCopySlice: fnspec :=                                .**/
 
 uintptr_t safeCopySlice(
@@ -18,13 +28,17 @@ uintptr_t safeCopySlice(
        * R }> m /\
     \[srcOfs] <= \[srcLen] /\
     len dstData = \[dstOfs];
-  ensures t' m' r := t' = t /\ exists newData,
-    <{ * array (uint 8) \[srcLen] srcData src
-       * array (uint 8) \[dstLen] (dstData ++ newData ++ dstUninit[len newData :]) dst
-       * R }> m' /\
-    ((r = /[0] /\ newData = nil) \/
-     (r = /[1] /\ len newData = \[unsafeN] /\
-      newData = srcData[\[srcOfs]:][:\[unsafeN]])) #**/                       /**.
+  ensures t' m' r := t' = t /\
+   ((r = /[0] /\
+     <{ * array (uint 8) \[srcLen] srcData src
+        * array (uint 8) \[dstLen] (dstData ++ dstUninit) dst
+        * R }> m') \/
+    (r = /[1] /\
+     <{ * array (uint 8) \[srcLen] srcData src
+        * array (uint 8) \[dstLen] (dstData ++
+                                    srcData[\[srcOfs]:][:\[unsafeN]] ++
+                                    dstUninit[\[unsafeN]:]) dst
+        * R }> m')) #**/                                                      /**.
 Derive safeCopySlice SuchThat (fun_correct! safeCopySlice) As safeCopySlice_ok.    .**/
 {                                                                             /**. .**/
   if (srcOfs + unsafeN <= srcLen && dstOfs + unsafeN <= dstLen) /*split*/ {   /**. .**/
@@ -51,7 +65,7 @@ assert (subrange (dst ^+ dstOfs) (\[unsafeN] * 1) dst (\[dstLen] * 1)). {
 (* need to show:         \[dstOfs] + \[unsafeN] <= \[dstLen]
    but we only have H1 : \[dstOfs ^+ unsafeN] <= \[dstLen]
    So why did the system not simplify H1 into \[dstOfs ^+ unsafeN]? *)
-Search \[_ ^+ _].
+(* Search \[_ ^+ _]. *)
 (* Lists the two hypotheses containing this pattern, followed by word.unsigned_add,
    which shows that \[x ^+ y] = word.wrap (\[x] + \[y]), and word.unsigned_add_nowrap,
    which shows that if \[x] + \[y] < 2 ^ width, then \[x ^+ y] = \[x] + \[y].
@@ -64,12 +78,12 @@ Derive safeCopySlice SuchThat (fun_correct! safeCopySlice) As safeCopySlice_ok. 
   if (unsafeN <= srcLen - srcOfs && unsafeN <= dstLen - dstOfs) /*split*/ {   /**. .**/
     Memcpy(dst + dstOfs, src + srcOfs, unsafeN);                              /**. .**/
     return 1;                                                                 /**. .**/
-  }                                                                           /*?.
-
-step. step. step. step. step. step.
-step. step. step. step. step. step.
-step. step. step.
-Abort.
+  }                                                                           /**. .**/
+  else {                                                                      /**. .**/
+    return 0;                                                                 /**. .**/
+  }                                                                           /**. .**/
+}                                                                             /**.
+Qed.
 
 #[export] Instance spec_of_parse_chunk_of_type_or_skip: fnspec :=                .**/
 
