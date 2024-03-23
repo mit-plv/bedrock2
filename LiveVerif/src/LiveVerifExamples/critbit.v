@@ -3659,6 +3659,12 @@ Proof.
   intros. rewrite set_bit_at_bit_at' by assumption. steps.
 Qed.
 
+Lemma set_bit_at_bit_at_same_ix : forall w i,
+  0 <= i < ltac:(bw) -> bit_at (set_bit_at w i) i = true.
+Proof.
+  intros. rewrite set_bit_at_bit_at'; steps.
+Qed.
+
 Lemma bit_at_set_true_invert : forall w i i',
   0 <= i < ltac:(bw) -> 0 <= i' < ltac:(bw) ->
   bit_at (set_bit_at w i') i = true -> i = i' \/ bit_at w i = true.
@@ -3695,21 +3701,118 @@ Lemma cbt_trace_fixes_prefix : forall sk c i k1 k2 bts,
   (forall j, 0 <= j <= i -> bit_at (cbt_lookup_trace sk c k2) j = true ->
     bit_at k2 j = bts j) ->
   (forall j, 0 <= j <= i -> bit_at k1 j = bit_at k2 j).
-Admitted.
+Proof.
+  induction sk.
+  - steps. cbn in *. steps.
+  - intros ? ? ? ? ? ? ? ? Htm1 ? Htm2 ?.
+    steps. assert (0 <= pfx_len (pfx_mmeet c) < ltac:(bw)) by steps. cbn in *.
+    destruct (Bool.eqb (bit_at k1 (pfx_len (pfx_mmeet c)))
+                       (bit_at k2 (pfx_len (pfx_mmeet c)))) eqn:E; steps.
+    + destruct (bit_at k1 (pfx_len (pfx_mmeet c))) eqn:E2; symmetry in E.
+      * eapply IHsk2 with (bts:=bts) (i:=i); steps.
+       -- eassumption.
+       -- steps.
+       -- apply Htm1; steps. apply set_bit_at_true; steps.
+       -- steps.
+       -- apply Htm2; steps. apply set_bit_at_true; steps.
+      * eapply IHsk1 with (bts:=bts) (i:=i); steps.
+       -- eassumption.
+       -- steps.
+       -- apply Htm1; steps. apply set_bit_at_true; steps.
+       -- steps.
+       -- apply Htm2; steps. apply set_bit_at_true; steps.
+    + assert (i < pfx_len (pfx_mmeet c)).
+      { enough (~(pfx_len (pfx_mmeet c) <= i)) by lia.
+        intro.
+        do 2 match goal with
+             | H: forall _, 0 <= _ <= _ -> _ |- _ =>
+                  specialize (H (pfx_len (pfx_mmeet c))); prove_ante H; [ lia | ];
+                  prove_ante H; [ apply set_bit_at_bit_at_same_ix; lia | ]
+             end.
+        congruence. }
+      assert (Hle1: pfx_le (pfx_mmeet c) (pfx_emb k1)) by steps.
+      assert (Hle2: pfx_le (pfx_mmeet c) (pfx_emb k2)) by steps.
+      rewrite <- pfx_le_spec in *.
+      specialize (Hle1 j). prove_ante Hle1. { lia. }
+      specialize (Hle2 j). prove_ante Hle2. { lia. }
+      rewrite pfx_emb_spec in * by lia.
+      congruence.
+Qed.
 
 Lemma cbt_best_lookup_matches_on_trace : forall sk c k i,
   acbt sk c -> 0 <= i < ltac:(bw) -> bit_at (cbt_lookup_trace sk c k) i = true ->
   bit_at (cbt_best_lookup sk c k) i = bit_at k i.
-Admitted.
+Proof.
+  induction sk.
+  - cbn in *. steps.
+    match goal with
+    | H: bit_at _ _ = true |- _ => rewrite bit_at_0 in H; steps
+    end.
+  - cbn [ cbt_lookup_trace cbt_best_lookup ]. steps.
+    destruct (bit_at k (pfx_len (pfx_mmeet c))) eqn:E;
+    match goal with
+    | H: bit_at (set_bit_at _ _) _ = _ |- _ =>
+         apply bit_at_set_true_invert in H; steps; destruct H
+    end;
+    subst; cbn [ acbt ] in *; steps; auto; rewrite E;
+    auto using half_subcontent_in_bit, cbt_best_lookup_in.
+Qed.
 
 Lemma cbt_lookup_trace_best : forall sk c k,
   acbt sk c -> cbt_lookup_trace sk c (cbt_best_lookup sk c k) = cbt_lookup_trace sk c k.
-Admitted.
+Proof.
+  induction sk.
+  - intros. cbn in *. steps.
+  - steps. cbn in *. destruct (bit_at k (pfx_len (pfx_mmeet c))) eqn:E.
+    + match goal with
+      | |- context [ if ?cond then _ else _ ] => replace cond with true
+      end.
+      * f_equal. steps. eauto.
+      * symmetry. steps. auto using half_subcontent_in_bit, cbt_best_lookup_in.
+    + match goal with
+      | |- context [ if ?cond then _ else _ ] => replace cond with false
+      end.
+      * f_equal. steps. eauto.
+      * symmetry. steps. auto using half_subcontent_in_bit, cbt_best_lookup_in.
+Qed.
+
+Lemma pfx_mmeet_snoc_le_node : forall sk1 sk2 c b,
+  acbt (Node sk1 sk2) c ->
+  pfx_le (pfx_snoc (pfx_mmeet c) b) (pfx_mmeet (half_subcontent c b)).
+Proof.
+  intros. apply pfx_mmeet_all_le. { cbn in *. destruct b; steps. }
+  intros ? Hget. apply pfx_snoc_ext_le. { apply pfx_mmeet_key_le. steps. }
+  apply half_subcontent_in_bit in Hget. rewrite <- Hget. apply pfx_emb_spec. steps.
+Qed.
+
+Lemma pfx_mmeet_len_lt_node : forall sk1 sk2 c b,
+  acbt (Node sk1 sk2) c ->
+  pfx_len (pfx_mmeet c) < pfx_len (pfx_mmeet (half_subcontent c b)).
+Proof.
+  intros. eassert (Hle: _). { eapply pfx_mmeet_snoc_le_node with (b:=b). eassumption. }
+  apply pfx_le_len in Hle. rewrite pfx_snoc_len in Hle. lia.
+Qed.
 
 Lemma trace_bit_after_root : forall sk c k i,
   0 <= i < ltac:(bw) -> acbt sk c -> bit_at (cbt_lookup_trace sk c k) i = true ->
   pfx_len (pfx_mmeet c) <= i.
-Admitted.
+Proof.
+  induction sk.
+  - cbn in *. steps. exfalso. eassert _. { apply bit_at_0. eassumption. } congruence.
+  -  cbn [ cbt_lookup_trace ]. steps.
+    match goal with
+    | H: bit_at _ _ = true |- _ => apply bit_at_set_true_invert in H; steps;
+                                   destruct H as [ ? | Hbt ]
+    end.
+    + subst. reflexivity.
+    + destruct (bit_at k (pfx_len (pfx_mmeet c))).
+      * apply IHsk2 in Hbt; steps.
+        eassert _. { eapply pfx_mmeet_len_lt_node with (b:=true). eassumption. } lia.
+        cbn in *. steps.
+      * apply IHsk1 in Hbt; steps.
+        eassert _. { eapply pfx_mmeet_len_lt_node with (b:=false). eassumption. } lia.
+        cbn in *. steps.
+Qed.
 
 Lemma pfx_le_emb_bit_same_prefix : forall p w1 w2 i,
   pfx_le p (pfx_emb w1) -> pfx_le p (pfx_emb w2) -> 0 <= i < pfx_len p ->
@@ -3728,23 +3831,6 @@ Lemma pfx_meet_emb_bit_at_eq : forall w1 w2 i,
   bit_at w1 i = bit_at w2 i.
 Proof.
   intros. eapply pfx_le_emb_bit_same_prefix; try eassumption; steps.
-Qed.
-
-Lemma pfx_mmeet_snoc_le_node : forall sk1 sk2 c b,
-  acbt (Node sk1 sk2) c ->
-  pfx_le (pfx_snoc (pfx_mmeet c) b) (pfx_mmeet (half_subcontent c b)).
-Proof.
-  intros. apply pfx_mmeet_all_le. { cbn in *. destruct b; steps. }
-  intros ? Hget. apply pfx_snoc_ext_le. { apply pfx_mmeet_key_le. steps. }
-  apply half_subcontent_in_bit in Hget. rewrite <- Hget. apply pfx_emb_spec. steps.
-Qed.
-
-Lemma pfx_mmeet_len_lt_node : forall sk1 sk2 c b,
-  acbt (Node sk1 sk2) c ->
-  pfx_len (pfx_mmeet c) < pfx_len (pfx_mmeet (half_subcontent c b)).
-Proof.
-  intros. eassert (Hle: _). { eapply pfx_mmeet_snoc_le_node with (b:=b). eassumption. }
-  apply pfx_le_len in Hle. rewrite pfx_snoc_len in Hle. lia.
 Qed.
 
 Lemma map_filter_empty : forall f, map_filter map.empty f = map.empty.
