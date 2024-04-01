@@ -13,7 +13,13 @@ Require Import compiler.LowerPipeline.
 Require Import compiler.Pipeline.
 Require Import compiler.ExprImpEventLoopSpec.
 Require Import compiler.ToplevelLoop.
+Require Import coqutil.Semantics.OmniSmallstepCombinators.
 
+(* TODO decide if we want to replace runsTo by eventually everywhere, or move
+   this compatibility lemma to an appropriate place *)
+Lemma runsTo_is_eventually[State: Type](step: State -> (State -> Prop) -> Prop):
+  forall initial P, runsToNonDet.runsTo step initial P <-> eventually step P initial.
+Proof. intros. split; induction 1; try (econstructor; solve [eauto]). Qed.
 
 Global Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
@@ -225,6 +231,26 @@ Section Pipeline1.
         eapply bvalidInstructions_valid. assumption.
     - eapply @ll_inv_is_invariant; eassumption.
     - eapply ll_inv_implies_prefix_of_good. eassumption.
+  Qed.
+
+  Definition good_trace(st: MetricRiscvMachine): Prop := spec.(goodTrace) st.(getLog).
+  Definition always: (MetricRiscvMachine -> Prop) -> MetricRiscvMachine -> Prop :=
+    always (GoFlatToRiscv.mcomp_sat (run1 iset)).
+  Definition eventually: (MetricRiscvMachine -> Prop) -> MetricRiscvMachine -> Prop :=
+    eventually (GoFlatToRiscv.mcomp_sat (run1 iset)).
+
+  Lemma always_eventually_good_trace: forall initial,
+      initial_conditions initial ->
+      always (eventually good_trace) initial.
+  Proof.
+    intros * IC. unfold always, eventually, good_trace.
+    apply mk_always with (invariant := ll_inv compile_ext_call ml spec).
+    - apply (proj1 compiler_invariant_proofs _ IC).
+    - apply (proj1 (proj2 compiler_invariant_proofs)).
+    - intros st HInv. unfold ll_inv, RiscvEventLoop.runsToGood_Invariant, ll_good in HInv.
+      apply proj1 in HInv. apply runsTo_is_eventually in HInv.
+      eapply eventually_weaken. 1: exact HInv.
+      clear initial IC st HInv. cbv beta. intros. simp. assumption.
   Qed.
 
 End Pipeline1.
