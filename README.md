@@ -2,7 +2,7 @@ Live Verification Artifact
 ==========================
 
 We provide two ways to evaluate our artifact:
-* Docker: Using a docker image with all software pre-installed and all files pre-compiled. It uses the `amd64` architecture. We built and tested it on Ubuntu 22 and Fedora 39 hosts, and we believe that it should also run on other Linux distros with an Intel x86-64 / amd64 architecture and on Mac OS.
+* Docker: Using a [docker image](https://zenodo.org/records/10806323) with all software pre-installed and all files pre-compiled. It uses the `amd64` architecture. We built and tested it on Ubuntu 22 and Fedora 39 hosts, and we believe that it should also run on other Linux distros with an Intel x86-64 / amd64 architecture and on Mac OS.
 * From source: Does not require docker, but requires a system with Coq, an IDE for it (preferably ProofGeneral), `make`, `python3` and `gcc`, and up to half an hour of compilation time
 The headings below indicate for which options they apply.
 
