@@ -41,7 +41,7 @@ This should open a command prompt inside the docker image, where you can use `ls
 ### Install dependencies [from-source only]
 
 You need the following software:
-* Coq 8.17.1, installed using your preferred installation method. Versions < 8.17 will not work, version 8.18 and 8.19 probably work too.
+* Coq 8.18.0, installed using your preferred installation method. Versions < 8.18 will not work, 8.19 probably works too.
 * An IDE for Coq. We use Emacs + Proof General, but if you are familiar with another IDE, that might work too.
 * GCC (we use version 9.4.0, but other versions probably work too)
 * Python (we use version 3.12.2, but other 3.x versions probably work too)
