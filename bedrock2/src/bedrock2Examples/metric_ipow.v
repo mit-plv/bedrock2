@@ -151,16 +151,21 @@ Proof.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. }
         { (* metrics correct *)
-          cbn [addMetricLoads withLoads instructions stores loads jumps] in H4.
+          rewrite <- (MetricLog_eq mc0) in H4.
           applyAddMetrics H4.
           rewrite msb_shift in H4 by blia.
-          rewrite MetricArith.mul_sub_distr_r in H4.
-          rewrite <- MetricArith.add_sub_swap in H4.
-          rewrite <- MetricArith.le_add_le_sub_r in H4.
-          eapply MetricArith.le_trans.
-          2: exact H4.
-          unfold iterCost.
+          unfold iterCost in *.
           solve_MetricLog.
+          (*destruct mc0.*)
+          (*applyAddMetrics H4.*)
+          (*rewrite msb_shift in H4 by blia.*)
+          (*rewrite MetricArith.mul_sub_distr_r in H4.*)
+          (*rewrite <- MetricArith.add_sub_swap in H4.*)
+          (*rewrite <- MetricArith.le_add_le_sub_r in H4.*)
+          (*eapply MetricArith.le_trans.*)
+          (*2: exact H4.*)
+          (*unfold iterCost.*)
+          (*solve_MetricLog.*)
         }
       }
       {
@@ -181,25 +186,17 @@ Proof.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. }
         { (* metrics correct *)
-          cbn [addMetricLoads withLoads instructions stores loads jumps] in H4.
+          rewrite <- (MetricLog_eq mc0) in H4.
           applyAddMetrics H4.
           rewrite msb_shift in H4 by blia.
-          rewrite MetricArith.mul_sub_distr_r in H4.
-          rewrite <- MetricArith.add_sub_swap in H4.
-          rewrite <- MetricArith.le_add_le_sub_r in H4.
-          eapply MetricArith.le_trans.
-          2: exact H4.
-          unfold iterCost.
+          unfold iterCost in *.
           solve_MetricLog.
         }
       }
     }
     { (* postcondition *)
       rewrite H, Z.pow_0_r, Z.mul_1_r, word.wrap_unsigned.
-      repeat match goal with
-             | |- _ /\ _ => split
-             | |- _ = _ => reflexivity
-             end.
+      split; [reflexivity|].
       unfold msb, iterCost, endCost.
       subst brmc.
       solve_MetricLog.
