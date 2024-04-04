@@ -2,10 +2,11 @@ Require Import bedrock2.TracePredicate.
 Require Import Coq.ZArith.BinInt Coq.Strings.String.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Byte.
-Require coqutil.Word.LittleEndianList.
+Require Import coqutil.Word.LittleEndianList.
 
 Section LightbulbSpec.
-  Import BinInt TracePredicateNotations.
+  Local Open Scope list_scope.
+  Import BinInt List.ListNotations TracePredicateNotations.
   Local Open Scope Z_scope.
   Let width := 32.
   Context (word : word width).
@@ -96,7 +97,7 @@ Section LightbulbSpec.
     spi_end) t /\
     byte.unsigned a1 = word.unsigned (word.sru a (word.of_Z 8)) /\
     byte.unsigned a0 = word.unsigned (word.and a (word.of_Z 255)) /\
-    word.unsigned v = LittleEndianList.le_combine (cons b0 (cons b1 (cons b2 (cons b3 nil)))).
+    word.unsigned v = le_combine (cons b0 (cons b1 (cons b2 (cons b3 nil)))).
 
   Definition LAN9250_WRITE : byte := Byte.x02.
   Definition HW_CFG : Z := 0x074.
@@ -115,7 +116,9 @@ Section LightbulbSpec.
     spi_end) t /\
     byte.unsigned a1 = word.unsigned (word.sru a (word.of_Z 8)) /\
     byte.unsigned a0 = word.unsigned (word.and a (word.of_Z 255)) /\
-    word.unsigned v = LittleEndianList.le_combine (cons b0 (cons b1 (cons b2 (cons b3 nil)))).
+    word.unsigned v = le_combine (cons b0 (cons b1 (cons b2 (cons b3 nil)))).
+
+  Local Definition lan9250_writeword (a v : Z) := lan9250_write4 (word.of_Z a) (word.of_Z v).
 
   (* NOTE: we could do this without rounding up to the nearest word, and this
   * might be necessary for other stacks than IP-TCP and IP-UDP *)
@@ -128,8 +131,8 @@ Section LightbulbSpec.
   Fixpoint lan9250_readpacket (bs : list byte) :=
     match bs with
     | nil => eq nil
-    | cons v0 (cons v1 (cons v2 (cons v3 bs))) =>
-      lan9250_fastread4 (word.of_Z 0) (word.of_Z (LittleEndianList.le_combine (cons v0 (cons v1 (cons v2 (cons v3 nil)))))) +++
+    | cons b0 (cons b1 (cons b2 (cons b3 bs))) =>
+      lan9250_fastread4 (word.of_Z 0) (word.of_Z (le_combine [b0;b1;b2;b3])) +++
       lan9250_readpacket bs
     | _ => constraint False (* TODO: padding? *)
     end.
@@ -149,15 +152,15 @@ Section LightbulbSpec.
     Z.land (word.unsigned info) ((2^8-1)*2^16) <> 0 /\
     Z.of_nat (List.length recv) = word.unsigned (lan9250_decode_length status).
 
-  Fixpoint lan9250_writepacket (bs : list byte) :=
+  Definition never_happens {T} := @constraint T False.
+
+  Fixpoint lan9250_writepacket (bs : list byte) : list _ -> Prop :=
     match bs with
-    | nil => eq nil
-    | cons v0 (cons v1 (cons v2 (cons v3 bs))) =>
-      lan9250_write4 (word.of_Z TX_DATA_FIFO) (word.of_Z (LittleEndianList.le_combine (cons v0 (cons v1 (cons v2 (cons v3 nil)))))) +++
-      lan9250_writepacket bs
-    | _ => constraint False (* TODO: padding? *)
+    | nil => fun trace => trace = []
+    | b0::b1::b2::b3::bs => lan9250_writeword TX_DATA_FIFO (le_combine [b0;b1;b2;b3]) +++ lan9250_writepacket bs
+    | _ => never_happens
     end.
-  Definition lan9250_send (send : list byte) : _ -> Prop :=
+  Definition lan9250_send (send : list byte) : list _ -> Prop :=
     lan9250_write4 (word.of_Z TX_DATA_FIFO) (word.or (word.or (word.of_Z (2^13)) ((word.of_Z (2^12)))) (word.of_Z (# (List.length send)))) +++
     lan9250_write4 (word.of_Z TX_DATA_FIFO) (word.of_Z (# (List.length send))) +++
     lan9250_writepacket send.
