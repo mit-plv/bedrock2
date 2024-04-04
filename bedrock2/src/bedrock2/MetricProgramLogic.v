@@ -275,6 +275,7 @@ Ltac straightline :=
           unify e v; exact (eq_refl (Some v)))
   | |- @coqutil.Map.Interface.map.get String.string Interface.word.rep _ _ _ = Some ?v =>
     let v' := rdelta v in is_evar v'; (change v with v'); exact eq_refl
+  | |- (_, _) = (_, _) => f_equal (* NOTE: metrics-only case *)
   | |- ?x = ?y =>
     let y := rdelta y in is_evar y; change (x=y); exact eq_refl
   | |- ?x = ?y =>
@@ -329,7 +330,6 @@ Ltac straightline :=
   | |- True => exact I
   | |- False \/ _ => right
   | |- _ \/ False => left
-  (*| |- (_, _) = (_, _) => exact eq_refl (* NOTE: metrics-only case *)*)
   | |- BinInt.Z.modulo ?z (Memory.bytes_per_word _) = BinInt.Z0 /\ _ =>
       lazymatch Coq.setoid_ring.InitialRing.isZcst z with
       | true => split; [exact eq_refl|]
@@ -353,7 +353,7 @@ Ltac straightline_call :=
 
 Ltac current_trace_mem_locals :=
   lazymatch goal with
-  | |- MetricWeakestPrecondition.cmd _  _ ?t ?m ?l _ => constr:((t, m, l))
+  | |- MetricWeakestPrecondition.cmd _  _ ?t ?m ?l _ _ => constr:((t, m, l))
   end.
 
 Ltac seprewrite Hrw :=
