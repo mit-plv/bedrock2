@@ -38,6 +38,10 @@ Require Import processor.Consistency.
 
 Local Open Scope Z_scope.
 
+(* workaround for `rewrite` bug:
+   https://github.com/coq/coq/issues/1811#issuecomment-1320064508 *)
+Local Set Keyed Unification.
+
 Local Ltac subst_after_destr H ::= idtac.
 
 (** Consistency between the Kami word and the Z-based word *)

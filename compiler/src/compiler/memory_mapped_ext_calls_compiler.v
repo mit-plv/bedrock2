@@ -520,7 +520,8 @@ Section MMIO.
         - eapply map.disjoint_putmany_l. split. 1: assumption.
           apply map.disjoint_comm. assumption. }
       { cbn. rewrite word.unsigned_of_Z_nowrap by lia.
-        rewrite LittleEndian.split_combine. assumption. }
+        replace (LittleEndian.split n (LittleEndian.combine n v)) with v.
+        1: assumption. symmetry. apply LittleEndian.split_combine. }
       lazymatch goal with
       | HO: outcome _ _, H: forall _ _, outcome _ _ -> _ |- _ =>
           specialize H with (1 := HO); destruct H as (l' & Hp & HPost)
