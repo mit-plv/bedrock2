@@ -1,6 +1,7 @@
 Require Import bedrock2.TracePredicate.
 Require Import Coq.ZArith.BinInt Coq.Strings.String.
 Require Import coqutil.Word.Interface.
+Require Import coqutil.Map.Interface.
 Require Import coqutil.Byte.
 Require Import coqutil.Word.LittleEndianList.
 
@@ -152,13 +153,12 @@ Section LightbulbSpec.
     Z.land (word.unsigned info) ((2^8-1)*2^16) <> 0 /\
     Z.of_nat (List.length recv) = word.unsigned (lan9250_decode_length status).
 
-  Definition never_happens {T} := @constraint T False.
-
   Fixpoint lan9250_writepacket (bs : list byte) : list _ -> Prop :=
     match bs with
     | nil => fun trace => trace = []
-    | b0::b1::b2::b3::bs => lan9250_writeword TX_DATA_FIFO (le_combine [b0;b1;b2;b3]) +++ lan9250_writepacket bs
-    | _ => never_happens
+    | b0::b1::b2::b3::bs => lan9250_writeword TX_DATA_FIFO (le_combine [b0;b1;b2;b3])
+                            +++ lan9250_writepacket bs
+    | _ => fun _ => False
     end.
   Definition lan9250_send (send : list byte) : list _ -> Prop :=
     lan9250_write4 (word.of_Z TX_DATA_FIFO) (word.or (word.or (word.of_Z (2^13)) ((word.of_Z (2^12)))) (word.of_Z (# (List.length send)))) +++
@@ -226,7 +226,20 @@ Section LightbulbSpec.
     BootSeq +++ ((EX b: bool, Recv b +++ LightbulbCmd b)
                  ||| RecvInvalid ||| PollNone) ^*.
 
+  Context {mem: Interface.map.map word Byte.byte}.
+
+  Definition mmio_event_abstraction_relation (h : OP)
+    (l : mem * string * list word * (mem * list word)) :=
+    Logic.or
+      (exists a v, h = ("st", a, v) /\ l = (map.empty, "MMIOWRITE", [a; v], (map.empty, [])))
+      (exists a v, h = ("ld", a, v) /\ l = (map.empty, "MMIOREAD", [a], (map.empty, [v]))).
+  Definition mmio_trace_abstraction_relation :=
+    List.Forall2 mmio_event_abstraction_relation.
+  Definition only_mmio_satisfying P t :=
+    exists mmios, mmio_trace_abstraction_relation mmios t /\ P mmios.
 End LightbulbSpec.
+Global Arguments mmio_event_abstraction_relation {_ _}.
+Global Arguments mmio_trace_abstraction_relation {_ _}.
 
 Lemma align_trace_cons {T} x xs cont t (H : xs = app cont t) : @cons T x xs = app (cons x cont) t.
 Proof. intros. cbn. congruence. Qed.
