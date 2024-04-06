@@ -105,20 +105,15 @@ Definition lan9250_init := func! () ~> err {
           unpack! err = lan9250_writeword($0x070, coq:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
   }.
 
+Local Definition TX_DATA_FIFO := 32.
 Definition lan9250_tx := func! (p, l) ~> err {
   (* A: first segment, last segment, length *)
-  unpack! err = lan9250_writeword($lightbulb_spec.TX_DATA_FIFO, $(2^13)|$(2^12)|l);
-  require !err;
+  unpack! err = lan9250_writeword($TX_DATA_FIFO, $(2^13)|$(2^12)|l); require !err;
   (* B: length *)
-  unpack! err = lan9250_writeword($lightbulb_spec.TX_DATA_FIFO, l);
-  require !err;
+  unpack! err = lan9250_writeword($TX_DATA_FIFO, l); require !err;
   while ($3 < l) {
-    unpack! err = lan9250_writeword($lightbulb_spec.TX_DATA_FIFO, load4(p));
-    if err { l = $0 } else {
-    p = p + $4;
-    l = l - $4
-  }}
-}.
+    unpack! err = lan9250_writeword($TX_DATA_FIFO, load4(p));
+    if err { l = $0 } else { p = p + $4; l = l - $4 } } }.
 
 Require Import bedrock2.ProgramLogic.
 Require Import bedrock2.FE310CSemantics.
@@ -135,6 +130,10 @@ Import Loops.
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+
+  Import lightbulb_spec.
+  Local Notation mmio_trace_abstraction_relation := (@mmio_trace_abstraction_relation word).
+  Local Notation only_mmio_satisfying := (@only_mmio_satisfying word mem).
 
   Global Instance spec_of_lan9250_readword : ProgramLogic.spec_of "lan9250_readword" := fun functions => forall t m a,
     (0x0 <= Word.Interface.word.unsigned a < 0x400) ->
@@ -157,8 +156,6 @@ Section WithParameters.
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\ lightbulb_spec.lan9250_write4 _ a v ioh)).
-
-  Import lightbulb_spec.
 
   Global Instance spec_of_lan9250_mac_write : ProgramLogic.spec_of "lan9250_mac_write" := fun functions =>
     forall t m a v,
@@ -232,10 +229,10 @@ Section WithParameters.
 
   Ltac mmio_trace_abstraction :=
     repeat match goal with
-    | |- mmio_trace_abstraction_relation _ _ => cbv [mmio_trace_abstraction_relation]
-    | |- Forall2 mmio_event_abstraction_relation _ _ =>
+    | |- mmio_trace_abstraction_relation _ _ => cbv [lightbulb_spec.mmio_trace_abstraction_relation]
+    | |- Forall2 lightbulb_spec.mmio_event_abstraction_relation _ _ =>
         eassumption || eapply Forall2_app || eapply Forall2_nil || eapply Forall2_cons
-    | |- mmio_event_abstraction_relation _ _ =>
+    | |- lightbulb_spec.mmio_event_abstraction_relation _ _ =>
         (left + right); eexists _, _; split; exact eq_refl
     end.
 
@@ -768,6 +765,8 @@ Section WithParameters.
   Qed.
 
   Import WeakestPrecondition SeparationLogic Array Scalars ProgramLogic.Coercions.
+  Local Notation spi_timeout := (lightbulb_spec.spi_timeout word).
+  Local Notation lan9250_send := (lightbulb_spec.lan9250_send word).
   Global Instance spec_of_lan9250_tx : ProgramLogic.spec_of "lan9250_tx" :=
     fnspec! "lan9250_tx" p l / bs R ~> err,
     { requires t m := word.unsigned l = length bs /\
@@ -776,8 +775,8 @@ Section WithParameters.
      ensures T M := M = m /\
       exists iol, T = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
-        (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
-        (word.unsigned err = 0 /\ lightbulb_spec.lan9250_send _ bs ioh) }.
+        (word.unsigned err <> 0 /\ (any +++ spi_timeout) ioh)
+        (word.unsigned err = 0 /\ lan9250_send bs ioh) }.
 
   Import symmetry autoforward.
 
@@ -815,7 +814,7 @@ Section WithParameters.
       (fun T M P L ERR =>
          M = m /\ exists iol, T = iol ++ t /\
         exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
-        (word.unsigned ERR <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
+        (word.unsigned ERR <> 0 /\ (any +++ spi_timeout) ioh)
         (word.unsigned ERR = 0 /\ lightbulb_spec.lan9250_writepacket _ bs ioh)
          )
       ) _ (Z.lt_wf 0) _ _ _ _ _ _);
@@ -896,5 +895,32 @@ Section WithParameters.
 
     Unshelve.
     all : constructor.
+  Qed.
+
+  Require Import Utf8.
+  Import Map.Separation.
+  Local Notation bytes := (array ptsto (word.of_Z 1)).
+  Implicit Type l : word.
+  Instance spec_of_lan9250_tx' : spec_of "lan9250_tx" :=
+    fnspec! "lan9250_tx" p l / bs ~> err,
+    { requires t m := m =*> bytes p bs ∧ l = length bs :> Z ∧ l mod 4 = 0 :> Z;
+      ensures T M := M = m ∧ ∃ t', T = t' ++ t ∧ only_mmio_satisfying (fun h =>
+       (0 <> err ∧ (any+++spi_timeout) h) ∨ (0 = err ∧ lan9250_send bs h)) t' }.
+
+  Lemma lan9250_tx_ok' : program_logic_goal_for_function! lan9250_tx.
+  Proof.
+    epose proof lan9250_tx_ok.
+    cbv [program_logic_goal_for] in *; intros; eauto.
+    cbv [spec_of_lan9250_tx'  spec_of_lan9250_tx] in *.
+    intros; eauto.
+    case H3 as ([]&?&?).
+    eapply WeakestPreconditionProperties.Proper_call; [|eapply H]; intuition idtac; Tactics.ssplit; eauto.
+    repeat intro.
+    repeat match goal with
+           | H : exists _, _ |- _ =>  case H as []
+           | H : _ /\ _ |- _ =>  case H as []
+           end; subst.
+    repeat ((eexists; eauto; []) || (split; eauto; [])).
+    case H10 as []; [left|right]; split; intuition try congruence.
   Qed.
 End WithParameters.
