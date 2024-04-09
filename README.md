@@ -45,6 +45,7 @@ You need the following software:
 * An IDE for Coq. We use Emacs + Proof General, but if you are familiar with another IDE, that might work too.
 * GCC (we use version 9.4.0, but other versions probably work too)
 * Python (we use version 3.12.2, but other 3.x versions probably work too)
+* GNU time (we use version 1.7, any other version of *GNU* time probably works too, but shell-builtin `time` commands probably will not work. On most Linux systems, GNU time is already installed at `/usr/bin/time`, but on MacOS, you will need `brew install gnu-time`)
 
 
 ### Compile Coq files [from-source only]
@@ -315,6 +316,8 @@ Open `LiveVerif/src/LiveVerifExamples/memset.v` and process it up to just after 
 
 **Showing/hiding the Ltac block under the cursor with `Shift-Tab`:**
 Place your cursor anywhere in the Ltac block just above the while loop. Hit `Shift-Tab` and observe how the Ltac code gets folded into `⋯` (or into some substitute character like `?` if your terminal doesn't support displaying the Unicode Character U+22EF Midline Horizontal Ellipsis `⋯`), and verify that the code now looks like in Figure 1. Hit `Shift-Tab` again to show the Ltac code again.
+
+If `Shift-Tab` doesn't work on your system, the default keybinding for `(hs-toggle-hiding)`, i.e. `C-c @ C-c` (where `@` is a literal `@` sign, which on a standard US keyboard would mean to hit `Shift-2`) might work.
 
 **Debugging the proof automation using repeated `step. step. ...` with `C-c C-i`**:
 After `store8(a + i, b);`, replace the `/**.` by `/*?.`. This prevents proof automation from running after the snippet, so that you can debug it.
