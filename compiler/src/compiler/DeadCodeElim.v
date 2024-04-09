@@ -284,7 +284,7 @@ Section WithArguments1.
       eapply agree_on_union in H2p0; fwd.
       eapply @exec.if_true.
       + erewrite agree_on_eval_bcond; [ eassumption | ].
-        eauto using agree_on_comm. 
+        pose agree_on_comm; eauto.
       + eauto.
     - intros.
       repeat listset_to_set.
@@ -292,7 +292,7 @@ Section WithArguments1.
       eapply agree_on_union in H2p0; fwd.
       eapply @exec.if_false.
       + erewrite agree_on_eval_bcond; [ eassumption | ].
-        eauto using agree_on_comm. 
+        pose agree_on_comm; eauto.
       + eauto.
     - intros.
       cbn - [live].
