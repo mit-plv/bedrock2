@@ -524,7 +524,7 @@ Section Equiv.
     (rv32Fetch (Z.to_nat width)
                (Z.to_nat instrMemSizeLg)
                (width_inst_valid Hinstr)).
-  Local Hint Resolve (kami_AbsMMIO (Z.to_N memSizeLg)): typeclass_instances.
+  Local Hint Extern 0 => exact (kami_AbsMMIO (Z.to_N memSizeLg)) : typeclass_instances.
 
   Local Notation RiscvXAddrsSafe :=
     (RiscvXAddrsSafe instrMemSizeLg memSizeLg (conj Hinstr1 Hinstr2)).
