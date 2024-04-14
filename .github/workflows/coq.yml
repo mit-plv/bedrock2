@@ -77,3 +77,21 @@ jobs:
       if: ${{ needs.build.result == 'success' }}
     - run: echo 'build failed' && false
       if: ${{ needs.build.result != 'success' }}
+
+  update-tested:
+    name: Update tested
+    if: github.ref == 'refs/heads/master'
+    needs: build
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - run: pwd
+    - run: git fetch origin tested
+    - run: git log --oneline --max-count=10
+    - run: git log origin/tested --oneline --max-count=10
+    - run: git log origin/main --oneline --max-count=10
+    - run: git push origin HEAD:tested
