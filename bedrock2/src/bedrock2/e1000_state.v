@@ -44,7 +44,7 @@ Definition E1000_TDH := R 0x3810. (* transmit descriptor queue head *)
 Definition E1000_TDT := R 0x3818. (* transmit descriptor queue tail *)
 
 (* Receive Descriptors (Section 3.2.3) *)
-Record rx_desc: Set := {
+Record rx_desc_t: Set := {
   (* 64 bits *) rx_desc_addr: Z; (* address of buffer to write to *)
   (* 16 bits *) rx_desc_length: Z; (* length of packet received *)
   (* 16 bits *) rx_desc_csum: Z; (* checksum *)
@@ -54,7 +54,7 @@ Record rx_desc: Set := {
 }.
 
 (* Transmit Descriptors (Section 3.3.3) *)
-Record tx_desc: Set := {
+Record tx_desc_t: Set := {
   (* 64 bits *) tx_desc_addr: Z; (* address of buffer to read from *)
   (* 16 bits *) tx_desc_length: Z; (* length of packet to be sent *)
   (*  8 bits *) tx_desc_cso: Z; (* checksum offset: where to insert checksum (if enabled) *)
@@ -124,8 +124,8 @@ Record e1000_config: Set := {
 
 Record e1000_state := {
   get_e1000_config :> e1000_config;
-  rx_queue: list rx_desc;
-  tx_queue: list tx_desc;
+  rx_queue: list rx_desc_t;
+  tx_queue: list tx_desc_t;
   rx_queue_head: Z; (* RDH *)
   tx_queue_head: Z; (* TDH *)
   (* We keep track of tx buffers because these remain unchanged when handed back to
@@ -232,7 +232,7 @@ Section WithMem.
              (List.map (Z.mul sz) (circular_interval modulus startIndex (List.length vs))).
   End WithElem.
 
-  Definition rx_desc_t(r: rx_desc): word -> mem -> Prop := .**/
+  Definition rx_desc(r: rx_desc_t): word -> mem -> Prop := .**/
     typedef struct __attribute__ ((__packed__)) {
       uint64_t rx_desc_addr;
       uint16_t rx_desc_length;
@@ -246,11 +246,11 @@ Section WithMem.
   (* A receive descriptor together with the buffer it points to *)
   (* Note: buf_len is the total allocated amount and usually bigger than
      rx_desc_length, which is the actual length of the received packet *)
-  Definition rxq_elem(buf_len: Z)(v: rx_desc * buf)(addr: word): mem -> Prop :=
-    sep (rx_desc_t (fst v) addr)
+  Definition rxq_elem(buf_len: Z)(v: rx_desc_t * buf)(addr: word): mem -> Prop :=
+    sep (rx_desc (fst v) addr)
         (array (uint 8) buf_len (snd v) /[rx_desc_addr (fst v)]).
 
-  Definition tx_desc_t(r: tx_desc): word -> mem -> Prop := .**/
+  Definition tx_desc(r: tx_desc_t): word -> mem -> Prop := .**/
     typedef struct __attribute__ ((__packed__)) {
       uint64_t tx_desc_addr;
       uint16_t tx_desc_length;
@@ -264,15 +264,15 @@ Section WithMem.
 
   (* A transmit descriptor together with the buffer it points to *)
   (* Note: length of buffer is given by tx_desc_length field *)
-  Definition txq_elem(v: tx_desc * buf)(addr: word): mem -> Prop :=
-    sep (tx_desc_t (fst v) addr)
+  Definition txq_elem(v: tx_desc_t * buf)(addr: word): mem -> Prop :=
+    sep (tx_desc (fst v) addr)
         (array (uint 8) (tx_desc_length (fst v)) (snd v) /[tx_desc_addr (fst v)]).
 
 End WithMem.
 
 (* For the purpose of laying out rx/tx queue elements contiguously in memory,
    only the size of the first part (the descriptor) matters: *)
-#[export] Hint Extern 1 (PredicateSize (rxq_elem _)) => exact (sizeof rx_desc_t)
+#[export] Hint Extern 1 (PredicateSize (rxq_elem _)) => exact (sizeof rx_desc)
   : typeclass_instances.
-#[export] Hint Extern 1 (PredicateSize txq_elem) => exact (sizeof tx_desc_t)
+#[export] Hint Extern 1 (PredicateSize txq_elem) => exact (sizeof tx_desc)
   : typeclass_instances.

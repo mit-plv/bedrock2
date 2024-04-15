@@ -201,7 +201,7 @@ Section WithMem.
      * vs @[+i, mod n] addr  *)
 
   Definition e1000_invariant(s: initialized_e1000_state)
-    (rxq: list (rx_desc * buf))(txq: list (tx_desc * buf)): mem -> Prop :=
+    (rxq: list (rx_desc_t * buf))(txq: list (tx_desc_t * buf)): mem -> Prop :=
     <{ * circular_buffer_slice (rxq_elem s.(rx_buf_size))
            s.(rx_queue_cap) s.(rx_queue_head) rxq s.(rx_queue_base_addr)
        * circular_buffer_slice txq_elem
@@ -233,7 +233,7 @@ Section WithMem.
           we receive the memory chunk for each descriptor between old and new RDH,
           as well as the buffers pointed to by them, which contain newly received
           packets *)
-        forall mRcv (done: list (rx_desc * buf)),
+        forall mRcv (done: list (rx_desc_t * buf)),
           len done <= len rxq ->
           List.map fst done = List.map fst rxq[:len done] ->
           (* snd (new buffer) can be any bytes *)
@@ -273,7 +273,7 @@ Section WithMem.
           RDH (excl, because otherwise queue considered empty), and by doing so, abandons
           the memory chunks corresponding to these descriptors and the buffers pointed to
           by them, thus providing more space for hardware to store received packets *)
-        exists (fresh: list (rx_desc * buf)),
+        exists (fresh: list (rx_desc_t * buf)),
           len rxq + len fresh < s.(rx_queue_cap) /\
           LittleEndian.combine sz val = (s.(rx_queue_head) + len rxq + len fresh)
                                          mod s.(rx_queue_cap) /\
@@ -287,7 +287,7 @@ Section WithMem.
           TDH (excl, because otherwise queue considered empty), and by doing so, indicates
           that between old and new TDT, there are new packets to be sent, and yields
           the descriptor chunks and the buffers pointed to by them to hardware *)
-        exists (toSend: list (tx_desc * buf)),
+        exists (toSend: list (tx_desc_t * buf)),
           len txq + len toSend < s.(tx_queue_cap) /\
           LittleEndian.combine sz val = (s.(tx_queue_head) + len txq + len toSend)
                                          mod s.(tx_queue_cap) /\
@@ -399,7 +399,7 @@ Section WithMem.
       externally_owned_mem t mNIC ->
       e1000_initialized s t ->
       e1000_invariant s rxq txq mNIC ->
-      (forall m' mRcv (done: list (rx_desc * buf)) new_RDH,
+      (forall m' mRcv (done: list (rx_desc_t * buf)) new_RDH,
           (* need explicit mRcv because it appears in trace *)
           map.split m' m mRcv ->
           \[new_RDH] = (s.(rx_queue_head) + len done) mod s.(rx_queue_cap) ->

@@ -4,6 +4,7 @@ Require Import bedrock2.TraceInspection.
 Require Import bedrock2.e1000_state.
 Require Import bedrock2.e1000_read_write_step.
 Require Import LiveVerifExamples.mbuf.
+Require Import LiveVerifExamples.fmalloc.
 
 Load LiveVerif.
 
@@ -39,39 +40,70 @@ Definition e1000_ctx_raw(c: e1000_ctx_t): word -> mem -> Prop := .**/
     uintptr_t rx_ring_base;
     uintptr_t tx_ring_base;
     uintptr_t tx_buf_allocator;
-  } e1000_ctx_t;
+  } e1000_ctx_raw;
 /**.
 
-(*
 Definition e1000_ctx(c: e1000_ctx_t)(a: word): mem -> Prop :=
   <{ * e1000_ctx_raw c a
-     * circular_buffer_slice ...
-*)
+     (* software-owned receive-related memory, ie unused receive descriptors & buffers: *)
+     * (EX (unused_rxq_elems: list (rx_desc_t * buf)), <{
+         * emp (len unused_rxq_elems + c.(current_rxq_len) = RX_RING_SIZE)
+         * circular_buffer_slice (rxq_elem MBUF_SIZE) RX_RING_SIZE
+             ((\[c.(current_RDH)] + c.(current_rxq_len)) mod RX_RING_SIZE)
+             unused_rxq_elems c.(rx_ring_base)
+       }>)
+     (* software-owned transmit-related memory, ie unused transmit descriptors & buffers:
+        Contrary to receive-related memory, we split buffers and descriptors because
+        the buffers are owned by the allocator *)
+     * (EX (unused_tx_descs: list tx_desc_t), <{
+         * emp (len unused_tx_descs + c.(current_txq_len) = TX_RING_SIZE)
+         * circular_buffer_slice tx_desc TX_RING_SIZE
+             ((\[c.(current_TDH)] + c.(current_txq_len)) mod TX_RING_SIZE)
+             unused_tx_descs c.(tx_ring_base)
+       }>)
+     * allocator MBUF_SIZE (TX_RING_SIZE - c.(current_txq_len)) c.(tx_buf_allocator)
+  }>.
 
 (* Provided by the network stack, not implemented here *)
 Instance spec_of_net_rx_eth: fnspec :=                                          .**/
 
-void net_rx_eth(uintptr_t a) /**#
-  ghost_args := mb (R: mem -> Prop);
-  requires t m := <{ * mbuf mb a
+void net_rx_eth(uintptr_t a, uintptr_t n) /**#
+  ghost_args := bs (R: mem -> Prop);
+  requires t m := <{ * mbuf \[n] bs a
                      * R }> m;
   (* rx may change the mbuf arbitrarily, but must return it *)
-  ensures t' m' := t' = t /\ exists mb',
-       <{ * mbuf mb' a
+  ensures t' m' := t' = t /\ exists bs' n',
+       <{ * mbuf n' bs' a
           * R }> m' #**/                                                   /**.
+
+
+Definition e1000_driver_mem_required: Z :=
+  MBUF_SIZE * RX_RING_SIZE + MBUF_SIZE * TX_RING_SIZE +
+  sizeof rx_desc * RX_RING_SIZE + sizeof tx_desc * TX_RING_SIZE +
+  sizeof fmalloc_state + sizeof e1000_ctx_raw.
+
+Goal exists n: Z, e1000_driver_mem_required = n.
+Proof. eexists. cbv. (* ca 66KB *) reflexivity. Succeed Qed. Abort.
 
 
 #[export] Instance spec_of_e1000_init: fnspec :=                                .**/
 
 uintptr_t e1000_init(uintptr_t b) /**#
   ghost_args := (R: mem -> Prop);
-  requires t m := <{ * array (uint 8) (sizeof e1000_ctx_raw) ? b
+  requires t m := <{ * array (uint 8) e1000_driver_mem_required ? b
                      * R }> m;
-  ensures t' m' r := t' = t /\
-       <{ * e1000_ctx_raw (* TODO not raw *) ? r
+  ensures t' m' r := t' = t /\ (* TODO trace will actually have setup interactions *)
+       <{ * e1000_ctx ? r
           * R }> m' #**/                                                   /**.
 Derive e1000_init SuchThat (fun_correct! e1000_init) As e1000_init_ok.          .**/
-{                                                                          /**.
+{                                                                          /**. .**/
+  b = b + MBUF_SIZE * RX_RING_SIZE;                                        /**. .**/
+  b = b + MBUF_SIZE * TX_RING_SIZE;                                        /**. .**/
+  b = b + sizeof(rx_desc) * RX_RING_SIZE;                                  /**. .**/
+  b = b + sizeof(tx_desc) * TX_RING_SIZE;                                  /**. .**/
+  b = b + sizeof(fmalloc_state);                                           /**. .**/
+  return b;                                                                /**. .**/
+} /**.
 Abort.
 
 #[export] Instance spec_of_e1000_rx: fnspec :=                                  .**/
