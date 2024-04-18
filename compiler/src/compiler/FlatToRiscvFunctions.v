@@ -203,6 +203,13 @@ Section Proofs.
     * eauto.
   Qed.
 
+  Lemma valid_FlatImp_var_isRegZ : forall x,
+      valid_FlatImp_var x -> isRegZ x = true. 
+  Proof.
+    unfold valid_FlatImp_var, isRegZ; blia. 
+  Qed. 
+  Hint Resolve valid_FlatImp_var_isRegZ.
+  
   Ltac run1done :=
     apply runsToDone;
     simpl_MetricRiscvMachine_get_set;
@@ -212,7 +219,14 @@ Section Proofs.
            end; ssplit; simpl_word_exprs word_ok;
     match goal with
     | |- _ => solve_word_eq word_ok
-    | |- (_ <= _)%metricsL => MetricsToRiscv.solve_MetricLog
+    | |- (_ <= _)%metricsL => 
+        unfold exec.cost_SLoad, exec.cost_SStore, exec.cost_SInlinetable, exec.cost_SStackalloc,
+               exec.cost_SLit, exec.cost_SOp, exec.cost_SSet, exec.cost_SIf,
+               exec.cost_SLoop_true, exec.cost_SLoop_false in *; 
+        repeat match goal with
+               | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+               end;        
+        MetricsToRiscv.solve_MetricLog
     | |- iff1 ?x ?x => reflexivity
     (* `exists stack_trash frame_trash, ...` from goodMachine *)
     | |- exists _ _, _ = _ /\ _ = _ /\ (_ * _)%sep _ =>
@@ -416,6 +430,8 @@ Section Proofs.
         simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try intuition congruence.
   Qed.
 
+
+  Local Notation exec := (exec isRegZ).
 
 
   Lemma compile_function_body_correct: forall (e_impl_full : env) m l mc (argvs : list word)
@@ -1597,18 +1613,17 @@ Section Proofs.
       replace mid_log with t in *.
       forget (Datatypes.length binds) as binds_count.
       subst binds.
-      eapply runsTo_weaken. {
-        match goal with
-        | H: (binds_count <= 8)%nat |- _ => rename H into BC
-        end.
-        move BC after OC.
-        repeat match goal with
-               | x := _ |- _ => clearbody x
-               end.
-        clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok pos_map_ok env_ok
-                  IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
-        revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
-        eapply compile_function_body_correct.
+      eapply runsTo_weaken.
+      1:{ 
+              match goal with
+              | H: (binds_count <= 8)%nat |- _ => rename H into BC
+              end.
+              move BC after OC.
+              repeat match goal with
+                     | x := _ |- _ => clearbody x
+                     end.
+              revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
+              eapply compile_function_body_correct.
       }
       subst mach. simpl_MetricRiscvMachine_get_set.
       intros. fwd. eexists. eexists. eexists. eexists.
@@ -1627,7 +1642,8 @@ Section Proofs.
       }
       inline_iff1.
       run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
-
+     
+      
     - idtac "Case compile_stmt_correct/SStore".
       inline_iff1.
       simpl_MetricRiscvMachine_get_set.
@@ -1838,6 +1854,12 @@ Section Proofs.
         }
         run1done.
         cbn.
+        unfold exec.cost_SLoad, exec.cost_SStore, exec.cost_SInlinetable, exec.cost_SStackalloc,
+               exec.cost_SLit, exec.cost_SOp, exec.cost_SSet, exec.cost_SIf,
+               exec.cost_SLoop_true, exec.cost_SLoop_false in *. 
+        repeat match goal with
+               | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+               end.
         remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;
         symmetry in HeqfinalMetrics;
         pose proof update_metrics_for_literal_bounded (width := width) as Hlit;
@@ -1925,7 +1947,24 @@ Section Proofs.
           simpl_MetricRiscvMachine_get_set.
 
           intros. destruct_RiscvMachine mid. fwd. run1done.
-
+          destruct cond eqn:E;
+            unfold exec.cost_SLoad, exec.cost_SStore, exec.cost_SInlinetable, exec.cost_SStackalloc,
+            exec.cost_SLit, exec.cost_SOp, exec.cost_SSet, exec.cost_SIf,
+            exec.cost_SLoop_true, exec.cost_SLoop_false in *;
+          unfold ForallVars_bcond in *; 
+          repeat match goal with
+                 | H : ForallVars_bcond _ |- _ => unfold ForallVars_bcond in H; destruct H
+                 end;
+          repeat match goal with
+                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+                 end;                 
+          try MetricsToRiscv.solve_MetricLog. 
+          destruct H6p0.
+          repeat match goal with
+                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+                 end.
+          MetricsToRiscv.solve_MetricLog. 
+          
     - idtac "Case compile_stmt_correct/SIf/Else".
       (* execute branch instruction, which will jump over then-branch *)
       eapply runsToStep.
@@ -1950,7 +1989,24 @@ Section Proofs.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
-
+          destruct cond eqn:E;
+            unfold exec.cost_SLoad, exec.cost_SStore, exec.cost_SInlinetable, exec.cost_SStackalloc,
+            exec.cost_SLit, exec.cost_SOp, exec.cost_SSet, exec.cost_SIf,
+            exec.cost_SLoop_true, exec.cost_SLoop_false in *;
+          unfold ForallVars_bcond in *; 
+          repeat match goal with
+                 | H : ForallVars_bcond _ |- _ => unfold ForallVars_bcond in H; destruct H
+                 end;
+          repeat match goal with
+                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+                 end;                 
+          try MetricsToRiscv.solve_MetricLog. 
+          destruct H6p0.
+          repeat match goal with
+                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+                 end.
+          MetricsToRiscv.solve_MetricLog. 
+          
     - idtac "Case compile_stmt_correct/SLoop".
       match goal with
       | H: context[FlatImpConstraints.uses_standard_arg_regs body1 -> _] |- _ => rename H into IH1
@@ -2022,6 +2078,24 @@ Section Proofs.
           }
           (* at end of loop, just prove that computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd. run1done.
+          destruct cond eqn:blah;
+            unfold exec.cost_SLoad, exec.cost_SStore, exec.cost_SInlinetable, exec.cost_SStackalloc,
+            exec.cost_SLit, exec.cost_SOp, exec.cost_SSet, exec.cost_SIf,
+            exec.cost_SLoop_true, exec.cost_SLoop_false in *;
+          unfold ForallVars_bcond in *; 
+          repeat match goal with
+                 | H : ForallVars_bcond _ |- _ => unfold ForallVars_bcond in H; destruct H
+                 end;
+          repeat match goal with
+                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+                 end;                 
+          try MetricsToRiscv.solve_MetricLog. 
+          destruct H11p0.
+          repeat match goal with
+                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+                 end.
+          MetricsToRiscv.solve_MetricLog.
+          
         * (* false: done, jump over body2 *)
           eapply runsToStep. {
             eapply compile_bcond_by_inverting_correct with (l := lH') (b := false);
@@ -2030,6 +2104,23 @@ Section Proofs.
           }
           simpl_MetricRiscvMachine_get_set.
           intros. destruct_RiscvMachine mid. fwd. run1done.
+          destruct cond eqn:blah;
+            unfold exec.cost_SLoad, exec.cost_SStore, exec.cost_SInlinetable, exec.cost_SStackalloc,
+            exec.cost_SLit, exec.cost_SOp, exec.cost_SSet, exec.cost_SIf,
+            exec.cost_SLoop_true, exec.cost_SLoop_false in *;
+          unfold ForallVars_bcond in *; 
+          repeat match goal with
+                 | H : ForallVars_bcond _ |- _ => unfold ForallVars_bcond in H; destruct H
+                 end;
+          repeat match goal with
+                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+                 end;                 
+          try MetricsToRiscv.solve_MetricLog. 
+          destruct H11p0.
+          repeat match goal with
+                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+                 end.
+          MetricsToRiscv.solve_MetricLog.
 
     - idtac "Case compile_stmt_correct/SSeq".
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]
@@ -2062,3 +2153,4 @@ Section Proofs.
 
 
 End Proofs.
+ 

@@ -1,3 +1,6 @@
+(*
+TODO why did pratap delete this file?
+
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
@@ -376,3 +379,5 @@ Section Proofs.
   Qed.
 
 End Proofs.
+
+*)

@@ -26,6 +26,7 @@ Section WithArguments.
         constants [word_cst]).
 
   Local Hint Constructors exec: core.
+  Local Notation exec := (exec isRegStr).
 
   Lemma useImmediate_correct_aux:
     forall eH eL,

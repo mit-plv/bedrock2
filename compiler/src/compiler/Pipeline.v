@@ -168,7 +168,7 @@ Section WithWordAndMem.
     Definition FlatWithStrVars: Lang := {|
       Program := string_keyed_map (list string * list string * FlatImp.stmt string);
       Valid := map.forall_values ParamsNoDup;
-      Call := locals_based_call_spec FlatImp.exec;
+      Call := locals_based_call_spec (FlatImp.exec isRegStr);
     |}.
 
     (* |                 *)
@@ -182,7 +182,7 @@ Section WithWordAndMem.
     Definition FlatWithZVars: Lang := {|
       Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
       Valid := map.forall_values ParamsNoDup;
-      Call := locals_based_call_spec FlatImp.exec;
+      Call := locals_based_call_spec (FlatImp.exec isRegZ);
     |}.
     (* |                 *)
     (* | Spilling        *)
@@ -190,7 +190,7 @@ Section WithWordAndMem.
     Definition FlatWithRegs: Lang := {|
       Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
       Valid := map.forall_values FlatToRiscvDef.valid_FlatImp_fun;
-      Call := locals_based_call_spec FlatImp.exec;
+      Call := locals_based_call_spec (FlatImp.exec isRegZ);
     |}.
     (* |                 *)
     (* | FlatToRiscv     *)
@@ -353,6 +353,8 @@ Section WithWordAndMem.
         rewrite H1 in P'. inversion P'. exact Cp.
       - simpl. intros. fwd. eexists. split. 2: eassumption.
         eauto using states_compat_getmany.
+    Unshelve.
+    all: repeat constructor.
     Qed.
 
     Ltac debool :=

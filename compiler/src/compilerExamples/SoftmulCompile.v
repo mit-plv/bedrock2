@@ -758,7 +758,7 @@ Section Riscv.
         unfold FlatToRiscvCommon.compiles_FlatToRiscv_correctly.
         intros.
         match goal with
-        | H: FlatImp.exec.exec _ (FlatImp.SInteract _ _ _) _ _ _ _ _ |- _ => inversion H
+        | H: FlatImp.exec.exec _ _ (FlatImp.SInteract _ _ _) _ _ _ _ _  |- _ => inversion H
         end.
         contradiction. }
       { intros. reflexivity. }
