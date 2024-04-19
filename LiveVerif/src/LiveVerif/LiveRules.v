@@ -1262,6 +1262,64 @@ Section WithParams.
     eapply WeakestPreconditionProperties.Proper_call. 2: eassumption. exact Impl.
   Qed.
 
+(*
+  Lemma wp_interact0 fs t m l fname resnames es vs (post: trace -> mem -> locals -> Prop):
+      dexprs m l es vs ->
+      interact fname t m vs (fun t' m' rets =>
+        exists l', map.putmany_of_list_zip resnames rets l = Some l' /\ post t' m' l') ->
+      wp_cmd fs (cmd.interact resnames fname es) t m l post.
+  Proof.
+    intros. unfold interact in *. fwd.
+    unfold dexprs in *.
+    eapply WeakestPreconditionProperties.sound_args in H. fwd.
+    econstructor.
+    4: { intros *. exact id. }
+    1-2: eassumption.
+    eapply ext_spec.weaken. 2: eassumption.
+    clear.
+    intros mRcv rets ?. fwd. eexists.
+
+(*
+Semantics.exec.interact: good, because locals list stuff appears indepenently of memory
+Semantics.interact: bad, because when passed a postcondition that deals with locals, that post ends up under a memory split hyp!
+*)
+
+    cbv beta. intros * P. exact id.
+  Qed.
+*)
+
+  Lemma wp_interact: forall fs fname t m mKeep resnames arges argvs l rest
+      (calleePre: Prop)
+      (calleePost: mem -> list word -> Prop)
+      (finalPost: trace -> mem -> locals -> Prop),
+      (* definition-site format: *) (* -----------> TODO investigate concrete example of definition-site format and try to use frame ghost var that doesn't need to be formalized here, like in wp_call *)
+      (forall mGive, Give mGive -> ext_spec t mGive fname argvs calleePost) ->
+      (* use-site format: *)
+      dexprs1 m l arges argvs (sep Give (eq mKeep) m /\
+         forall mRcv retvs, calleePost mRcv retvs ->
+            update_locals resnames retvs l (fun l' =>
+               forall t' m', map.split m' m m
+                                 wp_cmd fs rest t' m' l' finalPost))) ->
+      (* conclusion: *)
+      wp_cmd fs (cmd.seq (cmd.interact resnames fname arges) rest) t m l finalPost.
+  Proof.
+    intros. inversion H0. clear H0. destruct Hp as (Pre & Impl).
+    unfold enable_frame_trick in *.
+    setoid_rewrite update_locals_spec in Impl.
+    specialize (H Pre). clear Pre.
+    eapply wp_seq. unfold interact in H. fwd.
+    unfold dexprs in *.
+    eapply WeakestPreconditionProperties.sound_args in Hde. fwd.
+    econstructor; try eassumption.
+    cbv beta. intros * P. eauto 10.
+
+ eapply exec.interact.
+    - eassumption.
+    -
+    eapply wp_call0. 1: eassumption.
+    eapply WeakestPreconditionProperties.Proper_call. 2: eassumption. exact Impl.
+  Qed.
+
   Lemma cpsify_getmany_of_list: forall retnames retvs (post: list word -> Prop) l,
       map.getmany_of_list l retnames = Some retvs ->
       post retvs ->

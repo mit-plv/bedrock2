@@ -138,6 +138,22 @@ Section WithMem.
         fwd; eauto 10 using intersect_read_step.
   Qed.
 
+  Section CallLemmas.
+    Context {mmio_ext_calls: MemoryMappedExtCalls}
+            {mmio_ext_calls_ok: MemoryMappedExtCallsOk mmio_ext_calls}.
+
+    (* Not suref if helper lemmas of this form will be useful *)
+
+    Lemma memory_mapped_extcall_read32_ok: forall t addr post,
+      read_step 4 t addr (fun v mRcv => post mRcv [word.of_Z (LittleEndian.combine 4 v)]) ->
+      ext_spec t map.empty "memory_mapped_extcall_read32" [addr] post.
+    Proof.
+      unfold ext_spec. intros. eexists. split; eauto. left. split; [reflexivity | ].
+      eauto.
+    Qed.
+
+  End CallLemmas.
+
 End WithMem.
 
 #[export] Existing Instance ext_spec.

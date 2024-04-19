@@ -341,9 +341,8 @@ Section WithParams.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
 
-  Implicit Types (l: locals) (m: mem) (post: trace -> mem -> list word -> Prop).
-
-  Definition call e fname t m args post :=
+  Definition call(e: env)(fname: String.string)(t: trace)(m: mem)(args: list word)
+    (post: trace -> mem -> list word -> Prop): Prop :=
     exists argnames retnames body,
       map.get e fname = Some (argnames, retnames, body) /\
       exists l, map.of_list_zip argnames args = Some l /\
@@ -373,4 +372,24 @@ Section WithParams.
     - eassumption.
     - eapply exec.extend_env; eassumption.
   Qed.
+
+  (* external call, same signature as `call`, but without (e: env) *)
+  Definition interact(action: String.string)(t: trace)(m: mem)(args: list word)
+    (post: trace -> mem -> list word -> Prop): Prop :=
+    exists mKeep mGive, map.split m mKeep mGive /\
+      ext_spec t mGive action args (fun mReceive rets =>
+        forall m', map.split m' mKeep mReceive ->
+                   post (cons ((mGive, action, args), (mReceive, rets)) t) m' rets).
+
+  Lemma weaken_interact{ext_spec_ok: ext_spec.ok ext_spec}: forall action t m args post1,
+      interact action t m args post1 ->
+      forall post2, (forall t' m' rets, post1 t' m' rets -> post2 t' m' rets) ->
+      interact action t m args post2.
+  Proof.
+    unfold interact. intros. fwd.
+    do 3 eexists. 1: eassumption.
+    eapply ext_spec.weaken. 2: eassumption.
+    intros t' rets P m' Sp. eauto.
+  Qed.
+
 End WithParams.
