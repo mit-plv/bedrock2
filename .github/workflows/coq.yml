@@ -62,7 +62,7 @@ jobs:
         echo "::group::echo | coqtop"
         echo | coqtop
         echo "::endgroup::"
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: make
