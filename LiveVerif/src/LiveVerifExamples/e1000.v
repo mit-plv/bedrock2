@@ -20,9 +20,11 @@ Definition RX_RING_SIZE: Z := 16.
 Definition TX_RING_SIZE: Z := 16.
 
 Record e1000_ctx_t := {
-  current_RDH: word; (* receive descriptor queue head *)
+  current_RDH: Z; (* receive descriptor queue head *)
+  undelivered_head: Z; (* Before RDH and after RDT, indicates index of first packet
+                          that has not yet been delivered to the upper layers *)
   current_rxq_len: Z;
-  current_TDH: word; (* transmit descriptor queue head *)
+  current_TDH: Z; (* transmit descriptor queue head *)
   current_txq_len: Z;
   rx_ring_base: word; (* TODO enforce 16-byte alignment *)
   tx_ring_base: word; (* TODO enforce 16-byte alignment *)
@@ -33,10 +35,11 @@ Record e1000_ctx_t := {
 
 Definition e1000_ctx_raw(c: e1000_ctx_t): word -> mem -> Prop := .**/
   typedef struct __attribute__ ((__packed__)) {
-    uintptr_t current_RDH;
-    size_t current_rxq_len;
-    uintptr_t current_TDH;
-    size_t current_txq_len;
+    uint32_t current_RDH;
+    uint32_t undelivered_head;
+    uint32_t current_rxq_len;
+    uint32_t current_TDH;
+    uint32_t current_txq_len;
     uintptr_t rx_ring_base;
     uintptr_t tx_ring_base;
     uintptr_t tx_buf_allocator;
@@ -49,7 +52,7 @@ Definition e1000_ctx(c: e1000_ctx_t)(a: word): mem -> Prop :=
      * (EX (unused_rxq_elems: list (rx_desc_t * buf)), <{
          * emp (len unused_rxq_elems + c.(current_rxq_len) = RX_RING_SIZE)
          * circular_buffer_slice (rxq_elem MBUF_SIZE) RX_RING_SIZE
-             ((\[c.(current_RDH)] + c.(current_rxq_len)) mod RX_RING_SIZE)
+             ((c.(current_RDH) + c.(current_rxq_len)) mod RX_RING_SIZE)
              unused_rxq_elems c.(rx_ring_base)
        }>)
      (* software-owned transmit-related memory, ie unused transmit descriptors & buffers:
@@ -58,7 +61,7 @@ Definition e1000_ctx(c: e1000_ctx_t)(a: word): mem -> Prop :=
      * (EX (unused_tx_descs: list tx_desc_t), <{
          * emp (len unused_tx_descs + c.(current_txq_len) = TX_RING_SIZE)
          * circular_buffer_slice tx_desc TX_RING_SIZE
-             ((\[c.(current_TDH)] + c.(current_txq_len)) mod TX_RING_SIZE)
+             ((c.(current_TDH) + c.(current_txq_len)) mod TX_RING_SIZE)
              unused_tx_descs c.(tx_ring_base)
        }>)
      * allocator MBUF_SIZE (TX_RING_SIZE - c.(current_txq_len)) c.(tx_buf_allocator)
@@ -114,22 +117,24 @@ Derive e1000_init SuchThat (fun_correct! e1000_init) As e1000_init_ok.          
   end.
                                                                                 .**/
   /* current_RDH */                                                        /**. .**/
-  store(f, 0);                                                             /**. .**/
+  store32(f, 0);                                                           /**. .**/
   /* current_rxq_len */                                                    /**. .**/
-  store(f + sizeof(uintptr_t), 0);                                         /**. .**/
+  store32(f + 4, 0);                                                       /**. .**/
   /* current_TDH */                                                        /**. .**/
-  store(f + 2 * sizeof(uintptr_t), 0);                                     /**. .**/
+  store32(f + 8, 0);                                                       /**. .**/
+  /* undelivered_head */                                                   /**. .**/
+  store32(f + 12, 0);                                                      /**. .**/
   /* current_txq_len */                                                    /**. .**/
-  store(f + 3 * sizeof(uintptr_t), 0);                                     /**. .**/
+  store32(f + 16, 0);                                                      /**. .**/
   /* rx_ring_base */                                                       /**. .**/
-  store(f + 4 * sizeof(uintptr_t),
+  store32(f + 20,
         b + MBUF_SIZE * RX_RING_SIZE + MBUF_SIZE * TX_RING_SIZE);          /**. .**/
   /* tx_ring_base */                                                       /**. .**/
-  store(f + 5 * sizeof(uintptr_t),
+  store32(f + 20 + sizeof(uintptr_t),
         b + MBUF_SIZE * RX_RING_SIZE + MBUF_SIZE * TX_RING_SIZE +
         sizeof(rx_desc) * RX_RING_SIZE);                                   /**. .**/
   /* tx_buf_allocator */                                                   /**. .**/
-  store(f + 6 * sizeof(uintptr_t),
+  store32(f + 20 + 2 * sizeof(uintptr_t),
         b + MBUF_SIZE * RX_RING_SIZE + MBUF_SIZE * TX_RING_SIZE +
         sizeof(rx_desc) * RX_RING_SIZE + sizeof(tx_desc) * TX_RING_SIZE);  /**.
   repeat match goal with
@@ -144,17 +149,52 @@ Derive e1000_init SuchThat (fun_correct! e1000_init) As e1000_init_ok.          
   (* TODO circular_buffer_slice support *)
 Abort.
 
+Local Hint Unfold e1000_ctx : heapletwise_always_unfold.
+
+(* TODO move and replace True by useful stuff *)
+Lemma purify_circular_buffer_slice[E: Type](elem: E -> word -> mem -> Prop)
+  {sz: PredicateSize elem}(modulus startIndex: Z)(vs: list E)(a: word):
+  purify (circular_buffer_slice elem modulus startIndex vs a) True.
+Proof.
+  unfold purify, circular_buffer_slice.
+  intros. constructor.
+Qed.
+
+Hint Resolve purify_circular_buffer_slice : purify.
+
+(* TODO circular_buffer_slice can't fit into the PredicateSize framework
+   because its range might consist of two chunks and doesn't always start at its
+   base address, so automating memory accesses inside a circular_buffer_slice
+   won't work well!
+   Split into first part and potentially overflowing part?
+   Maybe by changing its definition, or using an alternative definition and
+   conversion lemma?  *)
+Local Hint Extern 1 (PredicateSize_not_found (circular_buffer_slice _ _ _ _))
+      => constructor : suppressed_warnings.
+
+(* Calls net_rx_eth 1x if with the oldest undelived packet if some packets are
+   undelivered. Doesn't call the uper layer if no new packets are available.
+   Meant to be called from toplevel loop. *)
 #[export] Instance spec_of_e1000_rx: fnspec :=                                  .**/
 
 void e1000_rx(uintptr_t c) /**#
   ghost_args := ctx (R: mem -> Prop);
-  requires t m := <{ * e1000_ctx_raw ctx c
+  requires t m := (* +2 because 1 to keep TDH and TDT from clashing aind 1 to
+                     make sure we have space to send (at least the beginning of)
+                     the reply *)
+                  current_txq_len ctx + 2 <= TX_RING_SIZE /\
+                  <{ * e1000_ctx ctx c
                      * R }> m;
-  ensures t' m' := t' = t /\
-       <{ * e1000_ctx_raw ctx c
+  ensures t' m' := (* TODO update t *) exists c',
+       <{ * e1000_ctx ctx c'
           * R }> m' #**/                                                   /**.
 Derive e1000_rx SuchThat (fun_correct! e1000_rx) As e1000_rx_ok.                .**/
-{                                                                          /**.
+{                                                                          /**. .**/
+  uintptr_t current_head = load32(c);                                      /**. .**/
+  uintptr_t undelivered_head = load32(c + 4);                              /**. .**/
+  if (undelivered_head == current_head) /* split */ {                      /**.
+    (* TODO need to call something like wp_interact to check for more packets *)
+
 Abort.
 
 End LiveVerif. Comments .**/ //.
