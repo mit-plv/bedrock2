@@ -85,25 +85,63 @@ Definition e1000_driver_mem_required: Z :=
 Goal exists n: Z, e1000_driver_mem_required = n.
 Proof. eexists. cbv. (* ca 66KB *) reflexivity. Succeed Qed. Abort.
 
-
 #[export] Instance spec_of_e1000_init: fnspec :=                                .**/
 
 uintptr_t e1000_init(uintptr_t b) /**#
   ghost_args := (R: mem -> Prop);
-  requires t m := <{ * array (uint 8) e1000_driver_mem_required ? b
+  requires t m := \[b] + e1000_driver_mem_required < 2 ^ bitwidth /\
+                  <{ * array (uint 8) e1000_driver_mem_required ? b
                      * R }> m;
   ensures t' m' r := t' = t /\ (* TODO trace will actually have setup interactions *)
        <{ * e1000_ctx ? r
           * R }> m' #**/                                                   /**.
 Derive e1000_init SuchThat (fun_correct! e1000_init) As e1000_init_ok.          .**/
 {                                                                          /**. .**/
-  b = b + MBUF_SIZE * RX_RING_SIZE;                                        /**. .**/
-  b = b + MBUF_SIZE * TX_RING_SIZE;                                        /**. .**/
-  b = b + sizeof(rx_desc) * RX_RING_SIZE;                                  /**. .**/
-  b = b + sizeof(tx_desc) * TX_RING_SIZE;                                  /**. .**/
-  b = b + sizeof(fmalloc_state);                                           /**. .**/
-  return b;                                                                /**. .**/
+  fmalloc_init(b + MBUF_SIZE * RX_RING_SIZE + MBUF_SIZE * TX_RING_SIZE +
+               sizeof(rx_desc) * RX_RING_SIZE + sizeof(tx_desc) * TX_RING_SIZE,
+               b + MBUF_SIZE * RX_RING_SIZE, MBUF_SIZE, TX_RING_SIZE);     /**.
+  (* TODO it would be nicer to keep the constants folded as much as possible *)
+  all: unfold e1000_driver_mem_required, MBUF_SIZE, RX_RING_SIZE, TX_RING_SIZE in *.
+  1-3: solve [steps].
+  clear Error. steps. do 2 delete #(merge_step).                                .**/
+  uintptr_t f = b + MBUF_SIZE * RX_RING_SIZE + MBUF_SIZE * TX_RING_SIZE +
+                sizeof(rx_desc) * RX_RING_SIZE + sizeof(tx_desc) * TX_RING_SIZE +
+                sizeof(fmalloc_state);                                     /**.
+  (* TODO better zify and simplification *)
+  lazymatch goal with
+  | H: f = _ |- _ => unfold MBUF_SIZE, RX_RING_SIZE, TX_RING_SIZE in H;
+                     bottom_up_simpl_in_hyp H
+  end.
+                                                                                .**/
+  /* current_RDH */                                                        /**. .**/
+  store(f, 0);                                                             /**. .**/
+  /* current_rxq_len */                                                    /**. .**/
+  store(f + sizeof(uintptr_t), 0);                                         /**. .**/
+  /* current_TDH */                                                        /**. .**/
+  store(f + 2 * sizeof(uintptr_t), 0);                                     /**. .**/
+  /* current_txq_len */                                                    /**. .**/
+  store(f + 3 * sizeof(uintptr_t), 0);                                     /**. .**/
+  /* rx_ring_base */                                                       /**. .**/
+  store(f + 4 * sizeof(uintptr_t),
+        b + MBUF_SIZE * RX_RING_SIZE + MBUF_SIZE * TX_RING_SIZE);          /**. .**/
+  /* tx_ring_base */                                                       /**. .**/
+  store(f + 5 * sizeof(uintptr_t),
+        b + MBUF_SIZE * RX_RING_SIZE + MBUF_SIZE * TX_RING_SIZE +
+        sizeof(rx_desc) * RX_RING_SIZE);                                   /**. .**/
+  /* tx_buf_allocator */                                                   /**. .**/
+  store(f + 6 * sizeof(uintptr_t),
+        b + MBUF_SIZE * RX_RING_SIZE + MBUF_SIZE * TX_RING_SIZE +
+        sizeof(rx_desc) * RX_RING_SIZE + sizeof(tx_desc) * TX_RING_SIZE);  /**.
+  repeat match goal with
+  | H: merge_step _ |- _ => clear H
+  end.
+                                                                                .**/
+  return f;                                                                /**. .**/
 } /**.
+  unfold e1000_ctx, e1000_ctx_raw, anyval. clear Warning.
+  step. instantiate (1 := {| current_RDH := _ |}). record.simp.
+  steps.
+  (* TODO circular_buffer_slice support *)
 Abort.
 
 #[export] Instance spec_of_e1000_rx: fnspec :=                                  .**/
