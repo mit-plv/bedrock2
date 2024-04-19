@@ -71,7 +71,7 @@ Definition freeable(sz: Z)(a: word): mem -> Prop :=
 
 Local Hint Extern 1 (cannot_purify (fixed_size_free_list _ _ _))
       => constructor : suppressed_warnings.
-Local Hint Extern 1 (cannot_purify allocator)
+Local Hint Extern 1 (cannot_purify (allocator _ _ _))
       => constructor : suppressed_warnings.
 Local Hint Extern 1 (cannot_purify (freeable _ _))
       => constructor : suppressed_warnings.
@@ -341,7 +341,7 @@ End LiveVerif.
       => constructor : suppressed_warnings.
 #[export] Hint Extern 1 (PredicateSize_not_found (allocator _ _))
       => constructor : suppressed_warnings.
-#[export] Hint Extern 1 (cannot_purify (allocator _ _))
+#[export] Hint Extern 1 (cannot_purify (allocator _ _ _))
       => constructor : suppressed_warnings.
 
 Comments .**/ //.
