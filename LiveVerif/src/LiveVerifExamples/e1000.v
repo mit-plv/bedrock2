@@ -5,6 +5,7 @@ Require Import bedrock2.e1000_state.
 Require Import bedrock2.e1000_read_write_step.
 Require Import LiveVerifExamples.mbuf.
 Require Import LiveVerifExamples.fmalloc.
+Require Import LiveVerifExamples.e1000_mmio_spec.
 
 Load LiveVerif.
 
@@ -192,8 +193,10 @@ Derive e1000_rx SuchThat (fun_correct! e1000_rx) As e1000_rx_ok.                
 {                                                                          /**. .**/
   uintptr_t current_head = load32(c);                                      /**. .**/
   uintptr_t undelivered_head = load32(c + 4);                              /**. .**/
-  if (undelivered_head == current_head) /* split */ {                      /**.
-    (* TODO need to call something like wp_interact to check for more packets *)
+  if (undelivered_head == current_head) /* split */ {                      /**. .**/
+    uintptr_t new_head = e1000_read_RDH();                                 /**.
+
+    all: try record.simp_hyps.
 
 Abort.
 

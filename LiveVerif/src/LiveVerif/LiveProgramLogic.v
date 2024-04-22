@@ -149,7 +149,9 @@ Ltac start :=
       | ?p => unify evar p
       end;
       subst evar;
-      unfold program_logic_goal_for, spec;
+      (* strip implicit arguments if spec was defined in another file *)
+      let spec_head := head spec in
+      unfold program_logic_goal_for, spec_head;
       let fs := fresh "fs" in
       let G := fresh "EnvContains" in
       let fs_ok := fresh "fs_ok" in
