@@ -205,7 +205,7 @@ Section WithMem.
     <{ * circular_buffer_slice (rxq_elem s.(rx_buf_size))
            s.(rx_queue_cap) s.(rx_queue_head) rxq s.(rx_queue_base_addr)
        * circular_buffer_slice txq_elem
-           s.(rx_queue_cap) s.(tx_queue_head) txq s.(tx_queue_base_addr) }>.
+           s.(tx_queue_cap) s.(tx_queue_head) txq s.(tx_queue_base_addr) }>.
 
   Lemma rxq_txq_unique: forall [s rxq1 rxq2 txq1 txq2 m],
       e1000_invariant s rxq1 txq1 m ->
@@ -357,13 +357,16 @@ Section WithMem.
         end.
       all: eauto 15.
     - (* read_step_nonempty *)
+      unfold e1000_invariant in *.
+      PurifySep.purify_hyp Hp1p2.
       destruct_or; fwd.
       all: specialize (Hp1 map.empty).
       1: specialize (Hp1 nil).
       2: specialize (Hp1 0).
       1: rewrite List.len_nil in Hp1.
       all: rewrite Z.add_0_r in Hp1.
-      all: do 2 eexists; apply Hp1; cbn; try lia; unfold emp; repeat split.
+      all: do 2 eexists; apply Hp1; try apply circular_buffer_slice_nil_empty;
+        try reflexivity; try lia.
     - (* read_step_returns_owned_mem *)
       case TODO.
     - (* write_step_unique_mGive *)

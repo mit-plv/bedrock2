@@ -29,6 +29,7 @@ Require Import bedrock2.SepBulletPoints. Local Open Scope sep_bullets_scope.
 Require Import bedrock2.RecordPredicates.
 Require Import bedrock2.TraceInspection.
 Require Import bedrock2.e1000_state. (* for rx/tx_desc and separation logic definitions *)
+Require Import bedrock2.old_dma.circular_buffer_slice_based_on_list_of_addrs.
 
 (* Not part of the spec, but a convention we chose to hardcode here: *)
 Definition E1000_REGS := 0x40000000.
