@@ -21,10 +21,9 @@ Definition RX_RING_SIZE: Z := 16.
 Definition TX_RING_SIZE: Z := 16.
 
 Record e1000_ctx_t := {
-  current_RDH: Z; (* receive descriptor queue head *)
-  undelivered_head: Z; (* Before RDH and after RDT, indicates index of first packet
-                          that has not yet been delivered to the upper layers *)
-  current_rxq_len: Z;
+  rxq_tail: Z; (* receive descriptor queue tail (RDT) *)
+  unused_rx_len: Z; (* number of unused rx descriptors *)
+  undelivered_rx_len: Z; (* number of packets received, but not yet delivered to stack *)
   current_TDH: Z; (* transmit descriptor queue head *)
   current_txq_len: Z;
   rx_ring_base: word; (* TODO enforce 16-byte alignment *)
@@ -36,9 +35,9 @@ Record e1000_ctx_t := {
 
 Definition e1000_ctx_raw(c: e1000_ctx_t): word -> mem -> Prop := .**/
   typedef struct __attribute__ ((__packed__)) {
-    uint32_t current_RDH;
-    uint32_t undelivered_head;
-    uint32_t current_rxq_len;
+    uint32_t rxq_tail;
+    uint32_t unused_rx_len;
+    uint32_t undelivered_rx_len;
     uint32_t current_TDH;
     uint32_t current_txq_len;
     uintptr_t rx_ring_base;
@@ -47,14 +46,28 @@ Definition e1000_ctx_raw(c: e1000_ctx_t): word -> mem -> Prop := .**/
   } e1000_ctx_raw;
 /**.
 
+(*
+             RDT --> +-------------+     ---       ---
+                     | unused      |      |         |
+undelivered_head --> +-------------+   SW-owned     | anywhere in here,
+                     | undelivered |      |         | circular buffer
+             RDH --> +-------------+     ---        | wraps around
+                     | rx queue    |   HW-owned     |
+             RDT --> +-------------+     ---       ---
+
+*)
+
 Definition e1000_ctx(c: e1000_ctx_t)(a: word): mem -> Prop :=
   <{ * e1000_ctx_raw c a
-     (* software-owned receive-related memory, ie unused receive descriptors & buffers: *)
-     * (EX (unused_rxq_elems: list (rx_desc_t * buf)), <{
-         * emp (len unused_rxq_elems + c.(current_rxq_len) = RX_RING_SIZE)
+     (* software-owned receive-related memory,
+        ie unused & undelivered receive descriptors & buffers: *)
+     * (EX (unused_rx undelivered_rx : list (rx_desc_t * buf)), <{
+         * emp (len unused_rx = c.(unused_rx_len) /\
+                len undelivered_rx = c.(undelivered_rx_len) /\
+                (* at least 1 so that RDT does not hit RDH *)
+                1 <= c.(unused_rx_len) + c.(undelivered_rx_len) <= RX_RING_SIZE)
          * circular_buffer_slice (rxq_elem MBUF_SIZE) RX_RING_SIZE
-             ((c.(current_RDH) + c.(current_rxq_len)) mod RX_RING_SIZE)
-             unused_rxq_elems c.(rx_ring_base)
+             c.(rxq_tail) (unused_rx ++ undelivered_rx) c.(rx_ring_base)
        }>)
      (* software-owned transmit-related memory, ie unused transmit descriptors & buffers:
         Contrary to receive-related memory, we split buffers and descriptors because
@@ -117,13 +130,13 @@ Derive e1000_init SuchThat (fun_correct! e1000_init) As e1000_init_ok.          
                      bottom_up_simpl_in_hyp H
   end.
                                                                                 .**/
-  /* current_RDH */                                                        /**. .**/
+  /* rxq_tail */                                                           /**. .**/
   store32(f, 0);                                                           /**. .**/
-  /* current_rxq_len */                                                    /**. .**/
+  /* unused_rx_len */                                                      /**. .**/
   store32(f + 4, 0);                                                       /**. .**/
-  /* current_TDH */                                                        /**. .**/
+  /* undelivered_rx_len */                                                 /**. .**/
   store32(f + 8, 0);                                                       /**. .**/
-  /* undelivered_head */                                                   /**. .**/
+  /* current_TDH */                                                        /**. .**/
   store32(f + 12, 0);                                                      /**. .**/
   /* current_txq_len */                                                    /**. .**/
   store32(f + 16, 0);                                                      /**. .**/
@@ -145,7 +158,7 @@ Derive e1000_init SuchThat (fun_correct! e1000_init) As e1000_init_ok.          
   return f;                                                                /**. .**/
 } /**.
   unfold e1000_ctx, e1000_ctx_raw, anyval. clear Warning.
-  step. instantiate (1 := {| current_RDH := _ |}). record.simp.
+  step. instantiate (1 := {| tx_buf_allocator := _ |}). record.simp.
   steps.
   (* TODO circular_buffer_slice support *)
 Abort.
