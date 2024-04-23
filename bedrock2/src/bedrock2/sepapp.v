@@ -36,6 +36,10 @@ Definition hole{key value}{mem: map.map key value}(n: Z)(addr: key): mem -> Prop
 #[export] Hint Extern 1 (PredicateSize (hole ?n)) => exact n : typeclass_instances.
 #[export] Hint Opaque hole : typeclass_instances.
 
+Definition emp_at_addr{key value}{mem: map.map key value}
+  (P: Prop)(ignored_addr: key): mem -> Prop := emp P.
+#[export] Hint Extern 1 (PredicateSize (emp_at_addr _)) => exact 0 : typeclass_instances.
+
 (* pair of a predicate and its size, used as tree leaves *)
 Inductive sized_predicate{width: Z}{BW: Bitwidth width}{word: word.word width}
   {mem: map.map word Byte.byte}: Type :=

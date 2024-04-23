@@ -23,7 +23,9 @@ Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import bedrock2.SepLib.
+Require Import bedrock2.PurifySep.
 Require Import bedrock2.SepBulletPoints.
+Require Import bedrock2.SepappBulletPoints. Local Open Scope sepapp_bullets_scope.
 Require Import bedrock2.RecordPredicates.
 
 (* Not part of the spec, but a convention we chose to hardcode here: *)
@@ -187,49 +189,72 @@ Section WithMem.
   Context {width: Z} {BW: Bitwidth width}
           {word: word.word width} {mem: map.map word Byte.byte}.
 
-  (* TODO move,
-     and maybe this could be used to define array and sepapps more conveniently? *)
+  (* TODO move? *)
   Section WithElem.
     Context {E: Type}.
-
-    Definition layout_absolute(ps: list (word -> mem -> Prop))(addrs: list word) :=
-      seps' (List.map (fun '(p, a) => p a) (List.combine ps addrs)).
-
-    Definition layout_offsets(ps: list (word -> mem -> Prop))(offsets: list Z)(addr: word):
-      mem -> Prop :=
-      layout_absolute ps (List.map (fun ofs => word.add addr (word.of_Z ofs)) offsets).
-
-    Definition scattered_array(elem: E -> word -> mem -> Prop)
-                              (vs: list E)(addrs: list word): mem -> Prop :=
-      layout_absolute (List.map elem vs) addrs.
-
-    Definition array'(elem: E -> word -> mem -> Prop){sz: PredicateSize elem}
-                     (vs: list E): word -> mem -> Prop :=
-      layout_offsets (List.map elem vs)
-             (List.map (fun i => sz * Z.of_nat i) (List.seq O (List.length vs))).
-
-    (* starts with 0 and has same length as given list, so the last element sum
-       excludes the last element *)
-    Fixpoint prefix_sums_starting_at(s: Z)(l: list Z): list Z :=
-      match l with
-      | nil => nil
-      | cons h t => cons (s + h) (prefix_sums_starting_at (s + h) t)
-      end.
-    Definition prefix_sums: list Z -> list Z := prefix_sums_starting_at 0.
-
-    Definition sepapps'(l: list sized_predicate): word -> mem -> Prop :=
-      layout_offsets (List.map proj_predicate l) (prefix_sums (List.map proj_size l)).
-
-    Definition circular_interval(modulus start: Z)(count: nat): list Z :=
-      List.unfoldn (fun x => (x + 1) mod modulus) count start.
 
     (* The address a passed to this predicate is the base address. The area
        occupied by the whole buffer is a..a+modulus*sz, but there might actually
        be nothing at a, since the slice starts at a+startIndex*sz. *)
     Definition circular_buffer_slice(elem: E -> word -> mem -> Prop)
       {sz: PredicateSize elem}(modulus startIndex: Z)(vs: list E): word -> mem -> Prop :=
-      layout_offsets (List.map elem vs)
-             (List.map (Z.mul sz) (circular_interval modulus startIndex (List.length vs))).
+      <{ + emp_at_addr (len vs <= modulus /\ 0 <= startIndex < modulus)
+         + array elem (Z.max 0 (len vs - (modulus - startIndex))) vs[modulus-startIndex:]
+         + hole (modulus - len vs)
+         + array elem (Z.min (len vs) (modulus - startIndex)) vs[:modulus-startIndex] }>.
+
+    Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+
+    Lemma purify_circular_buffer_slice(elem: E -> word -> mem -> Prop)
+      {sz: PredicateSize elem}(modulus startIndex: Z)(vs: list E)(addr: word):
+      purify (circular_buffer_slice elem modulus startIndex vs addr)
+             (len vs <= modulus /\ 0 <= startIndex < modulus).
+    Proof.
+      unfold purify, circular_buffer_slice. intros.
+      cbn in H. unfold sepapp, emp_at_addr in H. eapply sep_emp_l in H. apply H.
+    Qed.
+
+    (* given a goal of the form (iff1 LHS RHS), where LHS and RHS only consist
+     of sep and emp, turns it into purely propositional goals *)
+    Ltac de_emp :=
+      intro m'; split; intros Hm;
+      rewrite ?sep_assoc_eq in Hm;
+      rewrite ?sep_assoc_eq;
+      repeat match goal with
+        | H: sep (emp _) _ _ |- _ => eapply sep_emp_l in H; destruct H
+        | H: emp _ _ |- _ => destruct H
+        end;
+      subst;
+      repeat match goal with
+        | |- sep (emp _) _ _ => eapply sep_emp_l
+        | |- _ /\ _ => split
+        | |- emp _ map.empty => refine (conj eq_refl _)
+        | |- True => constructor
+        end.
+
+    Lemma circular_buffer_slice_nil elem {sz: PredicateSize elem} modulus startIndex a:
+      emp (0 <= startIndex < modulus) =
+        (circular_buffer_slice elem modulus startIndex nil a).
+    Proof.
+      eapply iff1ToEq.
+      unfold circular_buffer_slice. cbn.
+      unfold List.upto, List.from. rewrite List.skipn_nil, List.firstn_nil.
+      unfold sepapp, array, hole, emp_at_addr.
+      do 2 replace (Array.array _ _ _ _) with (@emp _ _ mem True)
+        by (symmetry; eapply iff1ToEq; eapply Array.array_nil).
+      rewrite ?sep_assoc_eq.
+      cbn.
+      de_emp.
+      all: try Lia.lia.
+    Qed.
+
+    Lemma circular_buffer_slice_nil_empty elem {sz: PredicateSize elem} modulus startIndex a:
+      0 <= startIndex < modulus ->
+      circular_buffer_slice elem modulus startIndex nil a map.empty.
+    Proof.
+      intros. rewrite <- circular_buffer_slice_nil. unfold emp. split.
+      1: reflexivity. Lia.lia.
+    Qed.
   End WithElem.
 
   Definition rx_desc(r: rx_desc_t): word -> mem -> Prop := .**/
@@ -276,3 +301,5 @@ End WithMem.
   : typeclass_instances.
 #[export] Hint Extern 1 (PredicateSize txq_elem) => exact (sizeof tx_desc)
   : typeclass_instances.
+
+#[export] Hint Resolve purify_circular_buffer_slice : purify.

@@ -27,6 +27,7 @@ Require Import bedrock2.SepLib.
 Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2.RecordPredicates.
 Require Import bedrock2.e1000_state.
+Require Import bedrock2.old_dma.circular_buffer_slice_based_on_list_of_addrs.
 
 Section WithMem.
   Context {width: Z} {BW: Bitwidth width}
