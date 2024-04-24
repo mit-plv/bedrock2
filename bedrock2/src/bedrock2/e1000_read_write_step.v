@@ -104,6 +104,12 @@ Section WithMem.
   Definition getTDH(t: trace)(ret: Z): Prop :=
     exists r, get_rw_reg0 t (register_address E1000_TDH) = Some r /\ \[r] = ret.
 
+  Definition getRDT(t: trace)(ret: Z): Prop :=
+    exists r, get_rw_reg0 t (register_address E1000_RDT) = Some r /\ \[r] = ret.
+
+  Definition getTDT(t: trace)(ret: Z): Prop :=
+    exists r, get_rw_reg0 t (register_address E1000_TDT) = Some r /\ \[r] = ret.
+
   Definition getRDBAL(t: trace)(ret: word): Prop :=
     exists rdbal, get_rw_reg0 t (register_address E1000_RDBAL) = Some rdbal /\
     ret = /[Z.land (Z.lnot 0xf) \[rdbal]].

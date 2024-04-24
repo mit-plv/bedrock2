@@ -3,6 +3,7 @@ Require Import LiveVerif.LiveVerifLib.
 Require Import bedrock2.TraceInspection.
 Require Import bedrock2.e1000_state.
 Require Import bedrock2.e1000_read_write_step.
+Require Import bedrock2.e1000_packet_trace.
 Require Import LiveVerifExamples.mbuf.
 Require Import LiveVerifExamples.fmalloc.
 Require Import LiveVerifExamples.e1000_mmio_spec.
@@ -102,6 +103,46 @@ Definition e1000_driver_mem_required: Z :=
 Goal exists n: Z, e1000_driver_mem_required = n.
 Proof. eexists. cbv. (* ca 66KB *) reflexivity. Succeed Qed. Abort.
 
+Local Hint Unfold e1000_ctx : heapletwise_always_unfold.
+
+(* TODO circular_buffer_slice can't fit into the PredicateSize framework
+   because its range might consist of two chunks and doesn't always start at its
+   base address, so automating memory accesses inside a circular_buffer_slice
+   won't work well!
+   Split into first part and potentially overflowing part?
+   Maybe by changing its definition, or using an alternative definition and
+   conversion lemma?  *)
+Local Hint Extern 1 (PredicateSize_not_found (circular_buffer_slice _ _ _ _))
+      => constructor : suppressed_warnings.
+
+(* Calls net_rx_eth 1x with the oldest undelived packet if some packets are
+   undelivered. Doesn't call the uper layer if no new packets are available.
+   Meant to be called from toplevel loop. *)
+#[export] Instance spec_of_e1000_rx: fnspec :=                                  .**/
+
+void e1000_rx(uintptr_t c) /**#
+  ghost_args := ctx pks (R: mem -> Prop);
+  requires t m := (* +2 because 1 to keep TDH and TDT from clashing aind 1 to
+                     make sure we have space to send (at least the beginning of)
+                     the reply *)
+                  current_txq_len ctx + 2 <= TX_RING_SIZE /\
+                  packet_trace_rel pks t /\
+                  <{ * e1000_ctx ctx c
+                     * R }> m;
+  ensures t' m' := exists pks',
+       packet_trace_rel (pks ++ pks') t' /\ exists c',
+       <{ * e1000_ctx ctx c'
+          * R }> m' #**/                                                   /**.
+Derive e1000_rx SuchThat (fun_correct! e1000_rx) As e1000_rx_ok.                .**/
+{                                                                          /**. .**/
+  uintptr_t undelivered_len = load32(c+8);                                 /**. .**/
+  if (undelivered_len == 0) /* split */ {                                  /**. .**/
+    uintptr_t new_head = e1000_read_RDH();                                 /**.
+    all: try record.simp_hyps.
+
+Abort.
+
+
 #[export] Instance spec_of_e1000_init: fnspec :=                                .**/
 
 uintptr_t e1000_init(uintptr_t b) /**#
@@ -161,56 +202,6 @@ Derive e1000_init SuchThat (fun_correct! e1000_init) As e1000_init_ok.          
   step. instantiate (1 := {| tx_buf_allocator := _ |}). record.simp.
   steps.
   (* TODO circular_buffer_slice support *)
-Abort.
-
-Local Hint Unfold e1000_ctx : heapletwise_always_unfold.
-
-(* TODO move and replace True by useful stuff *)
-Lemma purify_circular_buffer_slice[E: Type](elem: E -> word -> mem -> Prop)
-  {sz: PredicateSize elem}(modulus startIndex: Z)(vs: list E)(a: word):
-  purify (circular_buffer_slice elem modulus startIndex vs a) True.
-Proof.
-  unfold purify, circular_buffer_slice.
-  intros. constructor.
-Qed.
-
-Hint Resolve purify_circular_buffer_slice : purify.
-
-(* TODO circular_buffer_slice can't fit into the PredicateSize framework
-   because its range might consist of two chunks and doesn't always start at its
-   base address, so automating memory accesses inside a circular_buffer_slice
-   won't work well!
-   Split into first part and potentially overflowing part?
-   Maybe by changing its definition, or using an alternative definition and
-   conversion lemma?  *)
-Local Hint Extern 1 (PredicateSize_not_found (circular_buffer_slice _ _ _ _))
-      => constructor : suppressed_warnings.
-
-(* Calls net_rx_eth 1x if with the oldest undelived packet if some packets are
-   undelivered. Doesn't call the uper layer if no new packets are available.
-   Meant to be called from toplevel loop. *)
-#[export] Instance spec_of_e1000_rx: fnspec :=                                  .**/
-
-void e1000_rx(uintptr_t c) /**#
-  ghost_args := ctx (R: mem -> Prop);
-  requires t m := (* +2 because 1 to keep TDH and TDT from clashing aind 1 to
-                     make sure we have space to send (at least the beginning of)
-                     the reply *)
-                  current_txq_len ctx + 2 <= TX_RING_SIZE /\
-                  <{ * e1000_ctx ctx c
-                     * R }> m;
-  ensures t' m' := (* TODO update t *) exists c',
-       <{ * e1000_ctx ctx c'
-          * R }> m' #**/                                                   /**.
-Derive e1000_rx SuchThat (fun_correct! e1000_rx) As e1000_rx_ok.                .**/
-{                                                                          /**. .**/
-  uintptr_t current_head = load32(c);                                      /**. .**/
-  uintptr_t undelivered_head = load32(c + 4);                              /**. .**/
-  if (undelivered_head == current_head) /* split */ {                      /**. .**/
-    uintptr_t new_head = e1000_read_RDH();                                 /**.
-
-    all: try record.simp_hyps.
-
 Abort.
 
 End LiveVerif. Comments .**/ //.
