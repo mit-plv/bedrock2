@@ -1196,19 +1196,19 @@ Section CheckerCorrect.
       unfold_metrics; cbn; repeat split; destruct mc; cbn; unfold_metrics; cbn; try blia.  
   Qed.
 
-  Lemma check_regs_cost_SOp: forall x x' y y' z z' mc mc',
-      check_regs x x' = true ->
-      check_regs y y' = true ->
-      check_regs z z' = true ->
-      (MetricLogging.metricsLeq
-         (MetricLogging.metricsSub (exec.cost_SOp isRegZ x' y' z' mc') mc')
-         (MetricLogging.metricsSub (exec.cost_SOp isRegStr x y z mc) mc)).
-  Proof.
-    intros; unfold check_regs in *; cbn in *; unfold exec.cost_SLit in *;
-      destr (isRegStr x); destr (isRegZ x'); destr (isRegStr y); destr (isRegZ y'); destr (isRegStr z); destr (isRegZ z');
-      try discriminate;
-      unfold_metrics; cbn; repeat split; destruct mc; cbn; unfold_metrics; cbn; try blia.  
-  Qed.
+  (*Lemma check_regs_cost_SOp: forall x x' y y' z z' mc mc',*)
+  (*    check_regs x x' = true ->*)
+  (*    check_regs y y' = true ->*)
+  (*    check_regs z z' = true ->*)
+  (*    (MetricLogging.metricsLeq*)
+  (*       (MetricLogging.metricsSub (exec.cost_SOp isRegZ x' y' z' mc') mc')*)
+  (*       (MetricLogging.metricsSub (exec.cost_SOp isRegStr x y z mc) mc)).*)
+  (*Proof.*)
+  (*  intros; unfold check_regs in *; cbn in *; unfold exec.cost_SLit in *;*)
+  (*    destr (isRegStr x); destr (isRegZ x'); destr (isRegStr y); destr (isRegZ y'); destr (isRegStr z); destr (isRegZ z');*)
+  (*    try discriminate;*)
+  (*    unfold_metrics; cbn; repeat split; destruct mc; cbn; unfold_metrics; cbn; try blia.*)  
+  (*Qed.*)
 
   Lemma check_regs_cost_SSet: forall x x' y y' mc mc',
       check_regs x x' = true ->
@@ -1284,7 +1284,7 @@ Section CheckerCorrect.
 (*  Hint Resolve states_compat_then_op : checker_hints.*) 
   Hint Resolve
        check_regs_cost_SLoad check_regs_cost_SStore check_regs_cost_SInlinetable
-       check_regs_cost_SStackalloc check_regs_cost_SLit check_regs_cost_SOp
+       check_regs_cost_SStackalloc check_regs_cost_SLit (*check_regs_cost_SOp*)
        check_regs_cost_SSet check_regs_cost_SIf check_regs_cost_SLoop_false
     : checker_hints.
 

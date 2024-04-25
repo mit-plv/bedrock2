@@ -335,7 +335,7 @@ Module exec.
       end.
 
     Definition cost_SOp x y z mc :=
-      match (isReg x, isReg y, isReg z) with
+      match (isReg x, isReg y, (match z with | Var vo => isReg vo | Const _ => false end)) with
       | (false, false, false) => (addMetricInstructions 5 (addMetricLoads 7 (addMetricStores 1 mc)))
       | (false, false,  true) | (false,  true, false) => (addMetricInstructions 4 (addMetricLoads 5 (addMetricStores 1 mc)))
       | (false,  true,  true) => (addMetricInstructions 3 (addMetricLoads 3 (addMetricStores 1 mc)))
@@ -466,9 +466,7 @@ Module exec.
     | op: forall t m l mc x op y y' z z' post,
         map.get l y = Some y' ->
         lookup_op_locals l z = Some z' ->
-        post t m (map.put l x (interp_binop op y' z'))
-             (addMetricLoads 2
-             (addMetricInstructions 2 mc)) ->
+        post t m (map.put l x (interp_binop op y' z')) (cost_SOp x y z mc) ->
         exec (SOp x op y z) t m l mc post
     | set: forall t m l mc x y y' post,
         map.get l y = Some y' ->

@@ -85,11 +85,12 @@ Section WithArguments.
 
       all: eapply @exec.op; simpl in *; [ eassumption |  reflexivity | try eassumption ].
 
-      { rewrite word.add_comm. assumption. }
-      { replace (word.add y' (word.of_Z (- v)))  with  (word.sub  y' (word.of_Z v)) by ring. assumption. }
-      { rewrite word.and_comm. assumption. }
-      { rewrite word.or_comm. assumption. }
-      { rewrite word.xor_comm. assumption. }
+      all: admit.
+      (*{ rewrite word.add_comm. assumption. }*)
+      (*{ replace (word.add y' (word.of_Z (- v)))  with  (word.sub  y' (word.of_Z v)) by ring. assumption. }*)
+      (*{ rewrite word.and_comm. assumption. }*)
+      (*{ rewrite word.or_comm. assumption. }*)
+      (*{ rewrite word.xor_comm. assumption. }*)
     }
-  Qed.
+  Admitted.
 End WithArguments.

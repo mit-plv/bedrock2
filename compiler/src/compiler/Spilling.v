@@ -1815,7 +1815,6 @@ Section Spilling.
       + blia.
       + unfold exec.cost_SLit; repeat isReg_helper. destr (isRegZ x); solve_MetricLog. 
     - (* exec.op *)
-
       unfold exec.lookup_op_locals in *.
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
       clear H3. intros. destruct_one_match; fwd.
@@ -1825,29 +1824,18 @@ Section Spilling.
         eapply exec.op.
         { eapply get_iarg_reg_1; eauto with zarith. }
         { unfold exec.lookup_op_locals in *. apply map.get_put_same. }
-        { eapply save_ires_reg_correct; (try eassumption || blia). admit. }
+        { eapply save_ires_reg_correct; (try eassumption || blia).
+          unfold exec.cost_SOp; repeat isReg_helper.
+          destr (isRegZ v); destr (isRegZ x); destr (isRegZ y); solve_MetricLog. }
       }
       {
         eapply exec.seq_cps. eapply exec.op.
         { apply map.get_put_same. }
         { unfold exec.lookup_op_locals in *. reflexivity. }
-        { eapply save_ires_reg_correct; (try eassumption || blia). admit. }
+        { eapply save_ires_reg_correct; (try eassumption || blia).
+          unfold exec.cost_SOp; repeat isReg_helper.
+          destr (isRegZ x); destr (isRegZ y); solve_MetricLog. }
       }
-
-      (* TODO pratap's proof script may be useful for reconciling the two admits *)
-      (*eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.*)
-      (*eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.*)
-      (*eapply exec.seq_cps.*)
-      (*eapply exec.op.*)
-      (*1: eapply get_iarg_reg_1; eauto with zarith.*)
-      (*1: apply map.get_put_same.*)
-      (*eapply save_ires_reg_correct.*)
-      (*+ eassumption.*)
-      (*+ eassumption.*)
-      (*+ blia.*)
-      (*+ unfold exec.cost_SOp; repeat isReg_helper.*)
-      (*  destr (isRegZ z); destr (isRegZ x); destr (isRegZ y); solve_MetricLog.*) 
-
     - (* exec.set *)
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
       eapply exec.seq_cps.
