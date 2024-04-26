@@ -44,6 +44,8 @@ Require Import coqutil.Map.Interface.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.RecordPredicates.
 
+Require Import coqutil.Map.OfListWord.
+
 (* Note: these predicates all lay out the values in little-endian order, but network
    packets usage big-endian order, so one still has to use ntohs, ntohl, htons, htonl *)
 
@@ -53,6 +55,9 @@ Section WithMem.
           {word: word.word width} {word_ok: word.ok word}
           {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
 
+  Definition bytes_sat(P: word -> mem -> Prop)(bs: list Byte.byte): Prop :=
+    forall (a: word), P a (map.of_list_word_at a bs).
+
   Definition ethernet_header(r: ethernet_header_t): word -> mem -> Prop := .**/
     typedef struct __attribute__ ((__packed__)) {
       uint8_t src_mac[6];
@@ -60,6 +65,14 @@ Section WithMem.
       uint16_t ethertype;
     } ethernet_header_t;
   /**.
+
+  Lemma bytes_sat_ethernet_header: forall r a m,
+      ethernet_header r a m ->
+      exists bs, bytes_sat (ethernet_header r) bs.
+  Proof.
+    unfold ethernet_header, bytes_sat.
+    intros. eexists. intros a'.
+  Abort.
 
   Goal sizeof ethernet_header = 14. reflexivity. Succeed Qed. Abort.
 
