@@ -20,7 +20,7 @@ Record arp_packet_t := {
 }.
 
 Record ip_header_t := {
-  ip_version_and_len: Z; (*  1 *)
+  ip_v_and_ihl: Z;       (*  1 *)
   ip_traffic_class: Z;   (*  2 *)
   ip_length: Z;          (*  4 *)
   ip_frag_id: Z;         (*  6 *)
@@ -46,8 +46,48 @@ Require Import bedrock2.RecordPredicates.
 
 Require Import coqutil.Map.OfListWord.
 
-(* Note: these predicates all lay out the values in little-endian order, but network
-   packets usage big-endian order, so one still has to use ntohs, ntohl, htons, htonl *)
+Section BigEndian.
+  Local Open Scope Z_scope.
+  Context {width: Z} {BW: Bitwidth width}
+          {word: word.word width} {word_ok: word.ok word}
+          {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
+
+  Definition byte_list_pred_at(P: list Byte.byte -> Prop)(addr: word)(m: mem): Prop :=
+    exists bs, m = map.of_list_word_at addr bs /\ P bs.
+
+  Definition be_uint_bytes(nbits val: Z)(bs: list Byte.byte): Prop :=
+    Z.of_nat (List.length bs) * 8 = nbits /\ LittleEndianList.le_combine (List.rev bs) = val.
+
+  Definition be_uint(nbits val: Z): word -> mem -> Prop :=
+    byte_list_pred_at (be_uint_bytes nbits val).
+
+  Lemma purify_be_uint nbits v a: PurifySep.purify (be_uint nbits v a) (0 <= v < 2 ^ nbits).
+  Proof.
+    unfold PurifySep.purify, be_uint, byte_list_pred_at, be_uint_bytes.
+    intros. destruct H as (bs & ? & ? & ?).
+    subst. rewrite Z.mul_comm.
+    rewrite <- List.rev_length. apply LittleEndianList.le_combine_bound.
+  Qed.
+
+End BigEndian.
+
+#[export] Hint Resolve purify_uint : purify.
+
+#[export] Hint Extern 1 (PredicateSize (be_uint ?nbits)) =>
+  let sz := lazymatch isZcst nbits with
+            | true => eval cbv in (nbits_to_nbytes nbits)
+            | false => constr:(nbits_to_nbytes nbits)
+            end in
+  exact sz
+: typeclass_instances.
+
+Notation "/* 'BE' */ 'uint64_t'" := (be_uint 64) (in custom c_type_as_predicate).
+Notation "/* 'BE' */ 'uint32_t'" := (be_uint 32) (in custom c_type_as_predicate).
+Notation "/* 'BE' */ 'uint16_t'" := (be_uint 16) (in custom c_type_as_predicate).
+Notation "/* 'BE' */ 'uint8_t'" := (be_uint 8) (in custom c_type_as_predicate).
+
+(* Note: implementation code will still need to use ntohs, ntohl, htons, htonl,
+   but the /*BE*/ comment will make separation logic predicates use big-endian order. *)
 
 Section WithMem.
   Local Open Scope Z_scope.
@@ -55,34 +95,23 @@ Section WithMem.
           {word: word.word width} {word_ok: word.ok word}
           {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
 
-  Definition bytes_sat(P: word -> mem -> Prop)(bs: list Byte.byte): Prop :=
-    forall (a: word), P a (map.of_list_word_at a bs).
-
   Definition ethernet_header(r: ethernet_header_t): word -> mem -> Prop := .**/
     typedef struct __attribute__ ((__packed__)) {
       uint8_t src_mac[6];
       uint8_t dst_mac[6];
-      uint16_t ethertype;
+      /*BE*/uint16_t ethertype;
     } ethernet_header_t;
   /**.
-
-  Lemma bytes_sat_ethernet_header: forall r a m,
-      ethernet_header r a m ->
-      exists bs, bytes_sat (ethernet_header r) bs.
-  Proof.
-    unfold ethernet_header, bytes_sat.
-    intros. eexists. intros a'.
-  Abort.
 
   Goal sizeof ethernet_header = 14. reflexivity. Succeed Qed. Abort.
 
   Definition arp_packet(r: arp_packet_t): word -> mem -> Prop := .**/
     typedef struct __attribute__ ((__packed__)) {
-      uint16_t arp_htype;
-      uint16_t arp_ptype;
+      /*BE*/uint16_t arp_htype;
+      /*BE*/uint16_t arp_ptype;
       uint8_t arp_hlen;
       uint8_t arp_plen;
-      uint16_t arp_oper;
+      /*BE*/uint16_t arp_oper;
       uint8_t arp_sha[6];
       uint8_t arp_spa[4];
       uint8_t arp_tha[6];
@@ -94,14 +123,14 @@ Section WithMem.
 
   Definition ip_header(r: ip_header_t): word -> mem -> Prop := .**/
     typedef struct __attribute__ ((__packed__)) {
-      uint8_t ip_version_and_len;
+      uint8_t ip_v_and_ihl;
       uint8_t ip_traffic_class;
-      uint16_t ip_length;
-      uint16_t ip_frag_id;
-      uint16_t ip_frag_ofs;
+      /*BE*/uint16_t ip_length;
+      /*BE*/uint16_t ip_frag_id;
+      /*BE*/uint16_t ip_frag_ofs;
       uint8_t ip_ttl;
       uint8_t ip_proto;
-      uint16_t ip_chksum;
+      /*BE*/uint16_t ip_chksum;
       uint8_t ip_src[4];
       uint8_t ip_dst[4];
     } ip_header_t;
@@ -111,10 +140,10 @@ Section WithMem.
 
   Definition udp_header(r: udp_header_t): word -> mem -> Prop := .**/
     typedef struct __attribute__ ((__packed__)) {
-      uint16_t src_port;
-      uint16_t dst_port;
-      uint16_t udp_length;
-      uint16_t udp_checksum;
+      /*BE*/uint16_t src_port;
+      /*BE*/uint16_t dst_port;
+      /*BE*/uint16_t udp_length;
+      /*BE*/uint16_t udp_checksum;
     } udp_header_t;
   /**.
 

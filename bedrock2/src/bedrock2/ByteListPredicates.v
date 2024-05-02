@@ -89,6 +89,8 @@ End Array.
 Require Import coqutil.Word.LittleEndianList.
 Import ListNotations. Local Open Scope list_scope.
 
+Require Import bedrock2.NetworkPackets. (* only used in examples below, but also defines a conflicting be_uint *)
+
 Definition uint(nbits val: Z)(bs: list byte): Prop :=
   Z.of_nat (List.length bs) * 8 = nbits /\ le_combine bs = val.
 
@@ -229,7 +231,6 @@ Require Import coqutil.Tactics.Tactics.
 : typeclass_instances.
 
 
-Require Import bedrock2.NetworkPackets.
 
 Definition ethernet_header(h: ethernet_header_t): list byte -> Prop := bp_concat [
   array (uint 8) 6 (src_mac h);
@@ -263,7 +264,7 @@ Definition arp_packet(p: arp_packet_t): list byte -> Prop := bp_concat [
 Goal sizeof arp_packet = 28. reflexivity. Succeed Qed. Abort.
 
 Definition ip_header(h: ip_header_t): list byte -> Prop := bp_concat [
-  uint 8 (ip_version_and_len h);
+  uint 8 (ip_v_and_ihl h);
   uint 8 (ip_traffic_class h);
   be_uint 16 (ip_length h);
   be_uint 16 (ip_frag_id h);

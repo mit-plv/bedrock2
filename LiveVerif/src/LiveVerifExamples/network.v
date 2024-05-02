@@ -2,32 +2,28 @@
 Require Import LiveVerif.LiveVerifLib.
 Require Import bedrock2.TraceInspection.
 Require Import bedrock2.NetworkPackets.
+Require Import bedrock2.e1000_packet_trace.
 Require Import LiveVerifExamples.mbuf.
 Require Import LiveVerifExamples.e1000.
+
+Record headers_upto_ip: Set := {
+  before_ip_header: ethernet_header_t;
+  only_ip_header: ip_header_t;
+}.
+
+Record headers_upto_udp: Set := {
+  before_udp_header: headers_upto_ip;
+  only_udp_header: udp_header_t;
+}.
 
 Require Import coqutil.Map.OfListWord.
 
 Load LiveVerif.
 
 
-(* should high-level trace be packets expressed as list of bytes
-   or as memory chunks? *)
+(* in the packet_trace, the excess bytes of mbufs don't appear, but in mbufs, they do *)
 
-Definition concat_preds(P Q: list byte -> Prop): list byte -> Prop :=
-  fun bs => exists bs1 bs2, bs = bs1 ++ bs2 /\ P bs1 /\ Q bs2.
-
-Definition pure_pred(P: Prop): list byte -> Prop := fun bs => bs = nil /\ P.
-
-Definition and_preds(P Q: list byte -> Prop): list byte -> Prop :=
-  fun bs => P bs /\ Q bs.
-
-Definition has_len(n: Z): list byte -> Prop := fun bs => len bs = n.
-
-Definition any: list byte -> Prop := fun _ => True.
-
-Definition eqZs(zs: list Z): list byte -> Prop :=
-  fun bs => List.map byte.unsigned bs = zs.
-
+(*
 Definition mbuf(payload: list byte -> Prop): list byte -> Prop :=
   and_preds (has_len MBUF_SIZE) (concat_preds payload any).
 
@@ -50,6 +46,7 @@ Definition ip_buf(eh: ethernet_header_t)(ih: ip_header_t)
 Definition udp_buf(eh: ethernet_header_t)(ih: ip_header_t)(uh: udp_header_t)
   (payload: list byte -> Prop): list byte -> Prop :=
   ip_buf eh ih (concat_preds (udp_header_bytes uh) payload).
+*)
 
 (*
 Definition eth_buf(h: ethernet_header_t)(n: Z)(bs: list Z): word -> mem -> Prop :=
@@ -68,11 +65,8 @@ Definition eth_buf(h: ethernet_header_t)(n: Z)(bs: list Z)(a: word): mem -> Prop
          (a ^+ /[sizeof ethernet_header + n]) }>.
  TODO define using mbuf? *)
 
-Definition bytes_pred_at(P: list byte -> Prop)(a: word)(m: mem): Prop :=
-  exists bs, m = map.of_list_word_at a bs /\ P bs.
-
-Definition eth_buff(h: ethernet_header_t)(n: Z)(zs: list Z): word -> mem -> Prop :=
-  bytes_pred_at (eth_buf h (and_preds (has_len n) (eqZs zs))).
+Definition eth_buff(h: ethernet_header_t)(n: Z)(zs: list Z): word -> mem -> Prop.
+Admitted.
 
 Axiom network: word -> mem -> Prop. (* TODO takes more params *)
 
@@ -92,19 +86,64 @@ uintptr_t net_alloc_eth(uintptr_t nw) /**#
 
 (** * Transmit, bottom-up: *)
 
-(* net_tx_eth *)
+Definition ethernet_reply(req_h: ethernet_header_t)(resp_payload: word -> mem -> Prop)
+  {resp_payload_sz: PredicateSize resp_payload}: word -> mem -> Prop :=
+  <{ + ethernet_header {|
+         src_mac := dst_mac req_h;
+         dst_mac := src_mac req_h;
+         ethertype := ethertype req_h;
+       |}
+     + resp_payload }>.
 
-(* net_tx_ip *)
+(* TODO net_tx_eth *)
+
+Definition IPv4_WITH_NO_OPTIONS := Z.lor (Z.shiftl 4 4) 5.
+Definition IP_TTL := 64.
+
+Definition ip_reply(req_h: headers_upto_ip)(proto: Z)(resp_payload: word -> mem -> Prop)
+  {resp_payload_sz: PredicateSize resp_payload}: word -> mem -> Prop :=
+  ethernet_reply (before_ip_header req_h)
+    <{ + ip_header {|
+           ip_v_and_ihl := IPv4_WITH_NO_OPTIONS;
+           ip_traffic_class := 0;
+           ip_length := 20 + resp_payload_sz;
+           ip_frag_id := 0;
+           ip_frag_ofs := 0;
+           ip_ttl := IP_TTL;
+           ip_proto := proto;
+           ip_chksum := 0; (* filled in by NIC -- TODO configure NIC *)
+           ip_src := ip_dst (only_ip_header req_h);
+           ip_dst := ip_src (only_ip_header req_h) |}
+       + resp_payload }>.
+
+(* TODO net_tx_ip *)
+
+Definition IP_PROTO_ICMP := 1.
+Definition IP_PROTO_TCP := 6.
+Definition IP_PROTO_UDP := 17.
+
+Definition udp_reply(req_h: headers_upto_udp)(resp_payload: word -> mem -> Prop)
+  {resp_payload_sz: PredicateSize resp_payload}: word -> mem -> Prop :=
+  ip_reply (before_udp_header req_h) IP_PROTO_UDP
+    <{ + udp_header {|
+           src_port := dst_port (only_udp_header req_h);
+           dst_port := src_port (only_udp_header req_h);
+           udp_length := 8 + resp_payload_sz;
+           udp_checksum := 0; (* optional, 0 means unused *)
+         |}
+       + resp_payload }>.
+
+Import ReversedListNotations.
 
 Instance spec_of_net_tx_udp: fnspec :=                                          .**/
 
-void net_tx_udp(uintptr_t nw, uintptr_t b, uintptr_t n) /**#
-  ghost_args := bs (R: mem -> Prop);
+void net_tx_udp(uintptr_t nw, uintptr_t b, uintptr_t n,
+                uintptr_t dst_ip, uintptr_t dstPort, uintptr_t srcPort) /**#
+  ghost_args := bs pks foo req_h (R: mem -> Prop);
   requires t m := <{ * mbuf.mbuf \[n] bs b (* TODO udp_buf *)
                      * R }> m;
-  (* rx may change the mbuf arbitrarily, but must return it *)
-  ensures t' m' := t' = t /\
-       <{ * R * R }> m' #**/                                                   /**.
+  ensures t' m' := t' = t /\ foo (pks ;+ TxPacket (udp_reply req_h (array (uint 8) \[n] bs)))
+    /\ <{ * R * R }> m' #**/                                                   /**.
 
 
 (** * Receive, top-down: *)
