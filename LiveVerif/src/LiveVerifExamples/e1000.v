@@ -8,6 +8,16 @@ Require Import LiveVerifExamples.mbuf.
 Require Import LiveVerifExamples.fmalloc.
 Require Import LiveVerifExamples.e1000_mmio_spec.
 
+(* TODO it would be nice to not import all of LiveVerifExamples.network.
+   We only need spec_of_net_rx_eth (to call it), which we could duplicate or put into
+   a separate specs-only file,
+   and the ethernet_header predicate, which could also be in its own ethernet-specific
+   file.
+   For the moment, just importing all the network stack seems easier, but TODO reconsider
+   once compilation times and lack of build parallelism starts to matter. *)
+Require Import LiveVerifExamples.network.
+
+
 Load LiveVerif.
 
 (* TODO not sure if RegisterSpec should remain *)
@@ -81,18 +91,6 @@ Definition e1000_ctx(c: e1000_ctx_t)(a: word): mem -> Prop :=
        }>)
      * allocator MBUF_SIZE (TX_RING_SIZE - c.(current_txq_len)) c.(tx_buf_allocator)
   }>.
-
-(* Provided by the network stack, not implemented here *)
-Instance spec_of_net_rx_eth: fnspec :=                                          .**/
-
-void net_rx_eth(uintptr_t a, uintptr_t n) /**#
-  ghost_args := bs (R: mem -> Prop);
-  requires t m := <{ * mbuf \[n] bs a
-                     * R }> m;
-  (* rx may change the mbuf arbitrarily, but must return it *)
-  ensures t' m' := t' = t /\ exists bs' n',
-       <{ * mbuf n' bs' a
-          * R }> m' #**/                                                   /**.
 
 
 Definition e1000_driver_mem_required: Z :=
