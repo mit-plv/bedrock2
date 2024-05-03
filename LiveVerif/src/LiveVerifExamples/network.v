@@ -3,7 +3,11 @@ Require Import LiveVerif.LiveVerifLib.
 Require Import bedrock2.TraceInspection.
 Require Import bedrock2.NetworkPackets.
 Require Import bedrock2.e1000_packet_trace.
+Require Import LiveVerifExamples.e1000.
 Require Import LiveVerifExamples.mbuf.
+
+(* preamble and start frame delimiter are already removed by the NIC *)
+Definition headers_upto_ethernet_t := ethernet_header_t.
 
 Record headers_upto_ip_t: Set := {
   before_ip_header: ethernet_header_t;
@@ -19,8 +23,11 @@ Require Import coqutil.Map.OfListWord.
 
 Load LiveVerif.
 
+Definition headers_upto_ethernet: headers_upto_ethernet_t -> word -> mem -> Prop :=
+  ethernet_header.
+
 Definition headers_upto_ip(h: headers_upto_ip_t): word -> mem -> Prop :=
-  <{ + ethernet_header (before_ip_header h)
+  <{ + headers_upto_ethernet (before_ip_header h)
      + ip_header (only_ip_header h) }>.
 
 Definition headers_upto_udp(h: headers_upto_udp_t): word -> mem -> Prop :=
@@ -120,15 +127,50 @@ void net_tx_udp(uintptr_t nw, uintptr_t b, uintptr_t n,
 
 (* net_rx_ip *)
 
+Goal forall
+  (callee_correct: forall (V: Type) (pred: V -> word -> mem -> Prop)
+                          (* note: cannot be marked as implicit *)
+                          (pred_sz: PredicateSize pred)
+                          (x: V),
+      Some (pred x) = None)
+  (v: Z),
+    Some (uint 16 v) = None.
+Proof.
+  intros.
+  (* eapply callee_correct. does not infer PredicateSize *)
+  Tactics.rapply callee_correct. (* infers PredicateSize *)
+Succeed Qed. Abort.
+
+(*
+Definition ethernet_buf :=
+  mbuf n <{ + headers_upto_ethernet h
+            + payload }>.
+
+Definition udp_buf :=
+*)
+
+(* Q: how to abstract over offsets/packet header sizes?
+   A: just use UDP_HEADER_OFFSET constant
+   OR increase mbuf pointer? but in replies, pointer would point at beginning
+   of header, ie into inside of ..._reply, so NO *)
+
 Instance spec_of_net_rx_eth: fnspec :=                                          .**/
 
 void net_rx_eth(uintptr_t a, uintptr_t n) /**#
-  ghost_args := bs (R: mem -> Prop);
-  requires t m := <{ * mbuf \[n] bs a
+  ghost_args := h bs (R: mem -> Prop);
+  requires t m := <{ * mbuf
+                       <{ + headers_upto_ethernet h
+                          + array (uint 8) (\[n] - sizeof headers_upto_ethernet) bs }> a
                      * R }> m;
-  (* rx may change the mbuf arbitrarily, but must return it *)
-  ensures t' m' := t' = t /\ exists bs' n',
-       <{ * mbuf n' bs' a
+  (* rx may change the mbuf arbitrarily, but must return its bytes *)
+  ensures t' m' := t' = t /\
+       <{ * mbuf (emp_at_addr True) a
           * R }> m' #**/                                                   /**.
+(* Note: net_rx_eth is only called once the packets have already been received,
+   so the trace doesn't change *)
+
+(* Note: we can't alloc/free mbuf with an abstract predicate,
+   but we can if the predicate is a concrete (array (uint 8)), or emp (and n = 0 and all
+   bytes unused) *)
 
 End LiveVerif. Comments .**/ //.

@@ -43,13 +43,17 @@ Definition mbuf
    in a function spec will put it into a forall, where we can't really mark
    arguments as implicit, and we will typically still pass the size as a
    non-ghost parameter, so we need an equality between the ghost size and the
-   actual size, all a bit awkward
+   actual size, all a bit awkward.
+   BUT using mbuf by passing it an abstract predicate is a bad idea anyways,
+   because we can't know that the footprint of the abstract predicate is
+   exactly packet_sz bytes starting at addr, so we will always pass concrete
+   predicates (eg array, or combinations of array and packet headers) to mbuf. *)
 Definition mbuf(packet: word -> mem -> Prop){packet_sz: PredicateSize packet}
   : word -> mem -> Prop :=
   <{ + packet
      + anyval (array (uint 8) (MBUF_SIZE - packet_sz)) }>.
 
-So we just make the packet_sz argument explicit:
+(* Or how about we just make the packet_sz argument explicit:
 
 Definition mbuf(packet: word -> mem -> Prop)(packet_sz: PredicateSize packet)
   : word -> mem -> Prop :=
@@ -57,11 +61,17 @@ Definition mbuf(packet: word -> mem -> Prop)(packet_sz: PredicateSize packet)
      + anyval (array (uint 8) (MBUF_SIZE - packet_sz)) }>.
 
 But now, putting the size after the packet is a bit awkward (because eg in array,
-size comes first. *)
+size comes first), so let's flip the order:
 
 Definition mbuf(packet_sz: Z)(packet: word -> mem -> Prop)(addr: word): mem -> Prop :=
   <{ * packet addr
      * array (uint 8) (MBUF_SIZE - packet_sz) ? (addr ^+ /[packet_sz]) }>.
+
+but usage requires size twice (as an argument to mbuf & to array)
+mbuf \[n]
+     <{ + headers_upto_ethernet h
+        + array (uint 8) (\[n] - sizeof headers_upto_ethernet) bs }> a
+*)
 
 End LiveVerif.
 

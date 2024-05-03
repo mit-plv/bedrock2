@@ -8,14 +8,14 @@ Require Import LiveVerifExamples.mbuf.
 Require Import LiveVerifExamples.fmalloc.
 Require Import LiveVerifExamples.e1000_mmio_spec.
 
-(* TODO it would be nice to not import all of LiveVerifExamples.network.
-   We only need spec_of_net_rx_eth (to call it), which we could duplicate or put into
-   a separate specs-only file,
-   and the ethernet_header predicate, which could also be in its own ethernet-specific
-   file.
-   For the moment, just importing all the network stack seems easier, but TODO reconsider
-   once compilation times and lack of build parallelism starts to matter. *)
-Require Import LiveVerifExamples.network.
+(* Note: e1000 and network mutually call each other:
+   e1000_rx calls net_rx_eth, and net_tx_eth calls e1000_tx (and alloc/free tx buf).
+   We resolve the cycle by declaring the spec of net_rx_eth in e1000,
+   and in network, we simply import e1000 to have all specs available without duplication.
+   TODO once compilation times get too long and build parallelism would help, consider
+   moving specs into separate files. *)
+
+Require Import bedrock2.NetworkPackets. (* <- to specify net_tx_eth *)
 
 
 Load LiveVerif.
