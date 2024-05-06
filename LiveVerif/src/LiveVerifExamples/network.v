@@ -106,20 +106,27 @@ Definition udp_reply(req_h: headers_upto_udp_t)(resp_payload: word -> mem -> Pro
 
 Import ReversedListNotations.
 
-(*
-Instance spec_of_net_tx_udp: fnspec :=                                          .**/
+(* Note: specialized to the case where we *reply* to some incoming packet and
+   still have the buffer of the incoming packet available to copy values from,
+   so we can e.g. find the MAC address there instead of having to maintain an
+   IP-to-MAC database *)
+Instance spec_of_net_tx_udp_reply: fnspec :=                                    .**/
 
-void net_tx_udp(uintptr_t nw, uintptr_t b, uintptr_t n,
-                uintptr_t dst_ip, uintptr_t dstPort, uintptr_t srcPort) /**#
-  ghost_args := (body: word -> mem -> Prop)
-                pks foo req_h (R: mem -> Prop);
-  requires t m := <{ * network nw
-                     * mbuf \[n] (anyval headers_upto_udp) (*<{ + anyval headers_upto_udp
-                                    + body }>*) b
-                     * R }> m;
-  ensures t' m' := t' = t /\ foo (pks ;+ TxPacket (udp_reply req_h body))
-    /\ <{ * R * R }> m' #**/                                                   /**.
-*)
+void net_tx_udp(uintptr_t nw, uintptr_t req, uintptr_t resp, uintptr_t n) /**#
+  ghost_args := bs pks req_h (R: mem -> Prop);
+  requires t m :=
+    packet_trace_rel pks t /\
+    <{ * network nw
+       * mbuf (headers_upto_udp req_h) req
+       * mbuf (udp_reply req_h (array (uint 8) \[n] bs)) resp
+       * R }> m;
+  ensures t' m' :=
+    packet_trace_rel (pks ;+ TxPacket (udp_reply req_h (array (uint 8) \[n] bs))) t' /\
+    (* note: resp mbuf is consumed by network *)
+    <{ * network nw
+       * mbuf (headers_upto_udp req_h) req
+       * R }> m' #**/                                                   /**.
+
 
 (** * Receive, top-down: *)
 
