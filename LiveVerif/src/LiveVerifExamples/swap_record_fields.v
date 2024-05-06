@@ -1,6 +1,7 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
-Require Import LiveVerifExamples.swap.
+(* Note: we do not need to import the implementation of `swap`, even though we're
+   going to call `swap` *)
 
 Record foo: Set := {
   fieldA: Z;
@@ -33,6 +34,21 @@ typedef struct __attribute__ ((__packed__)) {
 } singleton_foo_t;
 
 /**.
+
+(* Assumption about function in a different file.
+   Name is not preceded by spec_of to make sure the name `swap` exists, which
+   is neded for the parser to work at call site. *)
+#[local] Instance swap: fnspec :=                                      .**/
+
+void swap(uintptr_t a_addr, uintptr_t b_addr) /**#
+  ghost_args := a b (R: mem -> Prop);
+  requires t m := <{ * uint 32 a a_addr
+                     * uint 32 b b_addr
+                     * R }> m;
+  ensures t' m' := t' = t /\
+       <{ * uint 32 b a_addr
+          * uint 32 a b_addr
+          * R }> m' #**/ ;                                                 /**.
 
 #[export] Instance spec_of_swap_bc: fnspec :=                                   .**/
 

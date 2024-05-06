@@ -1320,6 +1320,11 @@ Ltac with_ident_as_string_no_beta f :=
   | fun x => _ => constr:(f (ident_to_string x))
   end.
 
+(* Needed for cases where we only want to give the signature, but no implementation *)
+Declare Custom Entry optional_semicolon.
+Notation "*/ ; /*" := tt (in custom optional_semicolon at level 1, only parsing).
+Notation "*/ /*" := tt (in custom optional_semicolon at level 1, only parsing).
+
 (* Notations have (almost) the same RHS as the `fnspec!` notations in
    bedrock2.WeakestPrecondition, but only allow 0 or 1 return value
    (for C compatibility) and use a different syntax in the LHS (to match
@@ -1328,7 +1333,7 @@ Ltac with_ident_as_string_no_beta f :=
 Declare Custom Entry funspec.
 
 (* One return value: *)
-Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* */ /* *" :=
+Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* osemi *" :=
   (fun fname: String.string =>
      (fun fs =>
         (forall a1, .. (forall an, (forall g1, .. (forall gn,
@@ -1344,10 +1349,11 @@ Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an )
  t1 name, t2 name, m1 name, m2 name, r name,
  pre constr at level 200,
  post constr at level 200,
+ osemi custom optional_semicolon at level 1,
  only parsing).
 
 (* One return value and no arguments: *)
-Notation "'uintptr_t' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* */ /* *" :=
+Notation "'uintptr_t' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* osemi *" :=
   (fun fname: String.string =>
      (fun fs =>
         (forall g1, .. (forall gn,
@@ -1361,10 +1367,11 @@ Notation "'uintptr_t' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m
  t1 name, t2 name, m1 name, m2 name, r name,
  pre constr at level 200,
  post constr at level 200,
+ osemi custom optional_semicolon at level 1,
  only parsing).
 
 (* No return value: *)
-Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* */ /* *" :=
+Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* osemi *" :=
   (fun fname: String.string =>
      (fun fs =>
         (forall a1, .. (forall an, (forall g1, .. (forall gn,
@@ -1380,10 +1387,11 @@ Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *
  t1 name, t2 name, m1 name, m2 name,
  pre constr at level 200,
  post constr at level 200,
+ osemi custom optional_semicolon at level 1,
  only parsing).
 
 (* No return value an no arguments: *)
-Notation "'void' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* */ /* *" :=
+Notation "'void' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* osemi *" :=
   (fun fname: String.string =>
      (fun fs =>
         (forall g1, .. (forall gn,
@@ -1397,6 +1405,7 @@ Notation "'void' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := 
  t1 name, t2 name, m1 name, m2 name,
  pre constr at level 200,
  post constr at level 200,
+ osemi custom optional_semicolon at level 1,
  only parsing).
 
 Notation ".* */ x" :=
