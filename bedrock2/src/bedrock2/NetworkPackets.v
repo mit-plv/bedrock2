@@ -42,9 +42,9 @@ Record udp_header_t := {
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
 Require Import bedrock2.SepLib.
+Require Import bedrock2.to_from_anybytes.
 Require Import bedrock2.RecordPredicates.
-
-Require Import coqutil.Map.OfListWord.
+Require Import coqutil.Tactics.fwd.
 
 Section BigEndian.
   Local Open Scope Z_scope.
@@ -53,7 +53,12 @@ Section BigEndian.
           {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
 
   Definition byte_list_pred_at(P: list Byte.byte -> Prop)(addr: word)(m: mem): Prop :=
-    exists bs, m = map.of_list_word_at addr bs /\ P bs.
+    exists bs, map.of_disjoint_list_zip (Memory.ftprint addr (Z.of_nat (length bs))) bs
+               = Some m /\ P bs.
+    (* Note: this alternative definition is bad because it allows bs that are longer
+       than 2^width and the map.of_list_word_at just silently overrides the elements at
+       indices >=2^width with elements at indices <2^width:
+    exists bs, m = map.of_list_word_at addr bs /\ P bs. *)
 
   Definition be_uint_bytes(nbits val: Z)(bs: list Byte.byte): Prop :=
     Z.of_nat (List.length bs) * 8 = nbits /\ LittleEndianList.le_combine (List.rev bs) = val.
@@ -69,8 +74,21 @@ Section BigEndian.
     rewrite <- List.rev_length. apply LittleEndianList.le_combine_bound.
   Qed.
 
+  Lemma be_uint_contiguous: forall (nbits v: Z),
+      contiguous (be_uint nbits v) (nbits_to_nbytes nbits).
+  Proof.
+    unfold contiguous, Lift1Prop.impl1. intros nbits v addr m H. eapply anybytes_from_alt.
+    { apply nbits_to_nbytes_nonneg. }
+    unfold be_uint, byte_list_pred_at, be_uint_bytes in H. fwd.
+    unfold nbits_to_nbytes.
+    replace ((Z.max 0 (Z.of_nat (length bs) * 8) + 7) / 8) with (Z.of_nat (length bs))
+      by (Z.div_mod_to_equations; Lia.lia).
+    unfold Memory.anybytes. exists bs. assumption.
+  Qed.
+
 End BigEndian.
 
+#[export] Hint Resolve be_uint_contiguous : contiguous.
 #[export] Hint Resolve purify_uint : purify.
 
 #[export] Hint Extern 1 (PredicateSize (be_uint ?nbits)) =>
