@@ -298,30 +298,18 @@ Create HintDb fillable.
 : fillable.
 
 #[export] Hint Extern 20 (contiguous ?p ?n) =>
-  let h := head p in
-  (* seemingly superfluous match strips cast added by unfold *)
-  lazymatch constr:(ltac:(unfold h; typeclasses eauto with contiguous) : contiguous p n) with
-  | ?res => exact res
-  end
+  let h := head p in unfold h; typeclasses eauto with contiguous
 : contiguous.
 
 #[export] Hint Extern 20 (fake_contiguous ?p) =>
-  let h := head p in
-  (* seemingly superfluous match strips cast added by unfold *)
-  lazymatch constr:(ltac:(unfold h; typeclasses eauto with contiguous) : fake_contiguous p) with
-  | ?res => exact res
-  end
+  let h := head p in unfold h; typeclasses eauto with contiguous
 : contiguous.
 
 Ltac is_contiguous P :=
-  let __ := constr:(ltac:(solve [typeclasses eauto with contiguous]
-                          || fail "not contiguous")
-                     : contiguous P _) in idtac.
+  assert_succeeds (eassert (contiguous P _) by typeclasses eauto with contiguous).
 
 Ltac is_fake_contiguous P :=
-  let __ := constr:(ltac:(solve [typeclasses eauto with contiguous]
-                          || fail "not fake_contiguous")
-                     : fake_contiguous P) in idtac.
+  assert_succeeds (assert (fake_contiguous P) by typeclasses eauto with contiguous).
 
 Section TestsWithMem64.
   Context {word: word 64} {BW: Bitwidth 64} {mem: map.map word Byte.byte}
