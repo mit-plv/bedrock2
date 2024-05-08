@@ -3,7 +3,6 @@ Require Import LiveVerif.LiveVerifLib.
 Require Import bedrock2.TraceInspection.
 Require Import bedrock2.NetworkPackets.
 Require Import bedrock2.e1000_packet_trace.
-Require Import LiveVerifExamples.e1000.
 Require Import LiveVerifExamples.mbuf.
 
 (* preamble and start frame delimiter are already removed by the NIC *)
@@ -36,12 +35,27 @@ Definition headers_upto_udp(h: headers_upto_udp_t): word -> mem -> Prop :=
 
 (* in the packet_trace, the excess bytes of mbufs don't appear, but in mbufs, they do *)
 
-Definition eth_buff(h: ethernet_header_t)(n: Z)(zs: list Z): word -> mem -> Prop.
-Admitted.
-
 Axiom network: word -> mem -> Prop. (* TODO takes more params *)
+#[local] Hint Extern 1 (cannot_purify (network _))
+      => constructor : suppressed_warnings.
 
 (** * Alloc/free packets, bottom-up: *)
+
+(* provided by e1000: *)
+Instance alloc_tx_buf: fnspec := .**/
+
+uintptr_t alloc_tx_buf(uintptr_t nw) /**#
+  ghost_args := (R: mem -> Prop);
+  requires t m := <{ * network nw
+                     * R }> m;
+  ensures t' m' r := t' = t /\
+       <{ * network nw
+          * mbuf (emp_at_addr True) r
+          * R }> m' #**/                                                   /**.
+
+#[local] Hint Unfold mbuf MBUF_SIZE : heapletwise_always_unfold.
+
+Axiom be_uint_16_fillable: fillable (be_uint 16) 2.
 
 Instance spec_of_net_alloc_eth: fnspec :=                                          .**/
 
@@ -49,9 +63,59 @@ uintptr_t net_alloc_eth(uintptr_t nw) /**#
   ghost_args := (R: mem -> Prop);
   requires t m := <{ * network nw
                      * R }> m;
+  ensures t' m' r := t' = t /\
+       <{ * network nw
+          * mbuf (anyval headers_upto_ethernet) r
+          * R }> m' #**/                                                   /**.
+Derive net_alloc_eth SuchThat (fun_correct! net_alloc_eth) As net_alloc_eth_ok. .**/
+{                                                                          /**. .**/
+  uintptr_t r = alloc_tx_buf(nw);                                          /**.
+
+  let H := find #(@emp_at_addr) in rename H into M.
+  cbn in M. unfold sepapp, emp_at_addr, anyval in M.
+  repeat heapletwise_step. bsimpl_in_hyps.                                      .**/
+  return r;                                                                /**. .**/
+}                                                                          /*?.
+
+step. step. step. step. step. step. step. step. step. step.
+step.
+step. step. step. step. step. step. step. step. step. step. step. step.
+intros m Hm.
+unfold headers_upto_ethernet, ethernet_header, anyval.
+eexists {| src_mac := _ |}. record.simp.
+unfold sepapps. cbn. unfold sepapp.
+change (m |= array (uint 8) 14 v[:14] r) in Hm.
+pose proof (mmap.du_empty_r m) as D'.
+set (mAll := m). change m with mAll in D' at 2. clearbody mAll.
+step. step. step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step. step. step. step.
+step. step.
+intros mm Hmm.
+eapply (unfold_fillable _ _ be_uint_16_fillable).
+exact Hmm.
+Qed.
+
+Instance spec_of_net_alloc_ip: fnspec :=                                          .**/
+
+uintptr_t net_alloc_ip(uintptr_t nw) /**#
+  ghost_args := (R: mem -> Prop);
+  requires t m := <{ * network nw
+                     * R }> m;
   ensures t' m' r := t' = t /\ exists h,
        <{ * network nw
-          * eth_buff h 0 nil r
+          * mbuf (headers_upto_ip h) r
+          * R }> m' #**/                                                   /**.
+
+
+Instance spec_of_net_alloc_udp: fnspec :=                                          .**/
+
+uintptr_t net_alloc_udp(uintptr_t nw) /**#
+  ghost_args := (R: mem -> Prop);
+  requires t m := <{ * network nw
+                     * R }> m;
+  ensures t' m' r := t' = t /\ exists h,
+       <{ * network nw
+          * mbuf (headers_upto_udp h) r
           * R }> m' #**/                                                   /**.
 
 
