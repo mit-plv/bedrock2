@@ -21,6 +21,9 @@ Definition bp_and(P Q: list byte -> Prop): list byte -> Prop :=
 Definition bp_or(P Q: list byte -> Prop): list byte -> Prop :=
   fun bs => P bs \/ Q bs.
 
+Definition bp_ex[A: Type](P: A -> list byte -> Prop): list byte -> Prop :=
+  fun bs => exists x: A, P x bs.
+
 Lemma bp_and_comm: forall P Q, bp_and P Q = bp_and Q P.
 Proof. unfold bp_and. intros. apply bp_ext. intuition. Qed.
 
@@ -106,6 +109,27 @@ Lemma be_uint_range: forall nbits val bs, be_uint nbits val bs -> 0 <= val < 2 ^
 Proof.
   unfold uint. intros * (? & ?). subst. rewrite Z.mul_comm.
   rewrite <- List.rev_length. apply le_combine_bound.
+Qed.
+
+Lemma raw_array_id: forall (vs: list byte),
+    raw_array (uint 8) (List.map byte.unsigned vs) vs.
+Proof.
+  intros. induction vs; intros; unfold raw_array in *; simpl.
+  - reflexivity.
+  - unfold bp_app at 1. repeat eexists.
+    4: eassumption.
+    1: change (a :: vs) with ([a] ++ vs); reflexivity.
+    1: reflexivity.
+    unfold le_combine. rewrite Z.shiftl_0_l. rewrite Z.lor_0_r. reflexivity.
+Qed.
+
+Lemma array_id: forall (vs: list byte) n,
+    n = Z.of_nat (List.length vs) ->
+    array (uint 8) n (List.map byte.unsigned vs) vs.
+Proof.
+  intros. subst. unfold array. unfold bp_and, bp_impure. split.
+  - rewrite List.map_length. reflexivity.
+  - apply raw_array_id.
 Qed.
 
 Fixpoint arrows(Ts: list Type)(R: Type): Type :=
@@ -286,3 +310,47 @@ Definition udp_header(h: udp_header_t): list byte -> Prop := bp_concat [
 ].
 
 Goal sizeof udp_header = 8. reflexivity. Succeed Qed. Abort.
+
+Require Import coqutil.Tactics.fwd.
+
+Goal bp_ex (fun v: list Z => array (uint 8) 14 v)
+   = bp_ex (fun v: ethernet_header_t => bp_concat [
+               array (uint 8) 6 (src_mac v);
+               array (uint 8) 6 (dst_mac v);
+               be_uint 16 (ethertype v) ]).
+Proof.
+  apply bp_ext.
+  unfold bp_ex.
+  intro bs; split; intros; fwd.
+  { eexists {| src_mac := _ |}. cbn. unfold bp_app.
+    repeat eexists; unfold bp_impure; try eapply raw_array_id.
+    2-3: rewrite List.map_length.
+    all: admit. }
+  {
+Abort.
+
+Goal bp_ex (fun v: list Z => array (uint 8) 14 v)
+   = bp_ex (fun v: ethernet_header_t => bp_concat [
+               array (uint 8) 6 (src_mac v);
+               array (uint 8) 6 (dst_mac v);
+               be_uint 16 (ethertype v) ]).
+Proof.
+  unfold bp_ex, bp_concat, bp_app.
+  apply bp_ext.
+  intro bs; split; intros; fwd.
+  2: {
+    eexists. eapply array_id. unfold array, bp_and, bp_impure in *.
+    fwd. rewrite !List.app_length.
+    admit.
+  }
+  {
+    do 3 eexists.
+    ssplit.
+    3: {
+      do 2 eexists.
+      ssplit.
+      1: reflexivity.
+      2: {
+        do 3 eexists. 1: reflexivity.
+        split. 2: reflexivity.
+Abort.
