@@ -1,3 +1,24 @@
+(* Alternative to sepapp:
+   Instead of concatenating predicates of type (word -> mem -> Prop), we concatenate
+   predicates of type (list byte -> Prop).
+   Advantages:
+   * No need to deal with the concept of "address"
+   * Notion of predicate size is grounded in proof (rather than just a Z returned by
+     typeclass search)
+   * Better compatibility with network packets that are modeled as lists of bytes
+   Disadvantage:
+   * Predicates can't refer to further memory, so something like the following
+     would not be expressible:
+
+       Definition pointer_to(P: word -> mem -> Prop)(pointerAddr: word): mem -> Prop :=
+         EX targetAddr, uintptr targetAddr pointerAddr * P targetAddr.
+
+     and also can't be included in sepapps like this:
+
+      <{ + pointer_to (uint 32 v)
+         + pointer_to (ethernet_header h) }>
+*)
+
 Require Import Coq.Logic.PropExtensionality.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Lists.List.
