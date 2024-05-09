@@ -39,6 +39,19 @@ Record udp_header_t := {
   udp_checksum: Z;       (*  8 *)
 }.
 
+(* preamble and start frame delimiter are already removed by the NIC *)
+Definition headers_upto_ethernet_t := ethernet_header_t.
+
+Record headers_upto_ip_t: Set := {
+  before_ip_header: ethernet_header_t;
+  only_ip_header: ip_header_t;
+}.
+
+Record headers_upto_udp_t: Set := {
+  before_udp_header: headers_upto_ip_t;
+  only_udp_header: udp_header_t;
+}.
+
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
 Require Import bedrock2.SepLib.
@@ -92,11 +105,7 @@ End BigEndian.
 #[export] Hint Resolve purify_uint : purify.
 
 #[export] Hint Extern 1 (PredicateSize (be_uint ?nbits)) =>
-  let sz := lazymatch isZcst nbits with
-            | true => eval cbv in (nbits_to_nbytes nbits)
-            | false => constr:(nbits_to_nbytes nbits)
-            end in
-  exact sz
+  nbits_to_exact_nbytes nbits
 : typeclass_instances.
 
 Notation "/* 'BE' */ 'uint64_t'" := (be_uint 64) (in custom c_type_as_predicate).
@@ -106,6 +115,9 @@ Notation "/* 'BE' */ 'uint8_t'" := (be_uint 8) (in custom c_type_as_predicate).
 
 (* Note: implementation code will still need to use ntohs, ntohl, htons, htonl,
    but the /*BE*/ comment will make separation logic predicates use big-endian order. *)
+
+Require Import bedrock2.SepappBulletPoints.
+Local Open Scope sepapp_bullets_scope.
 
 Section WithMem.
   Local Open Scope Z_scope.
@@ -166,4 +178,16 @@ Section WithMem.
   /**.
 
   Goal sizeof udp_header = 8. reflexivity. Succeed Qed. Abort.
+
+  Definition headers_upto_ethernet: headers_upto_ethernet_t -> word -> mem -> Prop :=
+    ethernet_header.
+
+  Definition headers_upto_ip(h: headers_upto_ip_t): word -> mem -> Prop :=
+    <{ + headers_upto_ethernet (before_ip_header h)
+       + ip_header (only_ip_header h) }>.
+
+  Definition headers_upto_udp(h: headers_upto_udp_t): word -> mem -> Prop :=
+    <{ + headers_upto_ip (before_udp_header h)
+       + udp_header (only_udp_header h) }>.
+
 End WithMem.

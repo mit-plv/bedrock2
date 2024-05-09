@@ -5,33 +5,9 @@ Require Import bedrock2.NetworkPackets.
 Require Import bedrock2.e1000_packet_trace.
 Require Import LiveVerifExamples.mbuf.
 
-(* preamble and start frame delimiter are already removed by the NIC *)
-Definition headers_upto_ethernet_t := ethernet_header_t.
-
-Record headers_upto_ip_t: Set := {
-  before_ip_header: ethernet_header_t;
-  only_ip_header: ip_header_t;
-}.
-
-Record headers_upto_udp_t: Set := {
-  before_udp_header: headers_upto_ip_t;
-  only_udp_header: udp_header_t;
-}.
-
 Require Import coqutil.Map.OfListWord.
 
 Load LiveVerif.
-
-Definition headers_upto_ethernet: headers_upto_ethernet_t -> word -> mem -> Prop :=
-  ethernet_header.
-
-Definition headers_upto_ip(h: headers_upto_ip_t): word -> mem -> Prop :=
-  <{ + headers_upto_ethernet (before_ip_header h)
-     + ip_header (only_ip_header h) }>.
-
-Definition headers_upto_udp(h: headers_upto_udp_t): word -> mem -> Prop :=
-  <{ + headers_upto_ip (before_udp_header h)
-     + udp_header (only_udp_header h) }>.
 
 (* in the packet_trace, the excess bytes of mbufs don't appear, but in mbufs, they do *)
 
