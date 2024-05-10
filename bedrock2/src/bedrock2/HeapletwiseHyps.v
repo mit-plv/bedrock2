@@ -491,11 +491,11 @@ Set Printing Coercions.
     eapply seps_cons. eapply sep_emp_l. eauto.
   Qed.
 
-  Lemma cancel_ex1_head: forall {T: Type} {P: T -> mem -> Prop} {Ps om Rest} {x: T},
-      canceling (cons (P x) Ps) om Rest ->
+  Lemma cancel_ex1_head: forall {T: Type} {P: T -> mem -> Prop} {Ps om Rest},
+      (exists x, canceling (cons (P x) Ps) om Rest) ->
       canceling (cons (ex1 P) Ps) om Rest.
   Proof.
-    unfold canceling. intros. destruct H as [H HR]. split; [intros | exact HR].
+    unfold canceling. intros. destruct H as (x & H & HR). split; [intros | exact HR].
     eapply seps_cons. eapply sep_ex1_l. unfold ex1. subst.
     exists x. eapply seps_cons. eapply H. reflexivity.
   Qed.
@@ -1159,7 +1159,10 @@ Ltac canceling_step :=
                        hyp_clause_matches_goal_clause P' R; cancel_head_with_hyp H
                    end
                | anyval ?p ?a =>
+                   (* to make sure we don't create an evar too early, we only do
+                      this step if we can also find a matching hypothesis *)
                    eapply cancel_ex1_head;
+                   eexists;
                    match goal with
                    | H: with_mem _ ?P' |- canceling (cons ?R ?Ps) ?om ?P =>
                        hyp_clause_matches_goal_clause P' R; cancel_head_with_hyp H
@@ -1388,6 +1391,7 @@ Section HeapletwiseHypsTests.
     (* now we start canceling, but still with an ex1 inside the list: *)
     step.
     step. (* ex1 *)
+    eexists.
     step. (* sep *)
     step. step. step. step. step. step.
   Succeed Qed. Abort.

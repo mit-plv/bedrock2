@@ -966,12 +966,16 @@ Ltac evar_tuple t :=
          end
   end.
 
+Ltac evar_for_exists t :=
+  let t := rdelta t in
+  evar_tuple t.
+
 Ltac step_hook := fail.
 
 Ltac sidecond_step logger := first
       [ lazymatch goal with
-        | |- exists x: ?t, _ => let e := evar_tuple t in exists e
-        | |- ex1 _ _ => eexists
+        | |- exists x: ?t, _ => let e := evar_for_exists t in exists e
+        | |- @ex1 ?t _ _ _ => let e := evar_for_exists t in exists e
         | |- elet _ _ => refine (mk_elet _ _ _ eq_refl _)
         end;
         logger ltac:(fun _ => idtac "eexists")
