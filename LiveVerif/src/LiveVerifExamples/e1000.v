@@ -197,7 +197,7 @@ Derive e1000_init SuchThat (fun_correct! e1000_init) As e1000_init_ok.          
   return f;                                                                /**. .**/
 } /**.
   unfold e1000_ctx, e1000_ctx_raw, anyval. clear Warning.
-  step. instantiate (1 := {| tx_buf_allocator := _ |}). record.simp.
+  step. eexists {| tx_buf_allocator := _ |}. record.simp.
   steps.
   (* TODO circular_buffer_slice support *)
 Abort.
