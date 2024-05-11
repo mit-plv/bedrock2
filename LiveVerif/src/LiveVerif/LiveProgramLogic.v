@@ -1019,9 +1019,9 @@ Ltac sidecond_step logger := first
             careful_reflexivity_step_hook;
             logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")
         | |- forall _, _ =>
-            logger ltac:(fun _ => idtac "intros");
-            intros (* don't put this too early, because heapletwise has some
-                      specialized intros that rename and move new hyps *)
+            logger ltac:(fun _ => idtac "intro");
+            intro (* don't put this too early, and only one intro at a time, because
+                     heapletwise has a specialize intro that renames and moves new hyps *)
         end ].
 
 (* means: already logged or tried to log *)
