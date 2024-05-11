@@ -1,5 +1,6 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
+Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
@@ -12,9 +13,30 @@ Section WithMem.
   Context {width} {BW: Bitwidth width} {word: word width} {mem: map.map word Byte.byte}
           {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
-  (* TODO should this be a sigma type like fillable? *)
+  Definition unchecked_load_uint8s(m: mem)(addr: word)(n: Z): list Z :=
+    List.map Byte.byte.unsigned
+      (Option.force (Memory.WithoutTuples.load_bytes m addr (Z.to_nat n))).
+
+  Lemma array_to_load_bytes: forall n bs addr m,
+      array (uint 8) n bs addr m ->
+      array (uint 8) n (unchecked_load_uint8s m addr n) addr m.
+  Proof.
+    unfold array. intros. eapply sep_emp_l in H. destruct H as (L & H).
+    eapply sep_emp_l.
+    unfold unchecked_load_uint8s.
+    rewrite List.map_length.
+  Abort.
+
   Definition contiguous(P: word -> mem -> Prop)(n: Z): Prop :=
     forall addr, impl1 (P addr) (array (uint 8) n ? addr).
+
+  (* Informative version of contiguous that can be used to instantiate evars that
+     were created before we know that we need to invoke contiguous.
+     BUT this does not work because it the expression (unchecked_load_uint8s m addr n)
+     that we'd like to use to instantiate the evar depends on m, which won't be in the
+     evar scope. *)
+  Definition contiguous_info_bad(P: word -> mem -> Prop)(n: Z): Prop :=
+    forall addr m, P addr m -> array (uint 8) n (unchecked_load_uint8s m addr n) addr m.
 
   (* sometimes, we don't need the actual proof, but only want to know whether it's
      contiguous to determine whether a proof step is safe, so we can save the proof effort *)
@@ -28,6 +50,14 @@ Section WithMem.
       contiguous P n -> P a m -> (array (uint 8) n ? a) m.
   Proof. unfold contiguous, impl1. intros. eauto. Qed.
 
+  (* Informative version of contiguous that can be used to instantiate evars that
+     were created before we know that we need to invoke contiguous. *)
+  Definition contiguous_info[V: Type](P: V -> word -> mem -> Prop)(n: Z): Type :=
+    { f: V -> list Z | forall v addr m, P v addr m -> array (uint 8) n (f v) addr m }.
+
+  Lemma array_uint8_contiguous_info: forall n, contiguous_info (array (uint 8) n) n.
+  Proof. unfold contiguous_info. intros. exists id. intros *. exact id. Qed.
+
   (* predicate P can be filled with any byte list of length n *)
   Definition fillable[V: Type](P: V -> word -> mem -> Prop)(n: Z): Type :=
     { f: list Z -> V | forall addr bs m, array (uint 8) n bs addr m -> P (f bs) addr m }.
@@ -37,8 +67,43 @@ Section WithMem.
   Lemma unfold_fillable[V: Type](P: V -> word -> mem -> Prop)(n: Z)
     (h: fillable P n):
     forall addr bs m, array (uint 8) n bs addr m -> P (proj1_sig h bs) addr m.
+  Proof. unfold fillable. intros. destruct h as (f & h). simpl. eapply h. exact H. Qed.
+
+  Section Bad.
+    (* just here for illustration of how we'd prove other lemmas if they were actually
+     needed *)
+    Hypothesis array_to_load_bytes: forall n bs addr m,
+        array (uint 8) n bs addr m ->
+        array (uint 8) n (unchecked_load_uint8s m addr n) addr m.
+
+    Lemma contiguous_to_info_bad: forall P n, contiguous P n -> contiguous_info_bad P n.
+    Proof.
+      unfold contiguous, contiguous_info_bad, anyval, impl1, ex1. intros.
+      specialize H with (1 := H0). destruct H as (bs & H).
+      eapply array_to_load_bytes. eassumption.
+    Qed.
+
+    Lemma contiguous_implies_proj1_of_fillable[T: Type]:
+      forall (P: word -> mem -> Prop) (F: T -> word -> mem -> Prop) (n: Z) (a: word)
+             (HC: contiguous P n) (HF: fillable F n),
+      forall m, P a m -> F (proj1_sig HF (unchecked_load_uint8s m(*<--BAD*) a n)) a m.
+    Proof.
+      unfold  fillable, impl1, anyval, ex1. intros. destruct HF as (f & HF). simpl.
+      eapply contiguous_to_info_bad in HC.
+      unfold contiguous_info_bad in HC. specialize HC with (1 := H).
+      eapply HF. exact HC.
+    Qed.
+  End Bad.
+
+  Lemma contiguous_info_implies_proj1[T1 T2: Type]:
+    forall (P1: T1 -> word -> mem -> Prop) (P2: T2 -> word -> mem -> Prop) (n: Z)
+           (HC: contiguous_info P1 n) (HF: fillable P2 n),
+      forall v a, impl1 (P1 v a) (P2 (proj1_sig HF (proj1_sig HC v)) a).
   Proof.
-    unfold fillable. intros. destruct h as (f & h). simpl. eapply h. exact H. Qed.
+    unfold contiguous_info, fillable, impl1, anyval, ex1.
+    intros. destruct HF as (f & HF). destruct HC as (c & HC). simpl.
+    eapply HF. eapply HC. exact H.
+  Qed.
 
   Lemma contiguous_implies_anyval_of_fillable{T: Type}:
     forall (P: word -> mem -> Prop) (F: T -> word -> mem -> Prop) (n: Z) (a: word),
@@ -367,6 +432,7 @@ Create HintDb contiguous.
   uintptr64_contiguous
   uint_contiguous
   array_uint8_contiguous
+  array_uint8_contiguous_info
   anybytes_contiguous
   contiguous_to_fake
   array_fake_contiguous

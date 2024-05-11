@@ -237,7 +237,7 @@ Qed.
 
 Ltac reify_arg_types t :=
   lazymatch t with
-  | list byte -> Prop => constr:(@nil Type)
+  | list Coq.Init.Byte.byte -> Prop => constr:(@nil Type)
   | ?a -> ?b => let r := reify_arg_types b in constr:(@cons Type a r)
   end.
 
