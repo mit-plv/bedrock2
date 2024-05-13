@@ -116,6 +116,21 @@ Section WithMem.
     eexists. eapply (unfold_fillable _ _ X). eapply H.
   Qed.
 
+  Lemma contiguous_implies_anyval_of_sepapps[T: Type]:
+    forall (P: word -> mem -> Prop) (F: T -> word -> mem -> Prop) (n: Z) (a: word) preds,
+      contiguous P n ->
+      F = (fun v: T => sepapps (preds v)) ->
+      (forall bs m, sep (array (uint 8) n bs a) (emp True) m ->
+                    sep (EX v, (sepapps (preds v)) a) (emp True) m) ->
+      impl1 (P a) (anyval F a).
+  Proof.
+    unfold contiguous, impl1, anyval, ex1. intros. subst F.
+    setoid_rewrite sep_emp_r in H1.
+    specialize H with (1 := H2). destruct H as (bs & H).
+    specialize H1 with (1 := conj H I).
+    apply H1.
+  Qed.
+
   Lemma array_uint8_contiguous: forall v n, contiguous (array (uint 8) n v) n.
   Proof. unfold contiguous. intros. unfold anyval. eapply impl1_ex1_r. reflexivity. Qed.
 

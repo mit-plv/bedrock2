@@ -36,6 +36,7 @@ Require Export coqutil.Datatypes.RecordSetters.
 Require Export LiveVerif.LiveRules.
 Require Export LiveVerif.PackageContext.
 Require Export LiveVerif.LiveProgramLogic.
+Require Export LiveVerif.LiveFwd.
 
 Require Export bedrock2.tweak_tacs. Ltac tweak_sidecond_hook ::= try solve [steps].
 

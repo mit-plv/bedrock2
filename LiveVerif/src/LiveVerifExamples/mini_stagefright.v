@@ -164,7 +164,6 @@ Derive parse_chunk_of_type_bytearr SuchThat (fun_correct! parse_chunk_of_type_by
   uintptr_t dstOfs = load(pDstOfs);                                        /**. .**/
   uintptr_t actual_typ = load32(src + srcOfs + 4);                         /**.
 
-  2: {
 Abort.
 
 End LiveVerif. Comments .**/ //.

@@ -94,6 +94,12 @@ Section WithParams.
   Definition sepapps(l: list sized_predicate): word -> mem -> Prop :=
     proj_predicate (List.fold_right sepapp_sized_predicates sized_emp l).
 
+  Lemma purify_sepapp: forall a p1 P1 {sz: PredicateSize p1} p2 P2,
+      purify (p1 a) P1 ->
+      purify (p2 (word.add a (word.of_Z sz))) P2 ->
+      purify (sepapp p1 p2 a) (P1 /\ P2).
+  Proof. unfold sepapp. intros. eapply purify_sep; assumption. Qed.
+
   Lemma purify_sepapps_nil: forall a, purify (sepapps nil a) True.
   Proof. unfold purify. intros. constructor. Qed.
 
@@ -223,6 +229,7 @@ Section WithParams.
 
 End WithParams.
 
+#[export] Hint Resolve purify_sepapp: purify.
 #[export] Hint Resolve purify_sepapps_nil: purify.
 #[export] Hint Resolve purify_sepapps_cons: purify.
 

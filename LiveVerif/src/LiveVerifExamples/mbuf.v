@@ -50,8 +50,7 @@ Definition mbuf
    predicates (eg array, or combinations of array and packet headers) to mbuf. *)
 Definition mbuf(packet: word -> mem -> Prop){packet_sz: PredicateSize packet}
   : word -> mem -> Prop :=
-  <{ + packet
-     + anyval (array (uint 8) (MBUF_SIZE - packet_sz)) }>.
+  sepapp packet (anyval (array (uint 8) (MBUF_SIZE - packet_sz))).
 
 (* Or how about we just make the packet_sz argument explicit:
 

@@ -83,6 +83,13 @@ Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
       end
   end.
 
+(* TODO can we infer injectivity of predicates automatically? *)
+Lemma raw_ring_buf_t_inj: forall r1 r2 a,
+    safe_implication (r1 = r2) (impl1 (raw_ring_buf_t r1 a) (raw_ring_buf_t r2 a)).
+Proof. unfold safe_implication. intros. subst. reflexivity. Qed.
+
+#[local] Hint Resolve raw_ring_buf_t_inj : safe_implication.
+
 #[export] Instance spec_of_ring_buf_init: fnspec :=                              .**/
 
 void ring_buf_init(uintptr_t addr, uintptr_t cap) /**#
@@ -98,7 +105,6 @@ Derive ring_buf_init SuchThat (fun_correct! ring_buf_init) As ring_buf_init_ok. 
   store32(addr + 4, 0);                                                    /**. .**/
   store32(addr + 8, 0);                                                    /**. .**/
 }                                                                          /**.
-  all: record.simp. all: steps.
 Qed.
 
 #[export] Instance spec_of_ring_buf_enq: fnspec :=                              .**/

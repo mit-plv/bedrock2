@@ -966,16 +966,33 @@ Ltac evar_tuple t :=
          end
   end.
 
-Ltac evar_for_exists t :=
+Require Import coqutil.Tactics.Records.
+Require Import coqutil.Tactics.rdelta.
+
+Ltac lambda_calls_getter_on_its_arg lam :=
+  lazymatch lam with
+  | (fun x: ?tp => _) =>
+      let dummy := constr:(fun x: tp => ltac:(
+        let body := eval cbv beta in (lam x) in
+        match body with
+        | context[?getter x] => is_getter getter; exact x
+        end)) in
+      idtac
+  end.
+
+Ltac composite_eexists t body :=
   let t := rdelta t in
-  evar_tuple t.
+  tryif lambda_calls_getter_on_its_arg body then
+    refine (@ex_intro t _ (ltac:(constructor) : t) _); record.simp_goal
+  else
+    let e := evar_tuple t in exists e.
 
 Ltac step_hook := fail.
 
 Ltac sidecond_step logger := first
       [ lazymatch goal with
-        | |- exists x: ?t, _ => let e := evar_for_exists t in exists e
-        | |- @ex1 ?t _ _ _ => let e := evar_for_exists t in exists e
+        | |- @ex ?A ?P => composite_eexists A P
+        | |- @ex1 ?A _ ?P _ => composite_eexists A P
         | |- elet _ _ => refine (mk_elet _ _ _ eq_refl _)
         end;
         logger ltac:(fun _ => idtac "eexists")
@@ -1006,12 +1023,29 @@ Ltac sidecond_step logger := first
                     end;
                     lazymatch rhs with
                     | sep _ _ => fail "not an atomic sep clause"
-                    | _ => idtac
-                    end;
-                    solve [ eapply contiguous_implies_anyval_of_fillable;
-                            [ eauto with contiguous
-                            | eauto with fillable] ];
-                    logger ltac:(fun _ => idtac "contiguous_implies_anyval_of_fillable")
+                    | anyval _ _ =>
+                        first [ eapply contiguous_implies_anyval_of_fillable;
+                                [ solve [eauto with contiguous]
+                                | solve [eauto with fillable] ];
+                                logger ltac:(fun _ => idtac
+                                         "contiguous_implies_anyval_of_fillable")
+                              | (* if rhs is a sepapps (potentially behind definitions),
+                                   `eauto with fillable` above failed, so we get here *)
+                                eapply contiguous_implies_anyval_of_sepapps;
+                                [ solve [eauto with contiguous]
+                                | reflexivity (* relies on unification with unfolding,
+                                                 let's hope it won't blow up... *)
+                                | (* solved by further `step` invocations *) ];
+                                logger ltac:(fun _ => idtac
+                                         "contiguous_implies_anyval_of_sepapps") ]
+                    | ?P ?e ?addr =>
+                        is_evar e;
+                        solve [ refine (contiguous_info_implies_proj1 _ _ _ _ _ _ _);
+                                [ eauto with fillable
+                                | eauto with contiguous ] ];
+                        logger ltac:(fun _ => idtac
+                                 "contiguous_implies_anyval_of_sepapps")
+                    end
                   | (* goes last because it might wrap goal in don't_know_how_to_prove *)
                     careful_reflexivity_step_hook;
                     logger ltac:(fun _ => idtac "careful_reflexivity_step_hook") ]

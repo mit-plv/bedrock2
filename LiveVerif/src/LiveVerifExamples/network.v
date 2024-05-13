@@ -5,8 +5,6 @@ Require Import bedrock2.NetworkPackets.
 Require Import bedrock2.e1000_packet_trace.
 Require Import LiveVerifExamples.mbuf.
 
-Require Import coqutil.Map.OfListWord.
-
 Load LiveVerif.
 
 (* in the packet_trace, the excess bytes of mbufs don't appear, but in mbufs, they do *)
@@ -37,34 +35,6 @@ Axiom be_uint16_fillable: fillable (be_uint 16) 2.
   be_uint16_fillable
 : fillable.
 
-Import autoforward.
-Import Coq.Program.Tactics.
-
-Lemma emp_True_at_addr_at_sepapps_head: forall (preds: list sized_predicate) m addr,
-    autoforward (with_mem m (sepapps
-                    (cons (mk_sized_predicate (emp_at_addr True) 0) preds) addr))
-                (with_mem m (sepapps preds addr)).
-Proof.
-  unfold autoforward, with_mem. intros.
-  rewrite sepapps_cons in H. unfold emp_at_addr in H. simpl in H.
-  rewrite sep_emp_l in H. apply proj2 in H. rewrite word.add_0_r in H. exact H.
-Qed.
-
-(*#[export]*) Hint Extern 1 (autoforward (with_mem _ (sepapps
-                    (cons (mk_sized_predicate (emp_at_addr True) 0) _) _)) _)
-  => rapply @emp_True_at_addr_at_sepapps_head : typeclass_instances.
-
-Lemma sepapps_singleton: forall pred sz a m,
-    autoforward (with_mem m (sepapps (cons (mk_sized_predicate pred sz) nil) a))
-                (with_mem m (pred a)).
-Proof.
-  unfold autoforward, with_mem, sepapps. cbn. unfold sepapp. intros.
-  eapply sep_emp_r in H. apply H.
-Qed.
-
-(*#[export]*) Hint Extern 1
-  (autoforward (with_mem ?m (sepapps (cons (mk_sized_predicate ?pred ?sz) nil) ?addr)) _)
-=> apply (sepapps_singleton pred sz addr m) : typeclass_instances.
 
 Instance spec_of_net_alloc_eth: fnspec :=                                          .**/
 
@@ -81,74 +51,6 @@ Derive net_alloc_eth SuchThat (fun_correct! net_alloc_eth) As net_alloc_eth_ok. 
   uintptr_t r = alloc_tx_buf(nw);                                          /**. .**/
   return r;                                                                /**. .**/
 }                                                                          /**.
-
-Set Nested Proofs Allowed.
-
-  Lemma contiguous_implies_anyval_of_sepapps[T: Type]:
-    forall (P: word -> mem -> Prop) (F: T -> word -> mem -> Prop) (n: Z) (a: word) preds,
-      contiguous P n ->
-      F = (fun v: T => sepapps (preds v)) ->
-      (forall bs m, sep (array (uint 8) n bs a) (emp True) m ->
-                    sep (EX v, (sepapps (preds v)) a) (emp True) m) ->
-      impl1 (P a) (anyval F a).
-  Admitted.
-
-eapply contiguous_implies_anyval_of_sepapps.
-1: eauto with contiguous.
-1: reflexivity.
-step.
-step. step.
-step. step. step. step.
-
-Require Import coqutil.Tactics.Records.
-Require Import coqutil.Tactics.rdelta.
-
-(* does expression e contain a getter accessing a field of record type tp? *)
-Ltac contains_getter_for e tp :=
-  let tp := rdelta tp in
-  match e with
-  | context[?getter] =>
-      is_getter getter;
-      let t := type of getter in
-      lazymatch type of getter with
-      | tp -> _ => idtac
-      end
-  end.
-
-
-change 8 with (fst (8,9)).
-
-Ltac composite_eexists t body :=
-  let t := rdelta t in
-  tryif contains_getter_for body t then
-    refine (@ex_intro t _ (ltac:(constructor) : t) _); record.simp
-  else
-    let e := evar_tuple t in exists e.
-
-lazymatch goal with
-| |- @ex ?A ?P => composite_eexists A P
-end.
-
-(*
-lazymatch goal with
-| |- @ex ?A ?P =>
-    contains_getter_for P A;
-    refine (@ex_intro A P (ltac:(constructor) : A) _)
-end.
-record.simp.
-*)
-
-step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-step. step. step. step. step. step. step. step. step. step. step.
-step.
-
-  lazymatch goal with
-  | |- impl1 _ (?P2 ?e ?addr) =>
-      is_evar e;
-      solve [ refine (contiguous_info_implies_proj1 _ _ _ _ _ _ _);
-              [ eauto with fillable
-              | eauto with contiguous ] ]
-  end.
 Qed.
 
 Instance spec_of_net_alloc_ip: fnspec :=                                          .**/
