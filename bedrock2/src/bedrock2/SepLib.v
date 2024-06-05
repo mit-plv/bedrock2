@@ -115,6 +115,13 @@ Proof.
   intros. unfold nbits_to_nbytes. Z.to_euclidean_division_equations. lia.
 Qed.
 
+Ltac nbits_to_exact_nbytes nbits :=
+  let sz := lazymatch isZcst nbits with
+            | true => eval cbv in (nbits_to_nbytes nbits)
+            | false => constr:(nbits_to_nbytes nbits)
+            end in
+  exact sz.
+
 
 Definition uint{width}{BW: Bitwidth width}{word: word width}{mem: map.map word Byte.byte}
   (nbits: Z)(v: Z)(addr: word): mem -> Prop :=
@@ -122,11 +129,7 @@ Definition uint{width}{BW: Bitwidth width}{word: word width}{mem: map.map word B
       (littleendian (Z.to_nat (nbits_to_nbytes nbits)) addr v).
 
 #[export] Hint Extern 1 (PredicateSize (uint ?nbits)) =>
-  let sz := lazymatch isZcst nbits with
-            | true => eval cbv in (nbits_to_nbytes nbits)
-            | false => constr:(nbits_to_nbytes nbits)
-            end in
-  exact sz
+  nbits_to_exact_nbytes nbits
 : typeclass_instances.
 
 Lemma purify_uint{width}{BW: Bitwidth width}{word: word width}{word_ok: word.ok word}
@@ -142,11 +145,7 @@ Definition uintptr{width}{BW: Bitwidth width}{word: word width}{mem: map.map wor
                   (v a: word): mem -> Prop := scalar a v.
 
 #[export] Hint Extern 1 (PredicateSize (@uintptr ?width ?BW ?word ?mem)) =>
-  let sz := lazymatch isZcst width with
-            | true => eval cbv in (nbits_to_nbytes width)
-            | false => constr:(nbits_to_nbytes width)
-            end in
-  exact sz
+  nbits_to_exact_nbytes width
 : typeclass_instances.
 
 Lemma purify_uintptr{width}{BW: Bitwidth width}{word: word width}
@@ -163,6 +162,17 @@ Proof. unfold purify. intros. constructor. Qed.
 
 #[export] Hint Extern 1 (cannot_purify (if _ then _ else _))
 => constructor : suppressed_warnings.
+
+
+Definition pointer_to{width}{BW: Bitwidth width}
+  {word: word width}{mem: map.map word Byte.byte}
+  (P: word -> mem -> Prop)(pointerAddr: word): mem -> Prop :=
+  ex1 (fun targetAddr => sep (uintptr targetAddr pointerAddr) (P targetAddr)).
+
+#[export] Hint Extern 1 (PredicateSize (@pointer_to ?width ?BW ?word ?mem ?pred)) =>
+  nbits_to_exact_nbytes width
+: typeclass_instances.
+
 
 Lemma anyval_is_emp{word: Type}{mem: map.map word Coq.Init.Byte.byte}[T: Type]
   (p: T -> word -> mem -> Prop)(q: T -> Prop)(a: word):

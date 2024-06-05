@@ -29,6 +29,7 @@ Require Import bedrock2.SepLib.
 Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2.RecordPredicates.
 Require Import bedrock2.e1000_state.
+Require Import bedrock2.old_dma.circular_buffer_slice_based_on_list_of_addrs.
 
 Lemma mod_add_unique: forall [l b x1 x2 m],
     l = (b + x1) mod m ->
@@ -69,7 +70,7 @@ Section WithMem.
       \[new_RDH] = (s.(rx_queue_head) + len packets) mod s.(rx_queue_capacity) ->
       (* we get back a (wrapping) slice of the rx queue as well as the corresponding
          buffers *)
-      <{ * circular_buffer_slice rx_desc_t s.(rx_queue_capacity) s.(rx_queue_head)
+      <{ * circular_buffer_slice rx_desc s.(rx_queue_capacity) s.(rx_queue_head)
                                  s.(rx_queue)[:len packets] /[rdba]
          * scattered_array (array (uint 8) s.(rx_buf_size)) packets
              (List.map (fun d => /[d.(rx_desc_addr)]) s.(rx_queue)[:len packets])
@@ -90,7 +91,7 @@ Section WithMem.
       \[new_RDT] = (s.(rx_queue_head) + len s.(rx_queue) + len fillable)
                      mod s.(rx_queue_capacity) ->
       len fillable = len new_descs ->
-      <{ * circular_buffer_slice rx_desc_t s.(rx_queue_capacity) s.(rx_queue_head)
+      <{ * circular_buffer_slice rx_desc s.(rx_queue_capacity) s.(rx_queue_head)
                                  new_descs /[rdba]
          * scattered_array (array (uint 8) s.(rx_buf_size)) fillable
              (List.map (fun d => /[d.(rx_desc_addr)]) new_descs)
@@ -114,7 +115,7 @@ Section WithMem.
       \[new_TDH] = (s.(tx_queue_head) + len packets) mod s.(tx_queue_capacity) ->
       (* we get back a (wrapping) slice of the tx queue as well as the corresponding
          buffers *)
-      <{ * circular_buffer_slice tx_desc_t s.(tx_queue_capacity) s.(tx_queue_head)
+      <{ * circular_buffer_slice tx_desc s.(tx_queue_capacity) s.(tx_queue_head)
                                  s.(tx_queue)[:len packets] /[tdba]
          * layout_absolute (List.map (fun pkt => array' (uint 8) pkt) packets)
                            (List.map word.of_Z buf_addrs)
@@ -138,7 +139,7 @@ Section WithMem.
                      mod s.(tx_queue_capacity) ->
       (* we get back a (wrapping) slice of the tx queue as well as the corresponding
          buffers *)
-      <{ * circular_buffer_slice tx_desc_t s.(tx_queue_capacity) s.(tx_queue_head)
+      <{ * circular_buffer_slice tx_desc s.(tx_queue_capacity) s.(tx_queue_head)
                                  new_descs /[tdba]
          * layout_absolute (List.map (fun pkt => array' (uint 8) pkt) packets)
                            (List.map word.of_Z buf_addrs)
@@ -262,7 +263,7 @@ Section WithMem.
       subst mGive2a. clear Hsd.
       (* But now, M1a and M2a imply: *)
       replace new_descs2 with new_descs1 in * by case TODO.
-      set (addrs := (List.map (fun d : rx_desc => /[rx_desc_addr d]) new_descs1)) in *.
+      set (addrs := (List.map (fun d : rx_desc_t => /[rx_desc_addr d]) new_descs1)) in *.
       move M1b at bottom. move M2b at bottom.
       (* same addresses in M1b and M2b and same element size means same footprint: *)
       assert (map.same_domain mGive1b mGive2b) as Hsd by case TODO.
@@ -299,7 +300,7 @@ Section WithMem.
           let new_RDH := /[(old_RDH + len packets) mod cfg.(rx_queue_capacity)] in
           (* we get back a (wrapping) slice of the rx queue as well as the corresponding
              buffers *)
-          <{ * circular_buffer_slice rx_desc_t cfg.(rx_queue_capacity) old_RDH
+          <{ * circular_buffer_slice rx_desc cfg.(rx_queue_capacity) old_RDH
                                      old_rx_descs[:len packets] /[rdba]
              * scattered_array (array (uint 8) cfg.(rx_buf_size)) packets
                    (List.map (fun d => /[d.(rx_desc_addr)]) (old_rx_descs[:len packets]))

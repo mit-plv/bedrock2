@@ -38,6 +38,10 @@ Require Import processor.Consistency.
 
 Local Open Scope Z_scope.
 
+(* workaround for `rewrite` bug:
+   https://github.com/coq/coq/issues/1811#issuecomment-1320064508 *)
+Local Set Keyed Unification.
+
 Local Ltac subst_after_destr H ::= idtac.
 
 (** Consistency between the Kami word and the Z-based word *)
@@ -520,7 +524,7 @@ Section Equiv.
     (rv32Fetch (Z.to_nat width)
                (Z.to_nat instrMemSizeLg)
                (width_inst_valid Hinstr)).
-  Local Hint Resolve (kami_AbsMMIO (Z.to_N memSizeLg)): typeclass_instances.
+  Local Hint Extern 0 => exact (kami_AbsMMIO (Z.to_N memSizeLg)) : typeclass_instances.
 
   Local Notation RiscvXAddrsSafe :=
     (RiscvXAddrsSafe instrMemSizeLg memSizeLg (conj Hinstr1 Hinstr2)).

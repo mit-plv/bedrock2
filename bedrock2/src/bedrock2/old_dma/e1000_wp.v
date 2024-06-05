@@ -27,6 +27,7 @@ Require Import bedrock2.SepLib.
 Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2.RecordPredicates.
 Require Import bedrock2.e1000_state.
+Require Import bedrock2.old_dma.circular_buffer_slice_based_on_list_of_addrs.
 
 Section WithMem.
   Context {width: Z} {BW: Bitwidth width}
@@ -78,7 +79,7 @@ Section WithMem.
           \[new_RDH] = (s.(rx_queue_head) + len packets) mod s.(rx_queue_capacity) ->
           (* we get back a (wrapping) slice of the rx queue as well as the corresponding
              buffers *)
-          <{ * circular_buffer_slice rx_desc_t s.(rx_queue_capacity) s.(rx_queue_head)
+          <{ * circular_buffer_slice rx_desc s.(rx_queue_capacity) s.(rx_queue_head)
                                      s.(rx_queue)[:len packets] /[rdba]
              * scattered_array (array (uint 8) s.(rx_buf_size)) packets
                  (List.map (fun d => /[d.(rx_desc_addr)]) s.(rx_queue)[:len packets])
@@ -100,7 +101,7 @@ Section WithMem.
       \[new_RDT] = (s.(rx_queue_head) + len s.(rx_queue) + len fillable)
                      mod s.(rx_queue_capacity) ->
       len fillable = len new_descs ->
-      <{ * circular_buffer_slice rx_desc_t s.(rx_queue_capacity) s.(rx_queue_head)
+      <{ * circular_buffer_slice rx_desc s.(rx_queue_capacity) s.(rx_queue_head)
                   (s.(rx_queue) ++ new_descs)%list /[rdba]
          * scattered_array (array (uint 8) s.(rx_buf_size)) fillable
              (List.map (fun d => /[d.(rx_desc_addr)]) (s.(rx_queue) ++ new_descs)%list)
@@ -203,7 +204,7 @@ Section WithMem.
           let new_RDH := /[(old_RDH + len packets) mod cfg.(rx_queue_capacity)] in
           (* we get back a (wrapping) slice of the rx queue as well as the corresponding
              buffers *)
-          <{ * circular_buffer_slice rx_desc_t cfg.(rx_queue_capacity) old_RDH
+          <{ * circular_buffer_slice rx_desc cfg.(rx_queue_capacity) old_RDH
                                      old_rx_descs[:len packets] /[rdba]
              * scattered_array (array (uint 8) cfg.(rx_buf_size)) packets
                    (List.map (fun d => /[d.(rx_desc_addr)]) (old_rx_descs[:len packets]))

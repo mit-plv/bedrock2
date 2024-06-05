@@ -140,7 +140,7 @@ Section SepProperties.
 
   (* sep and emp *)
   Lemma sep_emp_emp P Q : @iff1 map (sep (emp P) (emp Q)) (emp (P /\ Q)).
-  Proof. cbv [iff1 sep emp split]; t; intuition eauto 20 using putmany_empty_l, disjoint_empty_l. Qed.
+  Proof. cbv [iff1 sep emp split]; t; pose putmany_empty_l; pose disjoint_empty_l; intuition eauto 20. Qed.
   Lemma sep_comm_emp_r p Q : iff1 (p * emp Q) (emp Q * p). eapply sep_comm. Qed.
   Lemma sep_emp_2 p Q r : iff1 (p * (emp Q * r)) (emp Q * (p * r)).
   Proof. rewrite <-sep_assoc. rewrite (sep_comm p). rewrite sep_assoc. reflexivity. Qed.
@@ -173,9 +173,9 @@ Section SepProperties.
 
   (* impl1 and emp *)
   Lemma impl1_l_sep_emp (a:Prop) r c : impl1 (emp a * r) c <-> (a -> impl1 r c).
-  Proof. cbv [impl1 emp sep split]; t; rewrite ?putmany_empty_l; eauto 10 using putmany_empty_l, disjoint_empty_l. Qed.
+  Proof. cbv [impl1 emp sep split]; t; rewrite ?putmany_empty_l; pose putmany_empty_l; pose disjoint_empty_l; eauto 10. Qed.
   Lemma impl1_r_sep_emp p b c : (b /\ impl1 p c) -> impl1 p (emp b * c).
-  Proof. cbv [impl1 emp sep split]; t; eauto 10 using putmany_empty_l, disjoint_empty_l. Qed.
+  Proof. cbv [impl1 emp sep split]; t; pose putmany_empty_l; pose disjoint_empty_l; eauto 10. Qed.
 
 (** shallow reflection from a list of predicates for faster cancellation proofs *)
   Fixpoint seps' (xs : list (map -> Prop)) : map -> Prop :=

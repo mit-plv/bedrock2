@@ -149,7 +149,9 @@ Ltac start :=
       | ?p => unify evar p
       end;
       subst evar;
-      unfold program_logic_goal_for, spec;
+      (* strip implicit arguments if spec was defined in another file *)
+      let spec_head := head spec in
+      unfold program_logic_goal_for, spec_head;
       let fs := fresh "fs" in
       let G := fresh "EnvContains" in
       let fs_ok := fresh "fs_ok" in
@@ -964,12 +966,33 @@ Ltac evar_tuple t :=
          end
   end.
 
+Require Import coqutil.Tactics.Records.
+Require Import coqutil.Tactics.rdelta.
+
+Ltac lambda_calls_getter_on_its_arg lam :=
+  lazymatch lam with
+  | (fun x: ?tp => _) =>
+      let dummy := constr:(fun x: tp => ltac:(
+        let body := eval cbv beta in (lam x) in
+        match body with
+        | context[?getter x] => is_getter getter; exact x
+        end)) in
+      idtac
+  end.
+
+Ltac composite_eexists t body :=
+  let t := rdelta t in
+  tryif lambda_calls_getter_on_its_arg body then
+    refine (@ex_intro t _ (ltac:(constructor) : t) _); record.simp_goal
+  else
+    let e := evar_tuple t in exists e.
+
 Ltac step_hook := fail.
 
 Ltac sidecond_step logger := first
       [ lazymatch goal with
-        | |- exists x: ?t, _ => let e := evar_tuple t in exists e
-        | |- ex1 _ _ => eexists
+        | |- @ex ?A ?P => composite_eexists A P
+        | |- @ex1 ?A _ ?P _ => composite_eexists A P
         | |- elet _ _ => refine (mk_elet _ _ _ eq_refl _)
         end;
         logger ltac:(fun _ => idtac "eexists")
@@ -1000,12 +1023,29 @@ Ltac sidecond_step logger := first
                     end;
                     lazymatch rhs with
                     | sep _ _ => fail "not an atomic sep clause"
-                    | _ => idtac
-                    end;
-                    solve [ eapply contiguous_implies_anyval_of_fillable;
-                            [ eauto with contiguous
-                            | eauto with fillable] ];
-                    logger ltac:(fun _ => idtac "contiguous_implies_anyval_of_fillable")
+                    | anyval _ _ =>
+                        first [ eapply contiguous_implies_anyval_of_fillable;
+                                [ solve [eauto with contiguous]
+                                | solve [eauto with fillable] ];
+                                logger ltac:(fun _ => idtac
+                                         "contiguous_implies_anyval_of_fillable")
+                              | (* if rhs is a sepapps (potentially behind definitions),
+                                   `eauto with fillable` above failed, so we get here *)
+                                eapply contiguous_implies_anyval_of_sepapps;
+                                [ solve [eauto with contiguous]
+                                | reflexivity (* relies on unification with unfolding,
+                                                 let's hope it won't blow up... *)
+                                | (* solved by further `step` invocations *) ];
+                                logger ltac:(fun _ => idtac
+                                         "contiguous_implies_anyval_of_sepapps") ]
+                    | ?P ?e ?addr =>
+                        is_evar e;
+                        solve [ refine (contiguous_info_implies_proj1 _ _ _ _ _ _ _);
+                                [ eauto with fillable
+                                | eauto with contiguous ] ];
+                        logger ltac:(fun _ => idtac
+                                 "contiguous_implies_anyval_of_sepapps")
+                    end
                   | (* goes last because it might wrap goal in don't_know_how_to_prove *)
                     careful_reflexivity_step_hook;
                     logger ltac:(fun _ => idtac "careful_reflexivity_step_hook") ]
@@ -1013,9 +1053,9 @@ Ltac sidecond_step logger := first
             careful_reflexivity_step_hook;
             logger ltac:(fun _ => idtac "careful_reflexivity_step_hook")
         | |- forall _, _ =>
-            logger ltac:(fun _ => idtac "intros");
-            intros (* don't put this too early, because heapletwise has some
-                      specialized intros that rename and move new hyps *)
+            logger ltac:(fun _ => idtac "intro");
+            intro (* don't put this too early, and only one intro at a time, because
+                     heapletwise has a specialize intro that renames and moves new hyps *)
         end ].
 
 (* means: already logged or tried to log *)
@@ -1318,6 +1358,11 @@ Ltac with_ident_as_string_no_beta f :=
   | fun x => _ => constr:(f (ident_to_string x))
   end.
 
+(* Needed for cases where we only want to give the signature, but no implementation *)
+Declare Custom Entry optional_semicolon.
+Notation "*/ ; /*" := tt (in custom optional_semicolon at level 1, only parsing).
+Notation "*/ /*" := tt (in custom optional_semicolon at level 1, only parsing).
+
 (* Notations have (almost) the same RHS as the `fnspec!` notations in
    bedrock2.WeakestPrecondition, but only allow 0 or 1 return value
    (for C compatibility) and use a different syntax in the LHS (to match
@@ -1326,7 +1371,7 @@ Ltac with_ident_as_string_no_beta f :=
 Declare Custom Entry funspec.
 
 (* One return value: *)
-Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* */ /* *" :=
+Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* osemi *" :=
   (fun fname: String.string =>
      (fun fs =>
         (forall a1, .. (forall an, (forall g1, .. (forall gn,
@@ -1342,10 +1387,11 @@ Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an )
  t1 name, t2 name, m1 name, m2 name, r name,
  pre constr at level 200,
  post constr at level 200,
+ osemi custom optional_semicolon at level 1,
  only parsing).
 
 (* One return value and no arguments: *)
-Notation "'uintptr_t' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* */ /* *" :=
+Notation "'uintptr_t' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* osemi *" :=
   (fun fname: String.string =>
      (fun fs =>
         (forall g1, .. (forall gn,
@@ -1359,10 +1405,11 @@ Notation "'uintptr_t' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m
  t1 name, t2 name, m1 name, m2 name, r name,
  pre constr at level 200,
  post constr at level 200,
+ osemi custom optional_semicolon at level 1,
  only parsing).
 
 (* No return value: *)
-Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* */ /* *" :=
+Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* osemi *" :=
   (fun fname: String.string =>
      (fun fs =>
         (forall a1, .. (forall an, (forall g1, .. (forall gn,
@@ -1378,10 +1425,11 @@ Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *
  t1 name, t2 name, m1 name, m2 name,
  pre constr at level 200,
  post constr at level 200,
+ osemi custom optional_semicolon at level 1,
  only parsing).
 
 (* No return value an no arguments: *)
-Notation "'void' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* */ /* *" :=
+Notation "'void' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* osemi *" :=
   (fun fname: String.string =>
      (fun fs =>
         (forall g1, .. (forall gn,
@@ -1395,6 +1443,7 @@ Notation "'void' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := 
  t1 name, t2 name, m1 name, m2 name,
  pre constr at level 200,
  post constr at level 200,
+ osemi custom optional_semicolon at level 1,
  only parsing).
 
 Notation ".* */ x" :=

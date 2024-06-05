@@ -4,17 +4,17 @@ Require Import LiveVerif.LiveVerifLib.
 
 Load LiveVerif.
 
-Record fmalloc_state := {
+Record fmalloc_state_t := {
   block_size: Z;
   free_list: word;
 }.
 
-Definition fmalloc_state_t(s: fmalloc_state): word -> mem -> Prop := .**/
+Definition fmalloc_state(s: fmalloc_state_t): word -> mem -> Prop := .**/
 
 typedef struct __attribute__ ((__packed__)) {
   size_t block_size;
   uintptr_t free_list;
-} fmalloc_state_t;
+} fmalloc_state;
 
 /**.
 
@@ -49,7 +49,7 @@ Lemma fixed_size_free_list_nonnull: forall blk_size n a m,
     fixed_size_free_list blk_size n a m ->
     exists q n', n = S n' /\
     <{ * <{ + uintptr q
-            + anyval (array (uint 8) (blk_size - sizeof(uintptr))) }> a
+            + anyval (array (uint 8) (blk_size - sizeof uintptr)) }> a
        * fixed_size_free_list blk_size n' q }> m.
 Proof.
   intros. destruct n; simpl in *.
@@ -59,7 +59,7 @@ Qed.
 
 Definition allocator(block_size nRemaining: Z)(outer_addr: word): mem -> Prop :=
   ex1 (fun addr => <{
-    * fmalloc_state_t {| block_size := block_size; free_list := addr |} outer_addr
+    * fmalloc_state {| block_size := block_size; free_list := addr |} outer_addr
     * fixed_size_free_list block_size (Z.to_nat nRemaining) addr
     * emp (0 <= nRemaining /\ 2 * sizeof uintptr <= block_size < 2 ^ bitwidth)
   }>).
@@ -71,7 +71,7 @@ Definition freeable(sz: Z)(a: word): mem -> Prop :=
 
 Local Hint Extern 1 (cannot_purify (fixed_size_free_list _ _ _))
       => constructor : suppressed_warnings.
-Local Hint Extern 1 (cannot_purify allocator)
+Local Hint Extern 1 (cannot_purify (allocator _ _ _))
       => constructor : suppressed_warnings.
 Local Hint Extern 1 (cannot_purify (freeable _ _))
       => constructor : suppressed_warnings.
@@ -85,9 +85,9 @@ Local Hint Unfold
 
 Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
   lazymatch conclPred with
-  | fmalloc_state_t {| free_list := ?addr2 |} =>
+  | fmalloc_state {| free_list := ?addr2 |} =>
       lazymatch hypPred with
-      | fmalloc_state_t {| free_list := ?addr1 |} =>
+      | fmalloc_state {| free_list := ?addr1 |} =>
           is_evar addr2; unify addr1 addr2
       end
   end.
@@ -99,7 +99,7 @@ void fmalloc_init(uintptr_t a, uintptr_t buf, uintptr_t blk_size, uintptr_t n) /
   requires t m := 2 * sizeof uintptr <= \[blk_size] /\
                   (* disallow wrap to avoid null pointers in free list: *)
                   \[buf] <> 0 /\ \[buf] + \[n] * \[blk_size] < 2 ^ bitwidth /\
-                  <{ * array (uint 8) (sizeof fmalloc_state_t) ? a
+                  <{ * array (uint 8) (sizeof fmalloc_state) ? a
                      * array (uint 8) (\[blk_size] * \[n]) ? buf
                      * R }> m;
   ensures t' m' := t' = t /\
@@ -228,7 +228,7 @@ Derive fmalloc_init SuchThat (fun_correct! fmalloc_init) As fmalloc_init_ok.    
   repeat heapletwise_step.
                                                                                 .**/
 }                                                                          /**.
-  unfold fmalloc_state_t, split_concl_at.
+  unfold fmalloc_state, split_concl_at.
   steps.
 Qed.
 
@@ -341,7 +341,7 @@ End LiveVerif.
       => constructor : suppressed_warnings.
 #[export] Hint Extern 1 (PredicateSize_not_found (allocator _ _))
       => constructor : suppressed_warnings.
-#[export] Hint Extern 1 (cannot_purify (allocator _ _))
+#[export] Hint Extern 1 (cannot_purify (allocator _ _ _))
       => constructor : suppressed_warnings.
 
 Comments .**/ //.

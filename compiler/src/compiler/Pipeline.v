@@ -53,6 +53,8 @@ Require Import compiler.LowerPipeline.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import compiler.UseImmediateDef.
 Require Import compiler.UseImmediate.
+Require Import compiler.DeadCodeElimDef.
+Require Import compiler.DeadCodeElim.
 Import Utility.
 
 Section WithWordAndMem.
@@ -173,6 +175,11 @@ Section WithWordAndMem.
 
     (* |                 *)
     (* | UseImmediate    *)
+    (* V                 *)
+    (* FlatWithStrVars   *)
+
+    (* |                 *)
+    (* | DeadCodeElim    *)
     (* V                 *)
     (* FlatWithStrVars   *)
 
@@ -298,6 +305,49 @@ Section WithWordAndMem.
       - eapply useImmediate_correct_aux.
         all: eauto.
       - eauto.
+    Qed.
+
+
+    Lemma dce_functions_NoDup: forall funs funs',
+        (forall f argnames retnames body,
+          map.get funs f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames) ->
+        dce_functions funs = Success funs' ->
+        forall f argnames retnames body,
+          map.get funs' f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames.
+    Proof.
+      unfold dce_functions. intros.
+      eapply map.try_map_values_bw in H0. 2: eassumption.
+      unfold dce_function in *. fwd.
+      eapply H. eassumption.
+    Qed.
+
+    Lemma dce_correct: phase_correct FlatWithStrVars FlatWithStrVars dce_functions.
+    Proof.
+      unfold FlatWithStrVars.
+      split; cbn.
+      { unfold map.forall_values, ParamsNoDup. intros.
+        destruct v as  ((argnames & retnames) & body).
+        eapply dce_functions_NoDup; try eassumption.
+        intros. specialize H0 with (1 := H2).
+        simpl in H0. assumption.
+      }
+
+      unfold locals_based_call_spec. intros. fwd.
+      pose proof H0 as GI.
+      unfold dce_functions in GI.
+      eapply map.try_map_values_fw in GI. 2: eassumption.
+      unfold dce_function in GI. fwd.
+      eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption.
+      intros.
+      eapply @exec.weaken.
+      - eapply dce_correct_aux; eauto.
+        eapply MapEauto.agree_on_refl. 
+      - unfold compile_post. intros. fwd.
+        exists retvals.
+        split.
+        + erewrite MapEauto.agree_on_getmany; [ eauto | eapply MapEauto.agree_on_comm; [ eassumption ] ].
+        + eassumption.
+       Unshelve. eauto.
     Qed.
 
     Lemma regalloc_functions_NoDup: forall funs funs',
@@ -439,18 +489,20 @@ Section WithWordAndMem.
       result (list Instruction * string_keyed_map Z * Z) :=
       (compose_phases flatten_functions
       (compose_phases (useimmediate_functions is5BitImmediate is12BitImmediate)
+      (compose_phases dce_functions
       (compose_phases regalloc_functions
       (compose_phases spill_functions
-                      (riscvPhase compile_ext_call))))).
+                      (riscvPhase compile_ext_call)))))).
 
     Lemma composed_compiler_correct: phase_correct SrcLang RiscvLang composed_compile.
     Proof.
       unfold composed_compile.
       exact (compose_phases_correct flattening_correct
             (compose_phases_correct useimmediate_correct
+            (compose_phases_correct dce_correct
             (compose_phases_correct regalloc_correct
             (compose_phases_correct spilling_correct
-                                    riscv_phase_correct)))).
+                                    riscv_phase_correct))))).
     Qed.
 
     Definition compile(funs: list (string * (list string * list string * cmd))):

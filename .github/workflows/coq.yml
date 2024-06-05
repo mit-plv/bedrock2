@@ -62,8 +62,18 @@ jobs:
         echo "::group::echo | coqtop"
         echo | coqtop
         echo "::endgroup::"
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: make
       run: TIMED=1 make
+
+  coq-check-all:
+    runs-on: ubuntu-latest
+    needs: build
+    if: always()
+    steps:
+    - run: echo 'build passed'
+      if: ${{ needs.build.result == 'success' }}
+    - run: echo 'build failed' && false
+      if: ${{ needs.build.result != 'success' }}

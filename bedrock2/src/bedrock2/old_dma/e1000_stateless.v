@@ -29,6 +29,7 @@ Require Import bedrock2.SepBulletPoints. Local Open Scope sep_bullets_scope.
 Require Import bedrock2.RecordPredicates.
 Require Import bedrock2.TraceInspection.
 Require Import bedrock2.e1000_state. (* for rx/tx_desc and separation logic definitions *)
+Require Import bedrock2.old_dma.circular_buffer_slice_based_on_list_of_addrs.
 
 (* Not part of the spec, but a convention we chose to hardcode here: *)
 Definition E1000_REGS := 0x40000000.
@@ -212,10 +213,10 @@ Section WithMem.
          let rx_buf_addrs := List.map (fun d => /[d.(rx_desc_addr)]) rxq in
          let tx_buf_addrs := List.map (fun d => /[d.(tx_desc_addr)]) txq in
          <{ (* receive-related: *)
-            * circular_buffer_slice rx_desc_t rx_queue_cap \[rdh] rxq rdba
+            * circular_buffer_slice rx_desc rx_queue_cap \[rdh] rxq rdba
             * scattered_array (array (uint 8) rx_buf_size) rx_bufs rx_buf_addrs
             (* transmit-related: *)
-            * circular_buffer_slice tx_desc_t tx_queue_cap \[tdh] txq tdba
+            * circular_buffer_slice tx_desc tx_queue_cap \[tdh] txq tdba
             * layout_absolute (List.map (fun pkt => array' (uint 8) pkt) tx_bufs)
                               tx_buf_addrs
          }> mNIC /\
@@ -232,7 +233,7 @@ Section WithMem.
                 \[new_rdh] = (\[rdh] + len new_bufs) mod rx_queue_cap ->
                 (* we get back a (wrapping) slice of the rx queue as well as the
                    corresponding buffers *)
-                <{ * circular_buffer_slice rx_desc_t rx_queue_cap \[rdh]
+                <{ * circular_buffer_slice rx_desc rx_queue_cap \[rdh]
                        rxq[:len new_bufs] rdba
                    * scattered_array (array (uint 8) rx_buf_size) new_bufs
                        (List.map (fun d => /[d.(rx_desc_addr)]) rxq[:len new_bufs])
@@ -373,10 +374,10 @@ Section WithMem.
       let rx_buf_addrs := List.map (fun d => /[d.(rx_desc_addr)]) rxq in
       let tx_buf_addrs := List.map (fun d => /[d.(tx_desc_addr)]) txq in
       <{ (* receive-related: *)
-          * circular_buffer_slice rx_desc_t rx_queue_cap \[rdh] rxq rdba
+          * circular_buffer_slice rx_desc rx_queue_cap \[rdh] rxq rdba
           * scattered_array (array (uint 8) rx_buf_size) rx_bufs rx_buf_addrs
           (* transmit-related: *)
-          * circular_buffer_slice tx_desc_t tx_queue_cap \[tdh] txq tdba
+          * circular_buffer_slice tx_desc tx_queue_cap \[tdh] txq tdba
           * layout_absolute (List.map (fun pkt => array' (uint 8) pkt) tx_bufs) tx_buf_addrs
         }> mNIC ->
       (* end of NIC invariant *)
@@ -386,7 +387,7 @@ Section WithMem.
           let new_RDH := /[(\[rdh] + len packets) mod rx_queue_cap] in
           (* we get back a (wrapping) slice of the rx queue as well as the corresponding
              buffers *)
-          <{ * circular_buffer_slice rx_desc_t rx_queue_cap \[rdh]
+          <{ * circular_buffer_slice rx_desc rx_queue_cap \[rdh]
                                      old_rx_descs[:len packets] rdba
              * scattered_array (array (uint 8) rx_buf_size) packets
                    (List.map (fun d => /[d.(rx_desc_addr)]) (old_rx_descs[:len packets]))
