@@ -4468,7 +4468,6 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
         uintptr_t i = cb - 1;                                              /**.
   prove (forall j,
     (\[i ^+ /[1]] <= j < \[cb]) -> bit_at trace j = true -> bit_at k j = true).
-  { subst. replace (cb ^- /[1] ^+ /[1]) with cb by hwlia. steps. }
   prove (\[cb] <= \[i] -> i = /[-1]).
   delete #(i = cb ^- ??).
   loop invariant above i. .**/
@@ -4726,7 +4725,16 @@ Proof.
   enough (~(2 ^ ltac:(bw) / ltac:(wsize) < n)) by lia. intro. purify_hyp Har.
   eapply split_array with (i := 2^ltac:(bw) / ltac:(wsize)) in Har. 2: steps.
   replace (a ^+ /[ltac:(wsize) * (2 ^ ltac:(bw) / ltac:(wsize))]) with a in * by hwlia.
-  repeat heapletwise_step.
+  (* hack/fixme:
+           when processing `heapletwise_step` here,
+           somewhere down the ltac callstack, `typeclasses eauto with purify` is run
+           to solve the goal
+           `purify (array uintptr (2 ^ 32 / 4) l[:2 ^ 32 / 4] a) _`
+           and that takes something on the order of a minutes to finish; it runs quicker
+           when 2^32 is replaced with a smaller number, so it seems the tactic
+           at some point computes the big number (2^32/4)
+           -> workaround: hide the big number using `remember` *)
+  remember (2 ^ 32 / 4) as ec. repeat heapletwise_step. subst.
   do 2
     match goal with
     | H: _ |= array _ _ _ a |- _ =>
