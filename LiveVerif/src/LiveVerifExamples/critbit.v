@@ -73,9 +73,7 @@ Ltac prove_ante H :=
   | ?A -> ?C => let HA := fresh in assert (HA: A); [ | specialize (H HA); clear HA ]
   end.
 
-Ltac purge x := repeat match goal with
-                       | H: context[ x ] |- _ => clear H
-                       end; clear x.
+Ltac purge x := clear dependent x.
 
 Ltac eq_neq_cases k1 k2 :=
   let H := fresh "H" in assert (H: k1 = k2 \/ k1 <> k2) by solve [ steps ]; destruct H.
