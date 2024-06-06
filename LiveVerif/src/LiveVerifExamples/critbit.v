@@ -3483,25 +3483,6 @@ Fixpoint cbt_lookup_trace sk c k :=
   | Leaf => /[0]
   end.
 
-Lemma word_or_0_l : forall w, word.or /[0] w = w.
-Proof.
-  intros. apply word.unsigned_inj. rewrite word.unsigned_or_nowrap.
-  rewrite word.unsigned_of_Z_0. apply Z.lor_0_l.
-Qed.
-
-Lemma word_or_0_r : forall w, word.or w /[0] = w.
-Proof.
-  intros. apply word.unsigned_inj. rewrite word.unsigned_or_nowrap.
-  rewrite word.unsigned_of_Z_0. apply Z.lor_0_r.
-Qed.
-
-Lemma word_or_assoc : forall w1 w2 w3,
-  word.or w1 (word.or w2 w3) = word.or (word.or w1 w2) w3.
-Proof.
-  intros. apply word.unsigned_inj. repeat rewrite word.unsigned_or_nowrap.
-  apply Z.lor_assoc.
-Qed.
-
 #[export] Instance spec_of_cbt_best_with_trace: fnspec :=                       .**/
 uintptr_t cbt_best_with_trace(uintptr_t tp, uintptr_t k, uintptr_t trace_out,
                               uintptr_t val_out) /**#
@@ -3529,7 +3510,7 @@ Derive cbt_best_with_trace SuchThat (fun_correct! cbt_best_with_trace)
   move Def0 after t.
   (* introducing `trace` into the postcondition *)
   replace (cbt_lookup_trace sk c k) with (word.or trace (cbt_lookup_trace sk c k))
-   by (subst; apply word_or_0_l). .**/
+   by (subst; apply word.or_0_l). .**/
   while (load(tp) != 8 * sizeof(uintptr_t)) /* initial_ghosts(tp,c,trace,R); decreases sk */ {      /*?.
   repeat heapletwise_step.
   match goal with
@@ -3549,7 +3530,7 @@ Derive cbt_best_with_trace SuchThat (fun_correct! cbt_best_with_trace)
          * R }>).
   steps.
   { simpl cbt_best_lookup. steps. }
-  { simpl cbt_lookup_trace. steps. subst trace. rewrite <- word_or_assoc.
+  { simpl cbt_lookup_trace. steps. subst trace. rewrite <- word.or_assoc.
     unfold set_bit_at. f_equal. rewrite word.or_comm. steps.
     rewrite word.ring_morph_sub. f_equal. f_equal. hwlia. }
   { simpl cbt'. clear Error. steps. } .**/
@@ -3565,7 +3546,7 @@ Derive cbt_best_with_trace SuchThat (fun_correct! cbt_best_with_trace)
          * R }>).
   steps.
   { simpl cbt_best_lookup. steps. }
-  { simpl cbt_lookup_trace. steps. subst trace. rewrite <- word_or_assoc.
+  { simpl cbt_lookup_trace. steps. subst trace. rewrite <- word.or_assoc.
     unfold set_bit_at. f_equal. rewrite word.or_comm. steps.
     rewrite word.ring_morph_sub. f_equal. f_equal. hwlia. }
   { simpl cbt'. clear Error. steps. } .**/
@@ -3578,13 +3559,13 @@ Derive cbt_best_with_trace SuchThat (fun_correct! cbt_best_with_trace)
     return best_k;                                                         /**. .**/
   }                                                                        /**.
   { simpl cbt_best_lookup. apply map_some_key_singleton. }
-  { simpl cbt_lookup_trace. rewrite word_or_0_r. steps. }
+  { simpl cbt_lookup_trace. rewrite word.or_0_r. steps. }
   { simpl cbt'. clear Error. steps. } .**/
   else {                                                                   /**. .**/
     return best_k;                                                         /**. .**/
   }                                                                        /**.
   { simpl cbt_best_lookup. apply map_some_key_singleton. }
-  { simpl cbt_lookup_trace. rewrite word_or_0_r. steps. }
+  { simpl cbt_lookup_trace. rewrite word.or_0_r. steps. }
   { simpl cbt'. clear Error. steps. } .**/
 }                                                                          /**.
 Qed.
