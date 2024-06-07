@@ -1050,59 +1050,344 @@ Ltac pfx_step :=
 (* END PREFIXES *)
 (* BEGIN BASIC SMALL MAP OPS *)
 
+(* TODO: move to coqutil *)
+Section WithMap.
+  Context {key value : Type} {map : map.map key value} {map_ok : map.ok map}.
+  Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
+
+  Lemma map_get_singleton_same (k : key) (v : value)
+    : map.get (map.singleton k v) k = Some v.
+  Proof. apply map.get_put_same. Qed.
+
+  Lemma map_get_singleton_same_eq (k k' : key) (v : value)
+    : k' = k -> map.get (map.singleton k v) k' = Some v.
+  Proof. intro. subst. apply map.get_put_same. Qed.
+
+  Lemma map_get_singleton_diff (k k' : key) (v : value)
+    : k' <> k -> map.get (map.singleton k v) k' = None.
+  Proof.
+    intro. unfold map.singleton. rewrite map.get_put_diff, map.get_empty by assumption.
+    reflexivity.
+  Qed.
+
+  Lemma map_put_singleton_same (k : key) (v v' : value)
+    : map.put (map.singleton k v) k v' = map.singleton k v'.
+  Proof. apply map.put_put_same. Qed.
+
+  Lemma map_put_singleton_same_eq (k k' : key) (v v' : value)
+    : k' = k -> map.put (map.singleton k v) k' v' = map.singleton k v'.
+  Proof. intro. subst. apply map.put_put_same. Qed.
+
+  Lemma map_remove_singleton_same (k : key) (v : value)
+    : map.remove (map.singleton k v) k = map.empty.
+  Proof. eauto using eq_trans, map.remove_put_same, map.remove_empty. Qed.
+
+  Lemma map_remove_singleton_same_eq (k k' : key) (v : value)
+    : k' = k -> map.remove (map.singleton k v) k' = map.empty.
+  Proof. intro. subst. apply map_remove_singleton_same. Qed.
+
+  Lemma map_remove_singleton_diff (k k' : key) (v : value)
+    : k <> k' -> map.remove (map.singleton k v) k' = map.singleton k v.
+  Proof.
+    intro. unfold map.singleton. rewrite map.remove_put_diff by assumption. f_equal.
+    apply map.remove_empty.
+  Qed.
+
+  Lemma map_get_singleton_not_None (k k' : key) (v : value)
+    : map.get (map.singleton k v) k' <> None -> k' = k.
+  Proof.
+    intro Hg. destr (key_eqb k' k); auto. contradict Hg.
+    auto using map_get_singleton_diff.
+  Qed.
+
+  Lemma map_singleton_inj (k1 k2 : key) (v1 v2 : value)
+    : map.singleton k1 v1 = map.singleton k2 v2 -> k1 = k2 /\ v1 = v2.
+  Proof.
+    intro Heq. apply (f_equal (fun m => map.get m k1)) in Heq.
+    destr (key_eqb k1 k2); repeat rewrite map_get_singleton_same in Heq.
+    - intuition congruence.
+    - rewrite map_get_singleton_diff in Heq by assumption. discriminate.
+  Qed.
+
+  Lemma map_all_get_None_is_empty (m : map)
+    : (forall k, map.get m k = None) -> m = map.empty.
+  Proof. intro Hgets. apply map.map_ext. intro k. rewrite map.get_empty. auto. Qed.
+
+  Lemma map_empty_iff_all_get_None (m : map)
+    : m = map.empty <-> (forall k, map.get m k = None).
+  Proof.
+    split; [ intros; subst; apply map.get_empty | apply map_all_get_None_is_empty ].
+  Qed.
+
+  Lemma map_extends_get_None (m1 m2 : map) (k : key)
+    : map.extends m1 m2 -> map.get m1 k = None -> map.get m2 k = None.
+  Proof.
+    intros Hext Hg. destruct (map.get m2 k) eqn:E; [ apply Hext in E | ]; congruence.
+  Qed.
+
+  Lemma map_empty_extends_is_empty (m : map) : map.extends map.empty m -> m = map.empty.
+  Proof. eauto using map_all_get_None_is_empty, map_extends_get_None, map.get_empty. Qed.
+
+  Lemma map_extends_nonempty (m1 m2 : map)
+    : map.extends m1 m2 -> m2 <> map.empty -> m1 <> map.empty.
+  Proof.
+    intros Hext Hnem. contradict Hnem. subst. auto using map_empty_extends_is_empty.
+  Qed.
+
+  Lemma map_extends_get_not_None (m1 m2 : map) k
+    : map.extends m1 m2 -> map.get m2 k <> None -> map.get m1 k <> None.
+  Proof. intros Hext Hg. contradict Hg. eauto using map_extends_get_None. Qed.
+
+  Lemma map_extends_put_new (m : map) k v
+    : map.get m k = None -> map.extends (map.put m k v) m.
+  Proof.
+    intros Hg k' w Hg'. destr (key_eqb k' k).
+    - congruence.
+    - rewrite map.get_put_diff; assumption.
+  Qed.
+
+  Lemma map_extends_trans (m1 m2 m3 : map)
+    : map.extends m1 m2 -> map.extends m2 m3 -> map.extends m1 m3.
+  Proof. unfold map.extends. auto. Qed.
+
+  Lemma map_get_not_None_nonempty (m : map) k : map.get m k <> None -> m <> map.empty.
+  Proof. intro Hg. contradict Hg. subst. apply map.get_empty. Qed.
+
+  Lemma map_put_nonempty (m : map) k v : map.put m k v <> map.empty.
+  Proof. eapply map_get_not_None_nonempty. rewrite map.get_put_same. discriminate. Qed.
+
+  Lemma map_singleton_nonempty (k : key) (v : value) : map.singleton k v <> map.empty.
+  Proof. apply map_put_nonempty. Qed.
+
+  Lemma map_remove_monotone (m1 m2 : map) k
+    : map.extends m1 m2 -> map.extends (map.remove m1 k) (map.remove m2 k).
+  Proof.
+    intros Hext k' w Hg. destr (key_eqb k' k).
+    - rewrite map.get_remove_same in Hg. discriminate.
+    - rewrite map.get_remove_diff in *; auto.
+  Qed.
+
+  Lemma map_extends_remove (m : map) k : map.extends m (map.remove m k).
+  Proof.
+    intros k' w Hg. destr (key_eqb k' k).
+    - rewrite map.get_remove_same in Hg. discriminate.
+    - rewrite map.get_remove_diff in *; auto.
+  Qed.
+
+  Lemma map_remove_get_nnone (m : map) k k'
+    : map.get (map.remove m k) k' <> None -> map.get m k' <> None.
+  Proof. eauto using map_extends_get_not_None, map_extends_remove. Qed.
+
+  Definition map_any_key : map -> option key
+    := map.fold (fun _ k _ => Some k) None.
+
+  Lemma map_any_key_empty : map_any_key map.empty = None.
+  Proof. apply map.fold_empty. Qed.
+
+  Lemma map_any_key_nonempty (m : map) : m <> map.empty -> map_any_key m <> None.
+  Proof. unfold map_any_key. apply map.fold_spec; intuition discriminate. Qed.
+
+  Lemma map_any_key_in (m : map)
+    : forall k, map_any_key m = Some k -> map.get m k <> None.
+  Proof.
+    unfold map_any_key. eapply map.fold_spec; [ discriminate | ].
+    intros ? ? ? ? ? ? ? Hsmeq. injection Hsmeq. intro. subst. rewrite map.get_put_same.
+    discriminate.
+  Qed.
+
+  Lemma map_any_key_singleton (k : key) (v : value)
+    : map_any_key (map.singleton k v) = Some k.
+  Proof. apply map.fold_singleton. Qed.
+
+  Lemma map_nonempty_exists_key (m : map)
+    : m <> map.empty -> exists k, map.get m k <> None.
+  Proof.
+    intros Hnem%map_any_key_nonempty. destruct (map_any_key m) eqn:E; [ | tauto ].
+    eauto using map_any_key_in.
+  Qed.
+
+  Definition map_filter (m : map) (f : key -> value -> bool) :=
+    map.fold (fun macc k v => if f k v then map.put macc k v else macc) map.empty m.
+
+  Definition map_filter_by_key (m : map) (f : key -> bool) :=
+    map_filter m (fun k _ => f k).
+
+  Lemma map_filter_get (m : map) (f : key -> value -> bool) (k : key)
+    : map.get (map_filter m f) k =
+       match map.get m k with
+       | Some v => if f k v then Some v else None
+       | None => None
+       end.
+  Proof.
+    unfold map_filter. apply map.fold_spec; clear m.
+    - rewrite map.get_empty. reflexivity.
+    - intros k' v m r Hnon Hgr. destr (key_eqb k k').
+      + rewrite map.get_put_same. rewrite Hnon in Hgr. destruct (f k' v);
+        [ rewrite map.get_put_same | ]; auto.
+      + rewrite map.get_put_diff by assumption. destruct (map.get m k) eqn:E2;
+        (destruct (f k' v); [ rewrite map.get_put_diff | ]; assumption).
+  Qed.
+
+  Lemma map_filter_by_key_get (m : map) (f : key -> bool) (k : key)
+    : map.get (map_filter_by_key m f) k = if f k then map.get m k else None.
+  Proof.
+    unfold map_filter_by_key. rewrite map_filter_get.
+    destruct (map.get m k), (f k); reflexivity.
+  Qed.
+
+  Lemma map_filter_get_Some m f k v
+    : map.get (map_filter m f) k = Some v <-> map.get m k = Some v /\ f k v = true.
+  Proof.
+    rewrite map_filter_get. destruct (map.get m k) as [ v' | ] eqn:E;
+    [ destruct (f k v') eqn:E2 | ]; intuition congruence.
+  Qed.
+
+  Lemma map_filter_by_key_get_Some m f k v
+    : map.get (map_filter_by_key m f) k = Some v <-> map.get m k = Some v /\ f k = true.
+  Proof. etransitivity. apply map_filter_get_Some. tauto. Qed.
+
+  Lemma map_filter_Some' m f k v
+    : map.get (map_filter m f) k = Some v -> map.get m k = Some v.
+  Proof. rewrite map_filter_get_Some. tauto. Qed.
+
+  Lemma map_filter_by_key_Some' m f k v
+    : map.get (map_filter_by_key m f) k = Some v -> map.get m k = Some v.
+  Proof. apply map_filter_Some'. Qed.
+
+  Lemma map_filter_extends m f : map.extends m (map_filter m f).
+  Proof.
+    unfold map.extends. intros. rewrite map_filter_get in *.
+    destruct (map.get m x); [ | discriminate ]. destruct (f x v); congruence.
+  Qed.
+
+  Lemma map_filter_by_key_extends m f : map.extends m (map_filter_by_key m f).
+  Proof. apply map_filter_extends. Qed.
+
+  Lemma map_filter_empty f : map_filter map.empty f = map.empty.
+  Proof. apply map.fold_empty. Qed.
+
+  Lemma map_filter_by_key_empty f : map_filter_by_key map.empty f = map.empty.
+  Proof. apply map_filter_empty. Qed.
+
+  Lemma map_filter_get_None m f k
+    : map.get m k = None -> map.get (map_filter m f) k = None.
+  Proof. intro Hg. rewrite map_filter_get, Hg. reflexivity. Qed.
+
+  Lemma map_filter_by_key_get_None m f k
+    : map.get m k = None -> map.get (map_filter_by_key m f) k = None.
+  Proof. apply map_filter_get_None. Qed.
+
+  Lemma map_filter_by_key_get_true m f k
+    : f k = true -> map.get (map_filter_by_key m f) k = map.get m k.
+  Proof. intro Htrue. rewrite map_filter_by_key_get, Htrue. reflexivity. Qed.
+
+  Lemma map_filter_by_key_get_false m f k
+    : f k = false -> map.get (map_filter_by_key m f) k = None.
+  Proof. intro Hfalse. rewrite map_filter_by_key_get, Hfalse. reflexivity. Qed.
+
+  Lemma map_filter_eq_empty m f
+    : (forall k v, map.get m k = Some v -> f k v = false) -> map_filter m f = map.empty.
+  Proof.
+    intro Hfalse. apply map_all_get_None_is_empty. intro k. rewrite map_filter_get.
+    destruct (map.get m k) eqn:E; auto. rewrite Hfalse; auto.
+  Qed.
+
+  Lemma map_filter_by_key_eq_empty m f
+    : (forall k, map.get m k <> None -> f k = false) ->
+      map_filter_by_key m f = map.empty.
+  Proof.
+    intro Hfalse. apply map_filter_eq_empty. intros k v Hg. apply Hfalse. congruence.
+  Qed.
+
+  Lemma map_filter_get_Some_true m f k v
+    : map.get (map_filter m f) k = Some v -> f k v = true.
+  Proof.
+    rewrite map_filter_get. intro Hg. destruct (map.get m k) as [ v' | ];
+    [ destruct (f k v') eqn:E | ]; congruence.
+  Qed.
+
+  Lemma map_filter_by_key_get_not_None_true m f k
+    : map.get (map_filter_by_key m f) k <> None -> f k = true.
+  Proof. rewrite map_filter_by_key_get. destruct (f k); auto. Qed.
+
+  Lemma map_filter_monotone m1 m2 f
+    : map.extends m1 m2 -> map.extends (map_filter m1 f) (map_filter m2 f).
+  Proof. intros Hext k w. rewrite 2map_filter_get_Some. intuition. Qed.
+
+  Lemma map_filter_by_key_monotone m1 m2 f
+    : map.extends m1 m2 -> map.extends (map_filter_by_key m1 f) (map_filter_by_key m2 f).
+  Proof. apply map_filter_monotone. Qed.
+
+  Lemma map_filter_ext m f1 f2
+    : (forall k v, f1 k v = f2 k v) -> map_filter m f1 = map_filter m f2.
+  Proof.
+    intro Hfeq. apply map.map_ext. intro k. rewrite 2map_filter_get.
+    destruct (map.get m k); [ rewrite Hfeq | ]; reflexivity.
+  Qed.
+
+  Lemma map_filter_by_key_ext m f1 f2
+    : (forall k, f1 k = f2 k) -> map_filter_by_key m f1 = map_filter_by_key m f2.
+  Proof. intro Hfeq. apply map_filter_ext. auto. Qed.
+
+  Lemma map_filter_all_false m f
+    : (forall k v, f k v = false) -> map_filter m f = map.empty.
+  Proof. auto using map_filter_eq_empty. Qed.
+
+  Lemma map_filter_by_key_all_false m f
+    : (forall k, f k = false) -> map_filter_by_key m f = map.empty.
+  Proof. auto using map_filter_by_key_eq_empty. Qed.
+
+  Lemma map_filter_filter m f1 f2
+    : map_filter (map_filter m f1) f2 = map_filter m (fun k v => andb (f1 k v) (f2 k v)).
+  Proof.
+    apply map.map_ext. intro k. rewrite 3map_filter_get.
+    destruct (map.get m k) as [ v | ]; [ destruct (f1 k v), (f2 k v) | ]; reflexivity.
+  Qed.
+
+  Lemma map_filter_by_key_filter_by_key m f1 f2
+    : map_filter_by_key (map_filter_by_key m f1) f2
+      = map_filter_by_key m (fun k => andb (f1 k) (f2 k)).
+  Proof.
+    apply map.map_ext. intro k. rewrite 3map_filter_by_key_get.
+    destruct (f1 k), (f2 k); reflexivity.
+  Qed.
+
+  Lemma map_filter_stronger_refilter m f1 f2
+    : (forall k v, f2 k v = true -> f1 k v = true) ->
+      map_filter (map_filter m f1) f2 = map_filter m f2.
+  Proof.
+    intro Hpow. rewrite map_filter_filter. apply map_filter_ext. intros.
+    specialize (Hpow k v). destruct (f1 k v), (f2 k v); tauto.
+  Qed.
+
+  Lemma map_filter_by_key_stronger_refilter m f1 f2
+    : (forall k, f2 k = true -> f1 k = true) ->
+      map_filter_by_key (map_filter_by_key m f1) f2 = map_filter_by_key m f2.
+  Proof. intro Hpow. apply map_filter_stronger_refilter. auto. Qed.
+
+  Definition map_size : map -> nat := map.fold (fun acc _ _ => S acc) O.
+
+  Lemma map_size_empty : map_size map.empty = O.
+  Proof. apply map.fold_empty. Qed.
+
+  Lemma map_size_empty_eq m : m = map.empty -> map_size m = O.
+  Proof. intro. subst. apply map_size_empty. Qed.
+
+  Lemma map_size_0_empty m : map_size m = O -> m = map.empty.
+  Proof. unfold map_size. apply map.fold_spec; intuition discriminate. Qed.
+
+  Lemma map_size_0_iff_empty m : map_size m = O <-> m = map.empty.
+  Proof. split; [ apply map_size_0_empty | apply map_size_empty_eq ]. Qed.
+
+  #[global, refine]
+  Instance map_empty_dec (m : map) : Decidable (m = map.empty) := {
+    Decidable_witness := (map_size m =? 0)%nat
+  }.
+  Proof. rewrite Nat.eqb_eq. apply map_size_0_iff_empty. Defined.
+End WithMap.
+
 Context {word_map: map.map word word}.
 Context {word_map_ok: map.ok word_map}.
-
-Lemma map_get_singleton_same : forall (k v: word),
-  map.get (map.singleton k v) k = Some v.
-Proof.
-  intros. unfold map.singleton. apply map.get_put_same.
-Qed.
-
-Lemma map_get_singleton_same_eq : forall k v k': word,
-  k = k' -> map.get (map.singleton k v) k' = Some v.
-Proof.
-  intros. subst. apply map_get_singleton_same.
-Qed.
-
-Lemma map_get_singleton_diff : forall k v k' : word,
-  k <> k' -> map.get (map.singleton k v) k' = None.
-Proof.
-  intros. unfold map.singleton. rewrite map.get_put_diff. apply map.get_empty.
-  congruence.
-Qed.
-
-Lemma map_put_singleton_same : forall k v v': word,
-  map.put (map.singleton k v) k v' = map.singleton k v'.
-Proof.
-  intros. unfold map.singleton. apply map.put_put_same.
-Qed.
-
-Lemma map_put_singleton_same_eq : forall k v k' v': word,
-  k = k' -> map.put (map.singleton k v) k' v' = map.singleton k v'.
-Proof.
-  intros. subst. apply map_put_singleton_same.
-Qed.
-
-Lemma map_remove_singleton_same : forall k v : word,
-  map.remove (map.singleton k v) k = map.empty.
-Proof.
-  intros. unfold map.singleton. rewrite map.remove_put_same.
-  rewrite map.remove_empty. reflexivity.
-Qed.
-
-Lemma map_remove_singleton_same_eq : forall k v k' : word,
-  k = k' -> map.remove (map.singleton k v) k' = map.empty.
-Proof.
-  intros. subst. apply map_remove_singleton_same.
-Qed.
-
-Lemma map_remove_singleton_diff : forall k v k' : word,
-  k <> k' -> map.remove (map.singleton k v) k' = map.singleton k v.
-Proof.
-  intros. unfold map.singleton. rewrite map.remove_put_diff.
-  rewrite map.remove_empty. reflexivity. congruence.
-Qed.
 
 (* simplify basic map operations (get, put, remove) operating on
    map.empty or map.singleton *)
@@ -1117,25 +1402,25 @@ Ltac small_map_basic_op_simpl_step :=
   | |- context [ map.get (map.singleton ?k ?v) ?k ] =>
       rewrite map_get_singleton_same
 
-  | Heq: ?k = ?k', H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_get_singleton_same_eq k v k') in H by (exact Heq)
-  | Heq: ?k = ?k' |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_get_singleton_same_eq k v k') by (exact Heq)
-
   | Heq: ?k' = ?k, H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_get_singleton_same_eq k v k') in H by (symmetry; exact Heq)
+      rewrite (map_get_singleton_same_eq k k' v) in H by (exact Heq)
   | Heq: ?k' = ?k |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_get_singleton_same_eq k v k') by (symmetry; exact Heq)
+      rewrite (map_get_singleton_same_eq k k' v) by (exact Heq)
 
-  | Hne: ?k <> ?k', H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_get_singleton_diff k v k') in H by (exact Hne)
-  | Hne: ?k <> ?k' |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_get_singleton_diff k v k') by (exact Hne)
+  | Heq: ?k = ?k', H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
+      rewrite (map_get_singleton_same_eq k k' v) in H by (symmetry; exact Heq)
+  | Heq: ?k = ?k' |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
+      rewrite (map_get_singleton_same_eq k k' v) by (symmetry; exact Heq)
 
   | Hne: ?k' <> ?k, H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_get_singleton_diff k v k') in H by (symmetry; exact Hne)
+      rewrite (map_get_singleton_diff k k' v) in H by (exact Hne)
   | Hne: ?k' <> ?k |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_get_singleton_diff k v k') by (symmetry; exact Hne)
+      rewrite (map_get_singleton_diff k k' v) by (exact Hne)
+
+  | Hne: ?k <> ?k', H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
+      rewrite (map_get_singleton_diff k k' v) in H by (symmetry; exact Hne)
+  | Hne: ?k <> ?k' |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
+      rewrite (map_get_singleton_diff k k' v) by (symmetry; exact Hne)
 
   (* map.put *)
   | H: context [ map.put map.empty ?k ?v ] |- _ =>
@@ -1148,15 +1433,15 @@ Ltac small_map_basic_op_simpl_step :=
   | |- context [ map.put (map.singleton ?k ?v) ?k ?v' ] =>
       rewrite map_put_singleton_same
 
-  | Heq: ?k = ?k', H: context [ map.put (map.singleton ?k ?v) ?k' ?v' ] |- _ =>
-      rewrite (map_put_singleton_same_eq k v k' v') in H by (exact Heq)
-  | Heq: ?k = ?k' |- context [ map.put (map.singleton ?k ?v) ?k' ?v' ] =>
-      rewrite (map_put_singleton_same_eq k v k' v') by (exact Heq)
-
   | Heq: ?k' = ?k, H: context [ map.put (map.singleton ?k ?v) ?k' ?v' ] |- _ =>
-      rewrite (map_put_singleton_same_eq k v k' v') in H by (symmetry; exact Heq)
+      rewrite (map_put_singleton_same_eq k k' v v') in H by (exact Heq)
   | Heq: ?k' = ?k |- context [ map.put (map.singleton ?k ?v) ?k' ?v' ] =>
-      rewrite (map_put_singleton_same_eq k v k' v') by (symmetry; exact Heq)
+      rewrite (map_put_singleton_same_eq k k' v v') by (exact Heq)
+
+  | Heq: ?k = ?k', H: context [ map.put (map.singleton ?k ?v) ?k' ?v' ] |- _ =>
+      rewrite (map_put_singleton_same_eq k k' v v') in H by (symmetry; exact Heq)
+  | Heq: ?k = ?k' |- context [ map.put (map.singleton ?k ?v) ?k' ?v' ] =>
+      rewrite (map_put_singleton_same_eq k k' v v') by (symmetry; exact Heq)
 
   (* map.remove *)
   | H: context [ map.remove map.empty _ ] |- _ =>
@@ -1170,24 +1455,24 @@ Ltac small_map_basic_op_simpl_step :=
       rewrite map_remove_singleton_same
 
   | Heq: ?k = ?k', H: context [ map.remove (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_remove_singleton_same_eq k v k') in H by (exact Heq)
+      rewrite (map_remove_singleton_same_eq k k' v) in H by (exact Heq)
   | Heq: ?k = ?k' |- context [ map.remove (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_remove_singleton_same_eq k v k') by (exact Heq)
+      rewrite (map_remove_singleton_same_eq k k' v) by (exact Heq)
 
   | Heq: ?k' = ?k, H: context [ map.remove (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_remove_singleton_same_eq k v k') in H by (symmetry; exact Heq)
+      rewrite (map_remove_singleton_same_eq k k' v) in H by (symmetry; exact Heq)
   | Heq: ?k' = ?k |- context [ map.remove (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_remove_singleton_same_eq k v k') by (symmetry; exact Heq)
+      rewrite (map_remove_singleton_same_eq k k' v) by (symmetry; exact Heq)
 
   | Hne: ?k <> ?k', H: context [ map.remove (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_remove_singleton_diff k v k') in H by (exact Hne)
+      rewrite (map_remove_singleton_diff k k' v) in H by (exact Hne)
   | Hne: ?k <> ?k' |- context [ map.remove (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_remove_singleton_diff k v k') by (exact Hne)
+      rewrite (map_remove_singleton_diff k k' v) by (exact Hne)
 
   | Hne: ?k' <> ?k, H: context [ map.remove (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_remove_singleton_diff k v k') in H by (symmetry; exact Hne)
+      rewrite (map_remove_singleton_diff k k' v) in H by (symmetry; exact Hne)
   | Hne: ?k' <> ?k |- context [ map.remove (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_remove_singleton_diff k v k') by (symmetry; exact Hne)
+      rewrite (map_remove_singleton_diff k k' v) by (symmetry; exact Hne)
   end.
 
 (* END BASIC SMALL MAP OPS *)
@@ -1203,80 +1488,6 @@ Ltac step_hook ::=
   | |- _ => pfx_step
   | |- _ => small_map_basic_op_simpl_step
   end.
-
-Lemma map_get_singleton_not_None : forall (k v k': word),
-  map.get (map.singleton k v) k' <> None -> k = k'.
-Proof.
-  intros. eq_neq_cases k k'; steps.
-Qed.
-
-Lemma map_singleton_inj : forall (k1 k2 v1 v2 : word),
-    map.singleton k1 v1 = map.singleton k2 v2 -> k1 = k2 /\ v1 = v2.
-Proof.
-  intros. assert (k1 = k2). { eq_neq_cases k1 k2; steps. exfalso.
-  f_apply (fun m: word_map => map.get m k2) H. steps. }
-  steps. f_apply (fun m: word_map => map.get m k2) H. steps.
-Qed.
-
-Lemma map_extends_nonempty : forall (cbig csmall: word_map),
-  map.extends cbig csmall -> csmall <> map.empty -> cbig <> map.empty.
-Proof.
-  unfold map.extends. intros. intro.
-  match goal with
-  | H: csmall <> map.empty |- _ => apply H
-  end. apply map.map_ext. steps. destruct (map.get csmall k) eqn:E;
-  [ exfalso | reflexivity ].
-  match goal with
-  | H: forall _, _ |- _ => apply H in E
-  end.
-  steps.
-Qed.
-
-Lemma map_extends_get_nnone : forall (cbig csmall: word_map) k,
-  map.extends cbig csmall -> map.get csmall k <> None -> map.get cbig k <> None.
-Proof.
-  unfold map.extends. intros. destruct (map.get csmall k) eqn:E; steps.
-  match goal with
-  | H: forall _, _ |- _ => apply H in E
-  end.
-  congruence.
-Qed.
-
-Lemma map_extends_put_new : forall (c: word_map) (k v: word),
-  map.get c k = None -> map.extends (map.put c k v) c.
-Proof.
-  unfold map.extends. intros. eq_neq_cases k x.
-  - congruence.
-  - rewrite map.get_put_diff; steps.
-Qed.
-
-Lemma map_extends_trans : forall c1 c2 c3: word_map,
-  map.extends c1 c2 -> map.extends c2 c3 -> map.extends c1 c3.
-Proof.
-  unfold map.extends. auto.
-Qed.
-
-Lemma map_put_nonempty : forall (c: word_map) k v,
-  map.put c k v <> map.empty.
-Proof.
-  intros.
-  match goal with
-  | |- ?L <> ?R => enough (map.get L k <> map.get R k)
-  end.
-  congruence.
-  steps. rewrite map.get_put_same. steps.
-Qed.
-
-Lemma map_get_nnone_nonempty : forall (c: word_map) k,
-  map.get c k <> None -> c <> map.empty.
-Proof.
-  intros. intro. steps.
-Qed.
-
-Lemma map_singleton_nonempty : forall (k v: word), map.singleton k v <> map.empty.
-Proof.
-  intros. intro He. f_apply (fun m: word_map => map.get m k) He. steps.
-Qed.
 
 Ltac map_step :=
   match goal with
@@ -1346,7 +1557,7 @@ Ltac map_step :=
         replace (map.get (map.remove c k) k') with (map.get c k') by
         (symmetry; apply map.get_remove_diff; exact Hne)
 
-  | H: map.get ?c ?k <> None |- ?c <> map.empty => apply (map_get_nnone_nonempty c k H)
+  | H: map.get ?c ?k <> None |- ?c <> map.empty => apply (map_get_not_None_nonempty c k H)
 
   | |- map.singleton _ _ <> map.empty => apply map_singleton_nonempty
   end.
@@ -1362,52 +1573,6 @@ Ltac step_hook ::=
   | |- _ => small_map_basic_op_simpl_step
   | |- _ => map_step
   end.
-
-Lemma map_extends_remove_in_both : forall (cbig csmall: word_map) k,
-  map.extends cbig csmall -> map.extends (map.remove cbig k) (map.remove csmall k).
-Proof.
-  unfold map.extends. intros. eq_neq_cases k x.
-  - subst. rewrite map.get_remove_same in *. discriminate.
-  - rewrite map.get_remove_diff in *. auto. congruence. congruence.
-Qed.
-
-Lemma map_extends_remove : forall (c: word_map) k,
-  map.extends c (map.remove c k).
-Proof.
-  unfold map.extends. intros. eq_neq_cases k x; subst; steps.
-Qed.
-
-Lemma map_nonempty_exists_key : forall (c: word_map),
-  c <> map.empty -> exists k, map.get c k <> None.
-Proof.
-  intros. exists (map.fold (fun _ k _ => k) /[0] c).
-  eassert (HP: _). eapply map.fold_spec
-    with (P:=fun m state => m <> map.empty -> map.get m state <> None)
-         (m:=c) (r0:=/[0]) (f:=fun _ k _ => k); steps.
-  auto.
-Qed.
-
-Lemma map_empty_eq : forall c: word_map,
-   c = map.empty <-> map.fold (fun _ _ _ => true) false c = false.
-Proof.
-  intros. split.
-  - intros. subst. apply map.fold_empty.
-  - apply map.fold_spec; steps.
-Qed.
-
-Lemma map_eq_empty_dec : forall (c1: word_map), c1 = map.empty \/ c1 <> map.empty.
-Proof.
-  intros. rewrite map_empty_eq.
-  match goal with
-  | |- context [ ?E = false ] => destruct E
-  end; steps.
-Qed.
-
-Lemma map_remove_get_nnone : forall (c: word_map) k k',
-  map.get (map.remove c k) k' <> None -> map.get c k' <> None.
-Proof.
-  intros. eapply map_extends_get_nnone. 2: eassumption. apply map_extends_remove.
-Qed.
 
 (* END MAPS *)
 (* BEGIN CUSTOM MAP OPS *)
@@ -1450,32 +1615,13 @@ Proof.
   lia.
 Qed.
 
-Definition map_filter (c: word_map) (f: word -> bool) :=
-  map.fold (fun state k v => if f k then map.put state k v else state)
-           map.empty
-           c.
-
-Lemma map_filter_get : forall c f k,
-  map.get (map_filter c f) k = if f k then map.get c k else None.
-Proof.
-  intros. unfold map_filter. apply map.fold_spec; steps.
-  destruct (f k0) eqn:E; destruct (f k) eqn:E2; eq_neq_cases k k0; subst; steps;
-  congruence.
-Qed.
-
 Definition half_subcontent c b :=
-  map_filter c (fun k => Bool.eqb (bit_at k (pfx_len (pfx_mmeet c))) b).
-
-Lemma map_filter_extends : forall c f,
-  map.extends c (map_filter c f).
-Proof.
-  unfold map.extends. intros. rewrite map_filter_get in *. destruct (f x); congruence.
-Qed.
+  map_filter_by_key c (fun k => Bool.eqb (bit_at k (pfx_len (pfx_mmeet c))) b).
 
 Lemma half_subcontent_extends : forall c b,
   map.extends c (half_subcontent c b).
 Proof.
-  intros. apply map_filter_extends.
+  intros. apply map_filter_by_key_extends.
 Qed.
 
 Lemma half_subcontent_get : forall c b k,
@@ -1483,7 +1629,7 @@ Lemma half_subcontent_get : forall c b k,
                                     then map.get c k
                                     else None.
 Proof.
-  intros. unfold half_subcontent. apply map_filter_get.
+  intros. unfold half_subcontent. rewrite map_filter_by_key_get. reflexivity.
 Qed.
 
 Lemma half_subcontent_get_nNone : forall c k,
@@ -1551,10 +1697,9 @@ Proof.
   destruct (map.get c k) eqn:E; steps.
   replace c with (map.put (map.remove c k) k r) at 2
     by (rewrite map.put_remove_same; apply map.put_idemp; assumption).
-  pose proof (map_eq_empty_dec (map.remove c k)) as Hemp.
-  destruct Hemp as [ Hemp | Hemp ].
-    - rewrite Hemp. steps. do 2 rewrite pfx_mmeet_singleton. steps.
-    - repeat rewrite pfx_mmeet_put_new; steps. all: apply map.get_remove_same.
+  decide (map.remove c k = map.empty) as Hemp.
+  - rewrite Hemp. steps. do 2 rewrite pfx_mmeet_singleton. steps.
+  - repeat rewrite pfx_mmeet_put_new; steps. all: apply map.get_remove_same.
 Qed.
 
 Ltac custom_map_ops_pre_step :=
@@ -1700,13 +1845,6 @@ Proof.
   intros. rewrite half_subcontent_get in *. steps.
 Qed.
 
-Definition map_some_key (c: word_map) default := map.fold (fun _ k _ => k) default c.
-
-Lemma map_some_key_singleton : forall k v k', map_some_key (map.singleton k v) k' = k.
-Proof.
-  intros. unfold map_some_key, map.singleton. apply map.fold_singleton.
-Qed.
-
 Lemma pfx_mmeet_all_le : forall c p,
   c <> map.empty ->
   (forall k, map.get c k <> None -> pfx_le p (pfx_emb k)) -> (pfx_le p (pfx_mmeet c)).
@@ -1789,11 +1927,11 @@ Proof.
   - enough (pfx_le (pfx_mmeet (map.remove c k)) (pfx_emb k)).
     + apply pfx_mmeet_all_le. steps. intros. eq_neq_cases k k0; subst; steps.
       apply pfx_mmeet_key_le. steps.
-    + destruct (map_eq_empty_dec (half_subcontent c (negb b))).
+    + decide (half_subcontent c (negb b) = map.empty).
       * match goal with
         | H: _ <> map.empty |- _ => apply map_nonempty_exists_key in H
         end. fwd. eq_neq_cases k k0; subst; steps. assert (map.get c k0 <> None).
-        eapply map_extends_get_nnone. 2: eassumption. steps.
+        eapply map_extends_get_not_None. 2: eassumption. steps.
         exfalso. eauto using half_subcontent_empty.
       * do 2 match goal with
            | H: _ <> map.empty |- _ => apply map_nonempty_exists_key in H
@@ -1803,12 +1941,12 @@ Proof.
         assert (bit_at k0 (pfx_len (pfx_mmeet c)) = negb b).
         rewrite half_subcontent_get in *. steps.
         intro. subst. steps. }
-      steps. eapply map_extends_get_nnone. 2: eassumption. steps.
-      eapply map_extends_get_nnone. 2: eassumption.
-      apply map_extends_remove_in_both. steps.
+      steps. eapply map_extends_get_not_None. 2: eassumption. steps.
+      eapply map_extends_get_not_None. 2: eassumption.
+      apply map_remove_monotone. steps.
       apply pfx_le_trans with (pfx_mmeet c). 2: steps.
       apply pfx_lele_len_ord with (pfx_emb k0); steps. apply pfx_mmeet_key_le.
-      eapply map_extends_get_nnone. 2: eassumption. steps.
+      eapply map_extends_get_not_None. 2: eassumption. steps.
       match goal with
       | H: context [ map.remove ] |- _ => apply map_remove_get_nnone in H
       end.
@@ -1828,7 +1966,7 @@ Proof.
       end.
       apply Bool.no_fixpoint_negb.
   - apply pfx_mmeet_remove_le. eapply map_extends_nonempty. 2: eassumption.
-    apply map_extends_remove_in_both. apply half_subcontent_extends.
+    apply map_remove_monotone. apply half_subcontent_extends.
 Qed.
 
 Lemma half_subcontent_remove_same : forall c k b,
@@ -1838,7 +1976,7 @@ Lemma half_subcontent_remove_same : forall c k b,
 Proof.
   intros. apply map.map_ext. intros. eq_neq_cases k k0.
   - subst. steps. apply eq_None_by_false. intro Hnn.
-    eapply map_extends_get_nnone in Hnn. 2: apply half_subcontent_extends. steps.
+    eapply map_extends_get_not_None in Hnn. 2: apply half_subcontent_extends. steps.
   - steps. do 2 rewrite half_subcontent_get. steps.
     rewrite pfx_mmeet_remove_unchanged with (b:=b); steps.
 Qed.
@@ -1879,7 +2017,7 @@ Qed.
 Lemma half_subcontent_get_nnone : forall c b k,
   map.get (half_subcontent c b) k <> None -> map.get c k <> None.
 Proof.
-  intros. eapply map_extends_get_nnone. eapply half_subcontent_extends. eassumption.
+  intros. eapply map_extends_get_not_None. eapply half_subcontent_extends. eassumption.
 Qed.
 
 Ltac custom_map_ops_step :=
@@ -2086,16 +2224,16 @@ Fixpoint cbt_best_lookup tree c k :=
   | Node treeL treeR => if bit_at k (pfx_len (pfx_mmeet c))
                         then cbt_best_lookup treeR (half_subcontent c true) k
                         else cbt_best_lookup treeL (half_subcontent c false) k
-  | Leaf => map_some_key c k
+  | Leaf => Option.force (map_any_key c)
   end.
 
 Lemma cbt_best_lookup_in : forall tree c k,
   acbt tree c -> map.get c (cbt_best_lookup tree c k) <> None.
 Proof.
   induction tree.
-  - steps. simpl in *. steps. subst. steps. rewrite map_some_key_singleton. steps.
+  - steps. simpl in *. steps. subst. steps. rewrite map_any_key_singleton. cbn. steps.
   - steps. simpl in *. steps. destruct (bit_at k (pfx_len (pfx_mmeet c))) eqn:E;
-    (eapply map_extends_get_nnone; [ eapply half_subcontent_extends | eauto ]).
+    (eapply map_extends_get_not_None; [ eapply half_subcontent_extends | eauto ]).
 Qed.
 
 Lemma cbt_best_lookup_subcontent_in_parent : forall tree c k k' b,
@@ -2465,11 +2603,13 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
     store(p + 2 * sizeof(uintptr_t), v);                                    /**. .**/
     return k;                                                               /**. .**/
   }                                                                         /**.
-  simpl. apply map_some_key_singleton. clear Error. simpl cbt'. steps. .**/
+  simpl. rewrite map_any_key_singleton. reflexivity. clear Error. simpl cbt'.
+  steps. .**/
   else {                                                                    /**. .**/
     return load(p + sizeof(uintptr_t));                                     /**. .**/
   }                                                                         /**.
-  simpl. apply map_some_key_singleton. clear Error. simpl cbt'. steps. .**/
+  simpl. rewrite map_any_key_singleton. reflexivity. clear Error. simpl cbt'.
+  steps. .**/
 }                                                                           /**.
 Qed.
 
@@ -2984,32 +3124,32 @@ Derive cbt_delete_from_nonleaf SuchThat
 
   (* TODO: move at least some of the steps in the proof code below into step_hook *)
   erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). steps.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   pose proof (half_subcontent_remove_other c k true) as Hhcr. steps. rewrite Hhcr.
-  steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  steps. eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   rewrite half_subcontent_remove_same. steps. steps.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). steps.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   erewrite half_subcontent_remove_same. steps. steps.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   pose proof (half_subcontent_remove_other c k false) as Hhcr. steps.
-  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps. .**/
     else {                                                                 /**. .**/
@@ -3034,32 +3174,32 @@ Derive cbt_delete_from_nonleaf SuchThat
   destruct brc eqn:E; simpl cbt'; unpurify; steps.
 
   erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). steps.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   pose proof (half_subcontent_remove_other c k true) as Hhcr. steps.
-  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   erewrite half_subcontent_remove_same. steps. steps.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). steps.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   erewrite half_subcontent_remove_same. steps. steps.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   pose proof (half_subcontent_remove_other c k false) as Hhcr. steps.
-  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps. .**/
   }                                                                        /**.
@@ -3078,7 +3218,7 @@ Derive cbt_delete_from_nonleaf SuchThat
     return 1;                                                              /**. .**/
   }                                                                        /**.
   assert (map.get c k <> None). {
-  eapply map_extends_get_nnone. apply half_subcontent_extends.
+  eapply map_extends_get_not_None. apply half_subcontent_extends.
   match goal with
   | H: half_subcontent _ _ = map.singleton _ _ |- _ => rewrite H
   end. steps. } destruct (map.get c k); steps.
@@ -3556,13 +3696,13 @@ Derive cbt_best_with_trace SuchThat (fun_correct! cbt_best_with_trace)
     store(val_out, load(tp + 2 * sizeof(uintptr_t)));                      /**. .**/
     return best_k;                                                         /**. .**/
   }                                                                        /**.
-  { simpl cbt_best_lookup. apply map_some_key_singleton. }
+  { simpl cbt_best_lookup. rewrite map_any_key_singleton. reflexivity. }
   { simpl cbt_lookup_trace. rewrite word.or_0_r. steps. }
   { simpl cbt'. clear Error. steps. } .**/
   else {                                                                   /**. .**/
     return best_k;                                                         /**. .**/
   }                                                                        /**.
-  { simpl cbt_best_lookup. apply map_some_key_singleton. }
+  { simpl cbt_best_lookup. rewrite map_any_key_singleton. reflexivity. }
   { simpl cbt_lookup_trace. rewrite word.or_0_r. steps. }
   { simpl cbt'. clear Error. steps. } .**/
 }                                                                          /**.
@@ -3570,14 +3710,14 @@ Qed.
 
 Fixpoint cbt_max_key sk c :=
   match sk with
-  | Leaf => map_some_key c /[0]
+  | Leaf => Option.force (map_any_key c)
   | Node skL skR => cbt_max_key skR (half_subcontent c true)
   end.
 
 Lemma cbt_max_key_in : forall sk c, acbt sk c -> map.get c (cbt_max_key sk c) <> None.
 Proof.
   induction sk; cbn; steps.
-  - rewrite map_some_key_singleton. steps.
+  - rewrite map_any_key_singleton. simpl. steps.
   - eauto using half_subcontent_get_nnone.
 Qed.
 
@@ -3585,7 +3725,7 @@ Lemma cbt_max_key_max : forall sk c k,
   acbt sk c -> map.get c k <> None -> \[k] <= \[cbt_max_key sk c].
 Proof.
   induction sk.
-  - intros. cbn in *. steps. subst. rewrite map_some_key_singleton. reflexivity.
+  - intros. cbn in *. steps. subst. rewrite map_any_key_singleton. reflexivity.
   - intros.
     match goal with
     | H: map.get _ _ <> None |- _ => apply half_subcontent_get_nNone in H
@@ -3812,31 +3952,10 @@ Proof.
   intros. eapply pfx_le_emb_bit_same_prefix; try eassumption; steps.
 Qed.
 
-Lemma map_filter_empty : forall f, map_filter map.empty f = map.empty.
-Proof.
-  unfold map_filter. auto using map.fold_empty.
-Qed.
-
-Lemma map_filter_get_pred_true : forall c f k,
-  f k = true -> map.get (map_filter c f) k = map.get c k.
-Proof.
-  intros ? ? ? Hpred. rewrite map_filter_get. rewrite Hpred. reflexivity.
-Qed.
-
-Lemma map_filter_get_pred_false : forall c f k,
-  f k = false -> map.get (map_filter c f) k = None.
-Proof.
-  intros ? ? ? Hpred. rewrite map_filter_get. rewrite Hpred. reflexivity.
-Qed.
-
-Lemma map_filter_get_none : forall c f k,
-  map.get c k = None -> map.get (map_filter c f) k = None.
-Proof.
-  intros. rewrite map_filter_get. destruct (f k); steps.
-Qed.
-
-Definition map_take_ge c k := map_filter c (fun k' => \[k] <=? \[k']).
-Definition map_take_gt c k := map_filter c (fun k' => \[k] <? \[k']).
+Definition map_take_ge (c : word_map) k :=
+  map_filter_by_key c (fun k' => \[k] <=? \[k']).
+Definition map_take_gt (c : word_map) k :=
+  map_filter_by_key c (fun k' => \[k] <? \[k']).
 
 Lemma map_take_ge_empty : forall k, map_take_ge map.empty k = map.empty.
 Proof.
@@ -3846,41 +3965,21 @@ Qed.
 Lemma map_take_ge_get_ge : forall c k k',
   \[k] <= \[k'] -> map.get (map_take_ge c k) k' = map.get c k'.
 Proof.
-  intros. unfold map_take_ge. rewrite map_filter_get_pred_true; steps.
-Qed.
-
-Definition map_all_get_none_empty : forall c : word_map,
-  (forall k, map.get c k = None) -> c = map.empty.
-Proof.
-  intros. apply map.map_ext. steps. auto.
-Qed.
-
-Lemma map_filter_eq_empty : forall c f,
-  (forall k, map.get c k <> None -> f k = false) -> map_filter c f = map.empty.
-Proof.
-  intros. apply map_all_get_none_empty. intros.
-  none_nnone_cases (map.get c k).
-  - apply map_filter_get_none. assumption.
-  - auto using map_filter_get_pred_false.
+  intros. unfold map_take_ge. rewrite map_filter_by_key_get_true; steps.
 Qed.
 
 Lemma map_take_ge_eq_empty : forall c k,
   (forall k', map.get c k' <> None -> \[k'] < \[k]) -> map_take_ge c k = map.empty.
 Proof.
-  intros ? ? Hsm. unfold map_take_ge. apply map_filter_eq_empty. intros k'' Hnn.
+  intros ? ? Hsm. unfold map_take_ge. apply map_filter_by_key_eq_empty. intros k'' Hnn.
   specialize (Hsm k'' Hnn). lia.
-Qed.
-
-Lemma map_filter_get_nnone_ftrue : forall c f k,
-  map.get (map_filter c f) k <> None -> f k = true.
-Proof.
-  intros. rewrite map_filter_get in *. destruct (f k); steps.
 Qed.
 
 Lemma map_take_ge_get_nnone : forall c k k',
   map.get (map_take_ge c k) k' <> None -> \[k] <= \[k'].
 Proof.
-  unfold map_take_ge. intros ? ? ? Hnn. apply map_filter_get_nnone_ftrue in Hnn. lia.
+  unfold map_take_ge. intros ? ? ? Hnn.
+  apply map_filter_by_key_get_not_None_true in Hnn. lia.
 Qed.
 
 Lemma map_take_ge_get_nnone' : forall c k k',
@@ -3889,68 +3988,17 @@ Proof.
   intros. rewrite map_take_ge_get_ge; assumption.
 Qed.
 
-Lemma map_filter_monotone : forall c c' f,
-  map.extends c c' -> map.extends (map_filter c f) (map_filter c' f).
-Proof.
-  intros ? ? ? Hext. unfold map.extends. intros k v Hsm. rewrite map_filter_get in *.
-  destruct (f k); [ | discriminate ]. eauto using map.extends_get.
-Qed.
-
 Lemma map_take_ge_monotone : forall c c' k,
   map.extends c c' -> map.extends (map_take_ge c k) (map_take_ge c' k).
 Proof.
-  unfold map_take_ge. auto using map_filter_monotone.
+  unfold map_take_ge. auto using map_filter_by_key_monotone.
 Qed.
 
 Lemma map_take_ge_extends : forall c k,
   map.extends c (map_take_ge c k).
 Proof.
-  unfold map_take_ge. auto using map_filter_extends.
+  unfold map_take_ge. auto using map_filter_by_key_extends.
 Qed.
-
-Definition map_size (c: word_map) := map.fold (fun n _ _ => n + 1) 0 c.
-
-Lemma map_size_empty1 : map_size map.empty = 0.
-Proof.
-  apply map.fold_empty.
-Qed.
-
-Lemma map_size_empty1_eq : forall c, c = map.empty -> map_size c = 0.
-Proof.
-  intros. subst. apply map_size_empty1.
-Qed.
-
-Lemma map_size_empty2 : forall c, map_size c = 0 -> c = map.empty.
-Proof.
-  intros c.
-  eassert (HP: _). eapply map.fold_spec
-    with (P:=fun m n => n >= 0 /\ (n = 0 -> m = map.empty)) (m:=c).
-  3: exact (proj2 HP).
-  { split; [ lia | trivial ]. }
-  steps.
-Qed.
-
-Lemma map_size_nonneg : forall c, map_size c >= 0.
-Proof.
-  intros c.
-  eassert (HP: _). eapply map.fold_spec
-    with (P:=fun m n => n >= 0) (m:=c).
-  3: exact HP.
-  all: steps.
-Qed.
-
-Definition map_is_emptyb c := map_size c =? 0.
-
-Lemma map_is_emptyb_reflects : forall c, map_is_emptyb c = true <-> c = map.empty.
-Proof.
-  intros. unfold map_is_emptyb. rewrite Z.eqb_eq.
-  split; auto using map_size_empty1_eq, map_size_empty2.
-Qed.
-
-
-Instance map_empty_dec (c : word_map) : Decidable (c = map.empty) := {
-  Decidable_spec := map_is_emptyb_reflects c
-}.
 
 Definition map_min_key_value (c: word_map) : option (word * word) := map.fold
   (fun cur k v => match cur with
@@ -4112,7 +4160,7 @@ Derive cbt_next_ge_impl_uptrace SuchThat (fun_correct! cbt_next_ge_impl_uptrace)
         apply map_take_ge_get_nnone'.
         * eauto using map_take_ge_get_nnone.
         * rewrite <- E. apply half_subcontent_get_nNone.
-          eauto using map_extends_get_nnone, map_take_ge_extends.
+          eauto using map_extends_get_not_None, map_take_ge_extends.
       + exfalso. enough (\[k'] < \[k]) by (apply map_take_ge_get_nnone in Hink'; lia).
         eapply bit_at_lt with (i:=pfx_len (pfx_mmeet c)); steps.
         transitivity (bit_at (cbt_best_lookup sk2 (half_subcontent c true) k) j).
@@ -4121,8 +4169,8 @@ Derive cbt_next_ge_impl_uptrace SuchThat (fun_correct! cbt_next_ge_impl_uptrace)
                         (pfx_emb k')
                         (pfx_emb (cbt_best_lookup sk2 (half_subcontent c true) k)))).
           { apply pfx_le_len. apply pfx_meet_le_both.
-            - eauto using pfx_mmeet_key_le, map_extends_get_nnone, map_take_ge_extends.
-            - eauto using pfx_mmeet_key_le, map_extends_get_nnone,
+            - eauto using pfx_mmeet_key_le, map_extends_get_not_None, map_take_ge_extends.
+            - eauto using pfx_mmeet_key_le, map_extends_get_not_None,
                           half_subcontent_extends, cbt_best_lookup_in. }
           apply pfx_meet_emb_bit_at_eq. lia.
         * apply pfx_meet_emb_bit_at_eq. rewrite pfx_meet_comm. lia. } .**/
@@ -4154,10 +4202,10 @@ Derive cbt_next_ge_impl_uptrace SuchThat (fun_correct! cbt_next_ge_impl_uptrace)
         assert (pfx_len (pfx_mmeet c) <=
                   pfx_len (pfx_meet (pfx_emb k_res) (pfx_emb k'))).
         { apply pfx_le_len. apply pfx_meet_le_both. apply pfx_mmeet_key_le.
-          eapply map_extends_get_nnone. apply (half_subcontent_extends _ false).
-          eapply map_extends_get_nnone. apply map_take_ge_extends.
+          eapply map_extends_get_not_None. apply (half_subcontent_extends _ false).
+          eapply map_extends_get_not_None. apply map_take_ge_extends.
           erewrite map_min_key_value_in; [ | eassumption ]. steps.
-          eauto using pfx_mmeet_key_le, map_extends_get_nnone, map_take_ge_extends. }
+          eauto using pfx_mmeet_key_le, map_extends_get_not_None, map_take_ge_extends. }
         apply pfx_meet_emb_bit_at_eq. lia.
         match goal with
         | H: map_min_key_value _ = Some _ |- _ => apply map_min_key_value_in in H
@@ -4167,7 +4215,7 @@ Derive cbt_next_ge_impl_uptrace SuchThat (fun_correct! cbt_next_ge_impl_uptrace)
       + eapply map_min_key_value_key_le; [ eassumption | ]. apply map_take_ge_get_nnone'.
         eauto using map_take_ge_get_nnone.
         rewrite <- E. apply half_subcontent_get_nNone.
-        eauto using map_extends_get_nnone, map_take_ge_extends. } .**/
+        eauto using map_extends_get_not_None, map_take_ge_extends. } .**/
   }                                                                        /**.
   assert (Hieq: pfx_len (pfx_mmeet c) = \[i]) by lia. rewrite <- Hieq in *.
   destruct sk. { exfalso; steps. } .**/
@@ -4187,18 +4235,18 @@ Derive cbt_next_ge_impl_uptrace SuchThat (fun_correct! cbt_next_ge_impl_uptrace)
                               (pfx_emb (cbt_best_lookup (Node sk1 sk2) c k))
                               (pfx_emb k1))).
           { apply pfx_meet_le_both. apply pfx_mmeet_key_le. steps.
-            apply pfx_mmeet_key_le. eapply map_extends_get_nnone.
+            apply pfx_mmeet_key_le. eapply map_extends_get_not_None.
             apply (half_subcontent_extends _ true). steps. }
           apply pfx_le_len in Hpfxle. steps.
       + rewrite half_subcontent_get in *. steps.
     - intros k' Hink'. destruct (bit_at k' (pfx_len (pfx_mmeet c))) eqn:E.
       + apply_forall. rewrite <- E.
-        eauto using half_subcontent_get_nNone, map_extends_get_nnone,
+        eauto using half_subcontent_get_nNone, map_extends_get_not_None,
                     map_take_ge_extends.
       + exfalso. enough (\[cbt_max_key sk1 (half_subcontent c false)] < \[k]).
         * assert (\[k'] <= \[cbt_max_key sk1 (half_subcontent c false)]).
           { apply cbt_max_key_max; steps.
-            eauto using half_subcontent_get_nNone, map_extends_get_nnone,
+            eauto using half_subcontent_get_nNone, map_extends_get_not_None,
                     map_take_ge_extends. }
           match goal with
           | H: map.get (map_take_ge _ _) _ <> None |- _ =>
@@ -4281,7 +4329,7 @@ Create HintDb content_maps.
 Hint Resolve map_take_ge_get_nnone map_take_ge_get_nnone'
              map_take_ge_monotone map_take_ge_extends
              half_subcontent_extends
-             map.extends_get map_extends_get_nnone
+             map.extends_get map_extends_get_not_None
              half_subcontent_get_nNone
              map_min_key_value_in
              some_not_none
@@ -4437,7 +4485,7 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
     }                                                                      /**.
   rewrite Decidable_sound_alt; steps.
   auto using map_min_key_value_take_ge_has_min.
-  apply map_get_nnone_nonempty with (k:=k).
+  apply map_get_not_None_nonempty with (k:=k).
   rewrite map_take_ge_get_ge; subst; steps. .**/
     else {                                                                 /**. .**/
       uintptr_t trace = load(key_out);                                     /**. .**/
@@ -4539,7 +4587,7 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
           return 1;                                                        /**. .**/
         }                                                                  /**.
   rewrite Decidable_sound_alt. steps.
-  eauto using map_get_nnone_nonempty with content_maps. .**/
+  eauto using map_get_not_None_nonempty with content_maps. .**/
       }                                                                    /**. .**/
       else {                                                               /**. .**/
         cbt_next_ge_impl_at_cb(tp, k, cb, key_out, val_out);               /**.
@@ -4552,27 +4600,21 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
         return 1;                                                           /**. .**/
       }                                                                     /**.
   rewrite Decidable_sound_alt. steps.
-  eauto using map_get_nnone_nonempty with content_maps. .**/
+  eauto using map_get_not_None_nonempty with content_maps. .**/
     }                                                                       /**. .**/
   }                                                                         /**. .**/
 }                                                                           /**.
 Qed.
 
-Lemma map_filter_impossible : forall c f,
-  (forall k, f k = false) -> map_filter c f = map.empty.
-Proof.
-  auto using map_filter_eq_empty.
-Qed.
-
 Lemma map_take_gt_max : forall c, map_take_gt c (word.opp /[1]) = map.empty.
 Proof.
-  intros. apply map_filter_impossible. intros. hwlia.
+  intros. apply map_filter_by_key_all_false. intros. hwlia.
 Qed.
 
 Lemma map_take_gt_get_gt : forall (c : word_map) (k k' : word),
   \[k] < \[k'] -> map.get (map_take_gt c k) k' = map.get c k'.
 Proof.
-  intros. apply map_filter_get_pred_true. lia.
+  intros. apply map_filter_by_key_get_true. lia.
 Qed.
 
 Lemma map_take_gt_extends : forall (c : word_map) (k : word),
@@ -4584,14 +4626,7 @@ Qed.
 Lemma map_take_gt_get_nnone : forall (c : word_map) (k k' : word),
   map.get (map_take_gt c k) k' <> None -> \[k] < \[k'].
 Proof.
-  intros ? ? ? Hnn. apply map_filter_get_nnone_ftrue in Hnn. lia.
-Qed.
-
-Lemma map_filter_ext : forall c f1 f2,
-  (forall k, f1 k = f2 k) -> map_filter c f1 = map_filter c f2.
-Proof.
-  intros ? ? ? Hfeqv. apply map.map_ext. intros k'. do 2 rewrite map_filter_get.
-  rewrite Hfeqv. reflexivity.
+  intros ? ? ? Hnn. apply map_filter_by_key_get_not_None_true in Hnn. lia.
 Qed.
 
 #[export] Instance spec_of_cbt_next_gt: fnspec :=                                .**/
@@ -4637,7 +4672,7 @@ Derive cbt_next_gt SuchThat (fun_correct! cbt_next_gt) As cbt_next_gt_ok.       
     rewrite map_take_ge_get_ge.
     eauto using map_take_gt_extends with content_maps.
     enough (\[k] < \[k']) by hwlia. eauto using map_take_gt_get_nnone. }
-  { unfold map_take_gt, map_take_ge. erewrite map_filter_ext. reflexivity.
+  { unfold map_take_gt, map_take_ge. erewrite map_filter_by_key_ext. reflexivity.
     intros. cbv beta. hwlia. } .**/
 }                                                                          /**.
 Qed.
@@ -5024,15 +5059,14 @@ Qed.
 Definition map_to_sorted_list : word_map -> list (word * word)
   := map.fold (fun l k v => sorted_word_word_insert (k, v) l) nil.
 
-Lemma map_to_sorted_list_length : forall c, len (map_to_sorted_list c) = map_size c.
+Lemma map_to_sorted_list_length : forall c,
+  len (map_to_sorted_list c) = Z.of_nat (map_size c).
 Proof.
-  intros.
-  unfold map_to_sorted_list, map_size.
-  eassert (HP: _). eapply map.fold_two_spec
-    with (P:=fun m s1 s2 => len s1 = s2) (m:=c).
-  all: cycle 2. { eassumption. }
-  - steps.
-  - steps. subst. apply sorted_ww_insert_len.
+  intros. unfold map_to_sorted_list, map_size.
+  match goal with
+  | |- len ?fl1 = _ ?fl2 => pattern c, fl1, fl2
+  end.
+  apply map.fold_two_spec; steps. rewrite sorted_ww_insert_len. lia.
 Qed.
 
 Lemma map_to_sorted_list_empty : map_to_sorted_list map.empty = nil.
@@ -5042,8 +5076,8 @@ Qed.
 
 Lemma map_to_sorted_list_empty' : forall c, map_to_sorted_list c = nil -> c = map.empty.
 Proof.
-  intros ? Hnil. f_apply (fun l : list (word * word) => len l) Hnil. cbn in Hnil.
-  rewrite map_to_sorted_list_length in Hnil. auto using map_size_empty2.
+  intros ? Hnil. f_apply uconstr:(fun l => len l) Hnil. cbn in Hnil.
+  rewrite map_to_sorted_list_length in Hnil. apply map_size_0_empty. lia.
 Qed.
 
 Lemma map_to_sorted_list_in : forall c k v,
@@ -5099,18 +5133,12 @@ Proof.
       eapply some_not_none; [ | eassumption ]. eauto.
 Qed.
 
-Lemma map_size_empty'' : forall c,
-  c <> map.empty -> map_size c > 0.
-Proof.
-  intros c Hnem. enough (map_size c <> 0) by (pose proof map_size_nonneg c; lia).
-  intro Hsz0. apply_ne. auto using map_size_empty2.
-Qed.
-
 Lemma map_to_sorted_list_first : forall c,
   c <> map.empty -> map_min_key_value c = Some ((map_to_sorted_list c)[0]).
 Proof.
   intros. destruct ((map_to_sorted_list c)[0]) as [ k0 v0 ] eqn:E.
-  assert (map_size c > 0) by (auto using map_size_empty'').
+  assert (Z.of_nat (map_size c) > 0).
+  { enough (map_size c <> O) by lia. rewrite map_size_0_iff_empty. assumption. }
   apply map_min_key_value_eq.
   - eapply map_to_sorted_list_in; try eassumption.
     eapply list_get_in1'; [ | eassumption ]. rewrite map_to_sorted_list_length. lia.
@@ -5120,7 +5148,7 @@ Proof.
     eapply map_to_sorted_list_sorted with (i:=0) (j:=n); try eassumption; lia.
 Qed.
 
-Lemma list_map_get (X Y : Type) { _ : inhabited X } { _ : inhabited Y }
+Lemma list_map_get (X Y : Type) `{ inhabited X, inhabited Y }
   : forall (l : list X) (f : X -> Y) i,
   0 <= i < len l -> (List.map f l)[i] = f l[i].
 Proof.
@@ -5137,25 +5165,17 @@ Proof.
   rewrite List.nth_skipn. f_equal. lia.
 Qed.
 
-Lemma map_filter_some : forall c f k v,
-  map.get (map_filter c f) k = Some v -> map.get c k = Some v.
-Proof.
-  intros. rewrite map_filter_get in *. destruct (f k); congruence.
-Qed.
-
 Lemma map_take_gt_some : forall c k1 k2 v,
   map.get (map_take_gt c k1) k2 = Some v -> map.get c k2 = Some v.
 Proof.
-  intros. unfold map_take_gt in *. eauto using map_filter_some.
+  intros. unfold map_take_gt in *. eauto using map_filter_by_key_Some'.
 Qed.
 
 Lemma ww_list_sorted_from : forall n l, ww_list_sorted l -> ww_list_sorted (l[n:]).
 Proof.
   intros ? ? Hsrt.
-  assert (Hcmp: n < 0 \/ n >= 0) by lia.
-  destruct Hcmp. { rewrite List.from_beginning; steps. }
-  assert (Hcmp: n >= len l \/ n < len l) by lia.
-  destruct Hcmp. { rewrite List.from_pastend by lia. apply ww_list_sorted_nil. }
+  decide (n < 0). { rewrite List.from_beginning; steps. }
+  decide (n >= len l). { rewrite List.from_pastend by lia. apply ww_list_sorted_nil. }
   unfold ww_list_sorted. intros. rewrite list_from_get in * by lia.
   rewrite List.len_from in * by lia.
   eapply (Hsrt (n + i) (n + j)); try eassumption; lia.
@@ -5165,17 +5185,16 @@ Lemma ww_list_unique_keys_from : forall n l,
   ww_list_unique_keys l -> ww_list_unique_keys (l[n:]).
 Proof.
   intros ? ? Huqk.
-  assert (Hcmp: n < 0 \/ n >= 0) by lia.
-  destruct Hcmp. { rewrite List.from_beginning; steps. }
-  assert (Hcmp: n >= len l \/ n < len l) by lia.
-  destruct Hcmp. { rewrite List.from_pastend by lia. apply ww_list_unique_keys_nil. }
+  decide (n < 0). { rewrite List.from_beginning; steps. }
+  decide (n >= len l).
+  { rewrite List.from_pastend by lia. apply ww_list_unique_keys_nil. }
   unfold ww_list_unique_keys. intros. repeat rewrite list_from_get in * by lia.
   rewrite List.len_from in * by lia.
   enough (n + i1 = n + i2) by lia. eapply Huqk; steps.
 Qed.
 
 Lemma map_to_sorted_list_take_gt : forall c i k,
-  0 <= i < map_size c ->
+  0 <= i < Z.of_nat (map_size c) ->
   fst ((map_to_sorted_list c)[i]) = k ->
   map_to_sorted_list (map_take_gt c k) = (map_to_sorted_list c)[i + 1:].
 Proof.
@@ -5210,9 +5229,9 @@ Proof.
 Qed.
 
 Lemma map_to_sorted_list_key_gt_size : forall c i k,
-  0 <= i < map_size c ->
+  0 <= i < Z.of_nat (map_size c) ->
   fst ((map_to_sorted_list c)[i]) = k ->
-  map_size (map_take_gt c k) = map_size c - 1 - i.
+  Z.of_nat (map_size (map_take_gt c k)) = Z.of_nat (map_size c) - 1 - i.
 Proof.
   intros ? ? ? Hirng Hel. pose proof (map_to_sorted_list_take_gt c i k Hirng Hel) as Heq.
   f_apply (fun (l : list (word * word)) => len l) Heq.
@@ -5222,7 +5241,7 @@ Proof.
 Qed.
 
 Lemma map_to_sorted_list_in'' : forall c i k,
-  0 <= i < map_size c ->
+  0 <= i < Z.of_nat (map_size c) ->
   fst ((map_to_sorted_list c)[i]) = k ->
   map.get c k <> None.
 Proof.
@@ -5231,19 +5250,10 @@ Proof.
   rewrite map_to_sorted_list_in in E. steps.
 Qed.
 
-Lemma map_filter_strengthen : forall c f_weak f_strong,
-  (forall k, f_strong k = true -> f_weak k = true) ->
-  map_filter (map_filter c f_weak) f_strong = map_filter c f_strong.
-Proof.
-  intros ? ? ? Hst. apply map.map_ext. intros. repeat rewrite map_filter_get.
-  destruct (f_strong k) eqn:E; [ | reflexivity ].
-  apply Hst in E. rewrite E. reflexivity.
-Qed.
-
 Lemma map_take_gt_take_ge : forall c k1 k2,
   \[k1] <= \[k2] -> map_take_gt (map_take_ge c k1) k2 = map_take_gt c k2.
 Proof.
-  intros. apply map_filter_strengthen. intros. hwlia.
+  intros. apply map_filter_by_key_stronger_refilter. intros. hwlia.
 Qed.
 
 #[export] Instance spec_of_page_from_cbt: fnspec :=                         .**/
@@ -5310,10 +5320,8 @@ Derive page_from_cbt SuchThat (fun_correct! page_from_cbt) As page_from_cbt_ok. 
   remember (map_to_sorted_list (map_take_ge c k)) as sl.
   remember (List.map fst sl) as skeys.
   remember (List.map snd sl) as svals.
-  assert (Hszg0: 0 < map_size (map_take_ge c k)).
-  { enough (map_size (map_take_ge c k) <> 0).
-    { pose proof (map_size_nonneg (map_take_ge c k)). lia. }
-    intro Hsz0. apply map_size_empty2 in Hsz0. tauto. }
+  assert (Hszg0: 0 < Z.of_nat (map_size (map_take_ge c k))).
+  { rewrite <- map_size_0_iff_empty in E. lia. }
   assert (skeys[\[i] - 1] = k_it).
   { pose proof (map_to_sorted_list_first (map_take_ge c k)) as Hfrst.
     prove_ante Hfrst. { assumption. }
@@ -5346,7 +5354,7 @@ Derive page_from_cbt SuchThat (fun_correct! page_from_cbt) As page_from_cbt_ok. 
       erewrite list_map_get by (rewrite map_to_sorted_list_length; lia).
       rewrite <- Hff. reflexivity. }
   assert (finished <> /[0] -> map_take_gt c k_it = map.empty) by steps.
-  assert (\[i] <= map_size (map_take_ge c k)) by steps.
+  assert (\[i] <= Z.of_nat (map_size (map_take_ge c k))) by steps.
   clear Hszg0.
   prove (\[i] >= 1).
   match goal with
@@ -5388,7 +5396,7 @@ Derive page_from_cbt SuchThat (fun_correct! page_from_cbt) As page_from_cbt_ok. 
     | H: _ = k_it' |- _ => erewrite list_map_get in H
         by (rewrite map_to_sorted_list_length; lia)
     end. assumption. eauto using map_take_ge_get_nnone. }
-  assert (\[i'] < map_size (map_take_ge c k)).
+  assert (\[i'] < Z.of_nat (map_size (map_take_ge c k))).
   { pose proof (map_to_sorted_list_key_gt_size (map_take_ge c k) (\[i'] - 1) k_it')
       as Hnsz. prove_ante Hnsz. lia. prove_ante Hnsz. subst skeys sl.
     match goal with
@@ -5396,8 +5404,8 @@ Derive page_from_cbt SuchThat (fun_correct! page_from_cbt) As page_from_cbt_ok. 
         by (rewrite map_to_sorted_list_length; lia)
     end.
     assumption. rewrite map_take_gt_take_ge in Hnsz by assumption.
-    enough (map_size (map_take_gt c k_it') > 0) by lia.
-    apply map_size_empty''. eapply map_get_nnone_nonempty. eapply some_not_none.
+    enough (map_size (map_take_gt c k_it') <> O) by lia. rewrite map_size_0_iff_empty.
+    eapply map_get_not_None_nonempty. eapply some_not_none.
     eauto using map_min_key_value_in. }
   assert (\[i'] < len sl).
   { subst sl. rewrite map_to_sorted_list_length. assumption. }
@@ -5407,7 +5415,7 @@ Derive page_from_cbt SuchThat (fun_correct! page_from_cbt) As page_from_cbt_ok. 
   { subst skeys. rewrite List.map_length. assumption. }
   assert (Hsli': sl[\[i']] = (k_it, v_res)).
   { pose proof (map_to_sorted_list_first (map_take_gt c k_it')) as Hshfr.
-    prove_ante Hshfr. eapply map_get_nnone_nonempty. eapply some_not_none.
+    prove_ante Hshfr. eapply map_get_not_None_nonempty. eapply some_not_none.
     eauto using map_min_key_value_in. rewrite Hshfr in *.
     match goal with
     | H: Some _ = Some _ |- _ => injection H; intros Hili; clear H
@@ -5463,9 +5471,9 @@ Derive page_from_cbt SuchThat (fun_correct! page_from_cbt) As page_from_cbt_ok. 
     | H: _ = k_it |- _ => erewrite list_map_get in H; steps
     end.
     rewrite map_take_gt_take_ge in Hsz.
-    assert (map_size (map_take_gt c k_it) = 0).
+    assert (map_size (map_take_gt c k_it) = O).
     { assert (Htem: map_take_gt c k_it = map.empty) by auto. rewrite Htem.
-      apply map_size_empty1. }
+      apply map_size_empty. }
     lia.
     eapply map_take_ge_get_nnone. subst skeys. eapply map_to_sorted_list_in''; cycle 1.
     match goal with
