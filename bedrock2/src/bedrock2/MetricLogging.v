@@ -134,6 +134,9 @@ Module MetricArith.
   Lemma le_trans : forall n m p, n <= m -> m <= p -> n <= p.
   Proof. solve_MetricLog. Qed.
 
+  Lemma le_refl : forall m, m <= m.
+  Proof. solve_MetricLog. Qed.
+
 End MetricArith.
 
 Lemma applyAddInstructions n a b c d : addMetricInstructions n {| instructions := a; stores := b; loads := c; jumps := d |} = {| instructions := a+n; stores := b; loads := c; jumps := d |}. Proof. auto. Qed.

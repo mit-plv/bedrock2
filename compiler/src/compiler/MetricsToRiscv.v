@@ -23,6 +23,13 @@ Section MetricsToRiscv.
     storesL := storesH mh;
   |}.
 
+  Definition raiseMetrics (ml: metricsL): metricsH := {|
+    instructionsH := instructionsL ml;
+    jumpsH := jumpsL ml;
+    loadsH := loadsL ml;
+    storesH := storesL ml;
+  |}.
+
 End MetricsToRiscv.
 
 Ltac solve_MetricLog :=
