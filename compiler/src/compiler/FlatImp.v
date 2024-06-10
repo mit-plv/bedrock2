@@ -360,7 +360,7 @@ Module exec.
       end.
 
     Definition cost_SOp x y z mc :=
-      match (isReg x, isReg y, (match z with | Var vo => isReg vo | Const _ => false end)) with
+      match (isReg x, isReg y, (match z with | Var vo => isReg vo | Const _ => true end)) with
       | (false, false, false) => (addMetricInstructions 5 (addMetricLoads 7 (addMetricStores 1 mc)))
       | (false, false,  true) | (false,  true, false) => (addMetricInstructions 4 (addMetricLoads 5 (addMetricStores 1 mc)))
       | (false,  true,  true) => (addMetricInstructions 3 (addMetricLoads 3 (addMetricStores 1 mc)))
