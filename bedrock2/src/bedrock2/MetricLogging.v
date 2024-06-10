@@ -118,6 +118,11 @@ Ltac solve_MetricLog :=
   repeat simpl_MetricLog;
   blia.
 
+Ltac solve_MetricLog_piecewise :=
+  repeat unfold_MetricLog;
+  repeat simpl_MetricLog;
+  f_equal; blia.
+
 Module MetricArith.
 
   Open Scope MetricH_scope.
@@ -137,7 +142,21 @@ Module MetricArith.
   Lemma le_refl : forall m, m <= m.
   Proof. solve_MetricLog. Qed.
 
+  Lemma le_sub_mono : forall n m p, n - p <= m - p <-> n <= m.
+  Proof. solve_MetricLog. Qed.
+
+  Lemma add_0_r : forall mc, (mc + EmptyMetricLog)%metricsH = mc.
+  Proof. destruct mc. unfold EmptyMetricLog. solve_MetricLog_piecewise. Qed.
+
+  Lemma sub_0_r : forall mc, (mc - EmptyMetricLog)%metricsH = mc.
+  Proof. destruct mc. unfold EmptyMetricLog. solve_MetricLog_piecewise. Qed.
+
 End MetricArith.
+
+Create HintDb metric_arith.
+#[export] Hint Resolve MetricArith.le_trans MetricArith.le_refl MetricArith.add_0_r MetricArith.sub_0_r : metric_arith.
+#[export] Hint Resolve <- MetricArith.le_sub_mono : metric_arith.
+#[export] Hint Resolve -> MetricArith.le_sub_mono : metric_arith.
 
 Lemma applyAddInstructions n a b c d : addMetricInstructions n {| instructions := a; stores := b; loads := c; jumps := d |} = {| instructions := a+n; stores := b; loads := c; jumps := d |}. Proof. auto. Qed.
 Lemma applyAddStores n a b c d : addMetricStores n {| instructions := a; stores := b; loads := c; jumps := d |} = {| instructions := a; stores := b+n; loads := c; jumps := d |}. Proof. auto. Qed.

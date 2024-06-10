@@ -168,7 +168,7 @@ Section WithWordAndMem.
     Definition FlatWithStrVars: Lang := {|
       Program := string_keyed_map (list string * list string * FlatImp.stmt string);
       Valid := map.forall_values ParamsNoDup;
-      Call := locals_based_call_spec (FlatImp.exec isRegStr);
+      Call := locals_based_call_spec (FlatImp.exec PreSpill isRegStr);
     |}.
 
     (* |                 *)
@@ -182,7 +182,7 @@ Section WithWordAndMem.
     Definition FlatWithZVars: Lang := {|
       Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
       Valid := map.forall_values ParamsNoDup;
-      Call := locals_based_call_spec (FlatImp.exec isRegZ);
+      Call := locals_based_call_spec (FlatImp.exec PreSpill isRegZ);
     |}.
     (* |                 *)
     (* | Spilling        *)
@@ -190,7 +190,7 @@ Section WithWordAndMem.
     Definition FlatWithRegs: Lang := {|
       Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
       Valid := map.forall_values FlatToRiscvDef.valid_FlatImp_fun;
-      Call := locals_based_call_spec (FlatImp.exec isRegZ);
+      Call := locals_based_call_spec_spilled (FlatImp.exec PostSpill isRegZ);
     |}.
     (* |                 *)
     (* | FlatToRiscv     *)
@@ -408,7 +408,7 @@ Section WithWordAndMem.
     Proof.
       unfold FlatWithZVars, FlatWithRegs. split; cbn.
       1: exact spilling_preserves_valid.
-      unfold locals_based_call_spec. intros. fwd.
+      unfold locals_based_call_spec, locals_based_call_spec_spilled. intros. fwd.
       pose proof H0 as GL.
       unfold spill_functions in GL.
       eapply map.try_map_values_fw in GL. 2: eassumption.
@@ -424,8 +424,11 @@ Section WithWordAndMem.
       fwd.
       exists argnames2, retnames2, fbody2, l'.
       split. 1: exact G2. split. 1: eassumption.
-      intros. eapply spill_fun_correct; try eassumption.
-      unfold call_spec. intros * E. rewrite E in *. fwd. eauto.
+      intros.
+      eapply FlatImp.exec.weaken.
+      - eapply spill_fun_correct; try eassumption.
+        unfold call_spec. intros * E. rewrite E in *. fwd. eauto.
+      - simpl. intros. fwd. repeat (eexists; split; eauto with metric_arith).
     Qed.
 
     Lemma riscv_phase_correct: phase_correct FlatWithRegs RiscvLang (riscvPhase compile_ext_call).

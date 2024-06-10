@@ -343,7 +343,7 @@ Section FlattenExpr1.
     simpl (disjoint _ _) in *;
     map_solver locals_ok.
 
-  Local Notation exec := (FlatImp.exec FlatImp.isRegStr). 
+  Local Notation exec := (FlatImp.exec FlatImp.PreSpill FlatImp.isRegStr). 
   
   Lemma seq_with_modVars: forall env t m (l: locals) mc s1 s2 mid post,
     exec env s1 t m l mc mid ->
@@ -906,7 +906,9 @@ Section FlattenExpr1.
           -- eassumption.
           -- do 2 eexists. ssplit; try eassumption.
              ++ simple eapply map.only_differ_putmany; eassumption.
-             ++ solve_MetricLog.
+             ++ (* TODO cost_SCall into semantics *)
+                unfold FlatImp.exec.cost_SCall_internal, FlatImp.exec.cost_SCall_external in *.
+                solve_MetricLog.
 
     - (* interact *)
       unfold flattenInteract in *. simp.

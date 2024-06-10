@@ -1290,11 +1290,11 @@ Section CheckerCorrect.
 
   Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s t m lH mcH post,
       check_funcs e e' = Success tt ->
-      exec isRegStr e s t m lH mcH post ->
+      exec PreSpill isRegStr e s t m lH mcH post ->
       forall lL corresp corresp' s' mcL,
       check corresp s s' = Success corresp' ->
       states_compat lH (precond corresp s s') lL ->
-      exec isRegZ e' s' t m lL mcL (fun t' m' lL' mcL' =>
+      exec PreSpill isRegZ e' s' t m lL mcL (fun t' m' lL' mcL' =>
         exists lH' mcH', states_compat lH' corresp' lL' /\
                     MetricLogging.metricsLeq (MetricLogging.metricsSub mcL' mcL) (MetricLogging.metricsSub mcH' mcH) /\
                     post t' m' lH' mcH').

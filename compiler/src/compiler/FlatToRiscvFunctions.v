@@ -431,8 +431,13 @@ Section Proofs.
   Qed.
 
 
-  Local Notation exec := (exec isRegZ).
+  Local Notation exec := (exec PostSpill isRegZ).
 
+  Definition cost_SCall_L mc :=
+    Platform.MetricLogging.addMetricInstructions 95
+    (Platform.MetricLogging.addMetricJumps 95
+    (Platform.MetricLogging.addMetricLoads 95
+    (Platform.MetricLogging.addMetricStores 95 mc))).
 
   Lemma compile_function_body_correct: forall (e_impl_full : env) m l mc (argvs : list word)
     (st0 : locals) (post outcome : Semantics.trace -> mem -> locals -> MetricLog -> Prop)
@@ -497,10 +502,7 @@ Section Proofs.
               (of_list
                  (list_union Z.eqb (List.firstn binds_count (reg_class.all reg_class.arg)) []))
               (singleton_set RegisterNames.ra)) (getRegs finalL) /\
-          (getMetrics finalL - Platform.MetricLogging.addMetricInstructions 100
-                                 (Platform.MetricLogging.addMetricJumps 100
-                                    (Platform.MetricLogging.addMetricLoads 100
-                                       (Platform.MetricLogging.addMetricStores 100 (getMetrics mach)))) <=
+          (getMetrics finalL - cost_SCall_L (getMetrics mach) <=
              lowerMetrics (finalMetricsH - mc))%metricsL /\
           goodMachine finalTrace finalMH finalRegsH g finalL).
   Proof.
@@ -1111,6 +1113,7 @@ Section Proofs.
                  end
              end.
       cbn in H2p6.
+      (* cost_SCall constraint: cost_SCall_L >= (...93...) i think? *)
       blia.
 
     + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
@@ -1631,6 +1634,8 @@ Section Proofs.
       split; eauto 8 with map_hints.
       split; eauto 8 with map_hints.
       split; eauto 8 with map_hints.
+      (* cost_SCall constraint: cost_SCall_L + (1,1,1,0) <= cost_SCall_internal + cost_SCall_external *)
+      unfold exec.cost_SCall_internal, exec.cost_SCall_external, cost_SCall_L in *.
       MetricsToRiscv.solve_MetricLog.
 
     - idtac "Case compile_stmt_correct/SLoad".

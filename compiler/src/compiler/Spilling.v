@@ -20,7 +20,8 @@ Open Scope Z_scope.
 Section Spilling.
 
   Notation stmt := (stmt Z).
-  Notation exec := (exec isRegZ).
+  Notation execpre := (exec PreSpill isRegZ).
+  Notation execpost := (exec PostSpill isRegZ).
   
   Definition zero := 0.
   Definition ra := 1.
@@ -460,7 +461,7 @@ Section Spilling.
       (related maxvar frame fpval t1 m1 l1 t2 m2 (map.put l2 (iarg_reg i r) v) ->
        post t2 m2 (map.put l2 (iarg_reg i r) v)
          (if isRegZ r then mc2 else (addMetricInstructions 1 (addMetricLoads 2 mc2)))) ->
-      exec e2 (load_iarg_reg i r) t2 m2 l2 mc2 post.
+      execpost e2 (load_iarg_reg i r) t2 m2 l2 mc2 post.
   Proof.
     intros.
     unfold load_iarg_reg, stack_loc, iarg_reg, related in *. fwd.
@@ -559,7 +560,7 @@ Section Spilling.
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < r <= maxvar /\ (r < a0 \/ a7 < r) ->
       map.get l1 r = Some v ->
-      exec e2 (load_iarg_reg i r) t2 m2 l2 mc2 (fun t2' m2' l2' mc2' =>
+      execpost e2 (load_iarg_reg i r) t2 m2 l2 mc2 (fun t2' m2' l2' mc2' =>
         t2' = t2 /\ m2' = m2 /\ l2' = map.put l2 (iarg_reg i r) v /\
         related maxvar frame fpval t1 m1 l1 t2' m2' l2' /\
         (mc2' <= (if isRegZ r then mc2 else (addMetricInstructions 1 (addMetricLoads 2 mc2))))%metricsH).
@@ -611,7 +612,7 @@ Section Spilling.
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < x <= maxvar /\ (x < a0 \/ a7 < x) ->
       (mc2' - mc2 <= mc1' - (if isRegZ x then mc1 else (addMetricInstructions 1 (addMetricLoads 1 (addMetricStores 1 mc1)))))%metricsH ->
-      exec e (save_ires_reg x) t2 m2 (map.put l2 (ires_reg x) v) mc2'
+      execpost e (save_ires_reg x) t2 m2 (map.put l2 (ires_reg x) v) mc2'
         (fun t2' m2' l2' mc2'' => exists t1' m1' l1' mc1'',
                 related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
                 post t1' m1' l1' mc1'' /\
@@ -716,7 +717,7 @@ Section Spilling.
       (forall t2' m2' l2',
           related maxvar frame fpval t1 m1 (map.put l1 x v) t2' m2' l2' ->
           post t2' m2' l2' (if isRegZ x then mc2 else (addMetricInstructions 1 (addMetricLoads 1 (addMetricStores 1 mc2))))) ->
-      exec e (save_ires_reg x) t2 m2 (map.put l2 (ires_reg x) v) mc2 post.
+      execpost e (save_ires_reg x) t2 m2 (map.put l2 (ires_reg x) v) mc2 post.
   Proof.
     intros.
     unfold save_ires_reg, stack_loc, ires_reg, related in *. fwd.
@@ -903,7 +904,7 @@ Section Spilling.
           related maxvar frame fpval t1 m1 l1' t2 m2' l2' ->
           mc2' = (cost_set_vars_to_reg_range args start mc2) ->
           post t2 m2' l2' mc2') ->
-      exec e (set_vars_to_reg_range args start) t2 m2 l2 mc2 post.
+      execpost e (set_vars_to_reg_range args start) t2 m2 l2 mc2 post.
   Proof.
     induction args; intros.
     - simpl. eapply exec.skip. fwd. eauto.
@@ -992,7 +993,7 @@ Section Spilling.
           map.getmany_of_list l2' (List.unfoldn (Z.add 1) (List.length args) start) = Some argvs ->
           mc2' = (cost_set_reg_range_to_vars start args mc2) ->
           post t2 m2 l2' mc2') ->
-      exec e (set_reg_range_to_vars start args) t2 m2 l2 mc2 post.
+      execpost e (set_reg_range_to_vars start args) t2 m2 l2 mc2 post.
   Proof.
     induction args; intros.
     - simpl. eapply exec.skip. eapply H5. 1: eassumption.
@@ -1063,6 +1064,98 @@ Section Spilling.
           -- cbn. destr (isRegZ start); destr (isRegZ a); cbn in *; try blia.
              rewrite H6; trivial.
   Qed.
+
+  (* XXX this section seems silly *)
+
+  Lemma factor_out_set_reg_range_to_vars : forall args start mc,
+    cost_set_reg_range_to_vars start args mc =
+    (mc + cost_set_reg_range_to_vars start args EmptyMetricLog)%metricsH.
+  Proof.
+    induction args; eauto with metric_arith.
+    simpl; intros.
+    rewrite IHargs.
+    destruct (isRegZ a); solve_MetricLog_piecewise.
+  Qed.
+
+  Lemma factor_out_set_vars_to_reg_range : forall args start mc,
+    cost_set_vars_to_reg_range args start mc =
+    (mc + cost_set_vars_to_reg_range args start EmptyMetricLog)%metricsH.
+  Proof.
+    induction args; eauto with metric_arith.
+    simpl; intros.
+    rewrite IHargs.
+    destruct (isRegZ a); solve_MetricLog_piecewise.
+  Qed.
+
+  Lemma factor_out_cost_external : forall phase mc,
+    exec.cost_SCall_external phase mc =
+    (mc + exec.cost_SCall_external phase EmptyMetricLog)%metricsH.
+  Proof. destruct phase; eauto with metric_arith. Qed.
+
+  Lemma factor_out_cost_internal : forall phase mc,
+    exec.cost_SCall_internal phase mc =
+    (mc + exec.cost_SCall_internal phase EmptyMetricLog)%metricsH.
+  Proof. destruct phase; eauto with metric_arith. Qed.
+
+  Lemma factor_out_cost_stackalloc : forall x mc,
+    exec.cost_SStackalloc isRegZ x mc =
+    (mc + exec.cost_SStackalloc isRegZ x EmptyMetricLog)%metricsH.
+  Proof.
+    intros.
+    unfold exec.cost_SStackalloc, EmptyMetricLog.
+    destruct (isRegZ x); solve_MetricLog_piecewise.
+  Qed.
+
+  Lemma cost_set_reg_range_to_vars_bound : forall args start mc len,
+    Z.of_nat (Datatypes.length args) <= len ->
+    (cost_set_reg_range_to_vars start args mc <= addMetricInstructions len (addMetricLoads (2 * len) mc))%metricsH.
+  Proof.
+    induction args.
+    - unfold cost_set_reg_range_to_vars, Z.of_nat. intros. simpl in H. solve_MetricLog.
+    - intros.
+      cbn [cost_set_reg_range_to_vars].
+      specialize (IHargs (start+1) mc (Z.of_nat (Datatypes.length args)) (Z.le_refl _)).
+      subst.
+      simpl in H.
+      destruct (isRegZ a); solve_MetricLog.
+  Qed.
+
+  Lemma cost_set_vars_to_reg_range_bound : forall args start mc len,
+    Z.of_nat (Datatypes.length args) <= len ->
+    (cost_set_vars_to_reg_range args start mc <= addMetricInstructions len (addMetricLoads len (addMetricStores len mc)))%metricsH.
+  Proof.
+    induction args.
+    - unfold cost_set_vars_to_reg_range, Z.of_nat. intros. simpl in H. solve_MetricLog.
+    - intros.
+      cbn [cost_set_vars_to_reg_range].
+      specialize (IHargs (start+1) mc (Z.of_nat (Datatypes.length args)) (Z.le_refl _)).
+      subst.
+      simpl in H.
+      destruct (isRegZ a); solve_MetricLog.
+  Qed.
+
+  (* pulled and modified from Coq.Program.Tactics *)
+  Ltac add_hypothesis p :=
+    match type of p with
+      ?X => match goal with
+        | [ H : X |- _ ] => fail 1
+        | _ => pose proof p
+      end
+    end.
+
+  Ltac add_bounds :=
+    repeat match goal with
+           | _: context[cost_set_reg_range_to_vars ?x ?y ?z] |- _ =>
+               add_hypothesis (cost_set_reg_range_to_vars_bound y x z 8 ltac:(blia))
+           | _: context[cost_set_vars_to_reg_range ?x ?y ?z] |- _ =>
+               add_hypothesis (cost_set_vars_to_reg_range_bound x y z 8 ltac:(blia))
+           | |- context[cost_set_reg_range_to_vars ?x ?y ?z] =>
+               add_hypothesis (cost_set_reg_range_to_vars_bound y x z 8 ltac:(blia))
+           | |- context[cost_set_vars_to_reg_range ?x ?y ?z] =>
+               add_hypothesis (cost_set_vars_to_reg_range_bound x y z 8 ltac:(blia))
+           end.
+
+  (* end silly seeming section *)
 
   Lemma grow_related_mem: forall maxvar frame t1 mSmall1 l1 t2 mSmall2 l2 mStack mCombined2 fpval,
       related maxvar frame fpval t1 mSmall1 l1 t2 mSmall2 l2 ->
@@ -1230,12 +1323,12 @@ Section Spilling.
   Definition spilling_correct_for(e1 e2 : env)(s1 : stmt): Prop :=
       forall (t1 : Semantics.trace) (m1 : mem) (l1 : locals) (mc1 : MetricLog)
              (post : Semantics.trace -> mem -> locals -> MetricLog -> Prop),
-        exec e1 s1 t1 m1 l1 mc1 post ->
+        execpre e1 s1 t1 m1 l1 mc1 post ->
         forall (frame : mem -> Prop) (maxvar : Z),
           valid_vars_src maxvar s1 ->
           forall (t2 : Semantics.trace) (m2 : mem) (l2 : locals) (mc2 : MetricLog) (fpval : word),
             related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
-            exec e2 (spill_stmt s1) t2 m2 l2 mc2
+            execpost e2 (spill_stmt s1) t2 m2 l2 mc2
                  (fun (t2' : Semantics.trace) (m2' : mem) (l2' : locals) (mc2' : MetricLog) =>
                     exists t1' m1' l1' mc1',
                       related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
@@ -1243,12 +1336,20 @@ Section Spilling.
                       (mc2' - mc2 <= mc1' - mc1)%metricsH).
 
   Definition call_spec(e: env) '(argnames, retnames, fbody)
-             (t: Semantics.trace)(m: mem)(argvals: list word)
-             (post: Semantics.trace -> mem -> list word -> Prop): Prop :=
-    forall l mc, map.of_list_zip argnames argvals = Some l ->
-                 exec e fbody t m l mc (fun t' m' l' mc' =>
+             (t: Semantics.trace)(m: mem)(argvals: list word)(mc: MetricLog)
+             (post: Semantics.trace -> mem -> list word -> MetricLog -> Prop): Prop :=
+    forall l, map.of_list_zip argnames argvals = Some l ->
+                 execpre e fbody t m l (exec.cost_SCall_internal PreSpill mc) (fun t' m' l' mc' =>
                    exists retvals, map.getmany_of_list l' retnames = Some retvals /\
-                                   post t' m' retvals).
+                                   post t' m' retvals mc').
+
+  Definition call_spec_spilled(e: env) '(argnames, retnames, fbody)
+             (t: Semantics.trace)(m: mem)(argvals: list word)(mc: MetricLog)
+             (post: Semantics.trace -> mem -> list word -> MetricLog -> Prop): Prop :=
+    forall l, map.of_list_zip argnames argvals = Some l ->
+                 execpost e fbody t m l mc (fun t' m' l' mc' =>
+                   exists retvals, map.getmany_of_list l' retnames = Some retvals /\
+                                   post t' m' retvals mc').
 
   (* In exec.call, there are many maps of locals involved:
 
@@ -1276,14 +1377,16 @@ Section Spilling.
      what happens in the callee. TODO: actually use that lemma in case exec.call.
      Moreover, this lemma will also be used in the pipeline, where phases
      are composed based on the semantics of function calls. *)
+
   Lemma spill_fun_correct_aux: forall e1 e2 argnames1 retnames1 body1 argnames2 retnames2 body2,
       spill_fun (argnames1, retnames1, body1) = Success (argnames2, retnames2, body2) ->
       spilling_correct_for e1 e2 body1 ->
-      forall argvals t m (post: Semantics.trace -> mem -> list word -> Prop),
-        call_spec e1 (argnames1, retnames1, body1) t m argvals post ->
-        call_spec e2 (argnames2, retnames2, body2) t m argvals post.
+      forall argvals t m mcH mcL (post: Semantics.trace -> mem -> list word -> MetricLog -> Prop),
+        call_spec e1 (argnames1, retnames1, body1) t m argvals mcH post ->
+        call_spec_spilled e2 (argnames2, retnames2, body2) t m argvals mcL
+        (fun t' m' l' mcL' => exists mcH', metricsLeq (mcL' - mcL) (mcH' - mcH) /\ post t' m' l' mcH').
   Proof.
-    unfold call_spec, spilling_correct_for. intros * Sp IHexec * Ex lFL3 mc OL2.
+    unfold call_spec, spilling_correct_for. intros * Sp IHexec * Ex lFL3 OL2.
     unfold spill_fun in Sp. fwd.
     apply_in_hyps @map.getmany_of_list_length.
     apply_in_hyps @map.putmany_of_list_zip_sameLength.
@@ -1402,7 +1505,7 @@ Section Spilling.
            | |- exists _, _ => eexists
            | |- _ /\ _ => split
            end.
-    4: eassumption.
+    5: eassumption.
     2: {
       unfold map.split. eauto.
     }
@@ -1418,8 +1521,11 @@ Section Spilling.
       }
       blia. }
     { eassumption. }
-    Unshelve.
-    all: try assumption.
+    {
+      add_bounds.
+      unfold exec.cost_SStackalloc, exec.cost_SCall_internal in *.
+      destruct (isRegZ fp); solve_MetricLog.
+    }
   Qed.
 
 
@@ -1453,12 +1559,12 @@ Section Spilling.
         (l1 : locals)
         (mc1 : MetricLog)
         (post : Semantics.trace -> mem -> locals -> MetricLog -> Prop):
-    exec e1 s1 t1 m1 l1 mc1 post ->
+    execpre e1 s1 t1 m1 l1 mc1 post ->
     forall (frame : mem -> Prop) (maxvar : Z),
       valid_vars_src maxvar s1 ->
       forall (t2 : Semantics.trace) (m2 : mem) (l2 : locals) (mc2 : MetricLog) (fpval : word),
         related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
-        exec e2 (spill_stmt s1) t2 m2 l2 mc2
+        execpost e2 (spill_stmt s1) t2 m2 l2 mc2
              (fun (t2' : Semantics.trace) (m2' : mem) (l2' : locals) (mc2' : MetricLog) =>
                 exists t1' m1' l1' mc1',
                   related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
@@ -1514,7 +1620,10 @@ Section Spilling.
             unfold sep at 1 in C. destruct C as (mKeepL' & mRest & SC & ? & _). subst mKeepL'.
             move H2 at bottom. unfold map.split in H2. fwd.
             eapply map.shrink_disjoint_l; eassumption. }
-          cbn in *. rewrite H5; rewrite CSet. admit. (* currently wrong *)
+          cbn in *. subst.
+          add_bounds.
+          solve_MetricLog.
+          (* cost_SInteract constraint: prespill - postspill >= (...32...) i think? *)
         }
         (* related for set_vars_to_reg_range_correct: *)
         unfold related.
@@ -1730,7 +1839,24 @@ Section Spilling.
       { unfold a0, a7. blia. }
       { eassumption. }
       { intros m22 l22 mc22 R22. do 4 eexists. split. 1: eassumption.
-        split; try eassumption. Fail solve_MetricLog. admit. }
+        split; try eassumption.
+        subst.
+        move Hmetrics at bottom.
+        rewrite factor_out_set_vars_to_reg_range.
+        rewrite factor_out_cost_external.
+        rewrite factor_out_set_reg_range_to_vars.
+        rewrite (factor_out_cost_external PreSpill).
+        rewrite factor_out_set_vars_to_reg_range in Hmetrics.
+        rewrite factor_out_cost_stackalloc in Hmetrics.
+        rewrite factor_out_cost_internal in Hmetrics.
+        rewrite factor_out_set_reg_range_to_vars in Hmetrics.
+        rewrite (factor_out_cost_internal PreSpill) in Hmetrics.
+        add_bounds.
+        unfold exec.cost_SStackalloc, exec.cost_SCall_internal, exec.cost_SCall_external, EmptyMetricLog in *.
+        destruct (isRegZ fp); solve_MetricLog.
+        (* cost_SCall constraint: prespill - postspill >= (...66...) i think? *)
+        (* TODO XXX extremely slow *)
+      }
 
     - (* exec.load *)
       eapply exec.seq_cps.
@@ -1957,14 +2083,15 @@ Section Spilling.
           solve_MetricLog. 
     - (* exec.skip *)
       eapply exec.skip. exists t, m, l, mc. repeat split; eauto; solve_MetricLog. 
-  Admitted.
+  Qed.
 
   Lemma spill_fun_correct: forall e1 e2 argnames1 retnames1 body1 argnames2 retnames2 body2,
       spill_functions e1 = Success e2 ->
       spill_fun (argnames1, retnames1, body1) = Success (argnames2, retnames2, body2) ->
-      forall argvals t m (post: Semantics.trace -> mem -> list word -> Prop),
-        call_spec e1 (argnames1, retnames1, body1) t m argvals post ->
-        call_spec e2 (argnames2, retnames2, body2) t m argvals post.
+      forall argvals t m mcH mcL (post: Semantics.trace -> mem -> list word -> MetricLog -> Prop),
+        call_spec e1 (argnames1, retnames1, body1) t m argvals mcH post ->
+        call_spec_spilled e2 (argnames2, retnames2, body2) t m argvals mcL
+        (fun t' m' l' mcL' => exists mcH', metricsLeq (mcL' - mcL) (mcH' - mcH) /\ post t' m' l' mcH').
   Proof.
     intros. eapply spill_fun_correct_aux; try eassumption.
     unfold spilling_correct_for.

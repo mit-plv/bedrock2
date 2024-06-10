@@ -26,6 +26,10 @@ Inductive bbinop: Type :=
 | BLtu
 | BGeu.
 
+Inductive compphase: Type :=
+| PreSpill
+| PostSpill.
+
 Section Syntax.
   Context {varname: Type}.
 
@@ -282,6 +286,7 @@ Module exec.
             {env_ok: map.ok env}
             {ext_spec_ok: ext_spec.ok ext_spec}.
 
+    Variable (phase: compphase).
     Variable (isReg: varname -> bool).
 
     Variable (e: env).
@@ -298,6 +303,26 @@ Module exec.
       end.
 
     (* Helper functions for computing costs of instructions *)
+    Definition cost_SInteract mc :=
+      match phase with
+      | PreSpill => (addMetricInstructions 100 (addMetricJumps 100 (addMetricStores 100 (addMetricLoads 100 mc))))
+      | PostSpill => (addMetricInstructions 50 (addMetricJumps 50 (addMetricStores 50 (addMetricLoads 50 mc))))
+      end.
+
+    Definition cost_SCall_internal mc :=
+      match phase with
+      | PreSpill => addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc)))
+      | PostSpill => addMetricInstructions 50 (addMetricJumps 50 (addMetricLoads 50 (addMetricStores 50 mc)))
+      end.
+
+    Definition cost_SCall_external mc :=
+      match phase with
+      | PreSpill => addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc)))
+      | PostSpill => addMetricInstructions 50 (addMetricJumps 50 (addMetricLoads 50 (addMetricStores 50 mc)))
+      end.
+
+    (* TODO think about a non-fixed bound on the cost of function preamble and postamble *)
+
     Definition cost_SLoad x a mc :=
       match (isReg x, isReg a) with
       | (false, false) => (addMetricInstructions 3 (addMetricLoads 5 (addMetricStores 1 mc)))
@@ -412,24 +437,20 @@ Module exec.
             exists l', map.putmany_of_list_zip resvars resvals l = Some l' /\
             forall m', map.split m' mKeep mReceive ->
             post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l'
-                 (addMetricInstructions 100
-                 (addMetricJumps 100
-                 (addMetricStores 100
-                 (addMetricLoads 100 mc))))) ->
+                 (cost_SInteract mc)) ->
         exec (SInteract resvars action argvars) t m l mc post
     | call: forall t m l mc binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list_zip params argvs map.empty = Some st0 ->
-        exec fbody t m st0 (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc)))) outcome ->
+        exec fbody t m st0 (cost_SCall_internal mc) outcome ->
         (forall t' m' mc' st1,
             outcome t' m' st1 mc' ->
             exists retvs l',
               map.getmany_of_list st1 rets = Some retvs /\
               map.putmany_of_list_zip binds retvs l = Some l' /\
-              post t' m' l' (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc'))))) ->
+              post t' m' l' (cost_SCall_external mc')) ->
         exec (SCall binds fname args) t m l mc post
-        (* TODO think about a non-fixed bound on the cost of function preamble and postamble *)
     | load: forall t m l mc sz x a o v addr post,
         map.get l a = Some addr ->
         load sz m (word.add addr (word.of_Z o)) = Some v ->
@@ -531,12 +552,12 @@ Module exec.
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list_zip params argvs map.empty = Some st ->
-        exec fbody t m st (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc))))
+        exec fbody t m st (cost_SCall_internal mc)
              (fun t' m' st' mc' =>
                 exists retvs l',
                   map.getmany_of_list st' rets = Some retvs /\
                     map.putmany_of_list_zip binds retvs l = Some l' /\
-                    post t' m' l' (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc'))))) ->
+                    post t' m' l' (cost_SCall_external mc')) ->
       exec (SCall binds fname args) t m l mc post.
     Proof.
       intros. eapply call; try eassumption.
@@ -702,16 +723,17 @@ Section FlatImp2.
           {env_ok: map.ok env}
           {ext_spec_ok: ext_spec.ok ext_spec}.
 
+  Variable (phase: compphase).
   Variable (isReg: varname -> bool).
   
   Definition SimState: Type := trace * mem * locals * MetricLog.
   Definition SimExec(e: env)(c: stmt varname): SimState -> (SimState -> Prop) -> Prop :=
     fun '(t, m, l, mc) post =>
-      exec isReg e c t m l mc (fun t' m' l' mc' => post (t', m', l', mc')).
+      exec phase isReg e c t m l mc (fun t' m' l' mc' => post (t', m', l', mc')).
 
   Lemma modVarsSound: forall e s initialT (initialSt: locals) initialM (initialMc: MetricLog) post,
-      exec isReg e s initialT initialM initialSt initialMc post ->
-      exec isReg e s initialT initialM initialSt initialMc
+      exec phase isReg e s initialT initialM initialSt initialMc post ->
+      exec phase isReg e s initialT initialM initialSt initialMc
            (fun finalT finalM finalSt _ => map.only_differ initialSt (modVars s) finalSt).
   Proof.
     induction 1;
@@ -775,6 +797,3 @@ Definition isRegZ (var : Z) : bool :=
 
 Definition isRegStr (var : String.string) : bool :=
   String.prefix "reg_" var.
-
-
-
