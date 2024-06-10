@@ -36,6 +36,10 @@ Definition hole{key value}{mem: map.map key value}(n: Z)(addr: key): mem -> Prop
 #[export] Hint Extern 1 (PredicateSize (hole ?n)) => exact n : typeclass_instances.
 #[export] Hint Opaque hole : typeclass_instances.
 
+Definition emp_at_addr{key value}{mem: map.map key value}
+  (P: Prop)(ignored_addr: key): mem -> Prop := emp P.
+#[export] Hint Extern 1 (PredicateSize (emp_at_addr _)) => exact 0 : typeclass_instances.
+
 (* pair of a predicate and its size, used as tree leaves *)
 Inductive sized_predicate{width: Z}{BW: Bitwidth width}{word: word.word width}
   {mem: map.map word Byte.byte}: Type :=
@@ -89,6 +93,12 @@ Section WithParams.
 
   Definition sepapps(l: list sized_predicate): word -> mem -> Prop :=
     proj_predicate (List.fold_right sepapp_sized_predicates sized_emp l).
+
+  Lemma purify_sepapp: forall a p1 P1 {sz: PredicateSize p1} p2 P2,
+      purify (p1 a) P1 ->
+      purify (p2 (word.add a (word.of_Z sz))) P2 ->
+      purify (sepapp p1 p2 a) (P1 /\ P2).
+  Proof. unfold sepapp. intros. eapply purify_sep; assumption. Qed.
 
   Lemma purify_sepapps_nil: forall a, purify (sepapps nil a) True.
   Proof. unfold purify. intros. constructor. Qed.
@@ -219,6 +229,7 @@ Section WithParams.
 
 End WithParams.
 
+#[export] Hint Resolve purify_sepapp: purify.
 #[export] Hint Resolve purify_sepapps_nil: purify.
 #[export] Hint Resolve purify_sepapps_cons: purify.
 

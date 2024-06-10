@@ -115,6 +115,13 @@ Proof.
   intros. unfold nbits_to_nbytes. Z.to_euclidean_division_equations. lia.
 Qed.
 
+Ltac nbits_to_exact_nbytes nbits :=
+  let sz := lazymatch isZcst nbits with
+            | true => eval cbv in (nbits_to_nbytes nbits)
+            | false => constr:(nbits_to_nbytes nbits)
+            end in
+  exact sz.
+
 
 Definition uint{width}{BW: Bitwidth width}{word: word width}{mem: map.map word Byte.byte}
   (nbits: Z)(v: Z)(addr: word): mem -> Prop :=
@@ -122,11 +129,7 @@ Definition uint{width}{BW: Bitwidth width}{word: word width}{mem: map.map word B
       (littleendian (Z.to_nat (nbits_to_nbytes nbits)) addr v).
 
 #[export] Hint Extern 1 (PredicateSize (uint ?nbits)) =>
-  let sz := lazymatch isZcst nbits with
-            | true => eval cbv in (nbits_to_nbytes nbits)
-            | false => constr:(nbits_to_nbytes nbits)
-            end in
-  exact sz
+  nbits_to_exact_nbytes nbits
 : typeclass_instances.
 
 Lemma purify_uint{width}{BW: Bitwidth width}{word: word width}{word_ok: word.ok word}
@@ -142,11 +145,7 @@ Definition uintptr{width}{BW: Bitwidth width}{word: word width}{mem: map.map wor
                   (v a: word): mem -> Prop := scalar a v.
 
 #[export] Hint Extern 1 (PredicateSize (@uintptr ?width ?BW ?word ?mem)) =>
-  let sz := lazymatch isZcst width with
-            | true => eval cbv in (nbits_to_nbytes width)
-            | false => constr:(nbits_to_nbytes width)
-            end in
-  exact sz
+  nbits_to_exact_nbytes width
 : typeclass_instances.
 
 Lemma purify_uintptr{width}{BW: Bitwidth width}{word: word width}
@@ -158,8 +157,22 @@ Proof. unfold purify. intros. constructor. Qed.
 #[export] Hint Extern 1 (cannot_purify (uintptr ? _))
 => constructor : suppressed_warnings.
 
+#[export] Hint Extern 1 (cannot_purify (uint _ ? _))
+=> constructor : suppressed_warnings.
+
 #[export] Hint Extern 1 (cannot_purify (if _ then _ else _))
 => constructor : suppressed_warnings.
+
+
+Definition pointer_to{width}{BW: Bitwidth width}
+  {word: word width}{mem: map.map word Byte.byte}
+  (P: word -> mem -> Prop)(pointerAddr: word): mem -> Prop :=
+  ex1 (fun targetAddr => sep (uintptr targetAddr pointerAddr) (P targetAddr)).
+
+#[export] Hint Extern 1 (PredicateSize (@pointer_to ?width ?BW ?word ?mem ?pred)) =>
+  nbits_to_exact_nbytes width
+: typeclass_instances.
+
 
 Lemma anyval_is_emp{word: Type}{mem: map.map word Coq.Init.Byte.byte}[T: Type]
   (p: T -> word -> mem -> Prop)(q: T -> Prop)(a: word):
@@ -356,6 +369,29 @@ Section WithMem.
     - eapply (array_map ptsto Byte.byte.of_Z addr bs (word.of_Z 1)) in H.
       eapply array_1_to_anybytes in H. rewrite List.map_length in H. exact H.
     - clear m bs addr H. unfold impl1. eapply uint8_to_ptsto.
+  Qed.
+
+  Lemma uint_to_uintptr: forall a z,
+      impl1 (uint width z a) (uintptr (word.of_Z z) a).
+  Proof.
+    unfold uint, uintptr. intros.
+    eapply impl1_l_sep_emp. intros.
+    unfold scalar, truncated_word, truncated_scalar.
+    rewrite word.unsigned_of_Z_nowrap by assumption.
+    unfold nbits_to_nbytes, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite Z.max_r by apply word.width_nonneg.
+    reflexivity.
+  Qed.
+
+  Lemma uintptr_to_uint: forall a w,
+      impl1 (uintptr w a) (uint width (word.unsigned w) a) .
+  Proof.
+    unfold uint, uintptr. intros.
+    eapply impl1_r_sep_emp. split. 1: eapply word.unsigned_range.
+    unfold scalar, truncated_word, truncated_scalar.
+    unfold nbits_to_nbytes, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite Z.max_r by apply word.width_nonneg.
+    reflexivity.
   Qed.
 End WithMem.
 

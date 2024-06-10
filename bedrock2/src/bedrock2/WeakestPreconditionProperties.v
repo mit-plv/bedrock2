@@ -384,7 +384,7 @@ Section WeakestPrecondition.
     (H : WeakestPrecondition.expr m l e P)
     : exists v, WeakestPrecondition.dexpr m l e v /\ P v.
   Proof using word_ok.
-    revert dependent P; induction e; cbn.
+    generalize dependent P; induction e; cbn.
     { cbv [WeakestPrecondition.literal dlet.dlet]; cbn; eauto. }
     { cbv [WeakestPrecondition.get]; intros ?(?&?&?); eauto. }
     { intros v H; case (IHe _ H) as (?&?&?&?&?); clear IHe H.

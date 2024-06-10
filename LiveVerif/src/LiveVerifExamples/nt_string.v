@@ -1,34 +1,7 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
+Require Import coqutil.Byte.
 Require Import LiveVerifExamples.onesize_malloc.
-
-(* TODO move *)
-
-Module List.
-  (* alternative: Coq.Structures.OrdersEx.String_as_OT.compare, but that's on strings,
-     not on list of byte *)
-  Section Lexicographic.
-    Context {T: Type} (compare_elem: T -> T -> comparison).
-
-    Fixpoint compare(a b: list T): comparison :=
-      match a, b with
-      | nil, nil => Eq
-      | nil, _ => Lt
-      | cons _ _, nil => Gt
-      | cons a_head a_tail, cons b_head b_tail =>
-          match compare_elem a_head b_head with
-          | Lt => Lt
-          | Gt => Gt
-          | Eq => compare a_tail b_tail
-          end
-      end.
-  End Lexicographic.
-End List.
-
-Module byte.
-  Definition compare(x y: byte): comparison :=
-    Z.compare (byte.unsigned x) (byte.unsigned y).
-End byte.
 
 Load LiveVerif.
 

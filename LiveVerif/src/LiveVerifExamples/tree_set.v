@@ -78,10 +78,6 @@ Local Hint Extern 1 (PredicateSize (bst' ?sk)) =>
 
 #[local] Hint Unfold bst : heapletwise_always_unfold.
 
-(* TODO move *)
-#[local] Hint Extern 1 (cannot_purify (uint _ ? _))
-      => constructor : suppressed_warnings.
-
 Lemma invert_bst'_null{sk s p m}:
     p = /[0] ->
     m |= bst' sk s p ->

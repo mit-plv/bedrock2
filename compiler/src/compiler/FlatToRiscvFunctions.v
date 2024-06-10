@@ -1775,7 +1775,7 @@ Section Proofs.
         { match goal with
           | |- ?G => let t := type of Ab in replace G with t; [exact Ab|f_equal]
           end.
-          rewrite @length_flat_map with (n := Z.to_nat bytes_per_word).
+          rewrite @coqutil.Datatypes.List.length_flat_map with (n := Z.to_nat bytes_per_word).
           - simpl_addrs. rewrite !Z2Nat.id by blia. rewrite <- BPW. rewrite <- Z_div_exact_2; blia.
           - clear. intros. eapply LittleEndianList.length_le_split.
         }

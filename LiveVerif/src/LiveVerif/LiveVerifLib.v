@@ -36,6 +36,13 @@ Require Export coqutil.Datatypes.RecordSetters.
 Require Export LiveVerif.LiveRules.
 Require Export LiveVerif.PackageContext.
 Require Export LiveVerif.LiveProgramLogic.
+Require Export LiveVerif.LiveFwd.
+
 Require Export bedrock2.tweak_tacs. Ltac tweak_sidecond_hook ::= try solve [steps].
+
 Require Export LiveVerif.LiveParsing.
+(* extension of LiveParsing that depends on the whole SepLib: *)
+Notation "'sizeof(' p ')'" := (expr.literal (invisible_cast (PredicateSize p) _))
+  (in custom live_expr at level 1, p constr at level 0, only parsing).
+
 Require Coq.derive.Derive.

@@ -69,14 +69,26 @@ Lemma list_app_eq_l: forall [A: Type] (xs1 xs2 ys: list A),
     safe_implication (xs1 = xs2) (xs1 ++ ys = xs2 ++ ys).
 Proof. unfold safe_implication. intros. subst. reflexivity. Qed.
 
-Require Import Coq.ZArith.ZArith.
+Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Interface coqutil.Map.Interface.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.SepLib.
 
+Lemma Z_compare_eq_impl(n m: Z): safe_implication (n = m) ((n ?= m) = Eq).
+Proof. unfold safe_implication. apply Z.compare_eq_iff. Qed.
+
+Lemma Z_compare_lt_impl(n m: Z): safe_implication (n < m) ((n ?= m) = Lt).
+Proof. unfold safe_implication. apply Z.compare_lt_iff. Qed.
+
+Lemma Z_compare_gt_impl(n m: Z): safe_implication (m < n) ((n ?= m) = Gt).
+Proof. unfold safe_implication. apply Z.compare_gt_iff. Qed.
+
+#[export] Hint Resolve Z_compare_eq_impl Z_compare_lt_impl Z_compare_gt_impl
+  : safe_implication.
+
 Section WithMem.
-  Context {width: Z}{BW: Bitwidth width}{word: word.word width}
-    {mem: map.map word Byte.byte}.
+  Context {width: Z}{BW: Bitwidth width}{word: word.word width}{word_ok: word.ok word}
+    {mem: map.map word Byte.byte}{mem_ok: map.ok mem}.
 
   (* Note: Not safe if elem doesn't fully determine its value *)
   Lemma array_impl_from_values_eq[E: Type](elem: E -> word -> mem -> Prop)
@@ -84,12 +96,21 @@ Section WithMem.
     safe_implication (vs1 = vs2) (impl1 (array elem n vs1 p) (array elem n vs2 p)).
   Proof. unfold safe_implication. intros. subst. reflexivity. Qed.
 
+  Lemma uintptr_from_uint: forall a w z,
+      safe_implication (w = word.of_Z z) (impl1 (uint width z a) (uintptr w a)).
+  Proof. unfold safe_implication. intros. subst. apply uint_to_uintptr. Qed.
+
+  Lemma uint_from_uintptr: forall a w z,
+      safe_implication (z = word.unsigned w) (impl1 (uintptr w a) (uint width z a)).
+  Proof. unfold safe_implication. intros. subst. apply uintptr_to_uint. Qed.
 End WithMem.
 
 #[export] Hint Resolve
   list_app_eq_l
   list_app_eq_r
   array_impl_from_values_eq
+  uintptr_from_uint
+  uint_from_uintptr
   : safe_implication.
 
 Global Hint Transparent PredicateSize : safe_implication.
@@ -129,8 +150,7 @@ Module Tests.
     Goal forall (P Q: Prop), Q -> (P -> Q) -> Q.
     Proof. intros. Fail t. assumption. Succeed Qed. Abort.
 
-    Goal forall (a b: nat),
-        a + b = b + a.
+    Goal forall (a b: nat), (a + b = b + a)%nat.
     Proof. intros. assert_fails (idtac; t). apply Nat.add_comm. Succeed Qed. Abort.
 
     Inductive foo(a: nat): nat -> Set :=

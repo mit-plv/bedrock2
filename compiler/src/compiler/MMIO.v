@@ -324,7 +324,7 @@ Section MMIO1.
         cbn [array bytes_per] in *.
         simpl_MetricRiscvMachine_get_set.
         wcancel_assumption. }
-      change (@Bind _ _) with (@free.bind MetricMinimalMMIO.action result) in *.
+      change (@Bind _ _) with (@free.bind MetricMaterializeRiscvProgram.action result) in *.
       unfold free.bind at 1.
 
       rewrite <-LittleEndian.split_eq, LittleEndian.combine_split.
@@ -466,7 +466,7 @@ Section MMIO1.
         simpl_MetricRiscvMachine_get_set.
         wcancel_assumption. }
 
-      change (@Bind _ _) with (@free.bind MetricMinimalMMIO.action result) in *.
+      change (@Bind _ _) with (@free.bind MetricMaterializeRiscvProgram.action result) in *.
       unfold free.bind at 1.
 
       rewrite <-LittleEndian.split_eq, LittleEndian.combine_split.

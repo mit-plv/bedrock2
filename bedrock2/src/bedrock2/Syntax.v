@@ -3,17 +3,17 @@ Require Coq.Strings.String.
 Require Import Coq.Numbers.BinNums.
 
 Module Import bopname.
-  Inductive bopname := add | sub | mul | mulhuu | divu | remu | and | or | xor | sru | slu | srs | lts | ltu | eq.
+  Inductive bopname: Set := add | sub | mul | mulhuu | divu | remu | and | or | xor | sru | slu | srs | lts | ltu | eq.
 End bopname.
 Notation bopname := bopname.bopname.
 
 Module access_size.
-  Variant access_size := one | two | four | word.
+  Variant access_size: Set := one | two | four | word.
   Scheme Equality for access_size.
 End access_size. Notation access_size := access_size.access_size.
 
 Module expr.
-  Inductive expr  : Type :=
+  Inductive expr: Set :=
   | literal (v: Z)
   | var (x: String.string)
   | load (_ : access_size) (addr:expr)
@@ -39,7 +39,7 @@ Module expr.
 End expr. Notation expr := expr.expr.
 
 Module cmd.
-  Inductive cmd :=
+  Inductive cmd: Set :=
   | skip
   | set (lhs : String.string) (rhs : expr)
   | unset (lhs : String.string)
@@ -51,6 +51,10 @@ Module cmd.
   | while (test : expr) (body : cmd)
   | call (binds : list String.string) (function : String.string) (args: list expr)
   | interact (binds : list String.string) (action : String.string) (args: list expr).
+
+  (* TODO avoid duplication *)
+  Definition dowhile(body: cmd)(cond: expr): cmd :=
+    cmd.seq body (cmd.while cond body).
 End cmd. Notation cmd := cmd.cmd.
 
 Definition func : Type := (list String.string * list String.string * cmd).

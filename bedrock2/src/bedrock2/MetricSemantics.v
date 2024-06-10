@@ -264,9 +264,11 @@ Module exec. Section WithParams.
                  replace v2 with v1 in * by congruence; clear H2
                end.
         eauto 10.
-    - pose proof ext_spec.unique_mGive_footprint as P.
-      specialize P with (1 := H1) (2 := H14).
-      destruct (map.split_diff P H H7). subst mKeep0 mGive0. clear H7.
+    - pose proof ext_spec.mGive_unique as P.
+      specialize P with (1 := H) (2 := H7) (3 := H1) (4 := H14).
+      subst mGive0.
+      destruct (map.split_diff (map.same_domain_refl mGive) H H7) as (? & _).
+      subst mKeep0.
       eapply interact. 1,2: eassumption.
       + eapply ext_spec.intersect; [ exact H1 | exact H14 ].
       + simpl. intros *. intros [? ?].

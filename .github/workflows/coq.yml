@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         env:
-        - { COQ_VERSION: "8.17.0", COQ_PACKAGE: "coq-8.17.0 libcoq-8.17.0-ocaml-dev", PPA: "ppa:jgross-h/many-coq-versions-ocaml-4-11" }
+        - { COQ_VERSION: "8.18.0", COQ_PACKAGE: "coq-8.18.0 libcoq-8.18.0-ocaml-dev", PPA: "ppa:jgross-h/many-coq-versions-ocaml-4-11" }
         - { COQ_VERSION: "master", COQ_PACKAGE: "coq libcoq-core-ocaml-dev"         , PPA: "ppa:jgross-h/coq-master-daily" }
       fail-fast: false
 
@@ -62,8 +62,18 @@ jobs:
         echo "::group::echo | coqtop"
         echo | coqtop
         echo "::endgroup::"
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: make
       run: TIMED=1 make
+
+  coq-check-all:
+    runs-on: ubuntu-latest
+    needs: build
+    if: always()
+    steps:
+    - run: echo 'build passed'
+      if: ${{ needs.build.result == 'success' }}
+    - run: echo 'build failed' && false
+      if: ${{ needs.build.result != 'success' }}

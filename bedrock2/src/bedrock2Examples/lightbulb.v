@@ -539,7 +539,7 @@ Section WithParameters.
           by (rewrite word.unsigned_of_Z; exact eq_refl).
         eexists _, _; repeat split.
         { cbn [seps] in *. SeparationLogic.ecancel_assumption. }
-        { revert dependent x2. revert dependent x6. intros.
+        { generalize dependent x2. generalize dependent x6. intros.
           destruct H5; repeat straightline; try contradiction.
           destruct H9; repeat straightline; try contradiction.
           eexists _, _; split.

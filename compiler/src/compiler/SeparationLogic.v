@@ -212,7 +212,7 @@ Section ptstos.
     specialize (H0 ltac:(blia)); clear H1.
     ring_simplify in H0.
     assert (0 <= q) by Lia.nia.
-    revert dependent bytes.
+    generalize dependent bytes.
     pattern q.
     refine (natlike_ind _ _ _ q H); clear -BW word_ok mem_ok; intros.
     { case bytes in *; cbn in *; ring_simplify in H0; try discriminate.
@@ -503,7 +503,7 @@ Section MoreSepLog.
     intros. eapply iff1ToEq.
     unfold iff1, sep, map.split. split; intros.
     - destruct H as (? & ? & (? & ?) & ? & ?). subst. rewrite map.putmany_empty_l. assumption.
-    - eauto 10 using map.putmany_empty_l, map.disjoint_empty_l.
+    - pose map.putmany_empty_l; pose map.disjoint_empty_l; eauto 10.
   Qed.
 
   Lemma sep_eq_empty_r: forall (R: map -> Prop), (R * eq map.empty)%sep = R.
@@ -511,7 +511,7 @@ Section MoreSepLog.
     intros. eapply iff1ToEq.
     unfold iff1, sep, map.split. split; intros.
     - destruct H as (? & ? & (? & ?) & ? & ?). subst. rewrite map.putmany_empty_r. assumption.
-    - eauto 10 using map.putmany_empty_r, map.disjoint_empty_r.
+    - pose map.putmany_empty_r; pose map.disjoint_empty_r; eauto 10.
   Qed.
 
   Lemma get_in_sep: forall (lSmaller l: map) k v R,

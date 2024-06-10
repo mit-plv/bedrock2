@@ -1,5 +1,6 @@
 From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
 Require Import coqutil.Map.Interface.
+Require coqutil.Datatypes.ListSet.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
@@ -34,7 +35,8 @@ Section bindcmd.
     end.
 End bindcmd.
 
-(* TODO: use a deduplicating set instead of a list *)
+(* TODO replace callees by callees' to avoid duplicates *)
+
 Fixpoint callees (c : Syntax.cmd) : list String.string :=
   match c with
   | cmd.cond _ c1 c2 | cmd.seq c1 c2 => callees c1 ++ callees c2
@@ -42,6 +44,19 @@ Fixpoint callees (c : Syntax.cmd) : list String.string :=
   | cmd.call _ f _ => cons f nil
   | _ => nil
   end.
+
+Fixpoint callees' (c : Syntax.cmd) : list String.string :=
+  match c with
+  | cmd.cond _ c1 c2 | cmd.seq c1 c2 => ListSet.list_union String.eqb (callees c1) (callees c2)
+  | cmd.while _ c | cmd.stackalloc _ _ c => callees' c
+  | cmd.call _ f _ => cons f nil
+  | _ => nil
+  end.
+
+(* returns a list of (caller, list_of_direct_callees) tuples *)
+Definition callgraph: list (String.string * Syntax.func) ->
+                      list (String.string * list String.string) :=
+  List.map (fun '(fname, (_, _, fbody)) => (fname, callees' fbody)).
 
 Ltac assuming_correctness_of_in callees functions P :=
   lazymatch callees with

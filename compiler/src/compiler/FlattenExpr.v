@@ -682,7 +682,7 @@ Section FlattenExpr1.
     + left. clear P.
       intro. apply Ino.
       epose proof (ExprImp.allVars_cmd_allVars_cmd_as_list _ _) as P. destruct P as [P _].
-      eauto using ListSet.In_list_union_l, ListSet.In_list_union_r, nth_error_In.
+      pose ListSet.In_list_union_l; pose ListSet.In_list_union_r; pose nth_error_In; eauto.
   Qed.
 
   Lemma flattenStmt_correct_aux: forall eH eL,
@@ -893,7 +893,7 @@ Section FlattenExpr1.
              unfold map.of_list_zip in G.
              eapply map.putmany_of_list_zip_find_index in G. 2: eassumption.
              rewrite map.get_empty in G. destruct G as [G | G]; [|discriminate G]. simp.
-             eauto using ListSet.In_list_union_l, ListSet.In_list_union_r, nth_error_In.
+             pose ListSet.In_list_union_l; pose ListSet.In_list_union_r; pose nth_error_In; eauto.
           -- eapply freshNameGenState_disjoint_fbody.
         * cbv beta. intros. simp.
           edestruct H4 as [resvals ?]. 1: eassumption. simp.

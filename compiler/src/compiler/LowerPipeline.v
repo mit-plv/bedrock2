@@ -708,7 +708,7 @@ Section LowerPipeline.
         rewrite !(iff1ToEq (sep_emp_2 _ _ _)).
         rewrite !(iff1ToEq (sep_assoc _ _ _)).
         eapply (sep_emp_l _ _); split.
-        { rewrite (List.length_flat_map _ (Z.to_nat bytes_per_word)).
+        { rewrite (coqutil.Datatypes.List.length_flat_map _ (Z.to_nat bytes_per_word)).
           { rewrite Nat2Z.inj_mul, Z2Nat.id by blia.
             replace (Z.of_nat (Datatypes.length stack_trash))
               with (word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word)

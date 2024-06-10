@@ -335,7 +335,7 @@ Section WithWidth.
     Lemma testbit_wordToN_bitwp_inbounds f n (a b : word n) i (H:i < N.of_nat n) :
       N.testbit (wordToN (bitwp f a b)) i = f (N.testbit (wordToN a) i) (N.testbit (wordToN b) i).
     Proof.
-      revert dependent i; revert b; revert a; induction n; intros.
+      generalize dependent i; revert b; revert a; induction n; intros.
       { blia. }
       case (shatter_word_S a) as (?&?&?) in *; subst a.
       case (shatter_word_S b) as (?&?&?) in *; subst b.

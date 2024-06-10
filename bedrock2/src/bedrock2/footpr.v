@@ -119,6 +119,13 @@ Section Footprint.
     intros. apply iff1ToEq in H2. subst P. assumption.
   Qed.
 
+  Lemma rearrange_footpr_subset_impl1: forall (P Q : map -> Prop) (A : key -> Prop),
+      subset (footpr P) A -> impl1 P Q -> subset (footpr Q) A.
+  Proof.
+    unfold subset, impl1, footpr, footprint_underapprox, elem_of. intros.
+    eapply H. intros. specialize (H0 _ H2). exact (H1 _ H0).
+  Qed.
+
   Lemma shrink_footpr_subset(P Q R: map -> Prop) (A: key -> Prop)
       (H1: subset (footpr Q) A)
       (H2: iff1 Q (sep P R)):

@@ -1,7 +1,7 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
 
-Class malloc_constants := {
+Class malloc_constants: Set := {
   malloc_state_ptr: Z;
   malloc_block_size: Z;
 }.

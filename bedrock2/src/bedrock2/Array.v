@@ -148,7 +148,7 @@ Section DifferentElemPredicates.
       (forall a e, impl1 (P a e) (Q a e)) ->
       impl1 (array P p a l) (array Q p a l).
   Proof.
-    intros. revert dependent a; revert p.
+    intros. generalize dependent a; revert p.
     induction l; cbn [array]; eauto; intros; [reflexivity|].
     eapply Proper_sep_impl1; eauto.
   Qed.

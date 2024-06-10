@@ -1,5 +1,6 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
+Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
@@ -12,8 +13,30 @@ Section WithMem.
   Context {width} {BW: Bitwidth width} {word: word width} {mem: map.map word Byte.byte}
           {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
+  Definition unchecked_load_uint8s(m: mem)(addr: word)(n: Z): list Z :=
+    List.map Byte.byte.unsigned
+      (Option.force (Memory.WithoutTuples.load_bytes m addr (Z.to_nat n))).
+
+  Lemma array_to_load_bytes: forall n bs addr m,
+      array (uint 8) n bs addr m ->
+      array (uint 8) n (unchecked_load_uint8s m addr n) addr m.
+  Proof.
+    unfold array. intros. eapply sep_emp_l in H. destruct H as (L & H).
+    eapply sep_emp_l.
+    unfold unchecked_load_uint8s.
+    rewrite List.map_length.
+  Abort.
+
   Definition contiguous(P: word -> mem -> Prop)(n: Z): Prop :=
     forall addr, impl1 (P addr) (array (uint 8) n ? addr).
+
+  (* Informative version of contiguous that can be used to instantiate evars that
+     were created before we know that we need to invoke contiguous.
+     BUT this does not work because it the expression (unchecked_load_uint8s m addr n)
+     that we'd like to use to instantiate the evar depends on m, which won't be in the
+     evar scope. *)
+  Definition contiguous_info_bad(P: word -> mem -> Prop)(n: Z): Prop :=
+    forall addr m, P addr m -> array (uint 8) n (unchecked_load_uint8s m addr n) addr m.
 
   (* sometimes, we don't need the actual proof, but only want to know whether it's
      contiguous to determine whether a proof step is safe, so we can save the proof effort *)
@@ -27,20 +50,59 @@ Section WithMem.
       contiguous P n -> P a m -> (array (uint 8) n ? a) m.
   Proof. unfold contiguous, impl1. intros. eauto. Qed.
 
-  (* the direction we care about is anybytes -> P, but it is very likely to
-     also imply the converse direction, and probably also easy to prove,
-     so we make it an iff1 *)
-  Definition fillable{V: Type}(P: V -> word -> mem -> Prop)(n: Z): Prop :=
-    forall addr, iff1 (array (uint 8) n ? addr) (ex1 (fun v => P v addr)).
+  (* Informative version of contiguous that can be used to instantiate evars that
+     were created before we know that we need to invoke contiguous. *)
+  Definition contiguous_info[V: Type](P: V -> word -> mem -> Prop)(n: Z): Type :=
+    { f: V -> list Z | forall v addr m, P v addr m -> array (uint 8) n (f v) addr m }.
 
-  Lemma fillable_to_contiguous{V: Type} P (v: V) n: fillable P n -> contiguous (P v) n.
+  Lemma array_uint8_contiguous_info: forall n, contiguous_info (array (uint 8) n) n.
+  Proof. unfold contiguous_info. intros. exists id. intros *. exact id. Qed.
+
+  (* predicate P can be filled with any byte list of length n *)
+  Definition fillable[V: Type](P: V -> word -> mem -> Prop)(n: Z): Type :=
+    { f: list Z -> V | forall addr bs m, array (uint 8) n bs addr m -> P (f bs) addr m }.
+
+  (* Allows us to obtain a V without introducing a new variable that would not be
+     in the scope of a previously created evar *)
+  Lemma unfold_fillable[V: Type](P: V -> word -> mem -> Prop)(n: Z)
+    (h: fillable P n):
+    forall addr bs m, array (uint 8) n bs addr m -> P (proj1_sig h bs) addr m.
+  Proof. unfold fillable. intros. destruct h as (f & h). simpl. eapply h. exact H. Qed.
+
+  Section Bad.
+    (* just here for illustration of how we'd prove other lemmas if they were actually
+     needed *)
+    Hypothesis array_to_load_bytes: forall n bs addr m,
+        array (uint 8) n bs addr m ->
+        array (uint 8) n (unchecked_load_uint8s m addr n) addr m.
+
+    Lemma contiguous_to_info_bad: forall P n, contiguous P n -> contiguous_info_bad P n.
+    Proof.
+      unfold contiguous, contiguous_info_bad, anyval, impl1, ex1. intros.
+      specialize H with (1 := H0). destruct H as (bs & H).
+      eapply array_to_load_bytes. eassumption.
+    Qed.
+
+    Lemma contiguous_implies_proj1_of_fillable[T: Type]:
+      forall (P: word -> mem -> Prop) (F: T -> word -> mem -> Prop) (n: Z) (a: word)
+             (HC: contiguous P n) (HF: fillable F n),
+      forall m, P a m -> F (proj1_sig HF (unchecked_load_uint8s m(*<--BAD*) a n)) a m.
+    Proof.
+      unfold  fillable, impl1, anyval, ex1. intros. destruct HF as (f & HF). simpl.
+      eapply contiguous_to_info_bad in HC.
+      unfold contiguous_info_bad in HC. specialize HC with (1 := H).
+      eapply HF. exact HC.
+    Qed.
+  End Bad.
+
+  Lemma contiguous_info_implies_proj1[T1 T2: Type]:
+    forall (P1: T1 -> word -> mem -> Prop) (P2: T2 -> word -> mem -> Prop) (n: Z)
+           (HC: contiguous_info P1 n) (HF: fillable P2 n),
+      forall v a, impl1 (P1 v a) (P2 (proj1_sig HF (proj1_sig HC v)) a).
   Proof.
-    unfold fillable, contiguous. intros. specialize (H addr).
-    unfold ex1, impl1 in *.
-    intros m Hm.
-    eapply proj2 in H.
-    eapply H.
-    eauto.
+    unfold contiguous_info, fillable, impl1, anyval, ex1.
+    intros. destruct HF as (f & HF). destruct HC as (c & HC). simpl.
+    eapply HF. eapply HC. exact H.
   Qed.
 
   Lemma contiguous_implies_anyval_of_fillable{T: Type}:
@@ -49,8 +111,24 @@ Section WithMem.
       fillable F n ->
       impl1 (P a) (anyval F a).
   Proof.
-    unfold contiguous, fillable, impl1, iff1, anyval. intros.
-    eapply H0. eapply H. assumption.
+    unfold contiguous, fillable, impl1, anyval, ex1. intros.
+    specialize H with (1 := H0). destruct H as (vs & H).
+    eexists. eapply (unfold_fillable _ _ X). eapply H.
+  Qed.
+
+  Lemma contiguous_implies_anyval_of_sepapps[T: Type]:
+    forall (P: word -> mem -> Prop) (F: T -> word -> mem -> Prop) (n: Z) (a: word) preds,
+      contiguous P n ->
+      F = (fun v: T => sepapps (preds v)) ->
+      (forall bs m, sep (array (uint 8) n bs a) (emp True) m ->
+                    sep (EX v, (sepapps (preds v)) a) (emp True) m) ->
+      impl1 (P a) (anyval F a).
+  Proof.
+    unfold contiguous, impl1, anyval, ex1. intros. subst F.
+    setoid_rewrite sep_emp_r in H1.
+    specialize H with (1 := H2). destruct H as (bs & H).
+    specialize H1 with (1 := conj H I).
+    apply H1.
   Qed.
 
   Lemma array_uint8_contiguous: forall v n, contiguous (array (uint 8) n v) n.
@@ -106,50 +184,145 @@ Section WithMem.
     exact H.
   Qed.
 
-  Lemma uintptr_fillable: fillable uintptr (Memory.bytes_per_word width).
+  Lemma fillable_emp_True(T: Type){inh: Inhabited.inhabited T}:
+    fillable (fun (_: T) (_: word) => emp True) 0.
   Proof.
-    unfold fillable, iff1, uintptr. intros a m. split; intro Hm.
-    - eapply Scalars.anybytes_to_scalar. eapply anybytes_to_alt. assumption.
-    - destruct Hm as [bs Hm]. eapply Scalars.scalar_to_anybytes in Hm.
-      eapply anybytes_from_alt. 2: exact Hm.
-      destruct width_cases as [E|E]; rewrite E; cbv; discriminate.
+    unfold fillable. exists (fun _ => Inhabited.default).
+    unfold array. intros. eapply sep_emp_l in H. destruct H as (L & H).
+    destruct bs. 2: discriminate L. clear L. simpl in H. exact H.
   Qed.
+
+  Lemma fillable_transform[X Y: Type](t: X -> Y)(p: word -> Y -> mem -> Prop)(n: Z):
+    fillable (fun v a => p a (t v)) n -> fillable (fun v a => p a v) n.
+  Proof. unfold fillable. intros (f & H). exists (fun bs => t (f bs)). exact H. Qed.
+
+  Lemma fillable_impl[V: Type](P Q: V -> word -> mem -> Prop):
+    (forall v a m, P v a m -> Q v a m) ->
+    forall n, fillable P n -> fillable Q n.
+  Proof.
+    unfold fillable. intros. destruct X as (f & F). exists f. intros.
+    eapply H. eapply F. assumption.
+  Qed.
+
+  Section WithT.
+    Context [T: Type] {inh: Inhabited.inhabited T}.
+
+    Fixpoint fixed_size_tuple_of_list(n: nat)(l: list T): HList.tuple T n.
+      refine (match n with
+              | O => tt
+              | S m => _
+              end).
+      constructor.
+      1: exact (List.hd Inhabited.default l).
+      eapply fixed_size_tuple_of_list. exact (List.tl l).
+    Defined.
+
+    Lemma fixed_size_tuple_of_list_to_list: forall n l,
+        List.length l = n ->
+        HList.tuple.to_list (fixed_size_tuple_of_list n l) = l.
+    Proof.
+      induction n; simpl; intros; destruct l; try discriminate.
+      - reflexivity.
+      - simpl. f_equal. eapply IHn. simpl in H. eapply Nat.succ_inj. exact H.
+    Qed.
+  End WithT.
+
+  Lemma ptsto_bytes_fillable n:
+    fillable (fun (bs: HList.tuple Byte.byte n) (a: word) =>
+                ptsto_bytes.ptsto_bytes n a bs) (Z.of_nat n).
+  Proof.
+    unfold ptsto_bytes.ptsto_bytes.
+    eapply fillable_transform with (X := list Byte.byte)
+                                   (t := fixed_size_tuple_of_list n).
+    unfold fillable.
+    eexists. intros.
+    unfold array in H. eapply sep_emp_l in H. destruct H as (L & H).
+    eapply (Array.impl1_array _ (fun (a : word) (v : Z) => uint 8 v a)
+              (fun (a : word) (v : Z) => ptsto a (Byte.byte.of_Z v))) in H.
+    2: { unfold impl1. intros. eapply uint8_to_ptsto. assumption. }
+    eapply (Array.array_map _ _ addr bs (word.of_Z 1)) in H.
+    eqapply H. rewrite fixed_size_tuple_of_list_to_list. 1: reflexivity.
+    rewrite List.map_length. apply Nat2Z.inj. exact L.
+  Qed.
+
+  Lemma littleendian_fillable n:
+    fillable (fun (v: Z) (a: word) => Scalars.littleendian n a v) (Z.of_nat n).
+  Proof.
+    unfold Scalars.littleendian.
+    eapply fillable_transform with (X := HList.tuple Byte.byte n)
+      (t := fun v => LittleEndianList.le_combine (HList.tuple.to_list v)).
+    eapply fillable_impl. 2: eapply (ptsto_bytes_fillable n). cbv beta. intros.
+    rewrite LittleEndianList.split_le_combine' by apply HList.tuple.length_to_list.
+    unfold ptsto_bytes.ptsto_bytes in *. rewrite HList.tuple.to_list_of_list. assumption.
+  Qed.
+
+  Lemma truncated_scalar_fillable sz:
+    fillable (fun (v: Z) (a: word) => Scalars.truncated_scalar sz a v)
+      (Z.of_nat (Memory.bytes_per (width := width) sz)).
+  Proof.
+    unfold Scalars.truncated_scalar. eapply littleendian_fillable.
+  Qed.
+
+  Lemma truncated_word_fillable:
+    fillable (fun v a: word => Scalars.truncated_word Syntax.access_size.word a v)
+             (Memory.bytes_per_word width).
+  Proof.
+    unfold Scalars.truncated_word.
+    eapply fillable_transform with (X := Z) (t := word.of_Z).
+    pose proof (truncated_scalar_fillable Syntax.access_size.word) as F.
+    assert (Z.of_nat (Memory.bytes_per (width := width) Syntax.access_size.word) =
+              Memory.bytes_per_word width) as E. {
+      destruct width_cases as [W | W]; rewrite W; reflexivity.
+    }
+    rewrite <- E.
+    eapply fillable_impl. 2: eapply (truncated_scalar_fillable Syntax.access_size.word).
+    cbv beta. intros *.
+    unfold Scalars.truncated_scalar, Scalars.littleendian, ptsto_bytes.ptsto_bytes.
+    rewrite 2HList.tuple.to_list_of_list.
+    rewrite LittleEndianList.le_split_mod.
+    rewrite word.unsigned_of_Z. unfold word.wrap.
+    intro H. eqapply H. f_equal. f_equal. f_equal.
+    destruct width_cases as [W | W]; rewrite W; reflexivity.
+  Qed.
+
+  Lemma scalar_fillable:
+    fillable (fun v a : word => Scalars.scalar a v) (Memory.bytes_per_word width).
+  Proof. unfold Scalars.scalar. eapply truncated_word_fillable. Qed.
+
+  Lemma uintptr_fillable: fillable uintptr (Memory.bytes_per_word width).
+  Proof. unfold uintptr. apply scalar_fillable. Qed.
 
   Lemma uint_fillable(nbits: Z):
     0 < nbits ->
     nbits mod 8 = 0 ->
     fillable (uint nbits) (nbits_to_nbytes nbits).
   Proof.
-    unfold fillable, iff1. unfold uint at 2. intros a m. split; intro Hm.
-    - eapply anybytes_to_alt in Hm.
-      eapply Array.anybytes_to_array_1 in Hm.
-      destruct Hm as (bs & Hm & HL).
-      eexists. eapply sep_emp_l.
-      unfold Scalars.littleendian, ptsto_bytes.ptsto_bytes.
-      rewrite HList.tuple.to_list_of_list.
-      split.
-      2: {
-        rewrite <- HL.
-        rewrite (LittleEndianList.split_le_combine bs). assumption.
-      }
-      pose proof (LittleEndianList.le_combine_bound bs) as A.
-      replace (8 * Z.of_nat (length bs)) with nbits in A.
-      1: exact A.
-      unfold nbits_to_nbytes in *. Z.div_mod_to_equations. lia.
-    - unfold Scalars.littleendian, ptsto_bytes.ptsto_bytes in Hm.
-      destruct Hm as [v Hm].
-      eapply sep_emp_l in Hm.
-      destruct Hm as (B & Hm).
-      eapply Array.array_1_to_anybytes in Hm.
-      eapply anybytes_from_alt in Hm. 2: lia.
-      lazymatch goal with
-      | H: (array (uint 8) ?n ? addr) _ |- (array (uint 8) ?n' ? addr) _ =>
-          replace n with n' in H
-      end.
-      1: assumption.
-      rewrite HList.tuple.to_list_of_list.
-      rewrite LittleEndianList.length_le_split.
-      unfold nbits_to_nbytes. Z.div_mod_to_equations. lia.
+    unfold fillable, uint. intros. eexists. intros * Hm.
+    unfold array in Hm. eapply sep_emp_l in Hm. destruct Hm as (L & Hm).
+    eapply (Array.impl1_array _ (fun (a : word) (v : Z) => uint 8 v a)
+              (fun (a : word) (v : Z) => ptsto a (Byte.byte.of_Z v))) in Hm.
+    2: { unfold impl1. intros. eapply uint8_to_ptsto. assumption. }
+    eapply (Array.array_map _ _ addr bs (word.of_Z 1)) in Hm.
+    eapply sep_emp_l.
+    unfold Scalars.littleendian, ptsto_bytes.ptsto_bytes.
+    rewrite HList.tuple.to_list_of_list.
+    split.
+    2: {
+      rewrite <- L. eqapply Hm.
+      rewrite Nat2Z.id.
+      instantiate (1 := (fun bs =>
+        LittleEndianList.le_combine (List.map Byte.byte.of_Z bs))).
+      cbv beta.
+      rewrite <- (List.map_length Byte.byte.of_Z bs).
+      rewrite LittleEndianList.split_le_combine.
+      reflexivity.
+    }
+    cbv beta.
+    pose proof (LittleEndianList.le_combine_bound (List.map Byte.byte.of_Z bs)) as A.
+    rewrite List.map_length in A.
+    replace (8 * Z.of_nat (length bs)) with nbits in A.
+    1: exact A.
+    unfold nbits_to_nbytes in *. Z.div_mod_to_equations. lia.
   Qed.
 
   Lemma uint8_fillable: fillable (uint 8) 1.
@@ -164,6 +337,59 @@ Section WithMem.
   Lemma uint64_fillable: fillable (uint 64) 8.
   Proof. apply uint_fillable; reflexivity. Qed.
 
+  Lemma array_fillable: forall T (elem: T -> word -> mem -> Prop) (sz: PredicateSize elem) n,
+      0 < sz ->
+      fillable elem sz ->
+      fillable (array elem n) (sz * n).
+  Proof.
+    unfold fillable, array. intros. destruct X as (f & F).
+    exists (fun bs => List.map f (List.chunk (Z.to_nat sz) bs)).
+    intros * Hm.
+    eapply sep_emp_l in Hm. destruct Hm as [Hl Hm].
+    eapply sep_emp_l. split.
+    { rewrite List.map_length. rewrite List.length_chunk by lia.
+      unfold List.Nat.div_up. clear -Hl H.
+      rewrite Nat2Z.inj_div. Z.div_mod_to_equations. nia. }
+    replace n with (Z.of_nat (Z.to_nat n)) in * by lia.
+    forget (Z.to_nat n) as N. clear n.
+    revert bs addr m Hl Hm. induction N; intros.
+    - simpl in Hl. rewrite Z.mul_0_r in Hl. destruct bs; try discriminate Hl; [].
+      simpl. simpl in *. exact Hm.
+    - rewrite <- (List.firstn_skipn (Z.to_nat sz) bs) in Hm|-*.
+      eapply Array.array_append in Hm.
+      destruct Hm as (m1 & m2 & D & Hm1 & Hm2).
+      specialize IHN with (2 := Hm2).
+      rewrite List.skipn_length in IHN.
+      specialize (IHN ltac:(lia)).
+      specialize (F addr (List.firstn (Z.to_nat sz) bs) m1).
+      rewrite List.chunk_app. 2: lia.
+      2: {
+        rewrite List.firstn_length. clear -Hl H.
+        replace (Init.Nat.min (Z.to_nat sz) (length bs)) with (Z.to_nat sz) by lia.
+        apply Nat.Div0.mod_same.
+      }
+      rewrite List.map_app.
+      eapply Array.array_append.
+      exists m1, m2. ssplit. 1: exact D.
+      + rewrite List.chunk_small by (rewrite List.firstn_length; lia).
+        simpl. apply sep_emp_r. split. 2: constructor.
+        eapply F. eapply sep_emp_l. split.
+        { rewrite List.firstn_length. lia. }
+        exact Hm1.
+      + eqapply IHN. f_equal.
+        rewrite List.map_length. rewrite List.length_chunk by lia.
+        rewrite List.firstn_length. rewrite Nat.min_l by lia.
+        unfold List.Nat.div_up.
+        rewrite Nat2Z.inj_div.
+        rewrite Z2Nat.id by lia.
+        replace (Z.of_nat (Z.to_nat sz + (Z.to_nat sz - 1)) / sz) with 1.
+        2: {
+          clear -H. Z.div_mod_to_equations. nia.
+        }
+        rewrite word.unsigned_of_Z_1.
+        rewrite Z.mul_1_r, Z.mul_1_l. rewrite word.of_Z_unsigned.
+        reflexivity.
+  Qed.
 
   (* TODO make non-fake *)
   Lemma array_fake_contiguous: forall T (elem: T -> word -> mem -> Prop)
@@ -221,6 +447,7 @@ Create HintDb contiguous.
   uintptr64_contiguous
   uint_contiguous
   array_uint8_contiguous
+  array_uint8_contiguous_info
   anybytes_contiguous
   contiguous_to_fake
   array_fake_contiguous
@@ -243,31 +470,23 @@ Create HintDb fillable.
   uint64_fillable
 : fillable.
 
+#[export] Hint Extern 1 (fillable (array ?elem ?n) _) =>
+  eapply array_fillable; [ xlia zchecker | eauto with fillable ]
+: fillable.
+
 #[export] Hint Extern 20 (contiguous ?p ?n) =>
-  let h := head p in
-  (* seemingly superfluous match strips cast added by unfold *)
-  lazymatch constr:(ltac:(unfold h; typeclasses eauto with contiguous) : contiguous p n) with
-  | ?res => exact res
-  end
+  let h := head p in unfold h; typeclasses eauto with contiguous
 : contiguous.
 
 #[export] Hint Extern 20 (fake_contiguous ?p) =>
-  let h := head p in
-  (* seemingly superfluous match strips cast added by unfold *)
-  lazymatch constr:(ltac:(unfold h; typeclasses eauto with contiguous) : fake_contiguous p) with
-  | ?res => exact res
-  end
+  let h := head p in unfold h; typeclasses eauto with contiguous
 : contiguous.
 
 Ltac is_contiguous P :=
-  let __ := constr:(ltac:(solve [typeclasses eauto with contiguous]
-                          || fail "not contiguous")
-                     : contiguous P _) in idtac.
+  assert_succeeds (eassert (contiguous P _) by typeclasses eauto with contiguous).
 
 Ltac is_fake_contiguous P :=
-  let __ := constr:(ltac:(solve [typeclasses eauto with contiguous]
-                          || fail "not fake_contiguous")
-                     : fake_contiguous P) in idtac.
+  assert_succeeds (assert (fake_contiguous P) by typeclasses eauto with contiguous).
 
 Section TestsWithMem64.
   Context {word: word 64} {BW: Bitwidth 64} {mem: map.map word Byte.byte}

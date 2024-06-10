@@ -7,7 +7,9 @@ Load LiveVerif.
 
 void pass_three(uintptr_t src) /**#
   ghost_args := (R: mem -> Prop) (w2 w3: word);
-  requires t m := <{ * <{ + uintptr /[42] + uintptr w2 + uintptr w3 }> src
+  (* using (w2 ^+ /[0]) to test the case when the value in a uintptr is not just
+     an evar *)
+  requires t m := <{ * <{ + uintptr /[42] + uintptr (w2 ^+ /[0]) + uintptr w3 }> src
                      * R }> m;
   ensures t' m' := t' = t /\ <{ * <{ + uintptr /[42] + uintptr w2 + uintptr w3 }> src
                                 * R }> m'    #**/                          /**.

@@ -158,7 +158,7 @@ Section with_parameters.
   Proof.
     induction zs; simpl; intros.
     - reflexivity.
-    - rewrite List.chunk_app by (rewrite ?length_le_split, ?Nat.mod_same; lia).
+    - rewrite List.chunk_app by (rewrite ?length_le_split, ?Nat.Div0.mod_same; lia).
       rewrite map_app, IHzs by lia.
       rewrite le_combine_chunk_split by lia; reflexivity.
   Qed.

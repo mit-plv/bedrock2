@@ -1,7 +1,7 @@
 (* -*- eval: (load-file "../../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
 
-Class my_consts := {
+Class my_consts: Set := {
   foo_const: Z;
 }.
 

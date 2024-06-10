@@ -77,8 +77,6 @@ Section Equiv.
 
   Local Notation M := (free action result).
   Local Notation RiscvMachine := MetricRiscvMachine.
-  Local Existing Instance MetricMinimalMMIO.IsRiscvMachine.
-  Local Existing Instance MetricMinimalMMIOSatisfiesPrimitives.
 
   (** * Processor, software machine, and states *)
 

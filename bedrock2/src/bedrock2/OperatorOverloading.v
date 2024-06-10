@@ -23,7 +23,7 @@ Notation "a * b" := (sep a b) (only printing) : oo_scope.
 Require Import bedrock2.Scalars.
 
 Class PointsTo{width: Z}{word: word.word width}{mem: map.map word Byte.byte}{V: Type}
-      (addr: word)(val: V)(pred: mem -> Prop) := {}.
+      (addr: word)(val: V)(pred: mem -> Prop): Prop := {}.
 Global Hint Mode PointsTo + + + + + + - : typeclass_instances.
 
 (* Precedence: `*` is at level 40, and we want to bind stronger than `*`, and moreover,
@@ -33,12 +33,12 @@ Notation "a ~> v" := (infer! PointsTo a v)
   (at level 25, only parsing) : oo_scope.
 
 Class PointsToPredicate{width}{word: word.word width}{mem: map.map word Byte.byte}
-      (V: Type)(pred: word -> V -> mem -> Prop) := {}.
+      (V: Type)(pred: word -> V -> mem -> Prop): Prop := {}.
 Global Hint Mode PointsToPredicate + + + + - : typeclass_instances.
 
 (* separate typeclass because some predicates don't have a constant size *)
 Class PredicateSize{width}{word: word.word width}{mem: map.map word Byte.byte}{V: Type}
-      (pred: word -> V -> mem -> Prop){p: PointsToPredicate V pred}(sz: Z) := {}.
+      (pred: word -> V -> mem -> Prop){p: PointsToPredicate V pred}(sz: Z): Prop := {}.
 Global Hint Mode PredicateSize + + + + - - - : typeclass_instances.
 
 #[export] Instance PointsToPredicate_to_PointsTo
@@ -70,7 +70,7 @@ Notation "a ~> v" := (ptsto a v) (only printing) : oo_scope.
 Require Import bedrock2.Array.
 
 Class PointsToArray{width}{word: word.word width}{mem: map.map word Byte.byte}{V: Type}
-      (a: word)(vs: list V)(pred: mem -> Prop) := {}.
+      (a: word)(vs: list V)(pred: mem -> Prop): Prop := {}.
 Notation "a --> vs" := (infer! PointsToArray a vs)
   (at level 25, only parsing) : oo_scope.
 Notation "a --> vs" := (array _ _ a vs)

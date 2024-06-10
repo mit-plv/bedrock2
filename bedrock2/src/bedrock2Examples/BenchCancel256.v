@@ -5,9 +5,10 @@ Local Open Scope list_scope. Local Open Scope sep_scope.
 (* https://arxiv.org/pdf/1305.6543.pdf figure 4 *)
 (* https://github.com/gmalecha/bedrock-mirror-shard/blob/ea7e5ad56a1d6392468b6823e0457dd44524bca7/benchmarks/MicroBenchCancel.v#L45-L65 *)
 
-Context
+Parameters
   (mem : map.map nat nat) (mem_ok : map.ok mem)
   (ptsto : nat -> nat -> mem -> Prop).
+Existing Instance mem_ok.
 
 Fixpoint chain (ls : list nat) : list (mem -> Prop) :=
   match ls with

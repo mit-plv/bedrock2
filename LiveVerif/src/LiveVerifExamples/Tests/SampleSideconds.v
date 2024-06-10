@@ -3,13 +3,7 @@ Require Import coqutil.Tactics.ident_ops.
 
 Ltac standalone_solver_step :=
   first
-      [ (* tried first because it also solves some goals of shape (_ = _) and (_ /\ _) *)
-        zify_hyps; zify_goal; xlia zchecker
-      | (* manually chosen set of safe_implication steps: *)
-        lazymatch goal with
-        | |- ?xs ++ ?ys1 = ?xs ++ ?ys2 => f_equal
-        | |- ?xs1 ++ ?ys = ?xs2 ++ ?ys => f_equal
-        end
+      [ sidecond_step Logging.ignore_logger_thunk
       (* from step_hook in tree_set: *)
       | lazymatch goal with
         | |- ?A \/ ?B =>
@@ -18,27 +12,8 @@ Ltac standalone_solver_step :=
             tryif (assert_succeeds (assert (~ B) by (zify_hyps; zify_goal; xlia zchecker)))
             then left else fail
         end
-      | lazymatch goal with
-        | H: _ \/ _ |- _ =>
-            destruct H; try (exfalso; congruence);
-            [ ]
-        end
-      | lazymatch goal with
-        | |- ?P /\ ?Q =>
-            split
-        | |- _ = _ =>
-            careful_reflexivity_step_hook
-        | |- impl1 ?lhs ?rhs =>
-            careful_reflexivity_step_hook
-        | |- iff1 _ _ =>
-            careful_reflexivity_step_hook
-        | |- forall _, _ =>
-            intros
-        end
       | solve [auto 4 with nocore safe_core]
     ].
-
-(* TODO investigate why standalone_solver_step is not as powerful as step *)
 
 Ltac eval_constant_pows :=
   repeat match goal with
@@ -62,7 +37,7 @@ Proof.
     exfalso. apply C. exists a. assumption.
 Qed.
 
-Inductive Name := mkName (f: unit -> unit).
+Inductive Name: Set := mkName (f: unit -> unit).
 Notation "'name:(' x )" := (mkName (fun x: unit => x)) (format "name:( x )").
 
 Definition smtFalseAlias := False.
@@ -158,10 +133,10 @@ Notation "'cat' > './width' W / x '.smt2' << ' 'SMTQUERY' ' g 'SMTQUERY'" :=
    format "cat  >  ./width W / x .smt2  << ' SMTQUERY ' '//' g '//' SMTQUERY").
 
 (* bash syntax to print to feed to z3's stdin *)
-Notation "'time' 'z3' '-in' << ' 'SMTQUERY' ' g 'SMTQUERY'" :=
+Notation "'time' 'z3' '-T:10' '-in' << ' 'SMTQUERY' ' g 'SMTQUERY'" :=
   (smtGoalMarker g)
   (at level 0, g custom smt_goal at level 3, only printing,
-   format "time  z3  -in  << ' SMTQUERY ' '//' g '//' SMTQUERY").
+   format "time  z3  -T:10  -in  << ' SMTQUERY ' '//' g '//' SMTQUERY").
 
 Notation "'(declare-const' x T ) P" := (forall x: T, P)
   (in custom smt_goal at level 3, x name, T custom smt_sort, right associativity,
@@ -255,6 +230,8 @@ Notation "(+  a  b )" := (Z.add a b)
   (in custom smt_expr at level 0).
 Notation "(*  a  b )" := (Z.mul a b)
   (in custom smt_expr at level 0).
+Notation "'(mod'  a  b )" := (Z.modulo a b)
+  (in custom smt_expr at level 0).
 
 Notation "'(bv2int'  a )" := (word.unsigned a)
   (in custom smt_expr at level 0).
@@ -264,6 +241,8 @@ Notation "'((_'  'int2bv'  Width )  x )" := (@word.of_Z Width _ x)
 Notation "'(bvneg'  a )" := (word.opp a)
   (in custom smt_expr at level 0).
 Notation "'(bvadd'  a  b )" := (word.add a b)
+  (in custom smt_expr at level 0).
+Notation "'(bvmul'  a  b )" := (word.mul a b)
   (in custom smt_expr at level 0).
 Notation "'(bvsub'  a  b )" := (word.sub a b) (* NONSTANDARD *)
   (in custom smt_expr at level 0).
@@ -296,7 +275,7 @@ Section Tests.
 
 (* configurable to any concrete bitwidth, so that slow bitblasting can be tested
    with small bitwidths such as 8 *)
-Local Notation width := 7 (only parsing).
+Local Notation width := 64 (only parsing).
 
 Context {word: word.word width} {word_ok: word.ok word}.
 Local Open Scope word_scope.
@@ -320,6 +299,7 @@ Goal True. let p1 := prelude1 in let p2 := prelude2 in log p1; log p2. Abort.
 
 Ltac t name :=
   log_goal_as_smt name;
+  zify_hyps;
   repeat standalone_solver_step.
 
 Goal forall (a b r : word) (c : bool),
@@ -431,22 +411,108 @@ Goal forall (v : word) (s0 : Z -> Prop) (a' : word) (res a : word) (v1 : Z),
  (\[res] = 1 /\ s0 \[v] \/ \[res] = 0 /\ ~ s0 \[v]).
 Proof. t name:(tree_set_not_and2). Qed.
 
+Goal forall (x1 x2 v : Z) (i' i t g : word),
+ v = 10 - \[i'] ->
+ 0 <= \[i'] <= 10 ->
+ \[i'] < 10 ->
+ i = i' ^+ /[1] ->
+ g = t ->
+ 0 <= x1 + x2 < 2 ^ 32 ->
+ 0 <= 10 - \[i] < v.
+Proof. t name:(if_while_scoping). Qed.
+
+Goal forall (malloc_block_size: Z) (p n tail head : word),
+ 8 <= malloc_block_size < 2 ^ 32 ->
+ \[n] mod malloc_block_size = 0 ->
+ forall c : Z,
+ \[p] + c * malloc_block_size < 2 ^ 32 ->
+ tail = /[0] ->
+ head = p ^+ n ->
+ \[n] = c * malloc_block_size ->
+ 0 <= c ->
+ /[c] ^* /[malloc_block_size] = n.
+Proof. t name:(malloc1). Qed.
+
+Goal forall (malloc_block_size: Z) (p n : word),
+ 8 <= malloc_block_size < 2 ^ 32 ->
+ forall (head : word) (c : Z),
+ \[p] + c * malloc_block_size < 2 ^ 32 ->
+ head = p ^+ /[c] ^* /[malloc_block_size] ->
+ \[n] = c * malloc_block_size ->
+ 0 <= c ->
+ c * malloc_block_size < 2 ^ 32.
+Proof. t name:(malloc2). Qed.
+
+Goal forall (malloc_block_size: Z) (p : word),
+ 8 <= malloc_block_size < 2 ^ 32 ->
+ forall c : Z,
+ \[p] + c * malloc_block_size < 2 ^ 32 ->
+ 0 <= c ->
+ c * malloc_block_size < 2 ^ 32 ->
+ p ^+ /[c] ^* /[malloc_block_size] <> p ->
+ 0 < c ->
+ /[c - 1] ^+ /[1] = /[c].
+Proof. t name:(malloc3). Qed.
+
 Import ZList.List.ZIndexNotations.
 Local Open Scope zlist_scope.
 
-Ltac t ::= repeat standalone_solver_step.
+Ltac t name ::=
+  intros;
+  zify_hyps;
+  repeat standalone_solver_step.
+
+Goal forall (p1 : word) (s1 s2 : list Z),
+ let p1_pre := p1 in
+ ~ List.In 0 s1 -> ~ List.In 0 s2 -> \[p1 ^- p1_pre] <= len s1.
+Proof. t name:(nt_uint8_string1). Qed.
+
+Goal forall (p1 p2 : word) (s1 s2 : list Z),
+ let p1_pre := p1 in
+ let p2_pre := p2 in
+ ~ List.In 0 s1 ->
+ ~ List.In 0 s2 -> \[p1 ^- p1_pre] <= len s1 -> \[p2 ^- p2_pre] <= len s2.
+Proof. t name:(strcmp1). Qed.
+
+Goal forall (p1 p2 : word) (s1 s2 : list Z),
+ let p1_pre := p1 in
+ let p2_pre := p2 in
+ ~ List.In 0 s1 ->
+ ~ List.In 0 s2 ->
+ \[p1 ^- p1_pre] <= len s1 ->
+ \[p2 ^- p2_pre] <= len s2 -> \[p1 ^- p1_pre] = \[p2 ^- p2_pre].
+Proof. t name:(strcmp2). Qed.
+
+Goal forall (p1 p2 : word) (s1 s2 : list Z),
+ let p1_pre := p1 in
+ let p2_pre := p2 in
+ ~ List.In 0 s1 ->
+ ~ List.In 0 s2 ->
+ \[p1 ^- p1_pre] <= len s1 ->
+ \[p2 ^- p2_pre] <= len s2 ->
+ \[p1 ^- p1_pre] = \[p2 ^- p2_pre] ->
+ s1[:\[p1 ^- p1_pre]] = s2[:\[p2 ^- p2_pre]].
+Proof. t name:(strcmp3). Qed.
 
 Goal forall (b n : word) (bs : list Z),
  len bs = \[n] ->
  forall (i : word),
  \[b] < 2 ^ 8 -> i = /[0] -> List.repeatz \[b] \[i] ++ bs[\[i]:] = bs.
-Proof. t. Qed.
+Proof. t name:(memset). Qed.
 
 Goal forall (l : list word) (lDone lTodo : list word),
  forall (x : word) (l' : list word),
  lTodo = x :: l' ->
  l = lDone ++ lTodo ->
  l = (lDone ++ [|x|]) ++ l'.
-Proof. t. Qed.
+Proof. t name:(liststuff1). Qed.
+
+Goal forall (a : bool) (p1 : list bool) (b : bool) (p2 : list bool) (i : Z),
+    0 <= i < len p1 ->
+    p1[i] = (a :: p1)[i + 1].
+Proof. t name:(cribit_prefixes1). Qed.
+
+Goal forall (p : list bool) (b : bool), len (p ++ [|b|]) = len p + 1.
+Proof. t name:(cribit_prefixes2). Qed.
 
 End Tests.

@@ -60,7 +60,10 @@ Section WithParameters.
     Logic.or
       (exists a v, h = ("st", a, v) /\ l = (map.empty, "MMIOWRITE", [a; v], (map.empty, [])))
       (exists a v, h = ("ld", a, v) /\ l = (map.empty, "MMIOREAD", [a], (map.empty, [v]))).
-  Definition mmio_trace_abstraction_relation := List.Forall2 mmio_event_abstraction_relation.
+  Definition mmio_trace_abstraction_relation :=
+    List.Forall2 mmio_event_abstraction_relation.
+  Definition only_mmio_satisfying P t :=
+    exists mmios, mmio_trace_abstraction_relation mmios t /\ P mmios.
 
   Global Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall t m b,
     word.unsigned b < 2 ^ 8 ->

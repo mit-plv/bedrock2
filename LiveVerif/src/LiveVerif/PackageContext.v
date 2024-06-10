@@ -40,7 +40,7 @@ Declare Scope live_scope.
 Delimit Scope live_scope with live.
 Local Open Scope live_scope.
 
-Inductive scope_kind :=
+Inductive scope_kind: Set :=
 | FunctionParams | FunctionBody
 | IfCondition | ThenBranch | ElseBranch
 | LoopBody | LoopInvOrPreOrPost.

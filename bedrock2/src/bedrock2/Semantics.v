@@ -8,8 +8,11 @@ Require Export bedrock2.Memory.
 Require Import Coq.Lists.List.
 
 (* BW is not needed on the rhs, but helps infer width *)
+Definition LogItem{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
+  ((mem * String.string * list word) * (mem * list word))%type.
+
 Definition trace{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
-  list ((mem * String.string * list word) * (mem * list word)).
+  list LogItem.
 
 Definition ExtSpec{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
   (* Given a trace of what happened so far,
@@ -26,14 +29,17 @@ Module ext_spec.
   Class ok{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte}
           {ext_spec: ExtSpec}: Prop :=
   {
-    (* The action name and arguments uniquely determine the footprint of the given-away memory. *)
-    unique_mGive_footprint: forall t1 t2 mGive1 mGive2 a args
-                                            (post1 post2: mem -> list word -> Prop),
-        ext_spec t1 mGive1 a args post1 ->
-        ext_spec t2 mGive2 a args post2 ->
-        map.same_domain mGive1 mGive2;
+    (* Given a trace of previous interactions, the action name and arguments
+       uniquely determine what chunk of memory the ext_spec will chop off from
+       the whole memory m *)
+    mGive_unique: forall t m mGive1 mKeep1 mGive2 mKeep2 a args post1 post2,
+      map.split m mKeep1 mGive1 ->
+      map.split m mKeep2 mGive2 ->
+      ext_spec t mGive1 a args post1 ->
+      ext_spec t mGive2 a args post2 ->
+      mGive1 = mGive2;
 
-    weaken :> forall t mGive act args,
+    #[global] weaken :: forall t mGive act args,
         Morphisms.Proper
           (Morphisms.respectful
              (Morphisms.pointwise_relation Interface.map.rep
@@ -206,6 +212,21 @@ Module exec. Section WithParams.
 
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
 
+  Lemma interact_cps: forall binds action arges args t m l post mKeep mGive,
+      map.split m mKeep mGive ->
+      eval_call_args m l arges = Some args ->
+      ext_spec t mGive action args (fun mReceive resvals =>
+          exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
+          forall m', map.split m' mKeep mReceive ->
+          post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l') ->
+      exec (cmd.interact binds action arges) t m l post.
+  Proof. intros. eauto using interact. Qed.
+
+  Lemma seq_cps: forall c1 c2 t m l post,
+      exec c1 t m l (fun t' m' l' => exec c2 t' m' l' post) ->
+      exec (cmd.seq c1 c2) t m l post.
+  Proof. intros. eauto using seq. Qed.
+
   Lemma weaken: forall t l m s post1,
       exec s t m l post1 ->
       forall post2,
@@ -286,9 +307,11 @@ Module exec. Section WithParams.
                  replace v2 with v1 in * by congruence; clear H2
                end.
         eauto 10.
-    - pose proof ext_spec.unique_mGive_footprint as P.
-      specialize P with (1 := H1) (2 := H13).
-      destruct (map.split_diff P H H7). subst mKeep0 mGive0. clear H7.
+    - pose proof ext_spec.mGive_unique as P.
+      specialize P with (1 := H) (2 := H7) (3 := H1) (4 := H13).
+      subst mGive0.
+      destruct (map.split_diff (map.same_domain_refl mGive) H H7) as (? & _).
+      subst mKeep0.
       eapply interact. 1,2: eassumption.
       + eapply ext_spec.intersect; [ exact H1 | exact H13 ].
       + simpl. intros *. intros [? ?].

@@ -34,7 +34,7 @@ Fixpoint live(s: stmt)(used_after: list srcvar): list srcvar :=
   | SStore _ a x _ => list_union String.eqb [a; x] used_after
   | SStackalloc x _ body => list_diff String.eqb (live body used_after) [x]
   | SLit x _ => list_diff String.eqb used_after [x]
-                          
+
   | SOp x _ y z => let var_z := match z with
                                 | Var vz => [vz]
                                 | Const _ => []
@@ -155,7 +155,7 @@ Definition arg_regs  : list impvar := Eval compute in List.filter not_reserved (
 
 (* Register availability, split by how preferable they are.
    For simplicity, we use the argument registers *only* for argument passing and as spilling temporaries. *)
-Record av_regs := mk_av_regs {
+Record av_regs: Set := mk_av_regs {
   av_saved_regs: list impvar;
   av_temp_regs: list impvar;
   av_stack_slots: list impvar;
@@ -617,9 +617,9 @@ Definition assert_in_op (y: @operand srcvar) (y': @operand impvar) (m: list (src
                                              "by target constant" cy')
                                end
                  end
-  end.                  
-                    
-                       
+  end.
+
+
 
 Definition assert_ins(args: list srcvar)(args': list impvar)(m: list (srcvar * impvar)): result unit :=
   assert (Nat.eqb (List.length args) (List.length args'))
@@ -947,8 +947,8 @@ Section CheckerCorrect.
       { discriminate H0. }
     }
   Qed.
-       
-      
+
+
   Definition precond(corresp: list (srcvar * impvar))(s: stmt)(s': stmt'): list (srcvar * impvar) :=
     match s, s' with
     | SLoop s1 c s2, SLoop s1' c' s2' => loop_inv corresp s1 s2 s1' s2'
@@ -1033,7 +1033,7 @@ Section CheckerCorrect.
       exec.lookup_op_locals lH y = Some v ->
       exec.lookup_op_locals lL y' = Some v.
   Proof. unfold states_compat_op. eauto. Qed.
-  
+
   Lemma states_compat_getmany: forall corresp lL lH ys ys' vs,
       states_compat lH corresp lL ->
       assert_ins ys ys' corresp = Success tt ->
@@ -1087,7 +1087,7 @@ Section CheckerCorrect.
         simpl in E3. rewrite String.eqb_refl, Z.eqb_refl in E3. discriminate.
   Qed.
 
-  
+
 
   Lemma putmany_of_list_zip_states_compat: forall binds binds' resvals lL lH l' corresp corresp',
       map.putmany_of_list_zip binds resvals lH = Some l' ->
@@ -1287,7 +1287,6 @@ Section CheckerCorrect.
     all: try discr_match_success. 
     all: cbn in *; fwd; try blia.
   Qed.
-
 
   Hint Constructors exec.exec : checker_hints.
   Hint Resolve states_compat_get : checker_hints.
