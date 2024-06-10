@@ -1455,4 +1455,4 @@ Notation ".* */ x" :=
 Notation "'fun_correct!' f" := (program_logic_goal_for (ident_to_string f) f)
   (at level 10, f name, only parsing).
 
-Notation ".* */ //" := True (only parsing).
+Notation ".* */ //" := True (at level 0, only parsing).
