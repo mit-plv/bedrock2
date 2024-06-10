@@ -581,6 +581,13 @@ Definition mapping_eqb: srcvar * impvar -> srcvar * impvar -> bool :=
 Definition check_regs (x: srcvar) (x': impvar) : bool :=
   negb (andb (isRegStr x) (negb (isRegZ x'))).
 
+Definition check_regs_op (x: @operand srcvar) (x': @operand impvar) : bool :=
+  match x, x' with
+  | Var vx, Var vx' => check_regs vx vx'
+  | Const cx, Const cx' => Z.eqb cx cx'
+  | _, _ => false
+  end.
+
 Definition assert_in(y: srcvar)(y': impvar)(m: list (srcvar * impvar)): result unit :=
   match List.find (mapping_eqb (y, y')) m with
   | Some _ => if check_regs y y' then Success tt else
@@ -1129,7 +1136,13 @@ Section CheckerCorrect.
 
   Opaque isRegStr.
   Opaque isRegZ.
-  
+
+  Lemma assert_in_then_check_regs_op : forall x x' corresp,
+    assert_in_op x x' corresp = Success tt -> check_regs_op x x' = true.
+  Proof.
+    unfold check_regs_op, assert_in_op, assert_in; intros; destruct x'; fwd; reflexivity.
+  Qed.
+
   Lemma check_regs_cost_SLoad: forall x x' a a' mc mc',
       check_regs a a' = true ->
       check_regs x x' = true ->
@@ -1196,19 +1209,19 @@ Section CheckerCorrect.
       unfold_metrics; cbn; repeat split; destruct mc; cbn; unfold_metrics; cbn; try blia.  
   Qed.
 
-  (*Lemma check_regs_cost_SOp: forall x x' y y' z z' mc mc',*)
-  (*    check_regs x x' = true ->*)
-  (*    check_regs y y' = true ->*)
-  (*    check_regs z z' = true ->*)
-  (*    (MetricLogging.metricsLeq*)
-  (*       (MetricLogging.metricsSub (exec.cost_SOp isRegZ x' y' z' mc') mc')*)
-  (*       (MetricLogging.metricsSub (exec.cost_SOp isRegStr x y z mc) mc)).*)
-  (*Proof.*)
-  (*  intros; unfold check_regs in *; cbn in *; unfold exec.cost_SLit in *;*)
-  (*    destr (isRegStr x); destr (isRegZ x'); destr (isRegStr y); destr (isRegZ y'); destr (isRegStr z); destr (isRegZ z');*)
-  (*    try discriminate;*)
-  (*    unfold_metrics; cbn; repeat split; destruct mc; cbn; unfold_metrics; cbn; try blia.*)  
-  (*Qed.*)
+  Lemma check_regs_cost_SOp: forall x x' y y' z z' mc mc',
+      check_regs x x' = true ->
+      check_regs y y' = true ->
+      check_regs_op z z' = true ->
+      (MetricLogging.metricsLeq
+         (MetricLogging.metricsSub (exec.cost_SOp isRegZ x' y' z' mc') mc')
+         (MetricLogging.metricsSub (exec.cost_SOp isRegStr x y z mc) mc)).
+  Proof.
+    intros; unfold check_regs_op, check_regs in *; cbn in *;
+      destr (isRegStr x); destr (isRegZ x'); destr (isRegStr y); destr (isRegZ y'); destruct z as [z|z]; destruct z' as [z'|z']; try destr (isRegStr z); try destr (isRegZ z');
+      try discriminate;
+      unfold_metrics; cbn; repeat split; destruct mc; cbn; unfold_metrics; cbn; blia.
+  Qed.
 
   Lemma check_regs_cost_SSet: forall x x' y y' mc mc',
       check_regs x x' = true ->
@@ -1280,8 +1293,8 @@ Section CheckerCorrect.
   Hint Constructors exec.exec : checker_hints.
   Hint Resolve states_compat_get : checker_hints.
   Hint Resolve states_compat_put : checker_hints.
-(*  Hint Resolve states_compat_get_op : checker_hints.*)
-(*  Hint Resolve states_compat_then_op : checker_hints.*) 
+  Hint Resolve states_compat_get_op : checker_hints.
+  Hint Resolve states_compat_then_op : checker_hints. 
   Hint Resolve
        check_regs_cost_SLoad check_regs_cost_SStore check_regs_cost_SInlinetable
        check_regs_cost_SStackalloc check_regs_cost_SLit (*check_regs_cost_SOp*)
@@ -1379,8 +1392,7 @@ Section CheckerCorrect.
     - (* Case exec.op *)
       repeat econstructor; eauto 10 with checker_hints.
       all: unfold assert_in, assignment in *; fwd.
-      all: admit.
-      (*all: eapply check_regs_cost_SOp; eauto.*)
+      all: eapply check_regs_cost_SOp; eauto; eapply assert_in_then_check_regs_op; eauto.
     - (* Case exec.set *)
       repeat econstructor; eauto 10 with checker_hints.
       all: unfold assert_in, assignment in *; fwd.
@@ -1412,7 +1424,7 @@ Section CheckerCorrect.
       eapply exec.loop with
         (mid2 := (fun (t'0 : Semantics.trace) (m'0 : mem) (lL' : impLocals) (mcL' : MetricLogging.MetricLog) =>
            exists (lH' : srcLocals) (mcH' : MetricLogging.MetricLog),
-             states_compat lH' a lL' /\
+             states_compat lH' a1 lL' /\
                (exists mcHmid mcLmid,
                    MetricLogging.metricsLeq (MetricLogging.metricsSub mcLmid mcL) (MetricLogging.metricsSub mcHmid mc) /\
                    MetricLogging.metricsLeq (MetricLogging.metricsSub mcL' mcLmid) (MetricLogging.metricsSub mcH' mcHmid)) /\
@@ -1425,7 +1437,6 @@ Section CheckerCorrect.
       + cbv beta. intros. fwd. eapply exec.weaken. 1: eapply IH2; eauto using states_compat_eval_bcond_bw.
         1: eapply states_compat_precond; eassumption.
         cbv beta. intros. fwd. eexists. eexists. split. 2: split. 1,3: eauto.
-        1: admit.
         exists mcH'. exists mc'.
         split; eauto. 
       + cbv beta. intros. fwd. eapply exec.weaken. 1: eapply IH12. 1: eassumption. 1: eassumption.
@@ -1438,8 +1449,7 @@ Section CheckerCorrect.
           rewrite E in P. rewrite E.
           specialize (P eq_refl).
           rewrite P.
-          (*eapply extends_intersect_r.*)
-          eapply extends_refl.
+          eapply extends_intersect_r.
         * cbv beta. intros. fwd. eexists. eexists. split. 2: split. 1: eauto. 2: eauto.
           intros.
           repeat (unfold check_bcond, assert_in, assignment in *; fwd).
@@ -1464,6 +1474,6 @@ Section CheckerCorrect.
     - (* case exec.skip *)
       eapply exec.skip. eexists. exists mc. split. 2: split. 1,3: eauto.
       destr mc; destr mcL; unfold_metrics; cbn in *; unfold_metrics; cbn in *; blia. 
-  Admitted.
+  Qed.
 
 End CheckerCorrect.

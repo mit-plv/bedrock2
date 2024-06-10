@@ -383,8 +383,6 @@ Section WithWordAndMem.
       - simpl. intros. fwd. eexists. split.
         + eauto using states_compat_getmany.
         + eauto with metric_arith.
-    Unshelve.
-    all: repeat constructor.
     Qed.
 
     Ltac debool :=
