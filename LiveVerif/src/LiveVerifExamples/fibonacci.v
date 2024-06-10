@@ -16,9 +16,6 @@ Definition fib(n: word): word := /[Z.of_nat (fib_nat (Z.to_nat \[n]))].
 
 Set Default Proof Mode "Classic".
 
-(* TODO support functions that don't access any memory *)
-Definition dummy: mem -> Prop := emp True.
-
 Lemma fib_recursion: forall n,
     0 < \[n] ->
     \[n] + 1 < 2 ^ 32 ->
@@ -46,9 +43,8 @@ Proof. intros. destruct c; auto. Qed.
 #[export] Instance spec_of_fibonacci: fnspec :=                                 .**/
 
 uintptr_t fibonacci(uintptr_t n) /**#
-  ghost_args := (R: mem -> Prop);
-  requires t m := sep dummy R m;
-  ensures t' m' res := t' = t /\ sep dummy R m' /\ res = fib n #**/   /**.
+  requires t m := True;
+  ensures t' m' res := t' = t /\ m' = m /\ res = fib n #**/                /**.
 Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             .**/
 {                                                                          /**. .**/
   if (n == 0) /* split */ {                                                /**. .**/
