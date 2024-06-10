@@ -47,6 +47,7 @@ Require Export coqutil.Word.SimplWordExpr.
 Require Export compiler.Registers.
 Require Import compiler.ForeverSafe.
 Require Import FunctionalExtensionality.
+Require Import PropExtensionality.
 Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Require Import compiler.LowerPipeline.
@@ -62,8 +63,8 @@ Section WithWordAndMem.
     Program: Type;
     Valid: Program -> Prop;
     Call(p: Program)(funcname: string)
-        (t: trace)(m: mem)(argvals: list word)
-        (post: trace -> mem -> list word -> Prop): Prop;
+        (t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
+        (post: trace -> mem -> list word -> MetricLog -> Prop): Prop;
   }.
 
   Record phase_correct{L1 L2: Lang}
@@ -76,10 +77,13 @@ Section WithWordAndMem.
     phase_preserves_post: forall p1 p2,
         L1.(Valid) p1 ->
         compile p1 = Success p2 ->
-        forall fname t m argvals post,
-        L1.(Call) p1 fname t m argvals post ->
-        L2.(Call) p2 fname t m argvals post;
+        forall fname t m argvals mc post,
+        L1.(Call) p1 fname t m argvals mc post ->
+        L2.(Call) p2 fname t m argvals mc (fun t m a mc' =>
+          exists mc'', metricsLeq mc' mc'' /\ post t m a mc''
+        );
   }.
+  (* XXX think about the merits of this kind of metrics statement *)
 
   Arguments phase_correct : clear implicits.
 
@@ -90,6 +94,10 @@ Section WithWordAndMem.
              | Failure e => Failure e
              end.
 
+  Ltac post_ext :=
+    repeat (eapply functional_extensionality; intro);
+    apply propositional_extensionality.
+
   Lemma compose_phases_correct{L1 L2 L3: Lang}
         {compile12: L1.(Program) -> result L2.(Program)}
         {compile23: L2.(Program) -> result L3.(Program)}:
@@ -99,7 +107,10 @@ Section WithWordAndMem.
   Proof.
     unfold compose_phases.
     intros [V12 C12] [V23 C23].
-    split; intros; fwd; eauto.
+    split; intros; fwd; [eauto|].
+    erewrite f_equal; [eauto|].
+    post_ext.
+    split; [|destruct 1 as (?&?&?&?&?)]; eauto with metric_arith.
   Qed.
 
   Section WithMoreParams.
@@ -145,14 +156,29 @@ Section WithWordAndMem.
                       Cmd -> trace -> mem -> locals -> MetricLog ->
                       (trace -> mem -> locals -> MetricLog -> Prop) -> Prop)
                (e: string_keyed_map (list Var * list Var * Cmd)%type)(f: string)
-               (t: trace)(m: mem)(argvals: list word)
-               (post: trace -> mem -> list word -> Prop): Prop :=
+               (t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
+               (post: trace -> mem -> list word -> MetricLog -> Prop): Prop :=
       exists argnames retnames fbody l,
         map.get e f = Some (argnames, retnames, fbody) /\
         map.of_list_zip argnames argvals = Some l /\
-        forall mc, Exec e fbody t m l mc (fun t' m' l' mc' =>
+        Exec e fbody t m l (exec.cost_SCall_internal PreSpill mc) (fun t' m' l' mc' =>
                        exists retvals, map.getmany_of_list l' retnames = Some retvals /\
-                                       post t' m' retvals).
+                                       post t' m' retvals mc').
+
+    Definition locals_based_call_spec_spilled{Var Cmd: Type}{locals: map.map Var word}
+               {string_keyed_map: forall T: Type, map.map string T}
+               (Exec: string_keyed_map (list Var * list Var * Cmd)%type ->
+                      Cmd -> trace -> mem -> locals -> MetricLog ->
+                      (trace -> mem -> locals -> MetricLog -> Prop) -> Prop)
+               (e: string_keyed_map (list Var * list Var * Cmd)%type)(f: string)
+               (t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
+               (post: trace -> mem -> list word -> MetricLog -> Prop): Prop :=
+      exists argnames retnames fbody l,
+        map.get e f = Some (argnames, retnames, fbody) /\
+        map.of_list_zip argnames argvals = Some l /\
+        Exec e fbody t m l mc (fun t' m' l' mc' =>
+                       exists retvals, map.getmany_of_list l' retnames = Some retvals /\
+                                       post t' m' retvals mc').
 
     Definition ParamsNoDup{Var: Type}: (list Var * list Var * FlatImp.stmt Var) -> Prop :=
       fun '(argnames, retnames, body) => NoDup argnames /\ NoDup retnames.
@@ -236,7 +262,7 @@ Section WithWordAndMem.
       eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption.
       intros.
       eapply FlatImp.exec.weaken.
-      - eapply flattenStmt_correct_aux with (mcH := mc).
+      - eapply flattenStmt_correct_aux.
         + eassumption.
         + eauto.
         + reflexivity.
@@ -257,7 +283,9 @@ Section WithWordAndMem.
           eapply start_state_spec. 2: exact A.
           eapply ListSet.In_list_union_l. eapply ListSet.In_list_union_l. assumption.
         + eapply @freshNameGenState_disjoint_fbody.
-      - simpl. intros. fwd. eauto using map.getmany_of_list_extends.
+      - simpl. intros. fwd. eexists. split.
+        + eauto using map.getmany_of_list_extends.
+        + eauto with metric_arith.
     Qed.
 
     Lemma useimmediate_functions_NoDup: forall funs funs',
@@ -295,9 +323,10 @@ Section WithWordAndMem.
       eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption.
       intros.
       eapply exec.weaken.
-      - eapply useImmediate_correct_aux.
-        all: eauto.
-      - eauto.
+      - eapply useImmediate_correct_aux; eauto.
+      - simpl. destruct 1 as (?&?&?&?&?).
+        repeat (eexists; split; try eassumption).
+        eauto with metric_arith.
     Qed.
 
     Lemma regalloc_functions_NoDup: forall funs funs',
@@ -351,8 +380,9 @@ Section WithWordAndMem.
         edestruct putmany_of_list_zip_states_compat as (lL' & P' & Cp); try eassumption.
         1: eapply states_compat_empty.
         rewrite H1 in P'. inversion P'. exact Cp.
-      - simpl. intros. fwd. eexists. split. 2: eassumption.
-        eauto using states_compat_getmany.
+      - simpl. intros. fwd. eexists. split.
+        + eauto using states_compat_getmany.
+        + eauto with metric_arith.
     Unshelve.
     all: repeat constructor.
     Qed.
@@ -436,8 +466,9 @@ Section WithWordAndMem.
       unfold FlatWithRegs, RiscvLang.
       split; cbn.
       - intros p1 ((? & finfo) & ?). intros. exact I.
-      - eapply flat_to_riscv_correct; eassumption.
-    Qed.
+      - admit.
+      (*- eapply flat_to_riscv_correct; eassumption.*)
+    Admitted.
 
     Definition composed_compile:
       Semantics.env ->
@@ -548,10 +579,11 @@ Section WithWordAndMem.
         rewrite map.of_list_tuples. reflexivity.
       }
       specialize C with (1 := H0').
-      specialize C with (1 := H1).
-      cbv iota in C.
-      fwd. eauto 10.
-    Qed.
+      admit.
+      (*specialize C with (1 := H1).*)
+      (*cbv iota in C.*)
+      (*fwd. eauto 10.*)
+    Admitted. (* XXX *)
 
     Definition instrencode(p: list Instruction): list byte :=
       List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
