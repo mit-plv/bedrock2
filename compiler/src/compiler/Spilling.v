@@ -1844,10 +1844,10 @@ Section Spilling.
         move Hmetrics at bottom.
         rewrite factor_out_set_vars_to_reg_range.
         rewrite factor_out_cost_external.
+        rewrite factor_out_cost_stackalloc.
         rewrite factor_out_set_reg_range_to_vars.
         rewrite (factor_out_cost_external PreSpill).
         rewrite factor_out_set_vars_to_reg_range in Hmetrics.
-        rewrite factor_out_cost_stackalloc in Hmetrics.
         rewrite factor_out_cost_internal in Hmetrics.
         rewrite factor_out_set_reg_range_to_vars in Hmetrics.
         rewrite (factor_out_cost_internal PreSpill) in Hmetrics.
@@ -1855,7 +1855,7 @@ Section Spilling.
         unfold exec.cost_SStackalloc, exec.cost_SCall_internal, exec.cost_SCall_external, EmptyMetricLog in *.
         destruct (isRegZ fp); solve_MetricLog.
         (* cost_SCall constraint: prespill - postspill >= (...66...) i think? *)
-        (* TODO XXX extremely slow *)
+        (* TODO XXX fairly slow *)
       }
 
     - (* exec.load *)

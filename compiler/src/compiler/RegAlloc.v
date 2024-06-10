@@ -1184,17 +1184,16 @@ Section CheckerCorrect.
 
   Lemma check_regs_cost_SStackalloc: forall x x' mcL mcL' mcH mcH',
       check_regs x x' = true ->
+      (MetricLogging.metricsLeq (MetricLogging.metricsSub mcL' mcL)
+         (MetricLogging.metricsSub mcH' mcH)) ->
       (MetricLogging.metricsLeq
-         (MetricLogging.metricsSub mcL' (exec.cost_SStackalloc isRegZ x' mcL))
-         (MetricLogging.metricsSub mcH' (exec.cost_SStackalloc isRegStr x mcH))) ->
-      (MetricLogging.metricsLeq
-         (MetricLogging.metricsSub mcL' mcL)
-         (MetricLogging.metricsSub mcH' mcH)).
+         (MetricLogging.metricsSub (exec.cost_SStackalloc isRegZ x' mcL') mcL)
+         (MetricLogging.metricsSub (exec.cost_SStackalloc isRegStr x mcH') mcH)).
   Proof.
     intros; unfold check_regs in *; cbn in *; unfold exec.cost_SStackalloc in *;
       destr (isRegStr x); destr (isRegZ x'); 
       try discriminate;
-      unfold_metrics; cbn; repeat split; destruct mcL; destruct mcH; destruct mcL'; destruct mcH'; cbn in *; unfold_metrics; cbn in *; try blia.  
+      unfold_metrics; cbn; repeat split; destruct mcL; destruct mcH; destruct mcL'; destruct mcH'; cbn in *; unfold_metrics; cbn in *; try blia.
   Qed.
 
   Lemma check_regs_cost_SLit: forall x x' mc mc',
@@ -1375,7 +1374,7 @@ Section CheckerCorrect.
       repeat econstructor; eauto 10 with checker_hints.
       all: unfold assert_in, assignment in *; fwd.
       all: eapply check_regs_cost_SInlinetable; eauto.
-    - (* Case exec.stackalloc *)    
+    - (* Case exec.stackalloc *)
       eapply exec.stackalloc. 1: assumption.
       intros. eapply exec.weaken.
       + eapply H2; try eassumption.
@@ -1384,7 +1383,7 @@ Section CheckerCorrect.
         eexists. eexists. repeat (split; try eassumption).
         eexists. eexists. repeat (split; try eassumption).
         all: unfold assert_in, assignment in *; fwd.
-        all: eapply check_regs_cost_SStackalloc; eauto. 
+        all: eapply check_regs_cost_SStackalloc; eauto.
     - (* Case exec.lit *)
       repeat econstructor; eauto 10 with checker_hints.
       all: unfold assert_in, assignment in *; fwd.

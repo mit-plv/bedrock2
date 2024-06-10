@@ -346,7 +346,7 @@ Module exec.
       | ( true, false) => (addMetricInstructions 4 (addMetricLoads 6 (addMetricJumps 1 mc)))
       | ( true,  true) => (addMetricInstructions 3 (addMetricLoads 4 (addMetricJumps 1 mc)))
       end.
-    
+
     Definition cost_SStackalloc x mc :=
       match isReg x with
       | false => (addMetricInstructions 2 (addMetricLoads 2 (addMetricStores 1 mc)))
@@ -474,12 +474,12 @@ Module exec.
         (forall a mStack mCombined,
             anybytes a n mStack ->
             map.split mCombined mSmall mStack ->
-            exec body t mCombined (map.put l x a) (cost_SStackalloc x mc)
+            exec body t mCombined (map.put l x a) mc
              (fun t' mCombined' l' mc' =>
               exists mSmall' mStack',
                 anybytes a n mStack' /\
                 map.split mCombined' mSmall' mStack' /\
-                post t' mSmall' l' mc')) ->
+                post t' mSmall' l' (cost_SStackalloc x mc'))) ->
         exec (SStackalloc x n body) t mSmall l mc post
     | lit: forall t m l mc x v post,
         post t m (map.put l x (word.of_Z v)) (cost_SLit x mc) ->
