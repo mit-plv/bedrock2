@@ -368,18 +368,15 @@ Section WithWordAndMem.
       unfold dce_function in GI. fwd.
       eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption.
       intros.
-      admit.
-    Admitted.
-      (*eapply @exec.weaken.*)
-      (*- eapply dce_correct_aux; eauto.*)
-      (*  eapply MapEauto.agree_on_refl.*) 
-      (*- unfold compile_post. intros. fwd.*)
-      (*  exists retvals.*)
-      (*  split.*)
-      (*  + erewrite MapEauto.agree_on_getmany; [ eauto | eapply MapEauto.agree_on_comm; [ eassumption ] ].*)
-      (*  + eassumption.*)
-      (* Unshelve. eauto.*)
-    (*Qed.*)
+      eapply @exec.weaken.
+      - eapply dce_correct_aux; eauto.
+        eapply MapEauto.agree_on_refl. 
+      - unfold compile_post. intros. fwd.
+        exists retvals.
+        split.
+        + erewrite MapEauto.agree_on_getmany; [ eauto | eapply MapEauto.agree_on_comm; [ eassumption ] ].
+        + eexists; split; eauto. solve_MetricLog.
+    Qed.
 
     Lemma regalloc_functions_NoDup: forall funs funs',
         regalloc_functions funs = Success funs' ->

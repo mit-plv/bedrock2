@@ -10,7 +10,7 @@ Require Import coqutil.Datatypes.ListSet.
 Local Notation var := String.string (only parsing).
 Require Import compiler.util.Common.
 Require Import bedrock2.MetricLogging.
-Require Import coqutil.Tactics.fwd.
+Require Import compiler.MetricTactics.
 (*  below only for of_list_list_diff *)
 Require Import compiler.DeadCodeElimDef.
 
@@ -109,6 +109,7 @@ Section WithArguments1.
         rewrite ListSet.of_list_removeb
     end.
 
+  Ltac mcsolve := eexists; split; [|split; cycle 1; [eauto|exec_cost_hammer]]; try assumption.
 
   Lemma dce_correct_aux :
     forall eH eL,
@@ -117,7 +118,7 @@ Section WithArguments1.
         exec eH sH t m lH mcH postH ->
         forall used_after lL mcL,
           map.agree_on (of_list (live sH used_after)) lH lL ->
-          exec eL (dce sH used_after) t m lL mcL (compile_post used_after postH).
+          exec eL (dce sH used_after) t m lL mcL (compile_post mcH mcL used_after postH).
   Proof.
     induction 2;
       match goal with
@@ -141,10 +142,9 @@ Section WithArguments1.
         * eapply H5.
         * intros.
           unfold compile_post.
-          exists l'. eexists. split.
-          -- agree_on_solve. repeat listset_to_set.
-             subset_union_solve.
-          -- eauto.
+          exists l'. mcsolve.
+          agree_on_solve. repeat listset_to_set.
+          subset_union_solve.
     - intros.
       eapply @exec.call; try solve [ eassumption ].
       + unfold dce_functions, dce_function  in *.
@@ -158,16 +158,16 @@ Section WithArguments1.
         eapply agree_on_refl.
       + intros.
         unfold compile_post in *.
-        fwd. eapply H4 in H6p1. fwd.
+        fwd. eapply H4 in H6p2. fwd.
         let Heq := fresh in
-        pose proof H6p1p1 as Heq;
-        eapply map.putmany_of_list_zip_sameLength,  map.sameLength_putmany_of_list in H6p1p1. fwd.
+        pose proof H6p2p1 as Heq;
+        eapply map.putmany_of_list_zip_sameLength,  map.sameLength_putmany_of_list in H6p2p1. fwd.
         exists retvs. eexists. repeat split.
         * erewrite agree_on_getmany.
-          -- eapply H6p1p0.
+          -- eapply H6p2p0.
           -- listset_to_set. agree_on_solve.
-        * eapply H6p1p1.
-        * do 2 eexists. split; [ | eassumption ].
+        * eapply H6p2p1.
+        * eexists. mcsolve.
           agree_on_solve.
           repeat listset_to_set.
           subset_union_solve.
@@ -178,12 +178,12 @@ Section WithArguments1.
         * rewrite <- H3p1. eassumption. 
         * eauto.
         * unfold compile_post.
-          exists (map.put l x v); eexists; split; [ | eassumption ].
+          exists (map.put l x v); mcsolve.
           repeat listset_to_set.
           agree_on_solve.
       + eapply @exec.skip.
         * unfold compile_post.
-          exists (map.put l x v); eexists; split; [ | eassumption ].
+          exists (map.put l x v); mcsolve.
           repeat listset_to_set.
           agree_on_solve.
     - intros. repeat listset_to_set.
@@ -195,17 +195,17 @@ Section WithArguments1.
       + erewrite <- H4p0; eauto.
         unfold elem_of; destr (a =? v)%string; [ eapply in_eq | eapply in_cons, in_eq ].
       + eassumption.
-      + unfold compile_post. exists l; eexists; split; eassumption.
+      + unfold compile_post. exists l; mcsolve.
     - intros.
       eapply agree_on_find in H4; fwd.
       destr (existsb (eqb x) used_after); fwd.
       + eapply @exec.inlinetable; eauto.
         * rewrite <- H4p1. eassumption. 
-        * unfold compile_post; do 2 eexists; split ; [ | eassumption ].
+        * unfold compile_post; eexists; mcsolve.
           repeat listset_to_set; agree_on_solve.
       + eapply @exec.skip; eauto.
         unfold compile_post.
-        do 2 eexists; split; [ | eassumption ].
+        eexists; mcsolve.
         repeat listset_to_set; agree_on_solve.
     - intros.
       repeat listset_to_set.
@@ -220,17 +220,17 @@ Section WithArguments1.
             ++ eassumption.
             ++ split.
                ** eassumption.
-               ** do 2 eexists; split; [ eassumption | eapply H6p1p2 ].
+               ** eexists; mcsolve; eauto.
     - intros. destr (existsb (eqb x) used_after).
       + eapply @exec.lit.
         unfold compile_post.
         repeat listset_to_set.
-        do 2 eexists; split; [ | eassumption ].
+        eexists; mcsolve.
         agree_on_solve.
       + eapply @exec.skip.
         unfold compile_post.
         repeat listset_to_set.
-        do 2 eexists; split; [ | eassumption ].
+        eexists; mcsolve.
         agree_on_solve.
     - destr z.
       + intros. repeat listset_to_set.
@@ -248,11 +248,11 @@ Section WithArguments1.
              ++ eapply in_eq.
              ++ eapply in_cons, in_eq.
           -- unfold compile_post.
-             do 2 eexists; split; [ | eassumption ].
+             eexists; mcsolve.
              agree_on_solve.
         * eapply @exec.skip.
           unfold compile_post.
-          do 2 eexists; split; [ | eassumption ].
+          eexists; mcsolve.
           agree_on_solve.
       + intros.
         eapply agree_on_find in H3; fwd. 
@@ -260,11 +260,11 @@ Section WithArguments1.
         * eapply @exec.op.
           -- rewrite <- H3p1. eassumption. 
           -- simpl. constructor.
-          -- unfold compile_post. simpl in *. inversion H1. fwd.  do 2 eexists; split; [ | eassumption ].
+          -- unfold compile_post. simpl in *. inversion H1. fwd. eexists; mcsolve.
              repeat listset_to_set.
              agree_on_solve.
         * eapply @exec.skip. unfold compile_post.
-          do 2 eexists; split ; [ | eassumption ].
+          eexists; mcsolve.
           repeat listset_to_set.
           agree_on_solve.
     - intros.
@@ -273,11 +273,11 @@ Section WithArguments1.
       destr (existsb (eqb x) used_after).
       { eapply @exec.set.
         - rewrite <- H2p1; eassumption. 
-        - unfold compile_post. do 2 eexists; split; [ | eassumption ].
+        - unfold compile_post. eexists; mcsolve.
           agree_on_solve.
       }
       { eapply @exec.skip.
-        - unfold compile_post. do 2 eexists; split; [ | eassumption ].
+        - unfold compile_post. eexists; mcsolve.
           agree_on_solve.
       }
     - intros.
@@ -287,7 +287,10 @@ Section WithArguments1.
       eapply @exec.if_true.
       + erewrite agree_on_eval_bcond; [ eassumption | ].
         pose agree_on_comm; eauto.
-      + eauto.
+      + eapply @exec.weaken; [eauto|].
+        unfold compile_post.
+        intros * (?&?&?&?&?).
+        eexists. mcsolve.
     - intros.
       repeat listset_to_set.
       eapply agree_on_union in H2; fwd.
@@ -295,14 +298,17 @@ Section WithArguments1.
       eapply @exec.if_false.
       + erewrite agree_on_eval_bcond; [ eassumption | ].
         pose agree_on_comm; eauto.
-      + eauto.
+      + eapply @exec.weaken; [eauto|].
+        unfold compile_post.
+        intros * (?&?&?&?&?).
+        eexists. mcsolve.
     - intros.
       cbn - [live].
       rename IHexec into IH1.
       rename H6 into IH12.
       rename H4 into IH2.
       cbn - [live] in IH12.
-      eapply @exec.loop with (mid2 := compile_post (live (SLoop body1 cond body2) used_after) mid2).
+      eapply @exec.loop with (mid2 := compile_post mc mcL (live (SLoop body1 cond body2) used_after) mid2).
       { eapply IH1.
         eapply agree_on_subset.
         - let Heq := fresh in
@@ -312,8 +318,8 @@ Section WithArguments1.
       }
       { intros.
         unfold compile_post in *.
-        repeat destr H4.
-        eapply H1 in H6.
+        repeat destr H4. destr H6.
+        eapply H1 in H8.
         erewrite agree_on_eval_bcond; [ eassumption | ].
         eapply agree_on_comm.
         repeat listset_to_set.
@@ -324,15 +330,12 @@ Section WithArguments1.
       }
       { intros.
         unfold compile_post in *.
-        repeat destr H4.
-        eapply H2 in H8.
-        - exists x.
-          eexists.
-          split.
-          + repeat listset_to_set.
-            eapply agree_on_subset; [ | eapply H4 ].
-            subset_union_solve.
-          + eapply H8.
+        repeat destr H4. destr H8.
+        eapply H2 in H9.
+        - exists x. mcsolve.
+          repeat listset_to_set.
+          eapply agree_on_subset; [ | eapply H4 ].
+          subset_union_solve.
         - erewrite agree_on_eval_bcond; [ eassumption | ].
           repeat listset_to_set.
           eapply agree_on_subset; [ | eapply H4 ].
@@ -341,24 +344,30 @@ Section WithArguments1.
       {
         intros.
         unfold compile_post in *.
-        repeat destr H4.
-        eapply IH2.
-        - eapply H8.
-        - erewrite agree_on_eval_bcond; [ eassumption | ].
+        repeat destr H4. destr H8.
+        assert (eval_bcond x cond = Some true) as Hbcond.
+        { erewrite agree_on_eval_bcond; [ eassumption | ].
           repeat listset_to_set.
           eapply agree_on_subset; [ | eapply H4 ].
-          subset_union_solve.
+          subset_union_solve. }
+        eapply @exec.weaken; [eapply IH2|].
+        - eapply H9.
+        - exact Hbcond.
         - repeat listset_to_set.
           eapply agree_on_subset; [ | eapply H4 ].
           subset_union_solve.
+        - cbv beta. intros * (?&?&?&?&?).
+          eexists. mcsolve.
       }
       {
         intros.
         unfold compile_post in *.
-        repeat destr H4.
-        eapply IH12.
-        - eapply H6.
+        repeat destr H4. destr H6.
+        eapply @exec.weaken; [eapply IH12|].
+        - eapply H8.
         - eapply H4.
+        - cbv beta. intros * (?&?&?&?&?).
+          eexists. mcsolve.
       }
     - intros.
       eapply @exec.seq.
@@ -369,9 +378,9 @@ Section WithArguments1.
           -- eassumption.
           -- eassumption.
         * unfold compile_post. intros. fwd.
-          do 2 eexists; split; eassumption.
+          eexists. mcsolve.
     - intros.
       eapply @exec.skip.
-      unfold compile_post. do 2 eexists; split; eassumption.
+      unfold compile_post. eexists. mcsolve.
   Qed.
 End WithArguments1.
