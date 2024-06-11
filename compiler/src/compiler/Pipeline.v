@@ -15,7 +15,6 @@ Require Import riscv.Utility.runsToNonDet.
 Require Export riscv.Platform.MetricRiscvMachine.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Tactics.fwd.
-Require Import bedrock2.MetricLogging.
 Require Import compiler.ExprImp.
 Require Import compiler.FlattenExprDef.
 Require Import compiler.FlattenExpr.
@@ -39,6 +38,7 @@ Require Import compiler.SeparationLogic.
 Require Import compiler.Spilling.
 Require Import compiler.RegAlloc.
 Require Import compiler.RiscvEventLoop.
+Require Import compiler.MetricsToRiscv.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
@@ -51,7 +51,7 @@ Require Import PropExtensionality.
 Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Require Import compiler.LowerPipeline.
-Require Import bedrock2.WeakestPreconditionProperties.
+Require Import bedrock2.MetricWeakestPreconditionProperties.
 Require Import compiler.UseImmediateDef.
 Require Import compiler.UseImmediate.
 Require Import compiler.DeadCodeElimDef.
@@ -582,18 +582,19 @@ Section WithWordAndMem.
         (* function we choose to call: *)
         (fname: string)
         (* high-level initial state & post on final state: *)
-        (t: trace) (mH: mem) (argvals: list word) (post: trace -> mem -> list word -> Prop),
+        (t: trace) (mH: mem) (argvals: list word) (mc: MetricLog) (post: trace -> mem -> list word -> MetricLog -> Prop),
         valid_src_funs functions = true ->
         compile functions = Success (instrs, finfo, req_stack_size) ->
         (exists (argnames retnames: list string) (fbody: cmd) l,
             map.get (map.of_list (map := Semantics.env) functions) fname =
               Some (argnames, retnames, fbody) /\
             map.of_list_zip argnames argvals = Some l /\
-            forall mc,
-              MetricSemantics.exec (map.of_list functions) fbody t mH l mc
+              MetricSemantics.exec (map.of_list functions) fbody t mH l
+                (exec.cost_SCall_internal PreSpill mc)
                 (fun t' m' l' mc' => exists retvals: list word,
                      map.getmany_of_list l' retnames = Some retvals /\
-                     post t' m' retvals)) ->
+                     post t' m' retvals mc')) ->
+        forall mcL,
         exists (f_rel_pos: Z),
           map.get (map.of_list finfo) fname = Some f_rel_pos /\
           forall (* low-level machine on which we're going to run the compiled program: *)
@@ -607,11 +608,14 @@ Section WithWordAndMem.
             word.unsigned ret_addr mod 4 = 0 ->
             arg_regs_contain initial.(getRegs) argvals ->
             initial.(getLog) = t ->
+            raiseMetrics (cost_SCall_L initial.(getMetrics)) = mcL ->
             machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
             runsTo initial (fun final : MetricRiscvMachine =>
               exists mH' retvals,
                 arg_regs_contain (getRegs final) retvals /\
-                post final.(getLog) mH' retvals /\
+                (exists mcH' : MetricLog,
+                  ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mc)%metricsH /\
+                  post (getLog final) mH' retvals mcH') /\
                 map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
                 final.(getPc) = ret_addr /\
                 machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final).
@@ -627,11 +631,11 @@ Section WithWordAndMem.
         rewrite map.of_list_tuples. reflexivity.
       }
       specialize C with (1 := H0').
-      admit.
-      (*specialize C with (1 := H1).*)
-      (*cbv iota in C.*)
-      (*fwd. eauto 10.*)
-    Admitted. (* XXX *)
+      specialize C with (1 := H1).
+      specialize (C mcL).
+      cbv iota in C.
+      fwd. eauto 10.
+    Qed.
 
     Definition instrencode(p: list Instruction): list byte :=
       List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
@@ -652,7 +656,7 @@ Section WithWordAndMem.
         (* function we choose to call: *)
         (fname: string) (f_rel_pos: Z)
         (* high-level initial state & post on final state: *)
-        (t: trace) (mH: mem) (argvals: list word) (post: trace -> mem -> list word -> Prop)
+        (t: trace) (mH: mem) (argvals: list word) (mc: MetricLog) (post: trace -> mem -> list word -> MetricLog -> Prop)
         (* ghost vars that help describe the low-level machine: *)
         (stack_lo stack_hi ret_addr p_funcs: word) (Rdata Rexec: mem -> Prop)
         (* low-level machine on which we're going to run the compiled program: *)
@@ -660,7 +664,9 @@ Section WithWordAndMem.
         valid_src_funs fs = true ->
         NoDup (map fst fs) ->
         compile fs = Success (instrs, finfo, req_stack_size) ->
-        WeakestPrecondition.call (map.of_list fs) fname t mH argvals post ->
+        MetricWeakestPrecondition.call (map.of_list fs) fname t mH argvals
+          (exec.cost_SCall_internal PreSpill mc) post ->
+        forall mcL,
         map.get (map.of_list finfo) fname = Some f_rel_pos ->
         req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
         word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
@@ -669,24 +675,27 @@ Section WithWordAndMem.
         word.unsigned ret_addr mod 4 = 0 ->
         arg_regs_contain initial.(getRegs) argvals ->
         initial.(getLog) = t ->
+        raiseMetrics (cost_SCall_L initial.(getMetrics)) = mcL ->
         machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
         runsTo initial (fun final : MetricRiscvMachine =>
           exists mH' retvals,
             arg_regs_contain (getRegs final) retvals /\
-            post final.(getLog) mH' retvals /\
+            (exists mcH' : MetricLog,
+              ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mc)%metricsH /\
+              post (getLog final) mH' retvals mcH') /\
             map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
             final.(getPc) = ret_addr /\
             machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final).
     Proof.
       intros.
-      let H := hyp WeakestPrecondition.call in rename H into WP.
+      let H := hyp MetricWeakestPrecondition.call in rename H into WP.
       edestruct compiler_correct with (fname := fname) (argvals := argvals) (post := post) as (f_rel_pos' & G & C);
         try eassumption.
       2: { eapply C; clear C; try assumption; try congruence; try eassumption. }
       intros.
-      unfold Semantics.call in WP. fwd.
+      unfold MetricSemantics.call in WP. fwd.
       do 5 eexists. 1: eassumption. split. 1: eassumption.
-      intros. eapply MetricSemantics.of_metrics_free. assumption.
+      intros. assumption.
     Qed.
 
   End WithMoreParams.
