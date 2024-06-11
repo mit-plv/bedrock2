@@ -79,13 +79,13 @@ Section WithWordAndMem.
     phase_preserves_post: forall p1 p2,
         L1.(Valid) p1 ->
         compile p1 = Success p2 ->
-        forall fname t m argvals mc post,
-        L1.(Call) p1 fname t m argvals mc post ->
-        L2.(Call) p2 fname t m argvals mc (fun t m a mc' =>
-          exists mc'', metricsLeq mc' mc'' /\ post t m a mc''
+        forall fname t m argvals mcH post,
+        L1.(Call) p1 fname t m argvals mcH post ->
+        forall mcL,
+        L2.(Call) p2 fname t m argvals mcL (fun t m a mcL' =>
+          exists mcH', metricsLeq (mcL' - mcL) (mcH' - mcH) /\ post t m a mcH'
         );
   }.
-  (* XXX think about the merits of this kind of metrics statement *)
 
   Arguments phase_correct : clear implicits.
 
@@ -292,7 +292,7 @@ Section WithWordAndMem.
         + eapply @freshNameGenState_disjoint_fbody.
       - simpl. intros. fwd. eexists. split.
         + eauto using map.getmany_of_list_extends.
-        + eauto with metric_arith.
+        + eexists. split; [|eassumption]. solve_MetricLog.
     Qed.
 
     Lemma useimmediate_functions_NoDup: forall funs funs',
@@ -333,7 +333,7 @@ Section WithWordAndMem.
       - eapply useImmediate_correct_aux; eauto.
       - simpl. destruct 1 as (?&?&?&?&?).
         repeat (eexists; split; try eassumption).
-        eauto with metric_arith.
+        solve_MetricLog.
     Qed.
 
 
@@ -375,7 +375,7 @@ Section WithWordAndMem.
         exists retvals.
         split.
         + erewrite MapEauto.agree_on_getmany; [ eauto | eapply MapEauto.agree_on_comm; [ eassumption ] ].
-        + eexists; split; eauto. solve_MetricLog.
+        + eexists; split; eauto. unfold exec.cost_SCall_internal in *. solve_MetricLog.
     Qed.
 
     Lemma regalloc_functions_NoDup: forall funs funs',
@@ -431,7 +431,7 @@ Section WithWordAndMem.
         rewrite H1 in P'. inversion P'. exact Cp.
       - simpl. intros. fwd. eexists. split.
         + eauto using states_compat_getmany.
-        + eauto with metric_arith.
+        + eexists. split; [|eassumption]. solve_MetricLog.
     Qed.
 
     Ltac debool :=
