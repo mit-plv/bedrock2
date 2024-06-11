@@ -297,16 +297,15 @@ Section Pipeline1.
                                   compile_ext_call_length_ignores_positions as P.
       unfold runsTo in P.
       specialize P with (argvals := [])
-                        (post := fun t' m' retvals => isReady spec t' m' /\ goodTrace spec t')
+                        (post := fun t' m' retvals mc' => isReady spec t' m' /\ goodTrace spec t')
                         (fname := "init"%string).
       edestruct P as (init_rel_pos & G & P'); clear P; cycle -1.
       1: eapply P' with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R).
       all: simpl_MetricRiscvMachine_get_set.
-      11: {
+      12: {
         unfold hl_inv in init_code_correct.
         move init_code_correct at bottom.
         do 4 eexists. split. 1: eassumption. split. 1: reflexivity.
-        intros mc.
         eapply ExprImp.weaken_exec.
         - refine (init_code_correct _ _ _).
           replace (datamem_start spec) with (heap_start ml) by congruence.
@@ -314,7 +313,7 @@ Section Pipeline1.
           exact HMem.
         - cbv beta. intros * _ HP. exists []. split. 1: reflexivity. exact HP.
       }
-      10: { unfold compile. rewrite_match. reflexivity. }
+      11: { unfold compile. rewrite_match. reflexivity. }
       all: try eassumption.
       { apply stack_length_divisible. }
       { cbn. clear CP.
@@ -322,6 +321,7 @@ Section Pipeline1.
         subst loop_pos init_pos init_sp. solve_word_eq word_ok. }
       { cbn. apply map.get_put_same. }
       { destruct mlOk. solve_divisibleBy4. }
+      { reflexivity. }
       { reflexivity. }
       { reflexivity. }
       unfold machine_ok.
@@ -409,6 +409,7 @@ Section Pipeline1.
         * eapply iff1ToEq.
           unfold init_sp_insts, init_insts, loop_insts, backjump_insts.
           wwcancel.
+    Unshelve. exact MetricLogging.EmptyMetricLog.
   Qed.
 
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
@@ -505,14 +506,13 @@ Section Pipeline1.
         unfold runsTo in P.
         specialize P with (argvals := [])
                           (fname := "loop"%string)
-                          (post := fun t' m' retvals => isReady spec t' m' /\ goodTrace spec t').
+                          (post := fun t' m' retvals mc' => isReady spec t' m' /\ goodTrace spec t').
         edestruct P as (loop_rel_pos & G & P'); clear P; cycle -1.
         1: eapply P' with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R)
                           (ret_addr := word.add loop_pos (word.of_Z 4)).
-        11: {
+        12: {
           move loop_body_correct at bottom.
           do 4 eexists. split. 1: eassumption. split. 1: reflexivity.
-          intros mc.
           eapply ExprImp.weaken_exec.
           - eapply loop_body_correct; eauto.
           - cbv beta. intros * _ HP. exists []. split. 1: reflexivity. exact HP.
@@ -524,6 +524,7 @@ Section Pipeline1.
           solve_word_eq word_ok. }
         { cbn. rewrite map.get_put_same. f_equal. solve_word_eq word_ok. }
         { subst loop_pos init_pos. destruct mlOk. solve_divisibleBy4. }
+        { reflexivity. }
         { reflexivity. }
         { reflexivity. }
         unfold loop_pos, init_pos.
@@ -588,6 +589,7 @@ Section Pipeline1.
         * wcancel_assumption.
         * eapply rearrange_footpr_subset. 1: eassumption.
           wwcancel.
+    Unshelve. exact MetricLogging.EmptyMetricLog.
   Qed.
 
   Lemma ll_inv_implies_prefix_of_good: forall st,
