@@ -2736,11 +2736,8 @@ Qed.
 #[export] Instance spec_of_critical_bit: fnspec :=                              .**/
 
 uintptr_t critical_bit(uintptr_t k1, uintptr_t k2) /**#
-  (* heaplet packaging doesn't work well when there's just one item in the heap
-     [or I was doing something wrong] *)
-  ghost_args := (R1 R2: mem -> Prop);
-  requires t m := k1 <> k2 /\ <{ * R1 * R2 }> m;
-  ensures t' m' res := t = t' /\ <{ * R1 * R2 }> m'
+  requires t m := k1 <> k2;
+  ensures t' m' res := t = t' /\ m' = m
                 /\ 0 <= \[res] < ltac:(bw)
                 /\ \[res] = pfx_len (pfx_meet (pfx_emb k1) (pfx_emb k2)) #**/
 /**.
@@ -2972,8 +2969,7 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
       return tp;                                                           /**. .**/
     }                                                                      /**. .**/
     else {                                                                 /**. .**/
-      uintptr_t cb = critical_bit(k, best_k);                              /**.
-  instantiate (3:=emp True). steps. .**/
+      uintptr_t cb = critical_bit(k, best_k);                              /**. .**/
       uintptr_t result = cbt_insert_at(tp, cb, k, v);                      /**.
   (* TODO: figure out why instantiate_frame_evar_with_remaining_obligation
            fails here when canceling the frace ?R, and so we need to
@@ -4480,8 +4476,7 @@ Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       
   rewrite map_take_ge_get_ge; subst; steps. .**/
     else {                                                                 /**. .**/
       uintptr_t trace = load(key_out);                                     /**. .**/
-      uintptr_t cb = critical_bit(best_k, k);                              /**.
-  instantiate (3:=emp True). steps. .**/
+      uintptr_t cb = critical_bit(best_k, k);                              /**. .**/
       if (((k >> (8 * sizeof(uintptr_t) - 1 - cb)) & 1) == 1) /* split */ { /**. .**/
         uintptr_t i = cb - 1;                                              /**.
   prove (forall j,
@@ -4739,7 +4734,7 @@ Proof.
            when 2^32 is replaced with a smaller number, so it seems the tactic
            at some point computes the big number (2^32/4)
            -> workaround: hide the big number using `remember` *)
-  remember (2 ^ 32 / 4) as ec. repeat heapletwise_step. subst.
+  remember (2 ^ ltac:(bw) / ltac:(wsize)) as ec. repeat heapletwise_step. subst.
   do 2
     match goal with
     | H: _ |= array _ _ _ a |- _ =>

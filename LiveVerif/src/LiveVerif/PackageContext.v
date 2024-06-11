@@ -192,12 +192,22 @@ Ltac add_equality_to_post x Post :=
   (* y (t or m or l or measure) will be patterned out at end of package_context *)
   move y at top.
 
+Ltac add_mem_equality_to_Post_or_move_at_top m Post :=
+  lazymatch type of Post with
+  | context[m] =>
+      (* current packaged context contains an assertion about memory (the usual case) *)
+      move m at top
+  | _ =>
+      (* we're in a function that does not use the heap at all *)
+      add_equality_to_post m Post
+  end.
+
 Ltac add_equalities_to_post Post :=
   lazymatch goal with
   (* loop pre/post *)
   | |- ?E (?Ghosts, ?Measure, ?T, ?M, ?L) =>
       add_equality_to_post L Post;
-      move M at top;
+      add_mem_equality_to_Post_or_move_at_top M Post;
       lazymatch type of Post with
       | context[T] => idtac (* current packaged context already says something about the
                                trace, so only keep that *)
@@ -208,13 +218,13 @@ Ltac add_equalities_to_post Post :=
   (* loop invariant *)
   | |- ?E ?Measure ?T ?M ?L =>
       add_equality_to_post L Post;
-      move M at top;
+      add_mem_equality_to_Post_or_move_at_top M Post;
       add_equality_to_post T Post;
       add_equality_to_post Measure Post
   (* if branch post *)
   | |- ?E ?T ?M ?L =>
       add_equality_to_post L Post;
-      move M at top;
+      add_mem_equality_to_Post_or_move_at_top M Post;
       add_equality_to_post T Post
   end.
 
@@ -237,7 +247,7 @@ Ltac move_mem_hyp_just_below_scope_marker :=
       end
       (* Note: the two above moves should be replaced by one single `move H below s`,
          but `below` is not implemented yet: https://github.com/coq/coq/issues/15209 *)
-  | |- _ => fail "No separation logic hypothesis about" m "found"
+  | |- _ => idtac (* do nothing if this function does not use the heap *)
   end.
 
 (* can be overridden with
@@ -700,12 +710,15 @@ Ltac merge_sep_pair_step :=
 
 Ltac merge_seps_done :=
   lazymatch goal with
-  | H: seps ((seps (if ?b then nil else nil)) :: ?Rs) ?m |- _ =>
+  | H: seps ((seps (if ?b then nil else nil)) :: ?Rs) ?m |- exec _ _ _ ?m _ _ =>
       (* memory was modified in different ways in then/else branch *)
       eapply merge_seps_done in H; cbn [seps] in H
-  | H: seps _ _ |- _ =>
+  | H: seps _ ?m |- exec _ _ _ ?m _ _ =>
       (* memory was not modified (or in exactly the same way in both branches) *)
       cbn [seps] in H
+  | H: ?m = _ |- exec _ _ _ ?m _ _ =>
+      (* this function does not use the heap *)
+      idtac
   | |- _ => fail 1000 "failed to match the sepclauses of the then-branch and else-branch"
   end.
 

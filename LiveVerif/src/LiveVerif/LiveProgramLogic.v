@@ -431,7 +431,15 @@ Ltac call lhs fname arges :=
         eapply H
     end
   | (* one dexprs1 goal containing argument evaluation, precondition, and continuation
-       after the call *) ].
+       after the call: *)
+    lazymatch goal with
+    | |- dexprs1 ?m ?l ?es ?vs (?calleePre /\ enable_frame_trick.enable_frame_trick ?cont) =>
+        lazymatch calleePre with
+        | context[m] => idtac (* default case: callee uses memory *)
+        | _ => (* special case: callee does not use memory *)
+            change (dexprs1 m l es vs (calleePre /\ cont))
+        end
+    end ].
 
 (* Assigns default well_founded relations to types.
    Use lower costs to override existing entries. *)
@@ -1446,6 +1454,79 @@ Notation "'void' fname ( ) /* *# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := 
  osemi custom optional_semicolon at level 1,
  only parsing).
 
+
+(* Same definitions but without ghost_args: *)
+
+(* One return value: *)
+Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *# 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* osemi *" :=
+  (fun fname: String.string =>
+     (fun fs =>
+        (forall a1, .. (forall an,
+           (forall t1 m1, pre ->
+              WeakestPrecondition.call fs fname t1 m1
+                (@cons (@word.rep _ _) a1 .. (@cons (@word.rep _ _) an nil) ..)
+                (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post))) .. ))
+     : ProgramLogic.spec_of fname)
+(in custom funspec at level 1,
+ fname name,
+ a1 closed binder, an closed binder,
+ t1 name, t2 name, m1 name, m2 name, r name,
+ pre constr at level 200,
+ post constr at level 200,
+ osemi custom optional_semicolon at level 1,
+ only parsing).
+
+(* One return value and no arguments: *)
+Notation "'uintptr_t' fname ( ) /* *# 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* osemi *" :=
+  (fun fname: String.string =>
+     (fun fs =>
+           (forall t1 m1, pre ->
+              WeakestPrecondition.call fs fname t1 m1 nil
+                (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post)))
+     : ProgramLogic.spec_of fname)
+(in custom funspec at level 1,
+ fname name,
+ t1 name, t2 name, m1 name, m2 name, r name,
+ pre constr at level 200,
+ post constr at level 200,
+ osemi custom optional_semicolon at level 1,
+ only parsing).
+
+(* No return value: *)
+Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *# 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* osemi *" :=
+  (fun fname: String.string =>
+     (fun fs =>
+        (forall a1, .. (forall an,
+           (forall t1 m1, pre ->
+              WeakestPrecondition.call fs fname t1 m1
+                (@cons (@word.rep _ _) a1 .. (@cons (@word.rep _ _) an nil) ..)
+                (fun t2 m2 retvs => retvs = nil /\ post))) .. ))
+     : ProgramLogic.spec_of fname)
+(in custom funspec at level 1,
+ fname name,
+ a1 closed binder, an closed binder,
+ t1 name, t2 name, m1 name, m2 name,
+ pre constr at level 200,
+ post constr at level 200,
+ osemi custom optional_semicolon at level 1,
+ only parsing).
+
+(* No return value an no arguments: *)
+Notation "'void' fname ( ) /* *# 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* osemi *" :=
+  (fun fname: String.string =>
+     (fun fs =>
+        (forall t1 m1, pre ->
+           WeakestPrecondition.call fs fname t1 m1 nil
+              (fun t2 m2 retvs => retvs = nil /\ post)))
+     : ProgramLogic.spec_of fname)
+(in custom funspec at level 1,
+ fname name,
+ t1 name, t2 name, m1 name, m2 name,
+ pre constr at level 200,
+ post constr at level 200,
+ osemi custom optional_semicolon at level 1,
+ only parsing).
+
 Notation ".* */ x" :=
   (match x with (* <-- typecheck x before passing it to Ltac, to get better error messages *)
    | _ => ltac:(let r := with_ident_as_string_no_beta x in exact r)
@@ -1455,4 +1536,4 @@ Notation ".* */ x" :=
 Notation "'fun_correct!' f" := (program_logic_goal_for (ident_to_string f) f)
   (at level 10, f name, only parsing).
 
-Notation ".* */ //" := True (only parsing).
+Notation ".* */ //" := True (at level 0, only parsing).

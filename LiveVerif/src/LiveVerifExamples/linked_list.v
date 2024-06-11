@@ -5,9 +5,6 @@ Require Import Lia.
 
 Load LiveVerif.
 
-(* TODO support functions that don't access any memory *)
-Definition dummy: mem -> Prop := emp True.
-
 Record node := {
   data: word;
   next: word;
