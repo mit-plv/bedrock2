@@ -513,9 +513,8 @@ Section WithWordAndMem.
       unfold FlatWithRegs, RiscvLang.
       split; cbn.
       - intros p1 ((? & finfo) & ?). intros. exact I.
-      - admit.
-      (*- eapply flat_to_riscv_correct; eassumption.*)
-    Admitted.
+      - eapply flat_to_riscv_correct; eassumption.
+    Qed.
 
     Definition composed_compile:
       Semantics.env ->
