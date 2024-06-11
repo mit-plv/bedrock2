@@ -2429,30 +2429,31 @@ Derive cbt_raw_node_free SuchThat (fun_correct! cbt_raw_node_free)
   As cbt_raw_node_free_ok.                                                      .**/
 {                                                                          /**. .**/
   Free(node);                                                              /*?.
-  instantiate (5:=/[ltac:(wsize3)]). steps. steps. .**/
+  instantiate (5:=/[ltac:(wsize3)]). steps. .**/
 }                                                                          /**.
 
   (* FIXME: this should probably be done more automatically *)
   unfold impl1. intro m'. steps.
   eapply cast_to_anybytes.
-  change (ltac:(wsize3)) with (ltac:(wsize) + (ltac:(wsize) + (ltac:(wsize) + 0))).
+  replace (ltac:(wsize3)) with (ltac:(wsize) + (ltac:(wsize) + (ltac:(wsize) + 0)))
+    by reflexivity.
   eapply sepapps_cons_contiguous.
   instantiate (1:=uintptr w1).
   pose proof uintptr_contiguous as Hcntg.
   eassert (Hw: ltac:(wsize) = _); cycle 1. rewrite Hw. apply Hcntg.
-  compute. steps.
+  reflexivity.
 
   eapply sepapps_cons_contiguous.
   instantiate (1:=uintptr w2).
   pose proof uintptr_contiguous as Hcntg.
   eassert (Hw: ltac:(wsize) = _); cycle 1. rewrite Hw. apply Hcntg.
-  compute. steps.
+  reflexivity.
 
   eapply sepapps_cons_contiguous.
   instantiate (1:=uintptr w3).
   pose proof uintptr_contiguous as Hcntg.
   eassert (Hw: ltac:(wsize) = _); cycle 1. rewrite Hw. apply Hcntg.
-  compute. steps.
+  reflexivity.
 
   eapply sepapps_nil_contiguous.
 
@@ -2735,7 +2736,7 @@ Qed.
 #[export] Instance spec_of_critical_bit: fnspec :=                              .**/
 
 uintptr_t critical_bit(uintptr_t k1, uintptr_t k2) /**#
-  (* heaplet packaging doesn't work well then there's just one item in the heap
+  (* heaplet packaging doesn't work well when there's just one item in the heap
      [or I was doing something wrong] *)
   ghost_args := (R1 R2: mem -> Prop);
   requires t m := k1 <> k2 /\ <{ * R1 * R2 }> m;
@@ -2747,8 +2748,7 @@ Derive critical_bit SuchThat (fun_correct! critical_bit) As critical_bit_ok.    
 {                                                                          /**. .**/
   uintptr_t i = 0;                                                         /**.
   prove (0 <= \[i] < ltac:(bw)).
-  assert (forall n, 0 <= n < \[i] -> bit_at k1 n = bit_at k2 n).
-  intros. hwlia.
+  prove (forall n, 0 <= n < \[i] -> bit_at k1 n = bit_at k2 n).
   delete #(i = /[0]).
   loop invariant above H.
   move i at bottom. .**/
@@ -2758,22 +2758,13 @@ Derive critical_bit SuchThat (fun_correct! critical_bit) As critical_bit_ok.    
     /* decreases (ltac:(bw) - \[i]) */ {                                   /**. .**/
     i = i + 1;                                                             /**. .**/
   }                                                                        /**.
-  assert (Hcmp: n = \[i'] \/ n < \[i']) by lia. destruct Hcmp.
-  { subst. steps. }
-  { match goal with | H: forall _, _ |- _ => apply H end. lia. } .**/
+  decide (n = \[i']). { steps. } apply_forall. steps. .**/
   return i;                                                                /**. .**/
 }                                                                          /**.
   symmetry. apply pfx_cb_charac; steps.
   { unzify. destruct_or. assert (Hui: \[i] = ltac:(bwm1)) by lia.
-    rewrite Hui in *. intro.
-    match goal with
-    | H: k1 <> k2 |- _ => apply H
-    end.
-    apply bit_at_inj. intros. assert (Hcmp: i0 = ltac:(bwm1) \/ i0 < ltac:(bwm1)) by lia.
-    destruct Hcmp.
-    { steps. } { match goal with | H: forall _, _ |- _ => apply H end. lia. }
-  steps.
-}
+    rewrite Hui in *. intro. apply_ne. apply bit_at_inj. intros.
+    decide (i0 = ltac:(bwm1)). { steps. } apply_forall. steps. steps. }
 Qed.
 
 #[export] Instance spec_of_cbt_insert_at: fnspec :=                             .**/
