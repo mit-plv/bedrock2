@@ -6,6 +6,7 @@ Require Import coqutil.Tactics.fwd.
 Require Import String.
 Require Import compiler.UseImmediateDef.
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.MetricCosts.
 
 Local Notation var := String.string (only parsing).
 
@@ -49,31 +50,21 @@ Section WithArguments.
            | H : _ <= _ |- _ => revert H
            end;
     clear;
-    unfold exec.cost_SInteract, exec.cost_SCall_internal,
-    exec.cost_SCall_external, exec.cost_SLoad, exec.cost_SStore,
-    exec.cost_SInlinetable, exec.cost_SStackalloc, exec.cost_SLit,
-    exec.cost_SOp, exec.cost_SSet, exec.cost_SIf, exec.cost_SLoop_true,
-    exec.cost_SLoop_false;
-    repeat match goal with
-           | x : operand |- _ => destr x
-           | x : bcond _ |- _ => destr x
-           | |- context[isRegStr ?x] => destr (isRegStr x)
-           end;
-    try solve_MetricLog
+    FlatImp.scost_hammer
   ).
 
   (* TODO these two lemmas are somewhat slow *)
   Lemma op_cost_y : forall x0 y v0 mcH' mc v mcL lit,
     exec.cost_SOp isRegStr x0 y (Var v0) EmptyMetricLog - EmptyMetricLog <=
-      mcH' - exec.cost_SLit isRegStr lit mc ->
-    exec.cost_SOp isRegStr x0 y (Const v) (exec.cost_SLit isRegStr lit mcL) - mcL <=
+      mcH' - cost_lit isRegStr lit mc ->
+    exec.cost_SOp isRegStr x0 y (Const v) (cost_lit isRegStr lit mcL) - mcL <=
       mcH' - mc.
   Proof. finish. Qed.
 
   Lemma op_cost_v0 : forall x0 y v0 mcH' mc v mcL lit,
     exec.cost_SOp isRegStr x0 y (Var v0) EmptyMetricLog - EmptyMetricLog <=
-      mcH' - exec.cost_SLit isRegStr lit mc ->
-    exec.cost_SOp isRegStr x0 v0 (Const v) (exec.cost_SLit isRegStr lit mcL) - mcL <=
+      mcH' - cost_lit isRegStr lit mc ->
+    exec.cost_SOp isRegStr x0 v0 (Const v) (cost_lit isRegStr lit mcL) - mcL <=
       mcH' - mc.
   Proof. finish. Qed.
 
