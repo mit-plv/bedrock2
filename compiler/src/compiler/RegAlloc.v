@@ -9,6 +9,7 @@ Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.autoforward.
 Require Import compiler.Registers.
+Require Import bedrock2.MetricCosts.
 
 Open Scope Z_scope.
 
@@ -592,8 +593,8 @@ Definition assert_in(y: srcvar)(y': impvar)(m: list (srcvar * impvar)): result u
   match List.find (mapping_eqb (y, y')) m with
   | Some _ => if check_regs y y' then Success tt else
                error:("The register allocator found a mapping of source register variable" y
-                      "to target stack variable" y'                                                                     
-                      "but source register variables must be in registers in the target.")                      
+                      "to target stack variable" y'
+                      "but source register variables must be in registers in the target.")
   | None => error:("The register allocator replaced source variable" y
                    "by target variable" y'
                    "but when the checker encountered this pair,"
@@ -631,7 +632,7 @@ Definition assert_ins(args: list srcvar)(args': list impvar)(m: list (srcvar * i
                 "and a target variable list" args'
                 "that are incompatible with its current mapping of source to target variables" m);;
   assert (List.forallb (fun '(x, x') => if check_regs x x' then true else false)
-                       (List.combine args args'))                                  
+                       (List.combine args args'))
          error:("Register allocation checker got a source variable list" args
                 "and a target variable list" args'
                 "in which at least one source register variable is on the stack in the target.").
@@ -655,7 +656,7 @@ Definition assignment(m: list (srcvar * impvar))(x: srcvar)(x': impvar): result 
     error:("Register allocation checker got an assignment of source register variable" x
            "to target stack variable" x'
            "but source register variables must be in registers in the target.").
-           
+
 Fixpoint assignments(m: list (srcvar * impvar))(xs: list srcvar)(xs': list impvar):
   result (list (srcvar * impvar)) :=
   match xs, xs' with
@@ -826,8 +827,8 @@ Lemma extends_cons_r: forall a l1 l2,
 Proof.
   unfold extends, assert_in. simpl. intros. fwd.
   destruct_one_match_hyp. 2: {
-    specialize (H0 x x'). rewrite E in H0. rewrite E0 in H0. 
-    eapply H0. reflexivity. 
+    specialize (H0 x x'). rewrite E in H0. rewrite E0 in H0.
+    eapply H0. reflexivity.
   }
   destruct_one_match. 1: reflexivity.
   eapply find_none in E2. 2: eassumption.
@@ -1082,7 +1083,7 @@ Section CheckerCorrect.
       destr (String.eqb x k).
       + exfalso. congruence.
       + eapply H0. 2: eassumption. unfold assert_in.
-        destruct_one_match. 1: rewrite E0; trivial. 
+        destruct_one_match. 1: rewrite E0; trivial.
         eapply find_none in E3. 2: eassumption.
         simpl in E3. rewrite String.eqb_refl, Z.eqb_refl in E3. discriminate.
   Qed.
@@ -1113,7 +1114,7 @@ Section CheckerCorrect.
     induction xs; intros; destruct xs'; try discriminate.
     - reflexivity.
     - simpl in *. f_equal. destruct_one_match_hyp; try discriminate.
-      specialize (IHxs xs' a0 m2). eauto. 
+      specialize (IHxs xs' a0 m2). eauto.
   Qed.
 
   Lemma assert_ins_same_length: forall xs xs' m u,
@@ -1122,6 +1123,7 @@ Section CheckerCorrect.
     unfold assert_ins, assert. intros. fwd. assumption.
   Qed.
 
+  (* TODO XXX this should be obsolete *)
   Ltac unfold_metrics :=
     unfold
       MetricLogging.withInstructions, MetricLogging.withLoads,
@@ -1143,103 +1145,13 @@ Section CheckerCorrect.
     unfold check_regs_op, assert_in_op, assert_in; intros; destruct x'; fwd; reflexivity.
   Qed.
 
-  Lemma check_regs_cost_SLoad: forall x x' a a' mc mc',
-      check_regs a a' = true ->
-      check_regs x x' = true ->
-      (MetricLogging.metricsLeq
-         (MetricLogging.metricsSub (exec.cost_SLoad isRegZ x' a' mc') mc')
-         (MetricLogging.metricsSub (exec.cost_SLoad isRegStr x a mc) mc)).
-  Proof.
-    intros; unfold check_regs in *; cbn in *;
-      destr (isRegStr x); destr (isRegStr a); destr (isRegZ x'); destr (isRegZ a');
-      try discriminate;
-      unfold_metrics; cbn; repeat split; destruct mc; cbn; unfold_metrics; cbn; blia.  
-  Qed. 
-
-  Lemma check_regs_cost_SStore: forall x x' a a' mc mc',
-      check_regs a a' = true ->
-      check_regs x x' = true ->
-      (MetricLogging.metricsLeq
-         (MetricLogging.metricsSub (exec.cost_SStore isRegZ x' a' mc') mc')
-         (MetricLogging.metricsSub (exec.cost_SStore isRegStr x a mc) mc)).
-  Proof.
-    intros; unfold check_regs in *; cbn in *; 
-      destr (isRegStr x); destr (isRegStr a); destr (isRegZ x'); destr (isRegZ a');
-      try discriminate;
-      unfold_metrics; cbn; repeat split; destruct mc; cbn; unfold_metrics; cbn; blia.  
-  Qed. 
-
-  Lemma check_regs_cost_SInlinetable: forall x x' a a' mc mc',
-      check_regs a a' = true ->
-      check_regs x x' = true ->
-      (MetricLogging.metricsLeq
-         (MetricLogging.metricsSub (exec.cost_SInlinetable isRegZ x' a' mc') mc')
-         (MetricLogging.metricsSub (exec.cost_SInlinetable isRegStr x a mc) mc)).
-  Proof.
-    intros; unfold check_regs in *; cbn in *; 
-      destr (isRegStr x); destr (isRegStr a); destr (isRegZ x'); destr (isRegZ a');
-      try discriminate;
-      unfold_metrics; cbn; repeat split; destruct mc; cbn; unfold_metrics; cbn; blia.  
-  Qed.
-
-  Lemma check_regs_cost_SStackalloc: forall x x' mcL mcL' mcH mcH',
-      check_regs x x' = true ->
-      (MetricLogging.metricsLeq (MetricLogging.metricsSub mcL' mcL)
-         (MetricLogging.metricsSub mcH' mcH)) ->
-      (MetricLogging.metricsLeq
-         (MetricLogging.metricsSub (exec.cost_SStackalloc isRegZ x' mcL') mcL)
-         (MetricLogging.metricsSub (exec.cost_SStackalloc isRegStr x mcH') mcH)).
-  Proof.
-    intros; unfold check_regs in *; cbn in *; unfold exec.cost_SStackalloc in *;
-      destr (isRegStr x); destr (isRegZ x'); 
-      try discriminate;
-      unfold_metrics; cbn; repeat split; destruct mcL; destruct mcH; destruct mcL'; destruct mcH'; cbn in *; unfold_metrics; cbn in *; try blia.
-  Qed.
-
-  Lemma check_regs_cost_SLit: forall x x' mc mc',
-      check_regs x x' = true ->
-      (MetricLogging.metricsLeq
-         (MetricLogging.metricsSub (exec.cost_SLit isRegZ x' mc') mc')
-         (MetricLogging.metricsSub (exec.cost_SLit isRegStr x mc) mc)).
-  Proof.
-    intros; unfold check_regs in *; cbn in *; unfold exec.cost_SLit in *;
-      destr (isRegStr x); destr (isRegZ x'); 
-      try discriminate;
-      unfold_metrics; cbn; repeat split; destruct mc; cbn; unfold_metrics; cbn; try blia.  
-  Qed.
-
-  Lemma check_regs_cost_SOp: forall x x' y y' z z' mc mc',
-      check_regs x x' = true ->
-      check_regs y y' = true ->
-      check_regs_op z z' = true ->
-      (MetricLogging.metricsLeq
-         (MetricLogging.metricsSub (exec.cost_SOp isRegZ x' y' z' mc') mc')
-         (MetricLogging.metricsSub (exec.cost_SOp isRegStr x y z mc) mc)).
-  Proof.
-    intros; unfold check_regs_op, check_regs in *; cbn in *;
-      destr (isRegStr x); destr (isRegZ x'); destr (isRegStr y); destr (isRegZ y'); destruct z as [z|z]; destruct z' as [z'|z']; try destr (isRegStr z); try destr (isRegZ z');
-      try discriminate;
-      unfold_metrics; cbn; repeat split; destruct mc; cbn; unfold_metrics; cbn; blia.
-  Qed.
-
-  Lemma check_regs_cost_SSet: forall x x' y y' mc mc',
-      check_regs x x' = true ->
-      check_regs y y' = true ->
-      (MetricLogging.metricsLeq
-         (MetricLogging.metricsSub (exec.cost_SSet isRegZ x' y' mc') mc')
-         (MetricLogging.metricsSub (exec.cost_SSet isRegStr x y mc) mc)).
-  Proof.
-    intros; unfold check_regs in *; cbn in *; 
-      destr (isRegStr x); destr (isRegStr y); destr (isRegZ x'); destr (isRegZ y');
-      try discriminate;
-      unfold_metrics; cbn; repeat split; destruct mc; cbn; unfold_metrics; cbn; blia.  
-  Qed.
-
   Ltac discr_match_success :=
     match goal with
     | H: match ?expr with _ => _ end = Success _ |- _ => destr expr; discriminate
     end.
-     
+
+  (* TODO XXX these lemms are unnecessarily slow i think *)
+
   Lemma check_regs_cost_SIf:
     forall (cond : bcond) (bThen bElse : stmt) (corresp : list (string * Z))
       (cond0 : bcond') (s'1 s'2 : stmt') (a0 a1 : list (string * Z))
@@ -1261,12 +1173,12 @@ Section CheckerCorrect.
       try discriminate;
       unfold_metrics; cbn in *; repeat split; cbn in *; unfold_metrics; cbn in *; fwd;
       destr mcL; destr mc'; destr mc; destr mcH'; try blia.
-    all: try discr_match_success. 
+    all: try discr_match_success.
     all: cbn in *; fwd; try blia.
   Qed.
 
   Lemma check_regs_cost_SLoop_false:
-  forall (cond : bcond) (body1 body2 : stmt) (corresp' : list (string * Z)) (s'1 : stmt') 
+  forall (cond : bcond) (body1 body2 : stmt) (corresp' : list (string * Z)) (s'1 : stmt')
       (cond0 : bcond') (s'2 : stmt') (mc mcL : MetricLogging.MetricLog) (a : list (string * Z)),
     check a body1 s'1 = Success corresp' ->
     check_bcond corresp' cond cond0 = Success tt ->
@@ -1284,7 +1196,7 @@ Section CheckerCorrect.
       try discriminate;
       unfold_metrics; cbn in *; repeat split; cbn in *; unfold_metrics; cbn in *; fwd;
       destr mcL; destr mc'; destr mc; destr mcH'; try blia.
-    all: try discr_match_success. 
+    all: try discr_match_success.
     all: cbn in *; fwd; try blia.
   Qed.
 
@@ -1292,12 +1204,18 @@ Section CheckerCorrect.
   Hint Resolve states_compat_get : checker_hints.
   Hint Resolve states_compat_put : checker_hints.
   Hint Resolve states_compat_get_op : checker_hints.
-  Hint Resolve states_compat_then_op : checker_hints. 
-  Hint Resolve
-       check_regs_cost_SLoad check_regs_cost_SStore check_regs_cost_SInlinetable
-       check_regs_cost_SStackalloc check_regs_cost_SLit (*check_regs_cost_SOp*)
-       check_regs_cost_SSet check_regs_cost_SIf check_regs_cost_SLoop_false
-    : checker_hints.
+  Hint Resolve states_compat_then_op : checker_hints.
+  (*Hint Resolve*)
+  (*     check_regs_cost_SLoad check_regs_cost_SStore check_regs_cost_SInlinetable*)
+  (*     check_regs_cost_SStackalloc check_regs_cost_SLit (*check_regs_cost_SOp*)*)
+  (*     check_regs_cost_SSet check_regs_cost_SIf check_regs_cost_SLoop_false*)
+  (*  : checker_hints.*)
+
+  Ltac a :=
+    repeat match goal with | |- MetricLogging.metricsLeq _ _ => fail 1 | _ => econstructor end;
+    eauto 10 with checker_hints.
+
+  Ltac b := unfold assert_in, assignment, check_regs in *; cost_hammer.
 
   Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s t m lH mcH post,
       check_funcs e e' = Success tt ->
@@ -1334,7 +1252,7 @@ Section CheckerCorrect.
       eapply putmany_of_list_zip_states_compat in P. 2-3: eassumption. destruct P as (lL' & P & SC).
       eexists. split. 1: eassumption. intros. eauto.
       repeat eexists; eauto.
-      all: repeat (unfold_metrics; cbn; try blia). 
+      all: repeat (unfold_metrics; cbn; try blia).
     - (* Case exec.call *)
       rename binds0 into binds', args0 into args'.
       unfold check_funcs in H.
@@ -1360,41 +1278,29 @@ Section CheckerCorrect.
         * eapply states_compat_getmany; eassumption.
         * exact L4.
         * repeat eexists. 6: eassumption. 1: exact SC.
-          all: repeat (unfold_metrics; cbn in *; try blia). 
+          all: repeat (unfold_metrics; cbn in *; try blia).
     - (* Case exec.load *)
-      repeat econstructor; eauto 10 with checker_hints.
-      all: unfold assert_in, assignment in *; fwd.
-      all: eapply check_regs_cost_SLoad; eauto.
+      a. b.
     - (* Case exec.store *)
-      repeat econstructor; eauto 10 with checker_hints.
-      all: unfold assert_in, assignment in *; fwd.
-      all: eapply check_regs_cost_SStore; eauto.
+      a. b.
     - (* Case exec.inlinetable *)
-      repeat econstructor; eauto 10 with checker_hints.
-      all: unfold assert_in, assignment in *; fwd.
-      all: eapply check_regs_cost_SInlinetable; eauto.
+      a. b.
     - (* Case exec.stackalloc *)
       eapply exec.stackalloc. 1: assumption.
       intros. eapply exec.weaken.
       + eapply H2; try eassumption.
-        eapply states_compat_precond. eapply states_compat_put. all: eassumption.
+        eapply states_compat_precond. eapply states_compat_put; eassumption.
       + cbv beta. intros. fwd.
-        eexists. eexists. repeat (split; try eassumption).
-        eexists. eexists. repeat (split; try eassumption).
-        all: unfold assert_in, assignment in *; fwd.
-        all: eapply check_regs_cost_SStackalloc; eauto.
+        eexists. eexists. do 2 (split; try eassumption).
+        eexists. eexists. do 2 (split; try eassumption).
+        b.
     - (* Case exec.lit *)
-      repeat econstructor; eauto 10 with checker_hints.
-      all: unfold assert_in, assignment in *; fwd.
-      all: eapply check_regs_cost_SLit; eauto.
+      a. b.
     - (* Case exec.op *)
-      repeat econstructor; eauto 10 with checker_hints.
-      all: unfold assert_in, assignment in *; fwd.
-      all: eapply check_regs_cost_SOp; eauto; eapply assert_in_then_check_regs_op; eauto.
+      a.
+      unfold assert_in_op, assert_in, assignment, check_regs in *; scost_hammer. (* TODO XXX could be faster *)
     - (* Case exec.set *)
-      repeat econstructor; eauto 10 with checker_hints.
-      all: unfold assert_in, assignment in *; fwd.
-      all: eapply check_regs_cost_SSet; eauto.
+      a. b.
     - (* Case exec.if_true *)
       eapply exec.if_true. 1: eauto using states_compat_eval_bcond.
       eapply exec.weaken.
@@ -1436,7 +1342,7 @@ Section CheckerCorrect.
         1: eapply states_compat_precond; eassumption.
         cbv beta. intros. fwd. eexists. eexists. split. 2: split. 1,3: eauto.
         exists mcH'. exists mc'.
-        split; eauto. 
+        split; eauto.
       + cbv beta. intros. fwd. eapply exec.weaken. 1: eapply IH12. 1: eassumption. 1: eassumption.
         * eapply states_compat_extends. 2: eassumption.
           pose proof defuel_loop_inv as P.
@@ -1451,7 +1357,7 @@ Section CheckerCorrect.
         * cbv beta. intros. fwd. eexists. eexists. split. 2: split. 1: eauto. 2: eauto.
           intros.
           repeat (unfold check_bcond, assert_in, assignment in *; fwd).
-          clear -E0 E1 E2 H4p1p0 H4p1p1 H4p1 H4p3. 
+          clear -E0 E1 E2 H4p1p0 H4p1p1 H4p1 H4p3.
           intros; unfold check_regs in *; cbn in *; unfold exec.cost_SLoop_true in *; try discr_match_success;
             destr cond; destr cond0; destr (isRegStr x); destr (isRegZ x0); try (destr (isRegStr y)); try (destr (isRegZ y0));
             try discriminate; try discr_match_success.
@@ -1465,13 +1371,12 @@ Section CheckerCorrect.
       + eapply IH1. 1: eassumption.
         eapply states_compat_precond. assumption.
       + cbv beta. intros t' m' l' mcblah ?. fwd.
-        eapply IH2 in H2p2. 2,3: eauto using states_compat_precond. 
+        eapply IH2 in H2p2. 2,3: eauto using states_compat_precond.
         eapply exec.weaken; eauto.
         cbv beta. intros. fwd. exists lH'0. exists mcH'0. split. 2:split. 1,3: eauto.
-        destr mc; destr mcL; unfold_metrics; cbn in *; unfold_metrics; cbn in *; blia. 
+        b.
     - (* case exec.skip *)
-      eapply exec.skip. eexists. exists mc. split. 2: split. 1,3: eauto.
-      destr mc; destr mcL; unfold_metrics; cbn in *; unfold_metrics; cbn in *; blia. 
+      a. b.
   Qed.
 
 End CheckerCorrect.
