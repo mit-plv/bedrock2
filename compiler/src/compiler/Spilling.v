@@ -11,6 +11,7 @@ Require Import compiler.Registers.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SpillingMapGoals.
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.MetricCosts.
 Require Import compiler.FlatImpConstraints.
 Require Import coqutil.Tactics.autoforward.
 Require Import coqutil.Tactics.fwd.
@@ -22,7 +23,7 @@ Section Spilling.
   Notation stmt := (stmt Z).
   Notation execpre := (exec PreSpill isRegZ).
   Notation execpost := (exec PostSpill isRegZ).
-  
+
   Definition zero := 0.
   Definition ra := 1.
   Definition sp := 2.
@@ -129,9 +130,9 @@ Section Spilling.
     | SLit x n =>
       SLit (ires_reg x) n;;
       save_ires_reg x
-    | SOp x op y oz => 
-      load_iarg_reg 1 y;; 
-      match oz with 
+    | SOp x op y oz =>
+      load_iarg_reg 1 y;;
+      match oz with
       | Var z => load_iarg_reg 2 z;; SOp (ires_reg x) op (iarg_reg 1 y) (Var (iarg_reg 2 z))
       | Const _ =>  SOp (ires_reg x) op (iarg_reg 1 y) oz
       end;; save_ires_reg x
@@ -355,7 +356,7 @@ Section Spilling.
       valid_vars_src m s ->
       valid_vars_tgt (spill_stmt s).
   Proof.
-    
+
     unfold valid_vars_src, valid_vars_tgt.
     induction s; simpl; intros;
       repeat match goal with
@@ -465,8 +466,8 @@ Section Spilling.
   Proof.
     intros.
     unfold load_iarg_reg, stack_loc, iarg_reg, related in *. fwd.
-    assert (isRegZ (9 + i) = true) by (unfold isRegZ; blia). 
-    assert (isRegZ fp = true) by (unfold isRegZ; (assert (fp = 5) by auto); blia). 
+    assert (isRegZ (9 + i) = true) by (unfold isRegZ; blia).
+    assert (isRegZ fp = true) by (unfold isRegZ; (assert (fp = 5) by auto); blia).
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. ecancel_assumption.
@@ -476,9 +477,9 @@ Section Spilling.
         eapply map.get_split_r. 1,3: eassumption.
         destr (map.get mp r); [exfalso|reflexivity].
         specialize H0p2 with (1 := E0). blia.
-      + unfold exec.cost_SLoad.
-        assert (isRegZ r = false) by (unfold isRegZ; blia); rewrite H4 in H3. 
-        unfold spill_tmp in H3. rewrite H0; rewrite H1. 
+      + unfold cost_load.
+        assert (isRegZ r = false) by (unfold isRegZ; blia); rewrite H4 in H3.
+        unfold spill_tmp in H3. rewrite H0; rewrite H1.
         eapply H3.
         repeat match goal with
                | |- exists _, _ => eexists
@@ -496,7 +497,7 @@ Section Spilling.
         destr (map.get lStack r); [exfalso|reflexivity].
         specialize H0p3 with (1 := E0). blia.
       }
-      assert (isRegZ r = true) by (unfold isRegZ; blia); rewrite H4 in H3. 
+      assert (isRegZ r = true) by (unfold isRegZ; blia); rewrite H4 in H3.
       eapply H3.
       repeat match goal with
              | |- exists _, _ => eexists
@@ -504,7 +505,7 @@ Section Spilling.
              | |- _ => eassumption || reflexivity
              end.
   Qed.
-  
+
   (* Lemma load_iarg_reg_correct'(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 post frame maxvar v fpval, *)
   (*     i = 1 \/ i = 2 -> *)
   (*     related maxvar frame fpval t1 m1 l1 t2 m2 l2 -> *)
@@ -582,9 +583,9 @@ Section Spilling.
                | |- _ => eassumption || reflexivity
                end.
         1: eapply put_tmp; eassumption.
-        unfold exec.cost_SLoad. assert (isRegZ (9+i) = true) by (unfold isRegZ; blia); rewrite H0. 
-        assert (fp = 5) by auto; rewrite H1; cbn. 
-        destr (isRegZ r); solve_MetricLog. 
+        unfold cost_load. assert (isRegZ (9+i) = true) by (unfold isRegZ; blia); rewrite H0.
+        assert (fp = 5) by auto; rewrite H1; cbn.
+        destr (isRegZ r); solve_MetricLog.
     - eapply exec.skip.
       assert (l2 = map.put l2 r v) as F. {
         symmetry. apply map.put_idemp.
@@ -617,7 +618,7 @@ Section Spilling.
                 related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
                 post t1' m1' l1' mc1'' /\
                 (mc2'' - mc2 <= mc1'' - mc1)%metricsH).
-  Proof. 
+  Proof.
     intros.
     unfold save_ires_reg, stack_loc, ires_reg, related in *. fwd.
     destr (32 <=? x).
@@ -662,8 +663,8 @@ Section Spilling.
           }
           1: { unfold spill_tmp. eapply put_tmp; eauto. }
           1: blia.
-          unfold exec.cost_SStore. unfold spill_tmp; cbn.
-          destr (isRegZ x); solve_MetricLog. 
+          unfold cost_store. unfold spill_tmp; cbn.
+          destr (isRegZ x); solve_MetricLog.
       }
       blia.
     - eapply exec.skip.
@@ -730,11 +731,11 @@ Section Spilling.
           eapply get_sep. ecancel_assumption.
         - rewrite map.get_put_same. reflexivity.
         - exact St.
-        - unfold exec.cost_SStore.
+        - unfold cost_store.
           assert (isRegZ (spill_tmp 1) = true) by auto; rewrite H.
           assert (isRegZ fp = true) by auto; rewrite H0.
-          clear H H0. 
-          destr (isRegZ x); try blia. 
+          clear H H0.
+          destr (isRegZ x); try blia.
           eapply H1.
           repeat match goal with
                  | |- exists _, _ => eexists
@@ -771,7 +772,7 @@ Section Spilling.
       }
       blia.
     - eapply exec.skip.
-      destr (isRegZ x); try blia. 
+      destr (isRegZ x); try blia.
       eapply H1.
       (* even though we did nothing, we have to reconstruct the `related` from the `related` that *)
   (*        held *before* the SOp *)
@@ -876,9 +877,9 @@ Section Spilling.
         addMetricInstructions 1
           (addMetricLoads 1 (addMetricStores 1 (cost_set_vars_to_reg_range args start mc))).
   Proof.
-    induction args; intros; cbn; try trivial. 
-    destr (isRegZ a); cbn; rewrite IHargs; trivial. 
-  Qed. 
+    induction args; intros; cbn; try trivial.
+    destr (isRegZ a); cbn; rewrite IHargs; trivial.
+  Qed.
 
   Lemma cost_set_vars_to_reg_range_commutes':
     forall args start mc,
@@ -887,10 +888,10 @@ Section Spilling.
         addMetricInstructions 1
           (addMetricLoads 1 (cost_set_vars_to_reg_range args start mc)).
   Proof.
-    induction args; intros; cbn; try trivial. 
-    destr (isRegZ a); cbn; rewrite IHargs; trivial. 
-  Qed.   
-  
+    induction args; intros; cbn; try trivial.
+    destr (isRegZ a); cbn; rewrite IHargs; trivial.
+  Qed.
+
   Lemma set_vars_to_reg_range_correct:
     forall args start argvs e t1 t2 m1 m2 l1 l1' l2 mc2 maxvar frame post fpval,
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
@@ -942,7 +943,7 @@ Section Spilling.
           { blia. }
         * intros. apply H6; auto.
           cbn in *. destr (isRegZ start); try blia; destr (isRegZ a); try blia.
-          rewrite H0. rewrite cost_set_vars_to_reg_range_commutes. trivial.            
+          rewrite H0. rewrite cost_set_vars_to_reg_range_commutes. trivial.
       + eapply exec.set.
         { eassumption. }
         eapply IHargs; try eassumption; try blia. 2: {
@@ -969,7 +970,7 @@ Section Spilling.
           { assumption. }
         * intros. apply H6; auto.
           cbn in *. destr (isRegZ start); try blia; destr (isRegZ a); try blia.
-          rewrite H0. rewrite cost_set_vars_to_reg_range_commutes'. trivial.       
+          rewrite H0. rewrite cost_set_vars_to_reg_range_commutes'. trivial.
   Qed.
 
   Fixpoint cost_set_reg_range_to_vars (start : Z) (args: list Z) (mc : MetricLog) : MetricLog :=
@@ -979,7 +980,7 @@ Section Spilling.
                  addMetricInstructions 1 (addMetricLoads 1 (cost_set_reg_range_to_vars (start + 1) xs mc))
                else (addMetricInstructions 1 (addMetricLoads 2 (cost_set_reg_range_to_vars (start + 1) xs mc)))
     end.
-    
+
   Lemma set_reg_range_to_vars_correct:
     forall args argvs start e t1 t2 m1 m2 l1 l2 mc2 maxvar frame post fpval,
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
@@ -1088,21 +1089,21 @@ Section Spilling.
   Qed.
 
   Lemma factor_out_cost_external : forall phase mc,
-    exec.cost_SCall_external phase mc =
-    (mc + exec.cost_SCall_external phase EmptyMetricLog)%metricsH.
+    cost_call_external phase mc =
+    (mc + cost_call_external phase EmptyMetricLog)%metricsH.
   Proof. destruct phase; eauto with metric_arith. Qed.
 
   Lemma factor_out_cost_internal : forall phase mc,
-    exec.cost_SCall_internal phase mc =
-    (mc + exec.cost_SCall_internal phase EmptyMetricLog)%metricsH.
+    cost_call_internal phase mc =
+    (mc + cost_call_internal phase EmptyMetricLog)%metricsH.
   Proof. destruct phase; eauto with metric_arith. Qed.
 
   Lemma factor_out_cost_stackalloc : forall x mc,
-    exec.cost_SStackalloc isRegZ x mc =
-    (mc + exec.cost_SStackalloc isRegZ x EmptyMetricLog)%metricsH.
+    cost_stackalloc isRegZ x mc =
+    (mc + cost_stackalloc isRegZ x EmptyMetricLog)%metricsH.
   Proof.
     intros.
-    unfold exec.cost_SStackalloc, EmptyMetricLog.
+    unfold cost_stackalloc, EmptyMetricLog.
     destruct (isRegZ x); solve_MetricLog_piecewise.
   Qed.
 
@@ -1339,7 +1340,7 @@ Section Spilling.
              (t: Semantics.trace)(m: mem)(argvals: list word)(mc: MetricLog)
              (post: Semantics.trace -> mem -> list word -> MetricLog -> Prop): Prop :=
     forall l, map.of_list_zip argnames argvals = Some l ->
-                 execpre e fbody t m l (exec.cost_SCall_internal PreSpill mc) (fun t' m' l' mc' =>
+                 execpre e fbody t m l (cost_call_internal PreSpill mc) (fun t' m' l' mc' =>
                    exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                                    post t' m' retvals mc').
 
@@ -1523,7 +1524,7 @@ Section Spilling.
     { eassumption. }
     {
       add_bounds.
-      unfold exec.cost_SStackalloc, exec.cost_SCall_internal in *.
+      unfold cost_stackalloc, cost_call_internal in *.
       destruct (isRegZ fp); solve_MetricLog.
     }
   Qed.
@@ -1531,17 +1532,17 @@ Section Spilling.
 
   Lemma iarg_reg_isReg: forall i a,
       (i <= 20) ->
-      (isRegZ (iarg_reg i a) = true). 
+      (isRegZ (iarg_reg i a) = true).
   Proof.
     intros. unfold isRegZ, iarg_reg. destr (32 <=? a); unfold spill_tmp; blia.
   Qed.
-  
+
   Lemma ires_reg_isReg: forall r,
-      (isRegZ (ires_reg r) = true). 
+      (isRegZ (ires_reg r) = true).
   Proof.
     intros. unfold isRegZ, ires_reg. destr (32 <=? r); unfold spill_tmp; blia.
   Qed.
-  
+
   Ltac isReg_helper :=
     match goal with
     | |- context[(isRegZ (iarg_reg _ _))] => rewrite iarg_reg_isReg by blia
@@ -1550,8 +1551,10 @@ Section Spilling.
     | H: context[(isRegZ (ires_reg _))] |- _ => rewrite ires_reg_isReg in H
     end.
 
+  Ltac irs := cost_unfold; repeat isReg_helper; cost_solve.
+  Ltac sirs := scost_unfold; repeat isReg_helper; scost_solve.
 
-        
+
   Lemma spilling_correct (e1 e2 : env) (Ev : spill_functions e1 = Success e2)
         (s1 : stmt)
         (t1 : Semantics.trace)
@@ -1852,8 +1855,7 @@ Section Spilling.
         rewrite factor_out_set_reg_range_to_vars in Hmetrics.
         rewrite (factor_out_cost_internal PreSpill) in Hmetrics.
         add_bounds.
-        unfold exec.cost_SStackalloc, exec.cost_SCall_internal, exec.cost_SCall_external, EmptyMetricLog in *.
-        destruct (isRegZ fp); solve_MetricLog.
+        cost_solve.
         (* cost_SCall constraint: prespill - postspill >= (...66...) i think? *)
         (* TODO XXX fairly slow *)
       }
@@ -1861,7 +1863,7 @@ Section Spilling.
     - (* exec.load *)
       eapply exec.seq_cps.
       eapply load_iarg_reg_correct; (blia || eassumption || idtac).
-      intros. 
+      intros.
       eapply exec.seq_cps.
       pose proof H2 as A. unfold related in A. fwd.
       unfold Memory.load, Memory.load_Z, Memory.load_bytes in *. fwd.
@@ -1875,8 +1877,7 @@ Section Spilling.
       + eassumption.
       + eassumption.
       + blia.
-      + unfold exec.cost_SLoad in *; repeat isReg_helper.
-        destr (isRegZ x); destr (isRegZ a); solve_MetricLog. 
+      + irs.
     - (* exec.store *)
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
@@ -1896,11 +1897,10 @@ Section Spilling.
                | |- exists _, _ => eexists
                | |- _ /\ _ => split
                end.
-        all: try eassumption || reflexivity. 
+        all: try eassumption || reflexivity.
         spec store_bytes_sep_hi2lo as A. 1: eassumption.
-        all: ecancel_assumption. 
-      + unfold exec.cost_SStore; repeat isReg_helper. 
-        destr (isRegZ v); destr (isRegZ a); solve_MetricLog. 
+        all: ecancel_assumption.
+      + irs.
     - (* exec.inlinetable *)
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
       eapply exec.seq_cps.
@@ -1912,8 +1912,7 @@ Section Spilling.
       + eassumption.
       + eassumption.
       + blia.
-      + unfold exec.cost_SInlinetable in *; repeat isReg_helper.
-        destr (isRegZ x); destr (isRegZ i); solve_MetricLog. 
+      + irs.
     - (* exec.stackalloc *)
       rename H1 into IH.
       eapply exec.stackalloc. 1: assumption.
@@ -1931,15 +1930,14 @@ Section Spilling.
              | |- _ /\ _ => split
              end.
       1,4,3,2: eassumption.
-      unfold exec.cost_SStackalloc in *; repeat isReg_helper.
-      destr (isRegZ x); solve_MetricLog.
+      irs.
     - (* exec.lit *)
       eapply exec.seq_cps. eapply exec.lit.
       eapply save_ires_reg_correct.
       + eassumption.
       + eassumption.
       + blia.
-      + unfold exec.cost_SLit; repeat isReg_helper. destr (isRegZ x); solve_MetricLog. 
+      + irs.
     - (* exec.op *)
       unfold exec.lookup_op_locals in *.
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
@@ -1951,16 +1949,14 @@ Section Spilling.
         { eapply get_iarg_reg_1; eauto with zarith. }
         { unfold exec.lookup_op_locals in *. apply map.get_put_same. }
         { eapply save_ires_reg_correct; (try eassumption || blia).
-          unfold exec.cost_SOp; repeat isReg_helper.
-          destr (isRegZ v); destr (isRegZ x); destr (isRegZ y); solve_MetricLog. }
+          sirs. }
       }
       {
         eapply exec.seq_cps. eapply exec.op.
         { apply map.get_put_same. }
         { unfold exec.lookup_op_locals in *. reflexivity. }
         { eapply save_ires_reg_correct; (try eassumption || blia).
-          unfold exec.cost_SOp; repeat isReg_helper.
-          destr (isRegZ x); destr (isRegZ y); solve_MetricLog. }
+          sirs. }
       }
     - (* exec.set *)
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
@@ -1970,8 +1966,7 @@ Section Spilling.
       + eassumption.
       + eassumption.
       + blia.
-      + unfold exec.cost_SSet; repeat isReg_helper.
-        destr (isRegZ x); destr (isRegZ y); solve_MetricLog. 
+      + irs.
     - (* exec.if_true *)
       unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; fwd.
       + eapply exec.seq_assoc.
@@ -1980,20 +1975,18 @@ Section Spilling.
         eapply exec.if_true. {
           cbn. erewrite get_iarg_reg_1 by eauto with zarith. rewrite map.get_put_same. congruence.
         }
-        eapply exec.weaken. 
+        eapply exec.weaken.
         * eapply IHexec; eassumption.
         * cbv beta; intros; fwd. exists t1', m1', l1', mc1'. split. 2: split. all: try eassumption.
-          unfold exec.cost_SIf in *; repeat isReg_helper.
-          destr (isRegZ y); destr (isRegZ x); solve_MetricLog. 
+          sirs.
       + eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
         eapply exec.if_true. {
           cbn. rewrite map.get_put_same. rewrite word.eqb_ne by assumption. reflexivity.
         }
-        eapply exec.weaken. 
+        eapply exec.weaken.
         * eapply IHexec; eassumption.
         * cbv beta; intros; fwd. exists t1', m1', l1', mc1'. split. 2: split. all: try eassumption.
-          unfold exec.cost_SIf in *; repeat isReg_helper.
-          destr (isRegZ x); solve_MetricLog. 
+          sirs.
     - (* exec.if_false *)
       unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; fwd.
       + eapply exec.seq_assoc.
@@ -2002,20 +1995,18 @@ Section Spilling.
         eapply exec.if_false. {
           cbn. erewrite get_iarg_reg_1 by eauto with zarith. rewrite map.get_put_same. congruence.
         }
-        eapply exec.weaken. 
+        eapply exec.weaken.
         * eapply IHexec; eassumption.
         * cbv beta; intros; fwd. exists t1', m1', l1', mc1'. split. 2: split. all: try eassumption.
-          unfold exec.cost_SIf in *; repeat isReg_helper.
-          destr (isRegZ x); destr (isRegZ y); solve_MetricLog. 
+          sirs.
       + eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
         eapply exec.if_false. {
           cbn. rewrite map.get_put_same. rewrite word.eqb_eq; reflexivity.
         }
-        eapply exec.weaken. 
+        eapply exec.weaken.
         * eapply IHexec; eassumption.
         * cbv beta; intros; fwd. exists t1', m1', l1', mc1'. split. 2: split. all: try eassumption.
-          unfold exec.cost_SIf in *; repeat isReg_helper.
-          destr (isRegZ x); solve_MetricLog. 
+          sirs.
     - (* exec.loop *)
       rename IHexec into IH1, H3 into IH2, H5 into IH12.
       eapply exec.loop_cps.
@@ -2035,11 +2026,10 @@ Section Spilling.
         erewrite get_iarg_reg_1 by eauto with zarith.
         rewrite map.get_put_same. eexists. split; [reflexivity|].
         split; intros.
-        * do 4 eexists. split. 2: split. 
+        * do 4 eexists. split. 2: split.
           -- exact H3p8.
           -- eapply H1. 1: eassumption. cbn. rewrite E, E0. congruence.
-          -- unfold exec.cost_SLoop_false; repeat isReg_helper.
-             destr (isRegZ x); destr (isRegZ y); solve_MetricLog. 
+          -- sirs.
         * eapply exec.weaken. 1: eapply IH2.
           -- eassumption.
           -- cbn. rewrite E, E0. congruence.
@@ -2048,8 +2038,7 @@ Section Spilling.
           -- cbv beta. intros. fwd. eapply exec.weaken.
              ++ eapply IH12; try eassumption. repeat split; eauto; blia.
              ++ cbv beta; intros; fwd. exists t1'1, m1'1, l1'1, mc1'1. split. 2:split. all: try eassumption.
-                unfold exec.cost_SLoop_true in *; repeat isReg_helper.
-                destr (isRegZ x); destr (isRegZ y); solve_MetricLog. 
+                sirs.
       + specialize H0 with (1 := H3p1). cbn in H0. fwd.
         eapply exec.weaken. {
           eapply load_iarg_reg_correct''; (blia || eassumption || idtac).
@@ -2058,10 +2047,9 @@ Section Spilling.
         rewrite map.get_put_same. eexists. split; [reflexivity|].
         split; intros.
         * do 4 eexists. split. 2: split.
-          -- exact H3p6. 
+          -- exact H3p6.
           -- eapply H1. 1: eassumption. cbn. rewrite E. congruence.
-          -- unfold exec.cost_SLoop_false; repeat isReg_helper.
-             destr (isRegZ x); solve_MetricLog. 
+          -- sirs.
         * eapply exec.weaken. 1: eapply IH2.
           -- eassumption.
           -- cbn. rewrite E. congruence.
@@ -2070,19 +2058,18 @@ Section Spilling.
           -- cbv beta. intros. fwd.  eapply exec.weaken.
              ++ eapply IH12; try eassumption. repeat split; eauto; blia.
              ++ cbv beta; intros; fwd. exists t1'1, m1'1, l1'1, mc1'1. split. 2:split. all: try eassumption.
-                unfold exec.cost_SLoop_true in *; repeat isReg_helper.
-                destr (isRegZ x); solve_MetricLog. 
+                sirs.
     - (* exec.seq *)
       cbn in *. fwd.
       rename H1 into IH2, IHexec into IH1.
       eapply exec.seq.
       + eapply IH1. 1: eassumption. eauto 15.
       + cbn. intros. fwd. eapply exec.weaken.
-        * eapply IH2; eassumption. 
-        * cbv beta. intros. fwd. exists t1'0, m1'0, l1'0, mc1'0. split. 2:split. all: try eassumption. 
-          solve_MetricLog. 
+        * eapply IH2; eassumption.
+        * cbv beta. intros. fwd. exists t1'0, m1'0, l1'0, mc1'0. split. 2:split. all: try eassumption.
+          solve_MetricLog.
     - (* exec.skip *)
-      eapply exec.skip. exists t, m, l, mc. repeat split; eauto; solve_MetricLog. 
+      eapply exec.skip. exists t, m, l, mc. repeat split; eauto; solve_MetricLog.
   Qed.
 
   Lemma spill_fun_correct: forall e1 e2 argnames1 retnames1 body1 argnames2 retnames2 body2,

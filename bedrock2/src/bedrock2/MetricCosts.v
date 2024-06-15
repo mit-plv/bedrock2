@@ -121,14 +121,14 @@ Definition isRegStr (var : String.string) : bool :=
 Ltac cost_unfold :=
   unfold cost_interact, cost_call_internal, cost_call_external, cost_load,
   cost_store, cost_inlinetable, cost_stackalloc, cost_lit, cost_op, cost_set,
-  cost_if, cost_loop_true, cost_loop_false in *.
+  cost_if, cost_loop_true, cost_loop_false, EmptyMetricLog in *.
 
 Ltac cost_destr :=
   repeat match goal with
          | x : compphase |- _ => destr x
          | _ : context[if ?x then _ else _] |- _ => destr x; try discriminate
          | |- context[if ?x then _ else _] => destr x; try discriminate
-         end; unfold EmptyMetricLog.
+         end.
 
 Ltac cost_solve := cost_unfold; cost_destr; try solve_MetricLog.
 Ltac cost_solve_piecewise := cost_unfold; cost_destr; try solve_MetricLog_piecewise.
