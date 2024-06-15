@@ -40,6 +40,7 @@ Require Import compiler.RegAlloc.
 Require Import compiler.RiscvEventLoop.
 Require Import compiler.MetricsToRiscv.
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.MetricCosts.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
 Require Import compiler.DivisibleBy4.
@@ -163,7 +164,7 @@ Section WithWordAndMem.
       exists argnames retnames fbody l,
         map.get e f = Some (argnames, retnames, fbody) /\
         map.of_list_zip argnames argvals = Some l /\
-        Exec e fbody t m l (exec.cost_SCall_internal PreSpill mc) (fun t' m' l' mc' =>
+        Exec e fbody t m l (cost_call_internal PreSpill mc) (fun t' m' l' mc' =>
                        exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                                        post t' m' retvals mc').
 
@@ -375,7 +376,7 @@ Section WithWordAndMem.
         exists retvals.
         split.
         + erewrite MapEauto.agree_on_getmany; [ eauto | eapply MapEauto.agree_on_comm; [ eassumption ] ].
-        + eexists; split; eauto. unfold exec.cost_SCall_internal in *. solve_MetricLog.
+        + eexists; split; eauto. unfold cost_call_internal in *. solve_MetricLog.
     Qed.
 
     Lemma regalloc_functions_NoDup: forall funs funs',
@@ -590,7 +591,7 @@ Section WithWordAndMem.
               Some (argnames, retnames, fbody) /\
             map.of_list_zip argnames argvals = Some l /\
               MetricSemantics.exec (map.of_list functions) fbody t mH l
-                (exec.cost_SCall_internal PreSpill mc)
+                (cost_call_internal PreSpill mc)
                 (fun t' m' l' mc' => exists retvals: list word,
                      map.getmany_of_list l' retnames = Some retvals /\
                      post t' m' retvals mc')) ->
@@ -665,7 +666,7 @@ Section WithWordAndMem.
         NoDup (map fst fs) ->
         compile fs = Success (instrs, finfo, req_stack_size) ->
         MetricWeakestPrecondition.call (map.of_list fs) fname t mH argvals
-          (exec.cost_SCall_internal PreSpill mc) post ->
+          (cost_call_internal PreSpill mc) post ->
         forall mcL,
         map.get (map.of_list finfo) fname = Some f_rel_pos ->
         req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
