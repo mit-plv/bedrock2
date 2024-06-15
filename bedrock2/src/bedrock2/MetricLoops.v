@@ -10,6 +10,7 @@ From bedrock2 Require Semantics.
 From bedrock2 Require Import MetricWeakestPrecondition MetricWeakestPreconditionProperties.
 
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.MetricCosts.
 
 Section Loops.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
@@ -22,17 +23,19 @@ Section Loops.
   Context {fs : Semantics.env}.
   Let call := fs.
 
+  Local Notation UNK := String.EmptyString.
+
   Lemma wp_while: forall e c t m l mc (post: _ -> _ -> _ -> _ -> Prop),
      (exists measure (lt:measure->measure->Prop) (inv:measure->Semantics.trace->mem->locals->MetricLog->Prop),
       Coq.Init.Wf.well_founded lt /\
       (exists v, inv v t m l mc) /\
       (forall v t m l mc, inv v t m l mc ->
         exists bv bmc, dexpr m l e mc (bv, bmc) /\
-        (word.unsigned bv <> 0%Z -> cmd call c t m l bmc (fun t' m l mc =>
-          exists v', inv v' t' m l (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc)))
+        (word.unsigned bv <> 0%Z -> cmd call c t m l bmc (fun t' m' l' mc' =>
+          exists v', inv v' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc')
             /\ lt v' v)) /\
         (word.unsigned bv = 0%Z -> post t m l
-          (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 bmc)))))) ->
+          (cost_loop_false isRegStr UNK (Some UNK) bmc)))) ->
      cmd call (cmd.while e c) t m l mc post.
   Proof.
     intros. destruct H as (measure & lt & inv & Hwf & HInit & Hbody).
@@ -61,11 +64,11 @@ Section Loops.
       exists brv brmc, expr m l e mc (eq (brv, brmc)) /\
       (word.unsigned brv <> 0%Z -> cmd call c t m l brmc
         (fun t' m' l' mc' => exists v' g',
-          P v' g' t' m' l' (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc'))) /\
+          P v' g' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc') /\
           lt v' v /\
           (forall t'' m'' l'' mc'', Q v' g' t'' m'' l'' mc'' -> Q v g t'' m'' l'' mc''))) /\
       (word.unsigned brv = 0%Z -> Q v g t m l
-        (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 brmc)))))
+        (cost_loop_false isRegStr UNK (Some UNK) brmc)))
     (Hpost: forall t m l mc, Q v0 g0 t m l mc -> post t m l mc)
     : cmd call (cmd.while e c) t m l mc post.
   Proof.
@@ -97,11 +100,11 @@ Section Loops.
       exists brv brmc, expr m l e mc (eq (brv, brmc)) /\
       (word.unsigned brv <> 0%Z -> cmd call c t m l brmc
         (fun t' m' l' mc' => exists v' g',
-          P v' g' t' m' l' (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc'))) /\
+          P v' g' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc') /\
           lt v' v /\
           (forall t'' m'' l'' mc'', Q v' g' t'' m'' l'' mc'' -> Q v g t'' m'' l'' mc''))) /\
       (word.unsigned brv = 0%Z -> cmd call rest t m l
-        (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 brmc))) (Q v g)))
+        (cost_loop_false isRegStr UNK (Some UNK) brmc) (Q v g)))
     : cmd call (cmd.seq (cmd.while e c) rest) t m l mc (Q v0 g0).
   Proof.
     cbn. eapply tailrec_localsmap_1ghost with
@@ -194,10 +197,10 @@ Section Loops.
       exists brv brmc, expr m l e mc (eq (Datatypes.pair brv brmc)) /\
          (word.unsigned brv <> 0 ->
           cmd fs c t m l brmc (fun t m l mc => exists v',
-            invariant v' t m l (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc)))
+            invariant v' t m l (cost_loop_true isRegStr UNK (Some UNK) mc)
               /\ lt v' v)) /\
          (word.unsigned brv = 0 -> post t m l
-           (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 brmc)))))
+           (cost_loop_false isRegStr UNK (Some UNK) brmc)))
     : cmd fs (cmd.while e c) t m l mc post.
   Proof.
     eapply wp_while.
@@ -225,8 +228,8 @@ Section Loops.
             Markers.unique (Markers.left (tuple.existss (fun localstuple =>
               enforce variables localstuple l /\
               Markers.right (Markers.unique (exists v',
-                tuple.apply (invariant v' t m (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc)))) localstuple /\ lt v' v))))))) /\
-         (word.unsigned brv = 0 -> post t m l (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 brmc))))))
+                tuple.apply (invariant v' t m (cost_loop_true isRegStr UNK (Some UNK) mc)) localstuple /\ lt v' v))))))) /\
+         (word.unsigned brv = 0 -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc))))
     : cmd call (cmd.while e c) t m l mc post.
   Proof.
     eapply (while_localsmap (fun v t m l mc =>
@@ -272,11 +275,11 @@ Section Loops.
         (fun t' m' localsmap' mc' =>
           Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
           Markers.unique (Markers.left (hlist.existss (fun g' => exists v',
-          match tuple.apply (hlist.apply (spec v') g' t' m') l' (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc'))) with S' =>
+          match tuple.apply (hlist.apply (spec v') g' t' m') l' (cost_loop_true isRegStr UNK (Some UNK) mc') with S' =>
           S'.(1) /\ Markers.right (
             lt v' v /\
             forall T M, hlist.foralls (fun L => forall MC, tuple.apply (S'.(2) T M) L MC -> tuple.apply (S_.(2) T M) L MC)) end))))))))) /\
-      (word.unsigned brv = 0%Z -> tuple.apply (S_.(2) t m) l (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 brmc)))))))end))))
+      (word.unsigned brv = 0%Z -> tuple.apply (S_.(2) t m) l (cost_loop_false isRegStr UNK (Some UNK) brmc)))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0 mc).(2) with Q0 => forall t m mc, hlist.foralls (fun l =>  tuple.apply (Q0 t m) l mc -> post t m (reconstruct variables l) mc)end)
     , cmd call (cmd.while e c) t m localsmap mc post ).
   Proof.
@@ -317,15 +320,11 @@ Section Loops.
       exists br mc', expr m l e mc (eq (Datatypes.pair br mc')) /\
       (word.unsigned br <> 0%Z -> cmd call c t m l mc'
         (fun t' m' l' mc''=> exists v',
-          let S' := spec v' t' m' l' (addMetricInstructions 2
-                                     (addMetricLoads 2
-                                     (addMetricJumps 1 mc''))) in let '(P', Q') := S' in
+          let S' := spec v' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc'') in let '(P', Q') := S' in
           P' /\
           lt v' v /\
           forall T M L MC, Q' T M L MC -> Q T M L MC)) /\
-      (word.unsigned br = 0%Z -> Q t m l (addMetricInstructions 1
-                                         (addMetricLoads 1
-                                         (addMetricJumps 1 mc')))))
+      (word.unsigned br = 0%Z -> Q t m l (cost_loop_false isRegStr UNK (Some UNK) mc')))
     (Hpost : forall t m l mc, Q0 t m l mc -> post t m l mc)
     : cmd call (cmd.while e c) t m l mc post.
   Proof.

@@ -175,12 +175,7 @@ locals_ok mem mem_ok width word word_ok.
     ind_on Syntax.expr; t. { destruct H. destruct H. eexists. eexists. rewrite H. eauto. }
     { eapply IHe in H; t. cbv [MetricWeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe in H; t. cbv [MetricWeakestPrecondition.load] in H0; t. rewrite H. rewrite H0.
-      (* now we prove that 1+2=3 and 2+2=4 *)
-      eexists. eexists. split; eauto.
-      MetricLogging.unfold_MetricLog. MetricLogging.simpl_MetricLog.
-       repeat rewrite <- BinInt.Z.add_assoc in H1.
-      simpl in H1.
-      eauto. }
+      eexists. eexists. split; eauto. }
     { eapply IHe1 in H; t. eapply IHe2 in H0; t. rewrite H, H0; eauto. }
     { eapply IHe1 in H; t. rewrite H. Tactics.destruct_one_match.
       { apply IHe3; t. }
@@ -207,9 +202,7 @@ locals_ok mem mem_ok width word word_ok.
       2: { eapply IHe. rewrite E. reflexivity. }
       intros (addr, oldmc) ?. apply pair_equal_spec in H0; destruct H0.
       subst r m0. unfold MetricWeakestPrecondition.load. eexists; split; eauto.
-      apply Option.eq_of_eq_Some in H; auto. rewrite <- H.
-      apply pair_equal_spec; split; auto.
-      destruct oldmc. applyAddMetricsGoal. reflexivity.
+      apply Option.eq_of_eq_Some in H; auto.
     - repeat (destruct_one_match_hyp; try discriminate; []).
       eapply Proper_expr.
       2: { eapply IHe1. rewrite E. reflexivity. }

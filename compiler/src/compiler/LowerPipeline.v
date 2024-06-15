@@ -21,6 +21,7 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.MetricCosts.
 Require Import compiler.FitsStack.
 Require Import compiler.Registers.
 Require Import riscv.Utility.InstructionCoercions.

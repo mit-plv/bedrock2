@@ -45,6 +45,7 @@ Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.MetricsToRiscv.
 Require Export compiler.regs_initialized.
+Require Import bedrock2.MetricCosts.
 
 Require Import coqutil.Word.Interface.
 Local Hint Mode Word.Interface.word - : typeclass_instances.

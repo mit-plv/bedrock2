@@ -2,6 +2,7 @@ Require Import Coq.Bool.Bool.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.MetricCosts.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
 Require Import compiler.util.Common.
@@ -25,10 +26,6 @@ Inductive bbinop: Set :=
 | BGe
 | BLtu
 | BGeu.
-
-Inductive compphase: Type :=
-| PreSpill
-| PostSpill.
 
 Section Syntax.
   Context {varname: Type}.
@@ -301,123 +298,27 @@ Module exec.
       end.
 
     (* Helper functions for computing costs of instructions *)
-    Definition cost_SInteract mc :=
-      match phase with
-      | PreSpill => (addMetricInstructions 100 (addMetricJumps 100 (addMetricStores 100 (addMetricLoads 100 mc))))
-      | PostSpill => (addMetricInstructions 50 (addMetricJumps 50 (addMetricStores 50 (addMetricLoads 50 mc))))
-      end.
-
-    Definition cost_SCall_internal mc :=
-      match phase with
-      | PreSpill => addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc)))
-      | PostSpill => addMetricInstructions 50 (addMetricJumps 50 (addMetricLoads 50 (addMetricStores 50 mc)))
-      end.
-
-    Definition cost_SCall_external mc :=
-      match phase with
-      | PreSpill => addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc)))
-      | PostSpill => addMetricInstructions 50 (addMetricJumps 50 (addMetricLoads 50 (addMetricStores 50 mc)))
-      end.
-
-    (* TODO think about a non-fixed bound on the cost of function preamble and postamble *)
-
-    Definition cost_SLoad x a mc :=
-      match (isReg x, isReg a) with
-      | (false, false) => (addMetricInstructions 3 (addMetricLoads 5 (addMetricStores 1 mc)))
-      | (false,  true) => (addMetricInstructions 2 (addMetricLoads 3 (addMetricStores 1 mc)))
-      | ( true, false) => (addMetricInstructions 2 (addMetricLoads 4 mc))
-      | ( true,  true) => (addMetricInstructions 1 (addMetricLoads 2 mc))
-      end.
-
-    Definition cost_SStore a v mc :=
-      match (isReg a, isReg v) with
-      | (false, false) => (addMetricInstructions 3 (addMetricLoads 5 (addMetricStores 1 mc)))
-      | (false,  true) => (addMetricInstructions 2 (addMetricLoads 3 (addMetricStores 1 mc)))
-      | ( true, false) => (addMetricInstructions 2 (addMetricLoads 3 (addMetricStores 1 mc)))
-      | ( true,  true) => (addMetricInstructions 1 (addMetricLoads 1 (addMetricStores 1 mc)))
-      end.
-
-    Definition cost_SInlinetable x i mc :=
-      match (isReg x, isReg i) with
-      | (false, false) => (addMetricInstructions 5 (addMetricLoads 7 (addMetricStores 1 (addMetricJumps 1 mc))))
-      | (false,  true) => (addMetricInstructions 4 (addMetricLoads 5 (addMetricStores 1 (addMetricJumps 1 mc))))
-      | ( true, false) => (addMetricInstructions 4 (addMetricLoads 6 (addMetricJumps 1 mc)))
-      | ( true,  true) => (addMetricInstructions 3 (addMetricLoads 4 (addMetricJumps 1 mc)))
-      end.
-
-    Definition cost_SStackalloc x mc :=
-      match isReg x with
-      | false => (addMetricInstructions 2 (addMetricLoads 2 (addMetricStores 1 mc)))
-      |  true => (addMetricInstructions 1 (addMetricLoads 1 mc))
-      end.
-
-    Definition cost_SLit x mc :=
-      match isReg x with
-      | false => (addMetricInstructions 9 (addMetricLoads 9 (addMetricStores 1 mc)))
-      |  true => (addMetricInstructions 8 (addMetricLoads 8 mc))
-      end.
 
     Definition cost_SOp x y z mc :=
-      match (isReg x, isReg y, (match z with | Var vo => isReg vo | Const _ => true end)) with
-      | (false, false, false) => (addMetricInstructions 5 (addMetricLoads 7 (addMetricStores 1 mc)))
-      | (false, false,  true) | (false,  true, false) => (addMetricInstructions 4 (addMetricLoads 5 (addMetricStores 1 mc)))
-      | (false,  true,  true) => (addMetricInstructions 3 (addMetricLoads 3 (addMetricStores 1 mc)))
-      | ( true, false, false) => (addMetricInstructions 4 (addMetricLoads 6 mc))
-      | ( true, false,  true) | ( true,  true, false) => (addMetricInstructions 3 (addMetricLoads 4 mc))
-      | ( true,  true,  true) => (addMetricInstructions 2 (addMetricLoads 2 mc))
-      end.
-
-    Definition cost_SSet x y mc :=
-      match (isReg x, isReg y) with
-      | (false, false) => (addMetricInstructions 3 (addMetricLoads 4 (addMetricStores 1 mc)))
-      | (false,  true) => (addMetricInstructions 2 (addMetricLoads 2 (addMetricStores 1 mc)))
-      | ( true, false) => (addMetricInstructions 2 (addMetricLoads 3 mc))
-      | ( true,  true) => (addMetricInstructions 1 (addMetricLoads 1 mc))
-      end.
+      cost_op (fun v => match v with | Var vo => isReg vo | Const _ => true end)
+      (Var x) (Var y) z mc.
 
     Definition cost_SIf bcond mc :=
       match bcond with
-      | CondBinary _ x y =>
-          match (isReg x, isReg y) with
-          | (false, false) => (addMetricInstructions 4 (addMetricLoads 6 (addMetricJumps 1 mc)))
-          | (false,  true) | ( true, false) => (addMetricInstructions 3 (addMetricLoads 4 (addMetricJumps 1 mc)))
-          | ( true,  true) => (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc)))
-          end
-      | CondNez x =>
-          match isReg x with
-          | false => (addMetricInstructions 3 (addMetricLoads 4 (addMetricJumps 1 mc)))
-          |  true => (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc)))
-          end
+      | CondBinary _ x y => cost_if isReg x (Some y) mc
+      | CondNez x => cost_if isReg x None mc
       end.
 
     Definition cost_SLoop_true bcond mc :=
       match bcond with
-      | CondBinary _ x y =>
-          match (isReg x, isReg y) with
-          | (false, false) => (addMetricInstructions 4 (addMetricLoads 6 (addMetricJumps 1 mc)))
-          | (false,  true) | ( true, false) => (addMetricInstructions 3 (addMetricLoads 4 (addMetricJumps 1 mc)))
-          | ( true,  true) => (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc)))
-          end
-      | CondNez x =>
-          match isReg x with
-          | false => (addMetricInstructions 3 (addMetricLoads 4 (addMetricJumps 1 mc)))
-          |  true => (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc)))
-          end
+      | CondBinary _ x y => cost_loop_true isReg x (Some y) mc
+      | CondNez x => cost_loop_true isReg x None mc
       end.
 
     Definition cost_SLoop_false bcond mc :=
       match bcond with
-      | CondBinary _ x y =>
-          match (isReg x, isReg y) with
-          | (false, false) => (addMetricInstructions 3 (addMetricLoads 5 (addMetricJumps 1 mc)))
-          | (false,  true) | ( true, false) => (addMetricInstructions 2 (addMetricLoads 3 (addMetricJumps 1 mc)))
-          | ( true,  true) => (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 mc)))
-          end
-      | CondNez x =>
-          match isReg x with
-          | false => (addMetricInstructions 2 (addMetricLoads 3 (addMetricJumps 1 mc)))
-          |  true => (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 mc)))
-          end
+      | CondBinary _ x y => cost_loop_false isReg x (Some y) mc
+      | CondNez x => cost_loop_false isReg x None mc
       end.
 
     (* alternative semantics which allow non-determinism *)
@@ -435,37 +336,37 @@ Module exec.
             exists l', map.putmany_of_list_zip resvars resvals l = Some l' /\
             forall m', map.split m' mKeep mReceive ->
             post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l'
-                 (cost_SInteract mc)) ->
+                 (cost_interact phase mc)) ->
         exec (SInteract resvars action argvars) t m l mc post
     | call: forall t m l mc binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list_zip params argvs map.empty = Some st0 ->
-        exec fbody t m st0 (cost_SCall_internal mc) outcome ->
+        exec fbody t m st0 (cost_call_internal phase mc) outcome ->
         (forall t' m' mc' st1,
             outcome t' m' st1 mc' ->
             exists retvs l',
               map.getmany_of_list st1 rets = Some retvs /\
               map.putmany_of_list_zip binds retvs l = Some l' /\
-              post t' m' l' (cost_SCall_external mc')) ->
+              post t' m' l' (cost_call_external phase mc')) ->
         exec (SCall binds fname args) t m l mc post
     | load: forall t m l mc sz x a o v addr post,
         map.get l a = Some addr ->
         load sz m (word.add addr (word.of_Z o)) = Some v ->
-        post t m (map.put l x v) (cost_SLoad x a mc)->
+        post t m (map.put l x v) (cost_load isReg x a mc)->
         exec (SLoad sz x a o) t m l mc post
     | store: forall t m m' mc l sz a o addr v val post,
         map.get l a = Some addr ->
         map.get l v = Some val ->
         store sz m (word.add addr (word.of_Z o)) val = Some m' ->
-        post t m' l (cost_SStore a v mc) ->
+        post t m' l (cost_store isReg a v mc) ->
         exec (SStore sz a v o) t m l mc post
     | inlinetable: forall sz x table i v index t m l mc post,
         (* compiled riscv code uses x as a tmp register and this shouldn't overwrite i *)
         x <> i ->
         map.get l i = Some index ->
         load sz (map.of_list_word table) index = Some v ->
-        post t m (map.put l x v) (cost_SInlinetable x i mc) ->
+        post t m (map.put l x v) (cost_inlinetable isReg x i mc) ->
         exec (SInlinetable sz x table i) t m l mc post
     | stackalloc: forall t mSmall l mc x n body post,
         n mod (bytes_per_word width) = 0 ->
@@ -477,10 +378,10 @@ Module exec.
               exists mSmall' mStack',
                 anybytes a n mStack' /\
                 map.split mCombined' mSmall' mStack' /\
-                post t' mSmall' l' (cost_SStackalloc x mc'))) ->
+                post t' mSmall' l' (cost_stackalloc isReg x mc'))) ->
         exec (SStackalloc x n body) t mSmall l mc post
     | lit: forall t m l mc x v post,
-        post t m (map.put l x (word.of_Z v)) (cost_SLit x mc) ->
+        post t m (map.put l x (word.of_Z v)) (cost_lit isReg x mc) ->
         exec (SLit x v) t m l mc post
     | op: forall t m l mc x op y y' z z' post,
         map.get l y = Some y' ->
@@ -489,7 +390,7 @@ Module exec.
         exec (SOp x op y z) t m l mc post
     | set: forall t m l mc x y y' post,
         map.get l y = Some y' ->
-        post t m (map.put l x y') (cost_SSet x y mc) ->
+        post t m (map.put l x y') (cost_set isReg x y mc) ->
         exec (SSet x y) t m l mc post
     | if_true: forall t m l mc cond  bThen bElse post,
         eval_bcond l cond = Some true ->
@@ -550,12 +451,12 @@ Module exec.
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list_zip params argvs map.empty = Some st ->
-        exec fbody t m st (cost_SCall_internal mc)
+        exec fbody t m st (cost_call_internal phase mc)
              (fun t' m' st' mc' =>
                 exists retvs l',
                   map.getmany_of_list st' rets = Some retvs /\
                     map.putmany_of_list_zip binds retvs l = Some l' /\
-                    post t' m' l' (cost_SCall_external mc')) ->
+                    post t' m' l' (cost_call_external phase mc')) ->
       exec (SCall binds fname args) t m l mc post.
     Proof.
       intros. eapply call; try eassumption.
@@ -792,8 +693,33 @@ Section FlatImp2.
 
 End FlatImp2.
 
-Definition isRegZ (var : Z) : bool :=
-  Z.leb var 31.
+(* various helper tactics extending the ones from MetricCosts *)
 
-Definition isRegStr (var : String.string) : bool :=
-  String.prefix "reg_" var.
+Ltac scost_unfold :=
+  unfold exec.cost_SOp, exec.cost_SIf, exec.cost_SLoop_true, exec.cost_SLoop_false in *; cost_unfold.
+
+Ltac scost_destr :=
+  repeat match goal with
+         | x : operand |- _ => destr x
+         | x : bbinop _ |- _ => destr x
+         | x : bcond _ |- _ => destr x
+         | _ => cost_destr
+         end.
+
+Ltac scost_solve := scost_unfold; scost_destr; try solve_MetricLog.
+Ltac scost_solve_piecewise := scost_unfold; scost_destr; try solve_MetricLog_piecewise.
+
+Ltac t := unfold metrics_additive; intros; scost_solve_piecewise.
+Lemma scost_additive_op : forall varname isReg x y z, metrics_additive (@exec.cost_SOp varname isReg x y z). Proof. t. Qed.
+Lemma scost_additive_if : forall varname isReg x, metrics_additive (@exec.cost_SIf varname isReg x). Proof. t. Qed.
+Lemma scost_additive_loop_true : forall varname isReg x, metrics_additive (@exec.cost_SLoop_true varname isReg x). Proof. t. Qed.
+Lemma scost_additive_loop_false : forall varname isReg x, metrics_additive (@exec.cost_SLoop_false varname isReg x). Proof. t. Qed.
+
+Ltac scost_additive := repeat (
+  rewrite scost_additive_op ||
+  rewrite scost_additive_if ||
+  rewrite scost_additive_loop_true ||
+  rewrite scost_additive_loop_false
+  ); cost_additive.
+
+Ltac scost_hammer := scost_additive; try solve [eauto 3 with metric_arith | scost_solve].

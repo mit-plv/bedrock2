@@ -7,8 +7,11 @@ Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Export bedrock2.Memory.
 Require Import Coq.Lists.List.
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.MetricCosts.
 Require Import bedrock2.Semantics.
 Require Import Coq.Lists.List.
+
+Local Notation UNK := String.EmptyString.
 
 Section semantics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
@@ -23,37 +26,31 @@ Section semantics.
     Local Notation "' x <- a | y ; f" := (match a with x => f | _ => y end)
       (right associativity, at level 70, x pattern).
 
+    (* TODO XXX possibly be a bit smarter about whether things are registers,
+       for tighter metrics bounds at bedrock2 level *)
     Fixpoint eval_expr (e : expr) (mc : metrics) : option (word * metrics) :=
       match e with
-      | expr.literal v => Some (word.of_Z v, addMetricInstructions 8
-                                             (addMetricLoads 8 mc))
+      | expr.literal v => Some (word.of_Z v, cost_lit isRegStr UNK mc)
       | expr.var x => match map.get l x with
-                      | Some v => Some (v, addMetricInstructions 1
-                                           (addMetricLoads 2 mc))
+                      | Some v => Some (v, cost_set isRegStr UNK x mc)
                       | None => None
                       end
       | expr.inlinetable aSize t index =>
           'Some (index', mc') <- eval_expr index mc | None;
           'Some v <- load aSize (map.of_list_word t) index' | None;
-          Some (v, (addMetricInstructions 3
-                   (addMetricLoads 4
-                   (addMetricJumps 1 mc'))))
+          Some (v, cost_inlinetable isRegStr UNK UNK mc')
       | expr.load aSize a =>
           'Some (a', mc') <- eval_expr a mc | None;
           'Some v <- load aSize m a' | None;
-          Some (v, addMetricInstructions 1
-                   (addMetricLoads 2 mc'))
+          Some (v, cost_load isRegStr UNK UNK mc')
       | expr.op op e1 e2 =>
           'Some (v1, mc') <- eval_expr e1 mc | None;
           'Some (v2, mc'') <- eval_expr e2 mc' | None;
-          Some (interp_binop op v1 v2, addMetricInstructions 2
-                                       (addMetricLoads 2 mc''))
+          Some (interp_binop op v1 v2, cost_op isRegStr UNK UNK UNK mc'')
       | expr.ite c e1 e2 =>
           'Some (vc, mc') <- eval_expr c mc | None;
           eval_expr (if word.eqb vc (word.of_Z 0) then e2 else e1)
-                    (addMetricInstructions 2
-                       (addMetricLoads 2
-                       (addMetricJumps 1 mc')))
+                    (cost_if isRegStr UNK (Some UNK) mc')
       end.
 
     Fixpoint eval_call_args (arges : list expr) (mc : metrics) :=
@@ -88,8 +85,7 @@ Module exec. Section WithParams.
   | set x e
     t m l mc post
     v mc' (_ : eval_expr m l e mc = Some (v, mc'))
-    (_ : post t m (map.put l x v) (addMetricInstructions 1
-                                  (addMetricLoads 1 mc')))
+    (_ : post t m (map.put l x v) (cost_set isRegStr x UNK mc'))
     : exec (cmd.set x e) t m l mc post
   | unset x
     t m l mc post
@@ -100,9 +96,7 @@ Module exec. Section WithParams.
     a mc' (_ : eval_expr m l ea mc = Some (a, mc'))
     v mc'' (_ : eval_expr m l ev mc' = Some (v, mc''))
     m' (_ : store sz m a v = Some m')
-    (_ : post t m' l (addMetricInstructions 1
-                     (addMetricLoads 1
-                     (addMetricStores 1 mc''))))
+    (_ : post t m' l (cost_store isRegStr UNK UNK mc''))
     : exec (cmd.store sz ea ev) t m l mc post
   | stackalloc x n body
     t mSmall l mc post
@@ -110,7 +104,7 @@ Module exec. Section WithParams.
     (_ : forall a mStack mCombined,
         anybytes a n mStack ->
         map.split mCombined mSmall mStack ->
-        exec body t mCombined (map.put l x a) (addMetricInstructions 1 (addMetricLoads 1 mc))
+        exec body t mCombined (map.put l x a) (cost_stackalloc isRegStr x mc)
           (fun t' mCombined' l' mc' =>
             exists mSmall' mStack',
               anybytes a n mStack' /\
@@ -120,17 +114,13 @@ Module exec. Section WithParams.
   | if_true t m l mc e c1 c2 post
     v mc' (_ : eval_expr m l e mc = Some (v, mc'))
     (_ : word.unsigned v <> 0)
-    (_ : exec c1 t m l (addMetricInstructions 2
-                       (addMetricLoads 2
-                       (addMetricJumps 1 mc'))) post)
+    (_ : exec c1 t m l (cost_if isRegStr UNK (Some UNK) mc') post)
     : exec (cmd.cond e c1 c2) t m l mc post
   | if_false e c1 c2
     t m l mc post
     v mc' (_ : eval_expr m l e mc = Some (v, mc'))
     (_ : word.unsigned v = 0)
-    (_ : exec c2 t m l (addMetricInstructions 2
-                       (addMetricLoads 2
-                       (addMetricJumps 1 mc'))) post)
+    (_ : exec c2 t m l (cost_if isRegStr UNK (Some UNK) mc') post)
     : exec (cmd.cond e c1 c2) t m l mc post
   | seq c1 c2
     t m l mc post
@@ -141,9 +131,7 @@ Module exec. Section WithParams.
     t m l mc post
     v mc' (_ : eval_expr m l e mc = Some (v, mc'))
     (_ : word.unsigned v = 0)
-    (_ : post t m l (addMetricInstructions 1
-                    (addMetricLoads 1
-                    (addMetricJumps 1 mc'))))
+    (_ : post t m l (cost_loop_false isRegStr UNK (Some UNK) mc'))
     : exec (cmd.while e c) t m l mc post
   | while_true e c
       t m l mc post
@@ -151,20 +139,18 @@ Module exec. Section WithParams.
       (_ : word.unsigned v <> 0)
       mid (_ : exec c t m l mc' mid)
       (_ : forall t' m' l' mc'', mid t' m' l' mc'' ->
-                                 exec (cmd.while e c) t' m' l' (addMetricInstructions 2
-                                                               (addMetricLoads 2
-                                                               (addMetricJumps 1 mc''))) post)
+                                 exec (cmd.while e c) t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc'') post)
     : exec (cmd.while e c) t m l mc post
   | call binds fname arges
       t m l mc post
       params rets fbody (_ : map.get e fname = Some (params, rets, fbody))
       args mc' (_ : eval_call_args m l arges mc = Some (args, mc'))
       lf (_ : map.of_list_zip params args = Some lf)
-      mid (_ : exec fbody t m lf (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc')))) mid)
+      mid (_ : exec fbody t m lf (cost_call_internal PreSpill mc') mid)
       (_ : forall t' m' st1 mc'', mid t' m' st1 mc'' ->
           exists retvs, map.getmany_of_list st1 rets = Some retvs /\
           exists l', map.putmany_of_list_zip binds retvs l = Some l' /\
-          post t' m' l'  (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc'')))))
+          post t' m' l'  (cost_call_external PreSpill mc''))
     : exec (cmd.call binds fname arges) t m l mc post
   | interact binds action arges
       t m l mc post
@@ -175,9 +161,7 @@ Module exec. Section WithParams.
           exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
           forall m', map.split m' mKeep mReceive ->
           post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l'
-            (addMetricInstructions 1
-            (addMetricStores 1
-            (addMetricLoads 2 mc'))))
+            (cost_interact PreSpill mc'))
     : exec (cmd.interact binds action arges) t m l mc post
   .
 

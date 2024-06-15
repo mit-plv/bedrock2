@@ -7,6 +7,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Word.Bitwidth.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.MetricCosts.
 Require Import bedrock2.Semantics bedrock2.MetricSemantics.
 Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
@@ -343,8 +344,8 @@ Section FlattenExpr1.
     simpl (disjoint _ _) in *;
     map_solver locals_ok.
 
-  Local Notation exec := (FlatImp.exec FlatImp.PreSpill FlatImp.isRegStr). 
-  
+  Local Notation exec := (FlatImp.exec PreSpill isRegStr).
+
   Lemma seq_with_modVars: forall env t m (l: locals) mc s1 s2 mid post,
     exec env s1 t m l mc mid ->
     (forall t' m' l' mc',
@@ -379,21 +380,19 @@ Section FlattenExpr1.
   Proof.
     induction e; intros *; intros F Ex U D Ev; simpl in *; simp.
 
-    (* Ltac solve_MetricLog ::= try solve [solve_MetricLog;  idtac " Admitted metrics goal"; admit].  *)
-    
     - (* expr.literal *)
-      eapply @FlatImp.exec.lit; t_safe. Fail solve_MetricLog. admit. 
+      eapply @FlatImp.exec.lit; t_safe. cost_hammer.
 
     - (* expr.var *)
       destruct oResVar; simp.
-      + eapply @FlatImp.exec.set; t_safe; [maps | try solve_MetricLog]. admit.
-      + eapply @FlatImp.exec.skip; t_safe. solve_MetricLog.
+      + eapply @FlatImp.exec.set; t_safe; [maps | cost_hammer].
+      + eapply @FlatImp.exec.skip; t_safe. cost_hammer.
 
     - (* expr.load *)
       eapply @FlatImp.exec.seq.
       + eapply IHe; try eassumption. maps.
       + intros. simpl in *. simp.
-        eapply @FlatImp.exec.load; t_safe; rewrite ?word.add_0_r; try eassumption. try solve_MetricLog. admit.
+        eapply @FlatImp.exec.load; t_safe; rewrite ?word.add_0_r; try eassumption. cost_hammer.
 
     - (* expr.inlinetable *)
       repeat match goal with
@@ -404,7 +403,7 @@ Section FlattenExpr1.
       + eapply IHe; try eassumption. 1: maps.
         set_solver; destr (String.eqb s0 x); subst; tauto. (* TODO improve set_solver? *)
       + intros. simpl in *. simp.
-        eapply @FlatImp.exec.inlinetable; t_safe; try eassumption. 2: try solve_MetricLog; admit.
+        eapply @FlatImp.exec.inlinetable; t_safe; try eassumption. 2: cost_hammer.
         apply_in_hyps flattenExpr_uses_Some_resVar. subst s0.
         intro C. subst s2.
         destruct oResVar.
@@ -421,7 +420,7 @@ Section FlattenExpr1.
           clear IHe1 IHe2. pose_flatten_var_ineqs. set_solver.
         * intros. simpl in *. simp. clear IHe1 IHe2.
 
-          eapply @FlatImp.exec.op; t_safe; t_safe. 2: try solve_MetricLog; admit.
+          eapply @FlatImp.exec.op; t_safe; t_safe. 2: FlatImp.scost_hammer.
           eapply flattenExpr_valid_resVar in E1; simpl; maps.
 
     - (* expr.ite *)
@@ -463,7 +462,7 @@ Section FlattenExpr1.
                      eapply subset_union_rr.
                      eapply subset_refl.
                    }
-             ++ cbv beta. intros. simp. t_safe. 2: try solve_MetricLog; admit.
+             ++ cbv beta. intros. simp. t_safe. 2: FlatImp.scost_hammer.
                 clear IHe1 IHe2 IHe3.
                 apply_in_hyps flattenExpr_uses_Some_resVar. subst. assumption.
         * eapply FlatImp.exec.if_true.
@@ -497,10 +496,10 @@ Section FlattenExpr1.
                      eapply subset_union_rl.
                      eapply subset_refl.
                    }
-             ++ cbv beta. intros. simp. t_safe. 2: try solve_MetricLog; admit.
+             ++ cbv beta. intros. simp. t_safe. 2: FlatImp.scost_hammer.
                 clear IHe1 IHe2 IHe3.
                 apply_in_hyps flattenExpr_uses_Some_resVar. subst. assumption.
-  Admitted. 
+  Qed.
   Goal True. idtac "FlattenExpr: flattenExpr_correct_aux done". Abort.
 
   Lemma flattenExpr_correct_with_modVars : forall e fenv oResVar ngs1 ngs2 resVar s t m lH lL initialMcH initialMcL finalMcH res,
@@ -622,7 +621,7 @@ Section FlattenExpr1.
       | intros; simpl in *; simp;
         default_flattenBooleanExpr ].
 
-    2, 4, 6 : try solve_MetricLog.
+    2, 4, 6 : cost_hammer.
 
     all: rewrite bool_to_word_to_bool_id;
       destruct_one_match;
@@ -725,10 +724,10 @@ Section FlattenExpr1.
           specialize P with (1 := E). subst.
           maps.
         * maps.
-        * solve_MetricLog.
-        * solve_MetricLog.
-        * solve_MetricLog.
-        * solve_MetricLog.
+        * cost_hammer.
+        * cost_hammer.
+        * cost_hammer.
+        * cost_hammer.
 
     - (* exec.unset *)
       eapply @FlatImp.exec.skip.
@@ -743,7 +742,7 @@ Section FlattenExpr1.
         * intros. simpl in *. simp.
           eapply @FlatImp.exec.store; rewrite ?word.add_0_r; try eassumption.
           { eapply flattenExpr_valid_resVar in E; maps. }
-          { repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all:admit. }
+          { repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all: cost_hammer. }
 
     - (* exec.stackalloc *)
       eapply @FlatImp.exec.stackalloc. 1: eassumption.
@@ -751,7 +750,7 @@ Section FlattenExpr1.
       eapply @FlatImp.exec.weaken.
       { eapply IHexec; try reflexivity; try eassumption; maps. }
       { intros. simpl in *. simp. do 2 eexists. ssplit; try eassumption.
-        do 2 eexists. ssplit; try eassumption; try solve_MetricLog; try maps. admit. }
+        do 2 eexists. ssplit; try eassumption; try solve_MetricLog; try maps. cost_hammer. }
 
     - (* if_true *)
       eapply @FlatImp.exec.seq.
@@ -768,7 +767,7 @@ Section FlattenExpr1.
           eapply @FlatImp.exec.weaken.
           { eapply IHexec; try reflexivity; try eassumption; maps. }
           { intros. simpl in *. simp.
-            repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all:admit. }
+            repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all: FlatImp.scost_hammer. }
 
     - (* if_false *)
       eapply @FlatImp.exec.seq.
@@ -785,7 +784,7 @@ Section FlattenExpr1.
           eapply @FlatImp.exec.weaken.
           { eapply IHexec; try reflexivity; try eassumption; maps. }
           { intros. simpl in *. simp.
-            repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all:admit. }
+            repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all: FlatImp.scost_hammer. }
 
     - (* seq *)
       eapply seq_with_modVars.
@@ -817,7 +816,7 @@ Section FlattenExpr1.
         | intros; simpl in *; simp .. ].
       + maps.
       + congruence.
-      + repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all:admit.
+      + repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all: FlatImp.scost_hammer.
       + exfalso.
         match goal with
         | H: context [word.eqb _ _] |- _ => rewrite word.eqb_eq in H
@@ -862,7 +861,7 @@ Section FlattenExpr1.
           1,3: solve [maps].
           pose proof (ExprImp.modVars_subset_allVars c). maps.
         * simpl. intros. simp.
-          repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all:admit.
+          repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all: FlatImp.scost_hammer.
 
     - (* call *)
       unfold flattenCall in *. simp.
@@ -906,9 +905,7 @@ Section FlattenExpr1.
           -- eassumption.
           -- do 2 eexists. ssplit; try eassumption.
              ++ simple eapply map.only_differ_putmany; eassumption.
-             ++ (* TODO cost_SCall into semantics *)
-                unfold FlatImp.exec.cost_SCall_internal, FlatImp.exec.cost_SCall_external in *.
-                solve_MetricLog.
+             ++ FlatImp.scost_hammer.
 
     - (* interact *)
       unfold flattenInteract in *. simp.
@@ -929,8 +926,8 @@ Section FlattenExpr1.
         split; eauto.
         simple apply conj; [eassumption|].
         split; [simple eapply map.only_differ_putmany; eassumption|].
-        Fail solve_MetricLog. admit.
-  Admitted.
+        cost_hammer.
+  Qed.
   Goal True. idtac "FlattenExpr: flattenStmt_correct_aux done". Abort.
 
   Lemma flattenStmt_correct: forall eH eL sH sL lL t m mc post,
