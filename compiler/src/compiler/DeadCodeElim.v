@@ -10,7 +10,7 @@ Require Import coqutil.Datatypes.ListSet.
 Local Notation var := String.string (only parsing).
 Require Import compiler.util.Common.
 Require Import bedrock2.MetricLogging.
-Require Import compiler.MetricTactics.
+Require Import bedrock2.MetricCosts.
 (*  below only for of_list_list_diff *)
 Require Import compiler.DeadCodeElimDef.
 
@@ -24,7 +24,7 @@ Section WithArguments1.
   Context {mem: map.map word (Init.Byte.byte : Type) } {mem_ok : map.ok mem } .
   Context {locals: map.map string word } {locals_ok : map.ok locals }.
   Context {ext_spec : Semantics.ExtSpec } {ext_spec_ok: Semantics.ext_spec.ok ext_spec } .
-   
+
   Lemma agree_on_put_existsb_false:
     forall used_after x (l: locals) lL,
       map.agree_on (diff (of_list used_after) (singleton_set x)) l lL
@@ -38,7 +38,7 @@ Section WithArguments1.
       intros.
       propositional idtac.
       eapply existsb_of_list in H1. rewrite H1 in H0.
-      discriminate. 
+      discriminate.
   Qed.
 
    Ltac subset_union_solve :=
@@ -73,7 +73,7 @@ Section WithArguments1.
         [ idtac | eapply H ]; subset_union_solve
     | H: map.agree_on ?s ?x ?y |-
         map.agree_on _ ?y ?x =>
-        eapply agree_on_comm; agree_on_solve 
+        eapply agree_on_comm; agree_on_solve
     | H: map.agree_on ?s ?mH ?mL,
         H1: map.putmany_of_list_zip ?lk ?lv ?mH = Some ?mH',
           H2: map.putmany_of_list_zip ?lk ?lv ?mL = Some ?mL'
@@ -109,7 +109,7 @@ Section WithArguments1.
         rewrite ListSet.of_list_removeb
     end.
 
-  Ltac mcsolve := eexists; split; [|split; cycle 1; [eauto|exec_cost_hammer]]; try assumption.
+  Ltac mcsolve := eexists; split; [|split; cycle 1; [eauto|FlatImp.scost_hammer]]; try assumption.
 
   Lemma dce_correct_aux :
     forall eH eL,
@@ -153,7 +153,7 @@ Section WithArguments1.
         fwd. eassumption.
       + erewrite agree_on_getmany.
         * eapply H1.
-        * listset_to_set. agree_on_solve. 
+        * listset_to_set. agree_on_solve.
       + eapply IHexec.
         eapply agree_on_refl.
       + intros.
@@ -172,10 +172,10 @@ Section WithArguments1.
           repeat listset_to_set.
           subset_union_solve.
     - intros.
-      eapply agree_on_find in H3; fwd. 
+      eapply agree_on_find in H3; fwd.
       destr (existsb (eqb x) used_after); fwd.
       + eapply @exec.load.
-        * rewrite <- H3p1. eassumption. 
+        * rewrite <- H3p1. eassumption.
         * eauto.
         * unfold compile_post.
           exists (map.put l x v); mcsolve.
@@ -200,7 +200,7 @@ Section WithArguments1.
       eapply agree_on_find in H4; fwd.
       destr (existsb (eqb x) used_after); fwd.
       + eapply @exec.inlinetable; eauto.
-        * rewrite <- H4p1. eassumption. 
+        * rewrite <- H4p1. eassumption.
         * unfold compile_post; eexists; mcsolve.
           repeat listset_to_set; agree_on_solve.
       + eapply @exec.skip; eauto.
@@ -255,10 +255,10 @@ Section WithArguments1.
           eexists; mcsolve.
           agree_on_solve.
       + intros.
-        eapply agree_on_find in H3; fwd. 
+        eapply agree_on_find in H3; fwd.
         destr (existsb (eqb x) used_after).
         * eapply @exec.op.
-          -- rewrite <- H3p1. eassumption. 
+          -- rewrite <- H3p1. eassumption.
           -- simpl. constructor.
           -- unfold compile_post. simpl in *. inversion H1. fwd. eexists; mcsolve.
              repeat listset_to_set.
@@ -272,7 +272,7 @@ Section WithArguments1.
       repeat listset_to_set.
       destr (existsb (eqb x) used_after).
       { eapply @exec.set.
-        - rewrite <- H2p1; eassumption. 
+        - rewrite <- H2p1; eassumption.
         - unfold compile_post. eexists; mcsolve.
           agree_on_solve.
       }
