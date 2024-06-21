@@ -84,7 +84,7 @@ Section WeakestPrecondition.
             post t m l mc
       | cmd.store sz ea ev =>
        exists a mc', dexpr m l ea mc (a, mc') /\
-       exists v mc'', dexpr m l ev mc (v, mc'') /\
+       exists v mc'', dexpr m l ev mc' (v, mc'') /\
        store sz m a v (fun m =>
        post t m l (cost_store isRegStr UNK UNK mc''))
       | cmd.stackalloc x n c =>
@@ -107,8 +107,8 @@ Section WeakestPrecondition.
     | cmd.while _ _ => MetricSemantics.exec e c t m l mc post
     | cmd.call binds fname arges =>
         exists args mc', dexprs m l arges mc (args, mc') /\
-        MetricSemantics.call e fname t m args mc (fun t m rets mc'' =>
-        exists l', map.putmany_of_list_zip binds rets l = Some l' /\ post t m l' (cost_call_internal PreSpill mc''))
+        MetricSemantics.call e fname t m args (cost_call_internal PreSpill mc') (fun t m rets mc'' =>
+        exists l', map.putmany_of_list_zip binds rets l = Some l' /\ post t m l' (cost_call_external PreSpill mc''))
     | cmd.interact binds action arges =>
         exists args mc', dexprs m l arges mc (args, mc') /\
         exists mKeep mGive, map.split m mKeep mGive /\

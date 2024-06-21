@@ -157,8 +157,10 @@ Global Instance Proper_program :
     try solve [typeclasses eauto with core].
   Qed.
 
+  From coqutil Require Import Datatypes.Prod.
   Ltac t :=
       repeat match goal with
+             | _ => progress inversion_prod
              | |- forall _, _ => progress intros
              | H: exists _, _ |- _ => destruct H
              | H: and _ _ |- _ => destruct H
@@ -252,34 +254,92 @@ width word word_ok.
   Lemma sound_cmd e c t m l mc post (H: MetricWeakestPrecondition.cmd e c t m l mc post) : MetricSemantics.exec e c t m l mc post.
   Proof.
     ind_on Syntax.cmd; repeat (t; try match reverse goal with H: MetricWeakestPrecondition.expr _ _ _ _ _ |- _ => eapply expr_sound in H end).
-    { destruct (BinInt.Z.eq_dec (Interface.word.unsigned x) (BinNums.Z0)) as [Hb|Hb]; cycle 1; apply pair_equal_spec in H1; destruct H1; econstructor; t. }
-    { inversion H0. inversion H.
-      apply pair_equal_spec in H3; destruct H3.
-      apply pair_equal_spec in H4; destruct H4. subst x0.
-      econstructor; t.
-      Admitted.
+    { destruct (BinInt.Z.eq_dec (word.unsigned x) 0) as [|]; t. }
+    { inversion H0. t. eapply sound_args in H; t. }
+    { eapply sound_args in H; t. }
+  Qed.
 
   Lemma weaken_cmd: forall e c t m l mc (post1 post2: _->_->_->_->Prop),
       MetricWeakestPrecondition.cmd e c t m l mc post1 ->
       (forall t m l mc, post1 t m l mc -> post2 t m l mc) ->
       MetricWeakestPrecondition.cmd e c t m l mc post2.
-  Proof. Admitted.
+  Proof.
+    intros.
+    eapply Proper_cmd. 2: eassumption.
+    cbv [RelationClasses.Reflexive Morphisms.pointwise_relation
+         Morphisms.respectful Basics.impl].
+    assumption.
+  Qed.
 
    Lemma complete_args : forall m l args mc vs,
       MetricSemantics.eval_call_args m l args mc = Some vs ->
       MetricWeakestPrecondition.dexprs m l args mc vs.
-  Proof using word_ok. Admitted.
+  Proof using word_ok.
+    induction args; cbn; repeat (subst; t).
+    1: inversion H; reflexivity.
+    destruct_one_match_hyp. 2: discriminate.
+    destruct_one_match_hyp.
+    destruct_one_match_hyp. 2: discriminate.
+    case p in *; inversion_clear H.
+    eapply Proper_expr. 2: eapply expr_complete. 2: eassumption.
+    intros x ?. subst x.
+    eapply Proper_list_map. 3: { eapply IHargs. eassumption. }
+    { eapply Proper_expr. }
+    { intros ? ?. subst. reflexivity. }
+  Qed.
 
   Lemma complete_cmd: forall e c t m l mc post,
       MetricSemantics.exec e c t m l mc post ->
       MetricWeakestPrecondition.cmd e c t m l mc post.
-  Proof. Admitted.
+  Proof.
+    induction 1.
+    { eassumption. }
+    { eapply expr_complete in H. eexists _, _. split. 1: exact H.
+      eassumption. }
+    { eauto. }
+    { eapply expr_complete in H.
+      eapply expr_complete in H0.
+      eexists _, _. split. 1: eassumption.
+      eexists _, _. split. 1: eassumption.
+      eexists. eauto. }
+    { split. 1: assumption.
+      intros * HA HSp. specialize H1 with (1 := HA) (2 := HSp).
+      unfold dlet.dlet. eapply weaken_cmd. 1: eapply H1. cbv beta.
+      clear. intros * (? & ? & ? & ? & ?). eauto 8. }
+    { eexists _, _; cbv[dlet.dlet]; ssplit; intros; eauto using expr_complete; congruence. }
+    { eexists _, _; cbv[dlet.dlet]; ssplit; intros; eauto using expr_complete; congruence. }
+    { cbn. eapply weaken_cmd.
+      { eapply IHexec. }
+      cbv beta. intros.
+      eapply H1. eassumption. }
+    { cbn. eapply MetricSemantics.exec.while_false; eauto. }
+    { rename IHexec into IH1, H3 into IH2.
+      cbn. eapply MetricSemantics.exec.while_true; eassumption. }
+    { cbn. eexists _, _. split.
+      { eapply complete_args. eassumption. }
+      unfold MetricSemantics.call. do 4 eexists. 1: eassumption. do 2 eexists. 1: eassumption.
+      eapply MetricSemantics.exec.weaken.
+      { eassumption. }
+      cbv beta. intros.
+      specialize H3 with (1 := H4). destruct H3 as (retvs & G & ? & ? & ?). eauto 8. }
+    { cbn. eexists _, _. split.
+      { eapply complete_args. eassumption. }
+      eexists _, _. split. 1: eassumption.
+      eapply Semantics.ext_spec.weaken. 2: eassumption.
+      intros m0 args0 Hmid. specialize H2 with (1 := Hmid). destruct H2 as (? & ? & ?).
+      eauto 8. }
+  Qed.
 
   Lemma start_func: forall e fname fimpl t m args mc post,
       map.get e fname = Some fimpl ->
       MetricWeakestPrecondition.func e fimpl t m args mc post ->
       MetricWeakestPrecondition.call e fname t m args mc post.
-  Proof. Admitted.
+  Proof.
+    intros * G. destruct fimpl as [[argnames retnames] body]. intros (? & ? & ?).
+    do 4 eexists. 1: eassumption. do 2 eexists. 1: eassumption. eapply sound_cmd.
+    eapply weaken_cmd. 1: eassumption. cbv beta. intros.
+    edestruct sound_getmany as (?&?&?&?); eauto.
+  Qed.
 
   (** Ad-hoc lemmas here? *)
 
@@ -303,6 +363,7 @@ width word word_ok.
     intros. eapply Properties.map.split_empty_r in H. subst. assumption.
   Qed.*)
 
+  (*
   Lemma intersect_expr: forall m l e mc (post1 post2: word * MetricLog -> Prop),
       MetricWeakestPrecondition.expr m l e mc post1 ->
       MetricWeakestPrecondition.expr m l e mc post2 ->
@@ -313,5 +374,6 @@ width word word_ok.
     (H : MetricWeakestPrecondition.expr m l e mc P)
     : exists v, MetricWeakestPrecondition.dexpr m l e mc v /\ P v.
   Proof using word_ok. Admitted.
+  *)
   
 End MetricWeakestPrecondition.
