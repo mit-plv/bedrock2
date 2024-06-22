@@ -1231,6 +1231,7 @@ Ltac collect_heaplets_into_one_sepclause :=
       eapply start_collecting_heaplets in D;
       repeat collecting_heaplets_step D;
       eapply done_collecting_heaplets in D
+  | |- _ => idtac (* do nothing if this function does not use the heap *)
   end.
 
 Ltac start_canceling_in_hyp H :=

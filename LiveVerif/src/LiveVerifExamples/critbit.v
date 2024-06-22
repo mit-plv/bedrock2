@@ -2517,11 +2517,8 @@ Qed.
 #[export] Instance spec_of_critical_bit: fnspec :=                              .**/
 
 uintptr_t critical_bit(uintptr_t k1, uintptr_t k2) /**#
-  (* heaplet packaging doesn't work well then there's just one item in the heap
-     [or I was doing something wrong] *)
-  ghost_args := (R1 R2: mem -> Prop);
-  requires t m := <{ * R1 * R2 }> m /\ k1 <> k2;
-  ensures t' m' res := t = t' /\ <{ * R1 * R2 }> m'
+  requires t m := k1 <> k2;
+  ensures t' m' res := t = t' /\ m' = m
                 /\ 0 <= \[res] < 32
                 /\ \[res] = pfx_len (pfx_meet (pfx_emb k1) (pfx_emb k2)) #**/
 /**.
@@ -2757,9 +2754,7 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
       return tp;                                                           /**. .**/
     }                                                                      /**. .**/
     else {                                                                 /**. .**/
-      uintptr_t cb = critical_bit(k, best_k);                              /**.
-  instantiate (3:=emp True). steps.
-  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+      uintptr_t cb = critical_bit(k, best_k);                              /**. .**/
       uintptr_t result = cbt_insert_at(tp, cb, k, v);                      /**.
   subst. steps. unfold enable_frame_trick.enable_frame_trick. steps. .**/
       return result;                                                       /**. .**/
