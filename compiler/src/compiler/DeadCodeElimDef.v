@@ -518,7 +518,7 @@ Section WithArguments1.
 
 
   Definition compile_post
-    used_after
+    mcH mcL used_after
     (postH: Semantics.trace -> mem -> locals -> MetricLog -> Prop)
     :
     Semantics.trace -> mem -> locals -> MetricLog -> Prop
@@ -526,6 +526,7 @@ Section WithArguments1.
     (fun t' m' lL' mcL' =>
        exists lH' mcH',
          map.agree_on (PropSet.of_list used_after) lH' lL'
+         /\ metricsLeq (mcL' - mcL) (mcH' - mcH)
          /\ postH t' m' lH' mcH').
 
   Lemma agree_on_eval_bcond:
