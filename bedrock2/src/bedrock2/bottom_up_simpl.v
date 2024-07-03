@@ -488,6 +488,22 @@ Module List.
 
     Lemma from_nil: forall i, (@nil A)[i:] = nil.
     Proof. intros. unfold List.from. apply List.skipn_nil. Qed.
+
+    Lemma repeatz_singleton_l: forall (x: A) n,
+        0 <= n ->
+        [|x|] ++ List.repeatz x n = List.repeatz x (1 + n).
+    Proof.
+      intros. unfold List.repeatz. rewrite Z2Nat.inj_add. 3: assumption. 2: discriminate.
+      rewrite List.repeat_app. reflexivity.
+    Qed.
+
+    Lemma repeatz_singleton_r: forall (x: A) n,
+        0 <= n ->
+        List.repeatz x n ++ [|x|] = List.repeatz x (n + 1).
+    Proof.
+      intros. unfold List.repeatz. rewrite Z2Nat.inj_add. 2: assumption. 2: discriminate.
+      rewrite List.repeat_app. reflexivity.
+    Qed.
   End ZList_TODO_MOVE.
 
   Section WithA.
@@ -1444,6 +1460,10 @@ Ltac2 local_zlist_simpl(e: constr): res :=
   | @List.repeatz ?tp _ Z0 => res_convertible '(@nil $tp)
   | List.app ?xs nil => res_rewrite '(List.app_nil_r $xs)
   | List.app nil ?xs => res_convertible xs
+  | List.app (cons ?x nil) (List.repeatz ?x ?n) =>
+      res_rewrite '(List.repeatz_singleton_l $x $n ltac2:(bottom_up_simpl_sidecond_hook ()))
+  | List.app (List.repeatz ?x ?n) (cons ?x nil) =>
+      res_rewrite '(List.repeatz_singleton_r $x $n ltac2:(bottom_up_simpl_sidecond_hook ()))
   | List.app ?xs ?ys =>
       if is_concrete_list xs && is_concrete_list ys then
         (* Note: (is_concrete_list ys) is not necessary for prepend_concrete_list
@@ -2599,6 +2619,21 @@ Section Tests.
       l = List.repeatz b n ->
       (l[i:], l[j:], l[:i], l[:j]) = (nil, l, l, nil).
   Proof. intros. subst l. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  Goal forall (B: Type) (b: B) (bs: list B),
+      (bs ++ [|b|]) ++ ([|b|] ++ bs) = bs ++ [|b; b|] ++ bs.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  Goal forall (B: Type) (b: B) (bs: list B) (i: Z),
+      0 <= i ->
+      List.repeatz b i ++ [|b|] = List.repeatz b (i + 1).
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  Goal forall (B: Type) (b: B) (bs: list B) (i: Z),
+      0 <= i ->
+      List.repeatz b i ++ [|b|] ++ bs[i + 1:] = List.repeatz b (i + 1) ++ bs[i + 1:].
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
 
   (** ** Not supported yet: *)
 
