@@ -1,6 +1,7 @@
 Require Import Coq.ZArith.ZArith coqutil.Z.div_mod_to_equations.
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.MetricCosts.
 Import Syntax BinInt String List.ListNotations ZArith.
 Require Import coqutil.Z.Lia.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
@@ -19,9 +20,9 @@ From bedrock2 Require Import MetricLoops.
 From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
 Import Interface.word.
 
-Definition initCost := {| instructions := 9; stores := 0; loads := 9; jumps := 0 |}.
-Definition iterCost := {| instructions := 38; stores := 0; loads := 45; jumps := 2 |}.
-Definition endCost :=  {| instructions := 2; stores := 0; loads := 3; jumps := 1 |}.
+Definition initCost := {| instructions := 12; stores := 2; loads := 13; jumps := 0 |}.
+Definition iterCost := {| instructions := 76; stores := 16; loads := 98; jumps := 2 |}.
+Definition endCost :=  {| instructions := 6; stores := 1; loads := 9; jumps := 1 |}.
 
 Definition msb z := match z with
                     | Zpos _ => Z.log2 z + 1
@@ -151,21 +152,18 @@ Proof.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. }
         { (* metrics correct *)
+          cbn in H4.
           rewrite <- (MetricLog_eq mc0) in H4.
           applyAddMetrics H4.
+          cbn in H4.
           rewrite msb_shift in H4 by blia.
           unfold iterCost in *.
+          rewrite MetricArith.mul_sub_distr_r in H4.
+          rewrite <- MetricArith.add_sub_swap in H4.
+          rewrite <- MetricArith.le_add_le_sub_r in H4.
+          eapply MetricArith.le_trans.
+          2: exact H4.
           solve_MetricLog.
-          (*destruct mc0.*)
-          (*applyAddMetrics H4.*)
-          (*rewrite msb_shift in H4 by blia.*)
-          (*rewrite MetricArith.mul_sub_distr_r in H4.*)
-          (*rewrite <- MetricArith.add_sub_swap in H4.*)
-          (*rewrite <- MetricArith.le_add_le_sub_r in H4.*)
-          (*eapply MetricArith.le_trans.*)
-          (*2: exact H4.*)
-          (*unfold iterCost.*)
-          (*solve_MetricLog.*)
         }
       }
       {
@@ -186,8 +184,10 @@ Proof.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. }
         { (* metrics correct *)
+          cbn in H4.
           rewrite <- (MetricLog_eq mc0) in H4.
           applyAddMetrics H4.
+          cbn in H4.
           rewrite msb_shift in H4 by blia.
           unfold iterCost in *.
           solve_MetricLog.
@@ -199,6 +199,7 @@ Proof.
       split; [reflexivity|].
       unfold msb, iterCost, endCost.
       subst brmc.
+      cbn.
       solve_MetricLog.
     }
   }
@@ -207,5 +208,5 @@ Proof.
 
   repeat (split || letexists || t || trivial).
   { setoid_rewrite H1; setoid_rewrite Z.mul_1_l; trivial. }
-  all: unfold initCost, iterCost, endCost in *; solve_MetricLog.
+  all: cbn in H2; unfold initCost, iterCost, endCost in *; solve_MetricLog.
 Qed.
