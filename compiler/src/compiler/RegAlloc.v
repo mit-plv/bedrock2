@@ -325,6 +325,7 @@ Definition isRegInterval (l: lifetime) : bool :=
 
 Definition events_to_corresp(events: list event): list (srcvar * impvar) :=
   let sorted_intervals := sort compare_interval_length (events_to_intervals 0 events) in
+  (* let occ := List.fold_left assign_srcvar sorted_intervals [] in *)
   let (reg_intervals, nonreg_intervals) := List.partition isRegInterval sorted_intervals in
   let regfirst_intervals := reg_intervals ++ nonreg_intervals in
   let occ := List.fold_left assign_srcvar regfirst_intervals [] in
