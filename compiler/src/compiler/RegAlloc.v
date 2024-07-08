@@ -318,16 +318,9 @@ Fixpoint corresp_of_impvars(start_impvar: Z)(o: occupancy): list (srcvar * impva
   | nil => nil
   end.
 
-Definition isRegInterval (l: lifetime) : bool :=
-  match l with
-  | (srcvarname, _) => isRegStr srcvarname
-  end.
-
 Definition events_to_corresp(events: list event): list (srcvar * impvar) :=
   let sorted_intervals := sort compare_interval_length (events_to_intervals 0 events) in
-  let (reg_intervals, nonreg_intervals) := List.partition isRegInterval sorted_intervals in
-  let regfirst_intervals := reg_intervals ++ nonreg_intervals in
-  let occ := List.fold_left assign_srcvar regfirst_intervals [] in
+  let occ := List.fold_left assign_srcvar sorted_intervals [] in
   corresp_of_impvars first_available_impvar occ.
 
 
