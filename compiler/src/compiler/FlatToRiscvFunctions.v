@@ -1634,7 +1634,7 @@ Section Proofs.
       split; eauto 8 with map_hints.
       split; eauto 8 with map_hints.
       (* cost_SCall constraint: cost_SCall_L + (1,1,1,0) <= cost_SCall_internal + cost_SCall_external *)
-      unfold cost_SCall_L in *.
+      unfold cost_SCall_L, cost_call_internal, cost_call_external in *.
       MetricsToRiscv.solve_MetricLog.
 
     - idtac "Case compile_stmt_correct/SLoad".

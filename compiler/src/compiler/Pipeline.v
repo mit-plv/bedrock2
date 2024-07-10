@@ -293,7 +293,7 @@ Section WithWordAndMem.
         + eapply @freshNameGenState_disjoint_fbody.
       - simpl. intros. fwd. eexists. split.
         + eauto using map.getmany_of_list_extends.
-        + eexists. split; [|eassumption]. solve_MetricLog.
+        + eexists. split; [|eassumption]. cost_unfold; solve_MetricLog.
     Qed.
 
     Lemma useimmediate_functions_NoDup: forall funs funs',
@@ -334,7 +334,7 @@ Section WithWordAndMem.
       - eapply useImmediate_correct_aux; eauto.
       - simpl. destruct 1 as (?&?&?&?&?).
         repeat (eexists; split; try eassumption).
-        solve_MetricLog.
+        cost_unfold; solve_MetricLog.
     Qed.
 
 
@@ -432,7 +432,7 @@ Section WithWordAndMem.
         rewrite H1 in P'. inversion P'. exact Cp.
       - simpl. intros. fwd. eexists. split.
         + eauto using states_compat_getmany.
-        + eexists. split; [|eassumption]. solve_MetricLog.
+        + eexists. split; [|eassumption]. cost_unfold; solve_MetricLog.
     Qed.
 
     Ltac debool :=

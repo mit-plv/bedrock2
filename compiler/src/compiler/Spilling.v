@@ -461,7 +461,7 @@ Section Spilling.
       map.get l1 r = Some v ->
       (related maxvar frame fpval t1 m1 l1 t2 m2 (map.put l2 (iarg_reg i r) v) ->
        post t2 m2 (map.put l2 (iarg_reg i r) v)
-         (if isRegZ r then mc2 else (addMetricInstructions 1 (addMetricLoads 2 mc2)))) ->
+       (if isRegZ r then mc2 else (mkMetricLog 1 0 2 0 + mc2)%metricsH)) ->
       execpost e2 (load_iarg_reg i r) t2 m2 l2 mc2 post.
   Proof.
     intros.
@@ -564,7 +564,7 @@ Section Spilling.
       execpost e2 (load_iarg_reg i r) t2 m2 l2 mc2 (fun t2' m2' l2' mc2' =>
         t2' = t2 /\ m2' = m2 /\ l2' = map.put l2 (iarg_reg i r) v /\
         related maxvar frame fpval t1 m1 l1 t2' m2' l2' /\
-        (mc2' <= (if isRegZ r then mc2 else (addMetricInstructions 1 (addMetricLoads 2 mc2))))%metricsH).
+        (mc2' <= (if isRegZ r then mc2 else mkMetricLog 1 0 2 0 + mc2))%metricsH).
   Proof.
     intros.
     unfold load_iarg_reg, stack_loc, iarg_reg, related in *. fwd.
@@ -612,7 +612,7 @@ Section Spilling.
       post t1 m1 (map.put l1 x v) mc1' ->
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < x <= maxvar /\ (x < a0 \/ a7 < x) ->
-      (mc2' - mc2 <= mc1' - (if isRegZ x then mc1 else (addMetricInstructions 1 (addMetricLoads 1 (addMetricStores 1 mc1)))))%metricsH ->
+      (mc2' - mc2 <= mc1' - (if isRegZ x then mc1 else mkMetricLog 1 1 1 0 + mc1))%metricsH ->
       execpost e (save_ires_reg x) t2 m2 (map.put l2 (ires_reg x) v) mc2'
         (fun t2' m2' l2' mc2'' => exists t1' m1' l1' mc1'',
                 related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
@@ -717,7 +717,7 @@ Section Spilling.
       fp < x <= maxvar /\ (x < a0 \/ a7 < x) ->
       (forall t2' m2' l2',
           related maxvar frame fpval t1 m1 (map.put l1 x v) t2' m2' l2' ->
-          post t2' m2' l2' (if isRegZ x then mc2 else (addMetricInstructions 1 (addMetricLoads 1 (addMetricStores 1 mc2))))) ->
+          post t2' m2' l2' (if isRegZ x then mc2 else mkMetricLog 1 1 1 0 + mc2)%metricsH) ->
       execpost e (save_ires_reg x) t2 m2 (map.put l2 (ires_reg x) v) mc2 post.
   Proof.
     intros.
@@ -860,36 +860,17 @@ Section Spilling.
   Fixpoint cost_set_vars_to_reg_range (args: list Z) (start : Z) (mc : MetricLog) : MetricLog :=
     match args with
     | [] => mc
-    | x :: xs => if isRegZ x then
-                 addMetricInstructions 1
-                   (addMetricLoads 1
-                      (cost_set_vars_to_reg_range xs (start + 1) mc))
-               else (addMetricInstructions 1
-                       (addMetricLoads 1
-                          (addMetricStores 1
-                             (cost_set_vars_to_reg_range xs (start + 1) mc))))
+    | x :: xs => (if isRegZ x then mkMetricLog 1 0 1 0 else mkMetricLog 1 1 1 0) +
+        cost_set_vars_to_reg_range xs (start + 1) mc
     end.
 
   Lemma cost_set_vars_to_reg_range_commutes:
-    forall args start mc,
-      cost_set_vars_to_reg_range args start
-        (addMetricInstructions 1 (addMetricLoads 1 (addMetricStores 1 mc))) =
-        addMetricInstructions 1
-          (addMetricLoads 1 (addMetricStores 1 (cost_set_vars_to_reg_range args start mc))).
+    forall args start n m,
+      (cost_set_vars_to_reg_range args start (n + m) = n + cost_set_vars_to_reg_range args start m)%metricsH.
   Proof.
-    induction args; intros; cbn; try trivial.
-    destr (isRegZ a); cbn; rewrite IHargs; trivial.
-  Qed.
-
-  Lemma cost_set_vars_to_reg_range_commutes':
-    forall args start mc,
-      cost_set_vars_to_reg_range args start
-        (addMetricInstructions 1 (addMetricLoads 1 mc)) =
-        addMetricInstructions 1
-          (addMetricLoads 1 (cost_set_vars_to_reg_range args start mc)).
-  Proof.
-    induction args; intros; cbn; try trivial.
-    destr (isRegZ a); cbn; rewrite IHargs; trivial.
+    induction args; trivial.
+    intros; cbn; destr (isRegZ a); cbn; rewrite IHargs;
+    do 2 rewrite MetricArith.add_assoc; rewrite (MetricArith.add_comm n); reflexivity.
   Qed.
 
   Lemma set_vars_to_reg_range_correct:
@@ -943,7 +924,10 @@ Section Spilling.
           { blia. }
         * intros. apply H6; auto.
           cbn in *. destr (isRegZ start); try blia; destr (isRegZ a); try blia.
-          rewrite H0. rewrite cost_set_vars_to_reg_range_commutes. trivial.
+          rewrite H0. unfold cost_store, isRegZ. cbn.
+          rewrite cost_set_vars_to_reg_range_commutes.
+          rewrite (proj2 (Z.leb_le start 31)) by assumption.
+          reflexivity.
       + eapply exec.set.
         { eassumption. }
         eapply IHargs; try eassumption; try blia. 2: {
@@ -970,15 +954,18 @@ Section Spilling.
           { assumption. }
         * intros. apply H6; auto.
           cbn in *. destr (isRegZ start); try blia; destr (isRegZ a); try blia.
-          rewrite H0. rewrite cost_set_vars_to_reg_range_commutes'. trivial.
+          rewrite H0. unfold cost_set, isRegZ. cbn.
+          rewrite cost_set_vars_to_reg_range_commutes.
+          rewrite (proj2 (Z.leb_le a 31)) by assumption.
+          rewrite (proj2 (Z.leb_le start 31)) by assumption.
+          reflexivity.
   Qed.
 
   Fixpoint cost_set_reg_range_to_vars (start : Z) (args: list Z) (mc : MetricLog) : MetricLog :=
     match args with
     | [] => mc
-    | x :: xs => if isRegZ x then
-                 addMetricInstructions 1 (addMetricLoads 1 (cost_set_reg_range_to_vars (start + 1) xs mc))
-               else (addMetricInstructions 1 (addMetricLoads 2 (cost_set_reg_range_to_vars (start + 1) xs mc)))
+    | x :: xs => (if isRegZ x then mkMetricLog 1 0 1 0 else mkMetricLog 1 0 2 0) +
+        cost_set_reg_range_to_vars (start + 1) xs mc
     end.
 
   Lemma set_reg_range_to_vars_correct:
@@ -1035,7 +1022,9 @@ Section Spilling.
                 eapply map.getmany_of_list_put_diff. 2: eassumption.
                 eauto using List.not_In_Z_seq with zarith.
           -- cbn. destr (isRegZ start); destr (isRegZ a); cbn in *; try blia.
-             rewrite H6; trivial.
+             rewrite H6; unfold cost_load, isRegZ; cbn.
+             rewrite (proj2 (Z.leb_le start 31)) by assumption.
+             reflexivity.
       + eapply exec.seq_cps.
         eapply IHargs; try eassumption; try blia.
         intros.
@@ -1063,48 +1052,10 @@ Section Spilling.
                     end.
              eapply put_arg_reg; try eassumption. blia.
           -- cbn. destr (isRegZ start); destr (isRegZ a); cbn in *; try blia.
-             rewrite H6; trivial.
-  Qed.
-
-  (* XXX this section seems silly *)
-
-  Lemma factor_out_set_reg_range_to_vars : forall args start mc,
-    cost_set_reg_range_to_vars start args mc =
-    (mc + cost_set_reg_range_to_vars start args EmptyMetricLog)%metricsH.
-  Proof.
-    induction args; eauto with metric_arith.
-    simpl; intros.
-    rewrite IHargs.
-    destruct (isRegZ a); solve_MetricLog_piecewise.
-  Qed.
-
-  Lemma factor_out_set_vars_to_reg_range : forall args start mc,
-    cost_set_vars_to_reg_range args start mc =
-    (mc + cost_set_vars_to_reg_range args start EmptyMetricLog)%metricsH.
-  Proof.
-    induction args; eauto with metric_arith.
-    simpl; intros.
-    rewrite IHargs.
-    destruct (isRegZ a); solve_MetricLog_piecewise.
-  Qed.
-
-  Lemma factor_out_cost_external : forall phase mc,
-    cost_call_external phase mc =
-    (mc + cost_call_external phase EmptyMetricLog)%metricsH.
-  Proof. destruct phase; eauto with metric_arith. Qed.
-
-  Lemma factor_out_cost_internal : forall phase mc,
-    cost_call_internal phase mc =
-    (mc + cost_call_internal phase EmptyMetricLog)%metricsH.
-  Proof. destruct phase; eauto with metric_arith. Qed.
-
-  Lemma factor_out_cost_stackalloc : forall x mc,
-    cost_stackalloc isRegZ x mc =
-    (mc + cost_stackalloc isRegZ x EmptyMetricLog)%metricsH.
-  Proof.
-    intros.
-    unfold cost_stackalloc, EmptyMetricLog.
-    destruct (isRegZ x); solve_MetricLog_piecewise.
+             rewrite H6; unfold cost_set, isRegZ; cbn.
+             rewrite (proj2 (Z.leb_le a 31)) by assumption.
+             rewrite (proj2 (Z.leb_le start 31)) by assumption.
+             reflexivity.
   Qed.
 
   Lemma cost_set_reg_range_to_vars_bound : forall args start mc len,
@@ -1625,7 +1576,7 @@ Section Spilling.
             eapply map.shrink_disjoint_l; eassumption. }
           cbn in *. subst.
           add_bounds.
-          solve_MetricLog.
+          cost_solve.
           (* cost_SInteract constraint: prespill - postspill >= (...32...) i think? *)
         }
         (* related for set_vars_to_reg_range_correct: *)
@@ -1845,19 +1796,9 @@ Section Spilling.
         split; try eassumption.
         subst.
         move Hmetrics at bottom.
-        rewrite factor_out_set_vars_to_reg_range.
-        rewrite factor_out_cost_external.
-        rewrite factor_out_cost_stackalloc.
-        rewrite factor_out_set_reg_range_to_vars.
-        rewrite (factor_out_cost_external PreSpill).
-        rewrite factor_out_set_vars_to_reg_range in Hmetrics.
-        rewrite factor_out_cost_internal in Hmetrics.
-        rewrite factor_out_set_reg_range_to_vars in Hmetrics.
-        rewrite (factor_out_cost_internal PreSpill) in Hmetrics.
         add_bounds.
         cost_solve.
         (* cost_SCall constraint: prespill - postspill >= (...66...) i think? *)
-        (* TODO XXX fairly slow *)
       }
 
     - (* exec.load *)

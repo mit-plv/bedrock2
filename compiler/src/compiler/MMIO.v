@@ -369,7 +369,7 @@ Section MMIO1.
       split; eauto.
       split; [unfold map.only_differ; eauto|].
       split. {
-        unfold id. MetricsToRiscv.solve_MetricLog.
+        unfold id, MetricCosts.cost_interact. MetricsToRiscv.solve_MetricLog.
       }
       split; eauto.
       split; eauto.
@@ -522,7 +522,7 @@ Section MMIO1.
         destruct_one_match; auto.
       }
       split. {
-        unfold id. MetricsToRiscv.solve_MetricLog.
+        unfold id, MetricCosts.cost_interact. MetricsToRiscv.solve_MetricLog.
       }
       split. {
         eapply map.put_extends. eassumption.

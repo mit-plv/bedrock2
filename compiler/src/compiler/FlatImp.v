@@ -305,21 +305,21 @@ Module exec.
 
     Definition cost_SIf bcond mc :=
       match bcond with
-      | CondBinary _ x y => cost_if isReg x (Some y) mc
-      | CondNez x => cost_if isReg x None mc
-      end.
+      | CondBinary _ x y => cost_if isReg x (Some y)
+      | CondNez x => cost_if isReg x None
+      end mc.
 
     Definition cost_SLoop_true bcond mc :=
       match bcond with
-      | CondBinary _ x y => cost_loop_true isReg x (Some y) mc
-      | CondNez x => cost_loop_true isReg x None mc
-      end.
+      | CondBinary _ x y => cost_loop_true isReg x (Some y)
+      | CondNez x => cost_loop_true isReg x None
+      end mc.
 
     Definition cost_SLoop_false bcond mc :=
       match bcond with
-      | CondBinary _ x y => cost_loop_false isReg x (Some y) mc
-      | CondNez x => cost_loop_false isReg x None mc
-      end.
+      | CondBinary _ x y => cost_loop_false isReg x (Some y)
+      | CondNez x => cost_loop_false isReg x None
+      end mc.
 
     (* alternative semantics which allow non-determinism *)
     Inductive exec:
@@ -708,18 +708,4 @@ Ltac scost_destr :=
 
 Ltac scost_solve := scost_unfold; scost_destr; try solve_MetricLog.
 Ltac scost_solve_piecewise := scost_unfold; scost_destr; try solve_MetricLog_piecewise.
-
-Ltac t := unfold metrics_additive; intros; scost_solve_piecewise.
-Lemma scost_additive_op : forall varname isReg x y z, metrics_additive (@exec.cost_SOp varname isReg x y z). Proof. t. Qed.
-Lemma scost_additive_if : forall varname isReg x, metrics_additive (@exec.cost_SIf varname isReg x). Proof. t. Qed.
-Lemma scost_additive_loop_true : forall varname isReg x, metrics_additive (@exec.cost_SLoop_true varname isReg x). Proof. t. Qed.
-Lemma scost_additive_loop_false : forall varname isReg x, metrics_additive (@exec.cost_SLoop_false varname isReg x). Proof. t. Qed.
-
-Ltac scost_additive := repeat (
-  rewrite scost_additive_op ||
-  rewrite scost_additive_if ||
-  rewrite scost_additive_loop_true ||
-  rewrite scost_additive_loop_false
-  ); cost_additive.
-
-Ltac scost_hammer := scost_additive; try solve [eauto 3 with metric_arith | scost_solve].
+Ltac scost_hammer := try solve [eauto 3 with metric_arith | scost_solve].

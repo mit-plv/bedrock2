@@ -151,10 +151,16 @@ Module MetricArith.
   Lemma sub_0_r : forall mc, (mc - EmptyMetricLog)%metricsH = mc.
   Proof. destruct mc. unfold EmptyMetricLog. solve_MetricLog_piecewise. Qed.
 
+  Lemma add_comm : forall n m, (n + m = m + n)%metricsH.
+  Proof. intros. unfold_MetricLog. f_equal; apply Z.add_comm. Qed.
+
+  Lemma add_assoc : forall n m p, (n + (m + p) = n + m + p)%metricsH.
+  Proof. intros. unfold_MetricLog. f_equal; apply Z.add_assoc. Qed.
+
 End MetricArith.
 
 Create HintDb metric_arith.
-#[export] Hint Resolve MetricArith.le_trans MetricArith.le_refl MetricArith.add_0_r MetricArith.sub_0_r : metric_arith.
+#[export] Hint Resolve MetricArith.le_trans MetricArith.le_refl MetricArith.add_0_r MetricArith.sub_0_r MetricArith.add_comm MetricArith.add_assoc : metric_arith.
 #[export] Hint Resolve <- MetricArith.le_sub_mono : metric_arith.
 #[export] Hint Resolve -> MetricArith.le_sub_mono : metric_arith.
 

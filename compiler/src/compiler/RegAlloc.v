@@ -1123,19 +1123,6 @@ Section CheckerCorrect.
     unfold assert_ins, assert. intros. fwd. assumption.
   Qed.
 
-  (* TODO XXX this should be obsolete *)
-  Ltac unfold_metrics :=
-    unfold
-      MetricLogging.withInstructions, MetricLogging.withLoads,
-      MetricLogging.withStores, MetricLogging.withJumps,
-      MetricLogging.addMetricInstructions, MetricLogging.addMetricLoads,
-      MetricLogging.addMetricStores, MetricLogging.addMetricJumps,
-      MetricLogging.subMetricInstructions, MetricLogging.subMetricLoads,
-      MetricLogging.subMetricStores, MetricLogging.subMetricJumps,
-      MetricLogging.metricsOp, MetricLogging.metricSub, MetricLogging.metricsSub,
-      MetricLogging.metricLeq, MetricLogging.metricsLeq
-      in *.
-
   Opaque isRegStr.
   Opaque isRegZ.
 
@@ -1149,8 +1136,6 @@ Section CheckerCorrect.
     match goal with
     | H: match ?expr with _ => _ end = Success _ |- _ => destr expr; discriminate
     end.
-
-  (* TODO XXX these lemms are unnecessarily slow i think *)
 
   Lemma check_regs_cost_SIf:
     forall (cond : bcond) (bThen bElse : stmt) (corresp : list (string * Z))
@@ -1168,13 +1153,12 @@ Section CheckerCorrect.
   Proof.
     intros.
     repeat (unfold check_bcond, assert_in, assignment in *; fwd).
-    intros; unfold check_regs in *; cbn in *; unfold exec.cost_SIf in *;
-      destr cond; destr cond0; destr (isRegStr x); destr (isRegZ x0); try (destr (isRegStr y)); try (destr (isRegZ y0));
-      try discriminate;
-      unfold_metrics; cbn in *; repeat split; cbn in *; unfold_metrics; cbn in *; fwd;
-      destr mcL; destr mc'; destr mc; destr mcH'; try blia.
-    all: try discr_match_success.
-    all: cbn in *; fwd; try blia.
+    destr cond; destr cond0;
+    repeat match goal with
+           | H: match ?expr with _ => _ end = Success _ |- _ => destr expr; try discriminate
+           end;
+    unfold check_regs, exec.cost_SIf in *;
+    cost_solve.
   Qed.
 
   Lemma check_regs_cost_SLoop_false:
@@ -1191,13 +1175,12 @@ Section CheckerCorrect.
   Proof.
     intros.
     repeat (unfold check_bcond, assert_in, assignment in *; fwd).
-    intros; unfold check_regs in *; cbn in *; unfold exec.cost_SLoop_false in *;
-      destr cond; destr cond0; destr (isRegStr x); destr (isRegZ x0); try (destr (isRegStr y)); try (destr (isRegZ y0));
-      try discriminate;
-      unfold_metrics; cbn in *; repeat split; cbn in *; unfold_metrics; cbn in *; fwd;
-      destr mcL; destr mc'; destr mc; destr mcH'; try blia.
-    all: try discr_match_success.
-    all: cbn in *; fwd; try blia.
+    destr cond; destr cond0;
+    repeat match goal with
+           | H: match ?expr with _ => _ end = Success _ |- _ => destr expr; try discriminate
+           end;
+    unfold check_regs, exec.cost_SLoop_false in *;
+    cost_solve.
   Qed.
 
   Hint Constructors exec.exec : checker_hints.
@@ -1251,8 +1234,7 @@ Section CheckerCorrect.
       intros. edestruct H3 as (l' & P & F). 1: eassumption.
       eapply putmany_of_list_zip_states_compat in P. 2-3: eassumption. destruct P as (lL' & P & SC).
       eexists. split. 1: eassumption. intros. eauto.
-      repeat eexists; eauto.
-      all: repeat (unfold_metrics; cbn; try blia).
+      repeat eexists; eauto; cost_solve.
     - (* Case exec.call *)
       rename binds0 into binds', args0 into args'.
       unfold check_funcs in H.
@@ -1278,7 +1260,7 @@ Section CheckerCorrect.
         * eapply states_compat_getmany; eassumption.
         * exact L4.
         * repeat eexists. 6: eassumption. 1: exact SC.
-          all: repeat (unfold_metrics; cbn in *; try blia).
+          all: cost_solve.
     - (* Case exec.load *)
       a. b.
     - (* Case exec.store *)
@@ -1298,7 +1280,7 @@ Section CheckerCorrect.
       a. b.
     - (* Case exec.op *)
       a.
-      unfold assert_in_op, assert_in, assignment, check_regs in *; scost_hammer. (* TODO XXX could be faster *)
+      unfold assert_in_op, assert_in, assignment, check_regs in *; scost_hammer. (* could be faster *)
     - (* Case exec.set *)
       a. b.
     - (* Case exec.if_true *)
@@ -1361,10 +1343,7 @@ Section CheckerCorrect.
           intros; unfold check_regs in *; cbn in *; unfold exec.cost_SLoop_true in *; try discr_match_success;
             destr cond; destr cond0; destr (isRegStr x); destr (isRegZ x0); try (destr (isRegStr y)); try (destr (isRegZ y0));
             try discriminate; try discr_match_success.
-          all: unfold_metrics; cbn in *; repeat split; cbn in *; unfold_metrics; cbn in *; fwd.
-          all: destr mc''; destr mcH'; destr mcHmid; destr mcLmid; destr mc'; destr mcH'0; destr mc; destr mcL;
-            try discr_match_success.
-          all: cbn in *; try blia.
+          all: cost_solve.
     - (* Case exec.seq *)
       rename H2 into IH2, IHexec into IH1.
       eapply exec.seq.

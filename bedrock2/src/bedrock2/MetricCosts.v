@@ -17,98 +17,98 @@ Section FlatImpExec.
 
   Definition cost_interact mc :=
     match phase with
-    | PreSpill => (addMetricInstructions 100 (addMetricJumps 100 (addMetricStores 100 (addMetricLoads 100 mc))))
-    | PostSpill => (addMetricInstructions 50 (addMetricJumps 50 (addMetricStores 50 (addMetricLoads 50 mc))))
-    end.
+    | PreSpill => mkMetricLog 100 100 100 100
+    | PostSpill => mkMetricLog 50 50 50 50
+    end + mc.
 
   Definition cost_call_internal mc :=
     match phase with
-    | PreSpill => addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc)))
-    | PostSpill => addMetricInstructions 50 (addMetricJumps 50 (addMetricLoads 50 (addMetricStores 50 mc)))
-    end.
+    | PreSpill => mkMetricLog 100 100 100 100
+    | PostSpill => mkMetricLog 50 50 50 50
+    end + mc.
 
   Definition cost_call_external mc :=
     match phase with
-    | PreSpill => addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc)))
-    | PostSpill => addMetricInstructions 50 (addMetricJumps 50 (addMetricLoads 50 (addMetricStores 50 mc)))
-    end.
+    | PreSpill => mkMetricLog 100 100 100 100
+    | PostSpill => mkMetricLog 50 50 50 50
+    end + mc.
 
   (* TODO think about a non-fixed bound on the cost of function preamble and postamble *)
 
   Definition cost_load x a mc :=
     match (isReg x, isReg a) with
-    | (false, false) => (addMetricInstructions 3 (addMetricLoads 5 (addMetricStores 1 mc)))
-    | (false,  true) => (addMetricInstructions 2 (addMetricLoads 3 (addMetricStores 1 mc)))
-    | ( true, false) => (addMetricInstructions 2 (addMetricLoads 4 mc))
-    | ( true,  true) => (addMetricInstructions 1 (addMetricLoads 2 mc))
-    end.
+    | (false, false) => mkMetricLog 3 1 5 0
+    | (false,  true) => mkMetricLog 2 1 3 0
+    | ( true, false) => mkMetricLog 2 0 4 0
+    | ( true,  true) => mkMetricLog 1 0 2 0
+    end + mc.
 
   Definition cost_store a v mc :=
     match (isReg a, isReg v) with
-    | (false, false) => (addMetricInstructions 3 (addMetricLoads 5 (addMetricStores 1 mc)))
-    | (false,  true) => (addMetricInstructions 2 (addMetricLoads 3 (addMetricStores 1 mc)))
-    | ( true, false) => (addMetricInstructions 2 (addMetricLoads 3 (addMetricStores 1 mc)))
-    | ( true,  true) => (addMetricInstructions 1 (addMetricLoads 1 (addMetricStores 1 mc)))
-    end.
+    | (false, false) => mkMetricLog 3 1 5 0
+    | (false,  true) => mkMetricLog 2 1 3 0
+    | ( true, false) => mkMetricLog 2 1 3 0
+    | ( true,  true) => mkMetricLog 1 1 1 0
+    end + mc.
 
   Definition cost_inlinetable x i mc :=
     match (isReg x, isReg i) with
-    | (false, false) => (addMetricInstructions 5 (addMetricLoads 7 (addMetricStores 1 (addMetricJumps 1 mc))))
-    | (false,  true) => (addMetricInstructions 4 (addMetricLoads 5 (addMetricStores 1 (addMetricJumps 1 mc))))
-    | ( true, false) => (addMetricInstructions 4 (addMetricLoads 6 (addMetricJumps 1 mc)))
-    | ( true,  true) => (addMetricInstructions 3 (addMetricLoads 4 (addMetricJumps 1 mc)))
-    end.
+    | (false, false) => mkMetricLog 5 1 7 1
+    | (false,  true) => mkMetricLog 4 1 5 1
+    | ( true, false) => mkMetricLog 4 0 6 1
+    | ( true,  true) => mkMetricLog 3 0 4 1
+    end + mc.
 
   Definition cost_stackalloc x mc :=
     match isReg x with
-    | false => (addMetricInstructions 2 (addMetricLoads 2 (addMetricStores 1 mc)))
-    |  true => (addMetricInstructions 1 (addMetricLoads 1 mc))
-    end.
+    | false => mkMetricLog 2 1 2 0
+    |  true => mkMetricLog 1 0 1 0
+    end + mc.
 
   Definition cost_lit x mc :=
     match isReg x with
-    | false => (addMetricInstructions 9 (addMetricLoads 9 (addMetricStores 1 mc)))
-    |  true => (addMetricInstructions 8 (addMetricLoads 8 mc))
-    end.
+    | false => mkMetricLog 9 1 9 0
+    |  true => mkMetricLog 8 0 8 0
+    end + mc.
 
   Definition cost_op x y z mc :=
     match (isReg x, isReg y, isReg z) with
-    | (false, false, false) => (addMetricInstructions 5 (addMetricLoads 7 (addMetricStores 1 mc)))
-    | (false, false,  true) | (false,  true, false) => (addMetricInstructions 4 (addMetricLoads 5 (addMetricStores 1 mc)))
-    | (false,  true,  true) => (addMetricInstructions 3 (addMetricLoads 3 (addMetricStores 1 mc)))
-    | ( true, false, false) => (addMetricInstructions 4 (addMetricLoads 6 mc))
-    | ( true, false,  true) | ( true,  true, false) => (addMetricInstructions 3 (addMetricLoads 4 mc))
-    | ( true,  true,  true) => (addMetricInstructions 2 (addMetricLoads 2 mc))
-    end.
+    | (false, false, false)                         => mkMetricLog 5 1 7 0
+    | (false, false,  true) | (false,  true, false) => mkMetricLog 4 1 5 0
+    | (false,  true,  true)                         => mkMetricLog 3 1 3 0
+    | ( true, false, false)                         => mkMetricLog 4 0 6 0
+    | ( true, false,  true) | ( true,  true, false) => mkMetricLog 3 0 4 0
+    | ( true,  true,  true)                         => mkMetricLog 2 0 2 0
+    end + mc.
 
   Definition cost_set x y mc :=
     match (isReg x, isReg y) with
-    | (false, false) => (addMetricInstructions 3 (addMetricLoads 4 (addMetricStores 1 mc)))
-    | (false,  true) => (addMetricInstructions 2 (addMetricLoads 2 (addMetricStores 1 mc)))
-    | ( true, false) => (addMetricInstructions 2 (addMetricLoads 3 mc))
-    | ( true,  true) => (addMetricInstructions 1 (addMetricLoads 1 mc))
-    end.
+    | (false, false) => mkMetricLog 3 1 4 0
+    | (false,  true) => mkMetricLog 2 1 2 0
+    | ( true, false) => mkMetricLog 2 0 3 0
+    | ( true,  true) => mkMetricLog 1 0 1 0
+    end + mc.
 
     Definition cost_if x y mc :=
       match (isReg x, match y with | Some y' => isReg y' | None => true end) with
-      | (false, false) => (addMetricInstructions 4 (addMetricLoads 6 (addMetricJumps 1 mc)))
-      | (false,  true) | ( true, false) => (addMetricInstructions 3 (addMetricLoads 4 (addMetricJumps 1 mc)))
-      | ( true,  true) => (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc)))
-      end.
+      | (false, false)                  => mkMetricLog 4 0 6 1
+      | (false,  true) | ( true, false) => mkMetricLog 3 0 4 1
+      | ( true,  true)                  => mkMetricLog 2 0 2 1
+      end + mc.
 
     Definition cost_loop_true x y mc :=
       match (isReg x, match y with | Some y' => isReg y' | None => true end) with
-      | (false, false) => (addMetricInstructions 4 (addMetricLoads 6 (addMetricJumps 1 mc)))
-      | (false,  true) | ( true, false) => (addMetricInstructions 3 (addMetricLoads 4 (addMetricJumps 1 mc)))
-      | ( true,  true) => (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc)))
-      end.
+      | (false, false)                  => mkMetricLog 4 0 6 1
+      | (false,  true) | ( true, false) => mkMetricLog 3 0 4 1
+      | ( true,  true)                  => mkMetricLog 2 0 2 1
+      end + mc.
 
     Definition cost_loop_false x y mc :=
       match (isReg x, match y with | Some y' => isReg y' | None => true end) with
-      | (false, false) => (addMetricInstructions 3 (addMetricLoads 5 (addMetricJumps 1 mc)))
-      | (false,  true) | ( true, false) => (addMetricInstructions 2 (addMetricLoads 3 (addMetricJumps 1 mc)))
-      | ( true,  true) => (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 mc)))
-      end.
+      | (false, false)                  => mkMetricLog 3 0 5 1
+      | (false,  true) | ( true, false) => mkMetricLog 2 0 3 1
+      | ( true,  true)                  => mkMetricLog 1 0 1 1
+      end + mc.
 
 End FlatImpExec.
 
@@ -132,44 +132,4 @@ Ltac cost_destr :=
 
 Ltac cost_solve := cost_unfold; cost_destr; try solve_MetricLog.
 Ltac cost_solve_piecewise := cost_unfold; cost_destr; try solve_MetricLog_piecewise.
-
-Definition metrics_additive f := forall mc, f mc - mc = f EmptyMetricLog.
-#[global] Transparent metrics_additive.
-
-Ltac t := unfold metrics_additive; intros; cost_solve_piecewise.
-Lemma cost_additive_interact : forall phase, metrics_additive (cost_interact phase). Proof. t. Qed.
-Lemma cost_additive_call_internal : forall phase, metrics_additive (cost_call_internal phase). Proof. t. Qed.
-Lemma cost_additive_call_external : forall phase, metrics_additive (cost_call_external phase). Proof. t. Qed.
-Lemma cost_additive_load : forall varname isReg x a, metrics_additive (@cost_load varname isReg x a). Proof. t. Qed.
-Lemma cost_additive_store : forall varname isReg x a, metrics_additive (@cost_store varname isReg x a). Proof. t. Qed.
-Lemma cost_additive_inlinetable : forall varname isReg x a, metrics_additive (@cost_inlinetable varname isReg x a). Proof. t. Qed.
-Lemma cost_additive_stackalloc : forall varname isReg x, metrics_additive (@cost_stackalloc varname isReg x). Proof. t. Qed.
-Lemma cost_additive_lit : forall varname isReg x, metrics_additive (@cost_lit varname isReg x). Proof. t. Qed.
-Lemma cost_additive_op : forall varname isReg x y z, metrics_additive (@cost_op varname isReg x y z). Proof. t. Qed.
-Lemma cost_additive_set : forall varname isReg x y, metrics_additive (@cost_set varname isReg x y). Proof. t. Qed.
-Lemma cost_additive_if : forall varname isReg x y, metrics_additive (@cost_if varname isReg x y). Proof. t. Qed.
-Lemma cost_additive_loop_true : forall varname isReg x y, metrics_additive (@cost_loop_true varname isReg x y). Proof. t. Qed.
-Lemma cost_additive_loop_false : forall varname isReg x y, metrics_additive (@cost_loop_false varname isReg x y). Proof. t. Qed.
-
-(* COQBUG:
-   these cannot have "in *", because this causes a crash if the environment contains a Semantics.ExtSpec.
-     Anomaly "Unable to handle arbitrary u+k <= v constraints."
-     Please report at http://coq.inria.fr/bugs/.
-   to use these in hypotheses, revert them first *)
-Ltac cost_additive := repeat (
-  rewrite cost_additive_interact ||
-  rewrite cost_additive_call_internal ||
-  rewrite cost_additive_call_external ||
-  rewrite cost_additive_load ||
-  rewrite cost_additive_store ||
-  rewrite cost_additive_inlinetable ||
-  rewrite cost_additive_stackalloc ||
-  rewrite cost_additive_lit ||
-  rewrite cost_additive_op ||
-  rewrite cost_additive_set ||
-  rewrite cost_additive_if ||
-  rewrite cost_additive_loop_true ||
-  rewrite cost_additive_loop_false
-  ).
-
-Ltac cost_hammer := cost_additive; try solve [eauto 3 with metric_arith | cost_solve].
+Ltac cost_hammer := try solve [eauto 3 with metric_arith | cost_solve].
