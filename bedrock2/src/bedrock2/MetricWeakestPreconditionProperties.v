@@ -345,23 +345,22 @@ width word word_ok.
 
   Import bedrock2.Syntax bedrock2.MetricSemantics bedrock2.MetricWeakestPrecondition.
 
-  (*
   Lemma interact_nomem call action binds arges t m l post
-        args (Hargs : dexprs m l arges args)
+        mc args mc' (Hargs : dexprs m l arges mc (args, mc'))
         (Hext : ext_spec t map.empty binds args (fun mReceive (rets : list word) =>
            mReceive = map.empty /\
            exists l0 : locals, map.putmany_of_list_zip action rets l = Some l0 /\
-           post (cons (map.empty, binds, args, (map.empty, rets)) t) m l0))
-    : WeakestPrecondition.cmd call (cmd.interact action binds arges) t m l post.
+           post (cons (map.empty, binds, args, (map.empty, rets)) t) m l0 (MetricCosts.cost_interact MetricCosts.PreSpill mc')))
+    : MetricWeakestPrecondition.cmd call (cmd.interact action binds arges) t m l mc post.
   Proof using word_ok mem_ok ext_spec_ok.
-    exists args; split; [exact Hargs|].
+    exists args, mc'; split; [exact Hargs|].
     exists m.
     exists map.empty.
     split; [eapply Properties.map.split_empty_r; exact eq_refl|].
-    eapply ext_spec.weaken; [|eapply Hext]; intros ? ? [? [? []]]. subst a; subst.
+    eapply Semantics.ext_spec.weaken; [|eapply Hext]; intros ? ? [? [? []]]. subst a; subst.
     eexists; split; [eassumption|].
     intros. eapply Properties.map.split_empty_r in H. subst. assumption.
-  Qed.*)
+  Qed.
 
   (*
   Lemma intersect_expr: forall m l e mc (post1 post2: word * MetricLog -> Prop),

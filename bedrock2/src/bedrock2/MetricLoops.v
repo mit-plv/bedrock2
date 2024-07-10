@@ -359,88 +359,49 @@ Section Loops.
     constructor. intros [] [].
   Qed.
 
-  (*METRICSTODO
-
   Lemma atleastonce_localsmap
     {e c t} {m : mem} {l mc} {post : _->_->_->_-> Prop}
     {measure : Type} (invariant:_->_->_->_->_->Prop) lt
     (Hwf : well_founded lt)
-    (Henter : exists br mc', expr m l e mc (eq (Datatypes.pair br mc')) /\ (word.unsigned br = 0%Z -> post t m l (addMetricInstructions 1
-                                         (addMetricLoads 1
-                                            (addMetricJumps 1 mc'))))
-    /\ (word.unsigned br <> 0 -> exists v', invariant v' t m l (addMetricInstructions 2
-                                         (addMetricLoads 2
-                                            (addMetricJumps 1 mc'))))
+    (Henter : exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc))
+      /\ (word.unsigned br = 0%Z -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc))
+      /\ (word.unsigned br <> 0 -> exists v', invariant v' t m l (cost_loop_true isRegStr UNK (Some UNK) brmc))
     )
     (v0 : measure) (Hpre : invariant v0 t m l mc)
     (Hbody : forall v t m l mc, invariant v t m l mc ->
                                 cmd call c t m l mc (fun t m l mc =>
-         exists br mc', expr m l e mc (eq (Datatypes.pair br mc')) /\
-         (word.unsigned br <> 0 -> exists v', invariant v' t m l (addMetricInstructions 2
-                                     (addMetricLoads 2
-                                     (addMetricJumps 1 mc'))) /\ lt v' v) /\
-         (word.unsigned br =  0 -> post t m l (addMetricInstructions 1
-                                         (addMetricLoads 1
-                                         (addMetricJumps 1 mc'))))))
+         exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc))
+         /\ (word.unsigned br <> 0 -> exists v', invariant v' t m l (cost_loop_true isRegStr UNK (Some UNK) brmc) /\ lt v' v)
+         /\ (word.unsigned br =  0 -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc))))
     : cmd call (cmd.while e c) t m l mc post.
   Proof.
-<<<<<<< HEAD
     eapply wp_while.
-    eexists (option measure), (with_bottom lt), (fun ov t m l =>
-      exists br, expr m l e (eq br) /\
-      ((word.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v t m l) /\
-      (word.unsigned br =  0 -> ov = None /\ post t m l))).
-=======
     eexists (option measure), (with_bottom lt), (fun ov t m l mc =>
-      exists br mc', expr m l e mc (eq (Datatypes.pair br mc')) /\
-      ((word.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v t m l (addMetricInstructions 2
-                                     (addMetricLoads 2
-                                     (addMetricJumps 1 mc')))) /\
-      (word.unsigned br =  0 -> ov = None /\ post t m l (addMetricInstructions 1
-                                         (addMetricLoads 1
-                                         (addMetricJumps 1 mc')))))).
->>>>>>> 94c30cc1 (made rather a mess trying to get andy's metric stuff to work; commiting so I can ask andres for help)
+      exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc))
+      /\ ((word.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v t m l (cost_loop_true isRegStr UNK (Some UNK) brmc))
+      /\ (word.unsigned br =  0 -> ov = None /\ post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))).
     split; auto using well_founded_with_bottom; []. split.
-    { destruct Henter as [br [mc' [He [Henter0 Henterm]]]].
+    { destruct Henter as [br [brmc [He [Henter0 Henterm]]]].
       destruct (BinInt.Z.eq_dec (word.unsigned br) 0).
-      { exists None, br, mc'; split; trivial.
+      { exists None, br, brmc; split; trivial.
         split; intros; try contradiction; split; eauto. }
-      {
-        assert (Hnonzero := n).
+      { assert (Hnonzero := n).
         apply Henterm in Hnonzero.
         destruct Hnonzero as [v Hinv].
-        exists (Some v), br, mc'.
-
+        exists (Some v), br, brmc.
         split; trivial; []; split; try contradiction.
-<<<<<<< HEAD
-        exists v0; split; trivial. } }
-    intros vi ti mi li (br&Ebr&Hcontinue&Hexit).
-    eexists; split; [eassumption|]; split.
+        exists v; split; trivial. } }
+    intros vi ti mi li mci (br&brmc&Ebr&Hcontinue&Hexit).
+    eexists; eexists; split; [eassumption|]; split.
+    { admit. }
+    (*
     { intros Hc; destruct (Hcontinue Hc) as (v&?&Hinv); subst.
-      eapply Proper_cmd; [ |eapply Hbody; eassumption].
-=======
-
-        exists v; split; trivial.
-
-
-    } }
-    intros vi ti mi li mci (br&mcnew&Ebr&Hcontinue&Hexit).
-    eexists; eexists; split.
-    - eassumption.
-    - split.
-
-
-    (*eexists; eexists; split; [eassumption|]; split.*)
-
-    {
-      intros Hc; destruct (Hcontinue Hc) as (v&?&Hinv); subst.
       eapply Proper_cmd.
-      1: { eapply Proper_call. }
-      2: { (* eapply Hbody. eassumption. }
-
-      [ | | eapply Hbody; eassumption]. [eapply Proper_call|].
->>>>>>> 94c30cc1 (made rather a mess trying to get andy's metric stuff to work; commiting so I can ask andres for help)
-      intros t' m' l' (br'&Ebr'&Hinv'&Hpost').
+      2: {
+        eapply Hbody.
+      }
+      eapply Proper_cmd; [ |eapply Hbody; eassumption].
+      intros t' m' l' mc' (br'&brmc'&Ebr'&Hinv'&Hpost').
       destruct (BinInt.Z.eq_dec (word.unsigned br') 0).
       { exists None; split; try constructor.
         exists br'; split; trivial; [].
@@ -451,10 +412,11 @@ Section Loops.
         exists br'; split; trivial.
         split; intros; try contradiction.
         eexists; split; eauto. } }
+     *)
 
     eapply Hexit.
-  Qed.
-         *) Admitted.
+  (*Qed.*)
+  Admitted.
 
   Lemma atleastonce
     {e c t l mc} {m : mem}
@@ -464,12 +426,8 @@ Section Loops.
     {measure : Type} (invariant:_->_->_-> ufunc word (length variables) (MetricLog -> Prop))
     lt (Hwf : well_founded lt)
     {post : _->_->_->_->Prop}
-    (Henter : exists br mc', expr m l e mc (eq (Datatypes.pair br mc')) /\ (word.unsigned br = 0%Z -> post t m l (addMetricInstructions 1
-                                         (addMetricLoads 1
-                                            (addMetricJumps 1 mc')))) /\
-                                          (word.unsigned br <> 0 -> exists v', tuple.apply (invariant v' t m) localstuple (addMetricInstructions 2
-                                         (addMetricLoads 2
-                                            (addMetricJumps 1 mc'))))
+    (Henter : exists br mc', expr m l e mc (eq (Datatypes.pair br mc')) /\ (word.unsigned br = 0%Z -> post t m l (cost_loop_false isRegStr UNK (Some UNK) mc')) /\
+                                          (word.unsigned br <> 0 -> exists v', tuple.apply (invariant v' t m) localstuple (cost_loop_true isRegStr UNK (Some UNK) mc'))
 
     )
     (v0 : measure) (Hpre : tuple.apply (invariant v0 t m) localstuple mc)
@@ -477,12 +435,8 @@ Section Loops.
       tuple.apply (invariant v t m) localstuple mc ->
        cmd call c t m (reconstruct variables localstuple) mc (fun t m l mc =>
          exists br mc', expr m l e mc (eq (Datatypes.pair br mc')) /\
-         (word.unsigned br <> 0 -> Markers.unique (Markers.left (tuple.existss (fun localstuple => enforce variables localstuple l /\ Markers.right (Markers.unique (exists v', tuple.apply (invariant v' t m) localstuple (addMetricInstructions 2
-                                     (addMetricLoads 2
-                                     (addMetricJumps 1 mc'))) /\ lt v' v)))))) /\
-         (word.unsigned br =  0 -> post t m l (addMetricInstructions 1
-                                         (addMetricLoads 1
-                                         (addMetricJumps 1 mc')))))))
+         (word.unsigned br <> 0 -> Markers.unique (Markers.left (tuple.existss (fun localstuple => enforce variables localstuple l /\ Markers.right (Markers.unique (exists v', tuple.apply (invariant v' t m) localstuple (cost_loop_true isRegStr UNK (Some UNK) mc') /\ lt v' v)))))) /\
+         (word.unsigned br =  0 -> post t m l (cost_loop_false isRegStr UNK (Some UNK) mc')))))
     : cmd call (cmd.while e c) t m l mc post.
   Proof.
     eapply (atleastonce_localsmap (fun v t m l mc => exists localstuple, Logic.and (enforce variables localstuple l) (tuple.apply (invariant v t m) localstuple mc))); eauto.
@@ -498,7 +452,7 @@ Section Loops.
     eapply hlist.foralls_forall in Hbody.
     specialize (Hbody Y).
     rewrite <-(reconstruct_enforce _ _ _ X) in Hbody.
-    eapply Proper_cmd; [eapply Proper_call| |eapply Hbody].
+    eapply Proper_cmd; [|eapply Hbody].
     intros t' m' l' mc' (?&?&?&HH).
     eexists; eexists; split; eauto. destruct HH as [HH1 HH2].
     split; intros; eauto.
@@ -507,8 +461,6 @@ Section Loops.
     eexists; split; eauto.
     }
   Qed.
-
-  METRICSTODO*)
 
   (*
   Lemma tailrec_earlyout_localsmap
