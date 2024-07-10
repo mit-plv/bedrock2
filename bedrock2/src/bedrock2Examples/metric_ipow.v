@@ -100,6 +100,17 @@ Proof.
     blia.
 Qed.
 
+Lemma metriclit : forall a b c d a' b' c' d',
+  metricsAdd (mkMetricLog a b c d) (mkMetricLog a' b' c' d') =
+  mkMetricLog (a+a') (b+b') (c+c') (d+d').
+Proof. reflexivity. Qed.
+
+Ltac s := unfold initCost, iterCost, endCost in *;
+          cost_unfold;
+          repeat rewrite MetricArith.add_assoc in *; cbn in *;
+          repeat rewrite metriclit in *; cbn in *;
+          solve_MetricLog.
+
 Lemma ipow_ok : program_logic_goal_for_function! ipow.
 Proof.
   repeat straightline.
@@ -152,18 +163,12 @@ Proof.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. }
         { (* metrics correct *)
-          cbn in H4.
-          rewrite <- (MetricLog_eq mc0) in H4.
-          applyAddMetrics H4.
-          cbn in H4.
           rewrite msb_shift in H4 by blia.
-          unfold iterCost in *.
           rewrite MetricArith.mul_sub_distr_r in H4.
           rewrite <- MetricArith.add_sub_swap in H4.
           rewrite <- MetricArith.le_add_le_sub_r in H4.
-          eapply MetricArith.le_trans.
-          2: exact H4.
-          solve_MetricLog.
+          eapply MetricArith.le_trans with (2 := H4).
+          s.
         }
       }
       {
@@ -184,23 +189,16 @@ Proof.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. }
         { (* metrics correct *)
-          cbn in H4.
-          rewrite <- (MetricLog_eq mc0) in H4.
-          applyAddMetrics H4.
-          cbn in H4.
           rewrite msb_shift in H4 by blia.
-          unfold iterCost in *.
-          solve_MetricLog.
+          s.
         }
       }
     }
     { (* postcondition *)
       rewrite H, Z.pow_0_r, Z.mul_1_r, word.wrap_unsigned.
       split; [reflexivity|].
-      unfold msb, iterCost, endCost.
-      subst brmc.
-      cbn.
-      solve_MetricLog.
+      unfold msb; subst brmc.
+      s.
     }
   }
 
@@ -208,5 +206,5 @@ Proof.
 
   repeat (split || letexists || t || trivial).
   { setoid_rewrite H1; setoid_rewrite Z.mul_1_l; trivial. }
-  all: cbn in H2; unfold initCost, iterCost, endCost in *; solve_MetricLog.
+  all: s.
 Qed.
