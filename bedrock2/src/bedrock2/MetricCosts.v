@@ -21,16 +21,10 @@ Section FlatImpExec.
     | PostSpill => mkMetricLog 50 50 50 50
     end + mc.
 
-  Definition cost_call_internal mc :=
+  Definition cost_call mc :=
     match phase with
-    | PreSpill => mkMetricLog 100 100 100 100
-    | PostSpill => mkMetricLog 50 50 50 50
-    end + mc.
-
-  Definition cost_call_external mc :=
-    match phase with
-    | PreSpill => mkMetricLog 100 100 100 100
-    | PostSpill => mkMetricLog 50 50 50 50
+    | PreSpill => mkMetricLog 200 200 200 200
+    | PostSpill => mkMetricLog 100 100 100 100
     end + mc.
 
   (* TODO think about a non-fixed bound on the cost of function preamble and postamble *)
@@ -119,9 +113,9 @@ Definition isRegStr (var : String.string) : bool :=
   String.prefix "reg_" var.
 
 Ltac cost_unfold :=
-  unfold cost_interact, cost_call_internal, cost_call_external, cost_load,
-  cost_store, cost_inlinetable, cost_stackalloc, cost_lit, cost_op, cost_set,
-  cost_if, cost_loop_true, cost_loop_false, EmptyMetricLog in *.
+  unfold cost_interact, cost_call, cost_load, cost_store, cost_inlinetable,
+  cost_stackalloc, cost_lit, cost_op, cost_set, cost_if, cost_loop_true,
+  cost_loop_false, EmptyMetricLog in *.
 
 Ltac cost_destr :=
   repeat match goal with

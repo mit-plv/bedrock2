@@ -146,11 +146,11 @@ Module exec. Section WithParams.
       params rets fbody (_ : map.get e fname = Some (params, rets, fbody))
       args mc' (_ : eval_call_args m l arges mc = Some (args, mc'))
       lf (_ : map.of_list_zip params args = Some lf)
-      mid (_ : exec fbody t m lf (cost_call_internal PreSpill mc') mid)
+      mid (_ : exec fbody t m lf mc' mid)
       (_ : forall t' m' st1 mc'', mid t' m' st1 mc'' ->
           exists retvs, map.getmany_of_list st1 rets = Some retvs /\
           exists l', map.putmany_of_list_zip binds retvs l = Some l' /\
-          post t' m' l'  (cost_call_external PreSpill mc''))
+          post t' m' l'  (cost_call PreSpill mc''))
     : exec (cmd.call binds fname arges) t m l mc post
   | interact binds action arges
       t m l mc post

@@ -164,7 +164,7 @@ Section WithWordAndMem.
       exists argnames retnames fbody l,
         map.get e f = Some (argnames, retnames, fbody) /\
         map.of_list_zip argnames argvals = Some l /\
-        Exec e fbody t m l (cost_call_internal PreSpill mc) (fun t' m' l' mc' =>
+        Exec e fbody t m l (cost_spill_spec mc) (fun t' m' l' mc' =>
                        exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                                        post t' m' retvals mc').
 
@@ -293,7 +293,7 @@ Section WithWordAndMem.
         + eapply @freshNameGenState_disjoint_fbody.
       - simpl. intros. fwd. eexists. split.
         + eauto using map.getmany_of_list_extends.
-        + eexists. split; [|eassumption]. cost_unfold; solve_MetricLog.
+        + eexists. split; [|eassumption]. unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
     Lemma useimmediate_functions_NoDup: forall funs funs',
@@ -334,7 +334,7 @@ Section WithWordAndMem.
       - eapply useImmediate_correct_aux; eauto.
       - simpl. destruct 1 as (?&?&?&?&?).
         repeat (eexists; split; try eassumption).
-        cost_unfold; solve_MetricLog.
+        unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
 
@@ -376,7 +376,7 @@ Section WithWordAndMem.
         exists retvals.
         split.
         + erewrite MapEauto.agree_on_getmany; [ eauto | eapply MapEauto.agree_on_comm; [ eassumption ] ].
-        + eexists; split; eauto. unfold cost_call_internal in *. solve_MetricLog.
+        + eexists; split; eauto. unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
     Lemma regalloc_functions_NoDup: forall funs funs',
@@ -432,7 +432,7 @@ Section WithWordAndMem.
         rewrite H1 in P'. inversion P'. exact Cp.
       - simpl. intros. fwd. eexists. split.
         + eauto using states_compat_getmany.
-        + eexists. split; [|eassumption]. cost_unfold; solve_MetricLog.
+        + eexists. split; [|eassumption]. unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
     Ltac debool :=
@@ -591,7 +591,7 @@ Section WithWordAndMem.
               Some (argnames, retnames, fbody) /\
             map.of_list_zip argnames argvals = Some l /\
               MetricSemantics.exec (map.of_list functions) fbody t mH l
-                (cost_call_internal PreSpill mc)
+                (cost_spill_spec mc)
                 (fun t' m' l' mc' => exists retvals: list word,
                      map.getmany_of_list l' retnames = Some retvals /\
                      post t' m' retvals mc')) ->
@@ -666,7 +666,7 @@ Section WithWordAndMem.
         NoDup (map fst fs) ->
         compile fs = Success (instrs, finfo, req_stack_size) ->
         MetricWeakestPrecondition.call (map.of_list fs) fname t mH argvals
-          (cost_call_internal PreSpill mc) post ->
+          (cost_spill_spec mc) post ->
         forall mcL,
         map.get (map.of_list finfo) fname = Some f_rel_pos ->
         req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->

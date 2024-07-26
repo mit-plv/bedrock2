@@ -107,8 +107,8 @@ Section WeakestPrecondition.
     | cmd.while _ _ => MetricSemantics.exec e c t m l mc post
     | cmd.call binds fname arges =>
         exists args mc', dexprs m l arges mc (args, mc') /\
-        MetricSemantics.call e fname t m args (cost_call_internal PreSpill mc') (fun t m rets mc'' =>
-        exists l', map.putmany_of_list_zip binds rets l = Some l' /\ post t m l' (cost_call_external PreSpill mc''))
+        MetricSemantics.call e fname t m args mc' (fun t m rets mc'' =>
+        exists l', map.putmany_of_list_zip binds rets l = Some l' /\ post t m l' (cost_call PreSpill mc''))
     | cmd.interact binds action arges =>
         exists args mc', dexprs m l arges mc (args, mc') /\
         exists mKeep mGive, map.split m mKeep mGive /\

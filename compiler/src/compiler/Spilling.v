@@ -1287,11 +1287,15 @@ Section Spilling.
                       post t1' m1' l1' mc1' /\
                       (mc2' - mc2 <= mc1' - mc1)%metricsH).
 
+  (* TODO tighter / non-fixed bound *)
+  Definition cost_spill_spec mc :=
+    (mkMetricLog 100 100 100 100 + mc)%metricsH.
+
   Definition call_spec(e: env) '(argnames, retnames, fbody)
              (t: Semantics.trace)(m: mem)(argvals: list word)(mc: MetricLog)
              (post: Semantics.trace -> mem -> list word -> MetricLog -> Prop): Prop :=
     forall l, map.of_list_zip argnames argvals = Some l ->
-                 execpre e fbody t m l (cost_call_internal PreSpill mc) (fun t' m' l' mc' =>
+                 execpre e fbody t m l (cost_spill_spec mc) (fun t' m' l' mc' =>
                    exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                                    post t' m' retvals mc').
 
@@ -1475,7 +1479,7 @@ Section Spilling.
     { eassumption. }
     {
       add_bounds.
-      unfold cost_stackalloc, cost_call_internal in *.
+      unfold cost_stackalloc, cost_spill_spec in *. (* TODO XXX *)
       destruct (isRegZ fp); solve_MetricLog.
     }
   Qed.

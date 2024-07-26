@@ -342,13 +342,13 @@ Module exec.
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list_zip params argvs map.empty = Some st0 ->
-        exec fbody t m st0 (cost_call_internal phase mc) outcome ->
+        exec fbody t m st0 mc outcome ->
         (forall t' m' mc' st1,
             outcome t' m' st1 mc' ->
             exists retvs l',
               map.getmany_of_list st1 rets = Some retvs /\
               map.putmany_of_list_zip binds retvs l = Some l' /\
-              post t' m' l' (cost_call_external phase mc')) ->
+              post t' m' l' (cost_call phase mc')) ->
         exec (SCall binds fname args) t m l mc post
     | load: forall t m l mc sz x a o v addr post,
         map.get l a = Some addr ->
@@ -451,12 +451,12 @@ Module exec.
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list_zip params argvs map.empty = Some st ->
-        exec fbody t m st (cost_call_internal phase mc)
+        exec fbody t m st mc
              (fun t' m' st' mc' =>
                 exists retvs l',
                   map.getmany_of_list st' rets = Some retvs /\
                     map.putmany_of_list_zip binds retvs l = Some l' /\
-                    post t' m' l' (cost_call_external phase mc')) ->
+                    post t' m' l' (cost_call phase mc')) ->
       exec (SCall binds fname args) t m l mc post.
     Proof.
       intros. eapply call; try eassumption.
