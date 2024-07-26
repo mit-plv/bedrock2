@@ -29,18 +29,18 @@ Section Riscv.
   Definition subMetricLoads n log := withLoads (loads log - n) log.
   Definition subMetricJumps n log := withJumps (jumps log - n) log.
 
-  Definition metricAdd(metric: MetricLog -> Z) finalM initialM : Z :=
-    Z.add (metric finalM) (metric initialM).
-  Definition metricSub(metric: MetricLog -> Z) finalM initialM : Z :=
-    Z.sub (metric finalM) (metric initialM).
+  Definition metricAdd(metric: MetricLog -> Z) m1 m2 : Z :=
+    Z.add (metric m1) (metric m2).
+  Definition metricSub(metric: MetricLog -> Z) m1 m2 : Z :=
+    Z.sub (metric m1) (metric m2).
 
   Definition metricsOp op : MetricLog -> MetricLog -> MetricLog :=
-    fun initialM finalM =>
+    fun m1 m2 =>
       mkMetricLog
-        (op instructions initialM finalM)
-        (op stores initialM finalM)
-        (op loads initialM finalM)
-        (op jumps initialM finalM).
+        (op instructions m1 m2)
+        (op stores m1 m2)
+        (op loads m1 m2)
+        (op jumps m1 m2).
 
   Definition metricsAdd := metricsOp metricAdd.
   Definition metricsSub := metricsOp metricSub.
@@ -71,7 +71,7 @@ Infix "+" := metricsAdd : MetricH_scope.
 Infix "-" := metricsSub : MetricH_scope.
 Infix "*" := metricsMul : MetricH_scope.
 
-#[global] Hint Unfold
+#[export] Hint Unfold
      withInstructions
      withLoads
      withStores

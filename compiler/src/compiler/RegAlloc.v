@@ -9,6 +9,7 @@ Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.autoforward.
 Require Import compiler.Registers.
+Require Import bedrock2.MetricLogging.
 Require Import bedrock2.MetricCosts.
 
 Open Scope Z_scope.
@@ -698,8 +699,7 @@ Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: result 
     assert_in y y' m;;
     assert (Z.eqb ofs ofs') err;;
     assert (access_size_beq sz sz') err;;
-    a <- assignment m x x';;
-    Success a
+    assignment m x x'
   | SStore sz x y ofs, SStore sz' x' y' ofs' =>
     assert_in x x' m;;
     assert_in y y' m;;
@@ -712,26 +712,22 @@ Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: result 
     assert (negb (Z.eqb x' y')) err;;
     assert (access_size_beq sz sz') err;;
     assert (List.list_eqb Byte.eqb bs bs') err;;
-    a <- (assignment m x x');;
-    Success a
+    assignment m x x'
   | SStackalloc x n body, SStackalloc x' n' body' =>
     assert (Z.eqb n n') err;;
     a <- assignment m x x';;
     check a body body'
   | SLit x z, SLit x' z' =>
     assert (Z.eqb z z') err;;
-    a <- assignment m x x';;
-    Success a
+    assignment m x x'
   | SOp x op y z, SOp x' op' y' z' =>
     assert_in y y' m;;
     assert_in_op z z' m;;
     assert (bopname_beq op op') err;;
-    a <- assignment m x x';;
-    Success a
+    assignment m x x'
   | SSet x y, SSet x' y' =>
     assert_in y y' m;;
-    a <- assignment m x x';;
-    Success a
+    assignment m x x'
   | SIf c s1 s2, SIf c' s1' s2' =>
     check_bcond m c c';;
     m1 <- check m s1 s1';;
@@ -1140,16 +1136,13 @@ Section CheckerCorrect.
   Lemma check_regs_cost_SIf:
     forall (cond : bcond) (bThen bElse : stmt) (corresp : list (string * Z))
       (cond0 : bcond') (s'1 s'2 : stmt') (a0 a1 : list (string * Z))
-      (mc mcL : MetricLogging.MetricLog),
+      (mc mcL : MetricLog),
       check_bcond corresp cond cond0 = Success tt ->
       check corresp bThen s'1 = Success a0 ->
       check corresp bElse s'2 = Success a1 ->
-      forall mc' mcH' : MetricLogging.MetricLog,
-        MetricLogging.metricsLeq
-          (MetricLogging.metricsSub mc' (exec.cost_SIf isRegZ cond0 mcL))
-          (MetricLogging.metricsSub mcH' (exec.cost_SIf isRegStr cond mc)) ->
-        MetricLogging.metricsLeq (MetricLogging.metricsSub mc' mcL)
-                                 (MetricLogging.metricsSub mcH' mc).
+      forall mc' mcH' : MetricLog,
+        (mc' - exec.cost_SIf isRegZ cond0 mcL <= mcH' - exec.cost_SIf isRegStr cond mc)%metricsH ->
+        (mc' - mcL <= mcH' - mc)%metricsH.
   Proof.
     intros.
     repeat (unfold check_bcond, assert_in, assignment in *; fwd).
@@ -1163,15 +1156,14 @@ Section CheckerCorrect.
 
   Lemma check_regs_cost_SLoop_false:
   forall (cond : bcond) (body1 body2 : stmt) (corresp' : list (string * Z)) (s'1 : stmt')
-      (cond0 : bcond') (s'2 : stmt') (mc mcL : MetricLogging.MetricLog) (a : list (string * Z)),
+      (cond0 : bcond') (s'2 : stmt') (mc mcL : MetricLog) (a : list (string * Z)),
     check a body1 s'1 = Success corresp' ->
     check_bcond corresp' cond cond0 = Success tt ->
     forall a2 : list (string * Z),
     check corresp' body2 s'2 = Success a2 ->
-    forall mc' mcH' : MetricLogging.MetricLog,
-    MetricLogging.metricsLeq (MetricLogging.metricsSub mc' mcL) (MetricLogging.metricsSub mcH' mc) ->
-    MetricLogging.metricsLeq (MetricLogging.metricsSub (exec.cost_SLoop_false isRegZ cond0 mc') mcL)
-      (MetricLogging.metricsSub (exec.cost_SLoop_false isRegStr cond mcH') mc).
+    forall mc' mcH' : MetricLog,
+    (mc' - mcL <= mcH' - mc)%metricsH ->
+    (exec.cost_SLoop_false isRegZ cond0 mc' - mcL <= exec.cost_SLoop_false isRegStr cond mcH' - mc)%metricsH.
   Proof.
     intros.
     repeat (unfold check_bcond, assert_in, assignment in *; fwd).
@@ -1195,7 +1187,7 @@ Section CheckerCorrect.
   (*  : checker_hints.*)
 
   Ltac a :=
-    repeat match goal with | |- MetricLogging.metricsLeq _ _ => fail 1 | _ => econstructor end;
+    repeat match goal with | |- metricsLeq _ _ => fail 1 | _ => econstructor end;
     eauto 10 with checker_hints.
 
   Ltac b := unfold assert_in, assignment, check_regs in *; cost_hammer.
@@ -1208,7 +1200,7 @@ Section CheckerCorrect.
       states_compat lH (precond corresp s s') lL ->
       exec PreSpill isRegZ e' s' t m lL mcL (fun t' m' lL' mcL' =>
         exists lH' mcH', states_compat lH' corresp' lL' /\
-                    MetricLogging.metricsLeq (MetricLogging.metricsSub mcL' mcL) (MetricLogging.metricsSub mcH' mcH) /\
+                    (mcL' - mcL <= mcH' - mcH)%metricsH /\
                     post t' m' lH' mcH').
   Proof.
     induction 2; intros;
@@ -1308,12 +1300,12 @@ Section CheckerCorrect.
       unfold loop_inv in SC.
       rewrite E in SC.
       eapply exec.loop with
-        (mid2 := (fun (t'0 : Semantics.trace) (m'0 : mem) (lL' : impLocals) (mcL' : MetricLogging.MetricLog) =>
-           exists (lH' : srcLocals) (mcH' : MetricLogging.MetricLog),
+        (mid2 := (fun (t'0 : Semantics.trace) (m'0 : mem) (lL' : impLocals) (mcL' : MetricLog) =>
+           exists (lH' : srcLocals) (mcH' : MetricLog),
              states_compat lH' a1 lL' /\
                (exists mcHmid mcLmid,
-                   MetricLogging.metricsLeq (MetricLogging.metricsSub mcLmid mcL) (MetricLogging.metricsSub mcHmid mc) /\
-                   MetricLogging.metricsLeq (MetricLogging.metricsSub mcL' mcLmid) (MetricLogging.metricsSub mcH' mcHmid)) /\
+               mcLmid - mcL <= mcHmid - mc /\
+               mcL' - mcLmid <= mcH' - mcHmid)%metricsH /\
              mid2 t'0 m'0 lH' mcH')).
       + eapply IH1. 1: eassumption. eapply states_compat_precond. exact SC.
       + cbv beta. intros. fwd. eauto using states_compat_eval_bcond_None.
