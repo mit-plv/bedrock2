@@ -609,7 +609,7 @@ Section WithWordAndMem.
             word.unsigned ret_addr mod 4 = 0 ->
             arg_regs_contain initial.(getRegs) argvals ->
             initial.(getLog) = t ->
-            raiseMetrics (cost_SCall_L initial.(getMetrics)) = mcL ->
+            raiseMetrics (cost_compile_spec initial.(getMetrics)) = mcL ->
             machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
             runsTo initial (fun final : MetricRiscvMachine =>
               exists mH' retvals,
@@ -676,7 +676,7 @@ Section WithWordAndMem.
         word.unsigned ret_addr mod 4 = 0 ->
         arg_regs_contain initial.(getRegs) argvals ->
         initial.(getLog) = t ->
-        raiseMetrics (cost_SCall_L initial.(getMetrics)) = mcL ->
+        raiseMetrics (cost_compile_spec initial.(getMetrics)) = mcL ->
         machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
         runsTo initial (fun final : MetricRiscvMachine =>
           exists mH' retvals,

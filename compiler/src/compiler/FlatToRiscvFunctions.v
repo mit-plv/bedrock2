@@ -432,7 +432,7 @@ Section Proofs.
 
   Local Notation exec := (exec PostSpill isRegZ).
 
-  Definition cost_SCall_L mc :=
+  Definition cost_compile_spec mc :=
     Platform.MetricLogging.addMetricInstructions 95
     (Platform.MetricLogging.addMetricJumps 95
     (Platform.MetricLogging.addMetricLoads 95
@@ -501,7 +501,7 @@ Section Proofs.
               (of_list
                  (list_union Z.eqb (List.firstn binds_count (reg_class.all reg_class.arg)) []))
               (singleton_set RegisterNames.ra)) (getRegs finalL) /\
-          (getMetrics finalL - cost_SCall_L (getMetrics mach) <=
+          (getMetrics finalL - cost_compile_spec (getMetrics mach) <=
              lowerMetrics (finalMetricsH - mc))%metricsL /\
           goodMachine finalTrace finalMH finalRegsH g finalL).
   Proof.
@@ -1112,7 +1112,7 @@ Section Proofs.
                  end
              end.
       cbn in H2p6.
-      (* cost_SCall constraint: cost_SCall_L >= (...93...) i think? *)
+      (* cost_compile_spec constraint: cost_compile_spec >= (...93...) i think? *)
       blia.
 
     + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
@@ -1318,8 +1318,7 @@ Section Proofs.
         eapply List.Forall_filter.
         intros *. intro E. destr (reg_class.get a); try discriminate E.
         unfold reg_class.get in E0. fwd.
-        unfold FlatToRiscvDef.valid_FlatImp_var.
-        destruct_one_match_hyp.
+        unfold FlatToRiscvDef.valid_FlatImp_var. destruct_one_match_hyp.
         -- fwd. blia.
         -- destruct_one_match_hyp. 1: discriminate.
            destruct_one_match_hyp; discriminate.
@@ -1350,6 +1349,15 @@ Section Proofs.
     + assumption.
   Qed.
 
+
+  Ltac finishcost :=
+    scost_unfold;
+    repeat match goal with
+           | H : ForallVars_bcond _ ?cond |- _ => destruct cond eqn:?; unfold ForallVars_bcond in H
+           | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+           | H : _ /\ _ |- _ => destruct H
+           end;
+    MetricsToRiscv.solve_MetricLog.
 
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
@@ -1633,8 +1641,8 @@ Section Proofs.
       split; eauto 8 with map_hints.
       split; eauto 8 with map_hints.
       split; eauto 8 with map_hints.
-      (* cost_SCall constraint: cost_SCall_L + (1,1,1,0) <= cost_call TODO check *)
-      unfold cost_SCall_L, cost_call in *.
+      (* cost_compile_spec constraint: cost_compile_spec + (1,1,1,0) <= cost_call *)
+      unfold cost_compile_spec, cost_call in *.
       MetricsToRiscv.solve_MetricLog.
 
     - idtac "Case compile_stmt_correct/SLoad".
@@ -1948,21 +1956,7 @@ Section Proofs.
           { eapply run_Jal0; try safe_sidecond. solve_divisibleBy4. }
           simpl_MetricRiscvMachine_get_set.
 
-          intros. destruct_RiscvMachine mid. fwd. run1done.
-          destruct cond eqn:E; scost_unfold;
-          unfold ForallVars_bcond in *;
-          repeat match goal with
-                 | H : ForallVars_bcond _ |- _ => unfold ForallVars_bcond in H; destruct H
-                 end;
-          repeat match goal with
-                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
-                 end;
-          try MetricsToRiscv.solve_MetricLog.
-          destruct H6p0.
-          repeat match goal with
-                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
-                 end.
-          MetricsToRiscv.solve_MetricLog.
+          intros. destruct_RiscvMachine mid. fwd. run1done. finishcost.
 
     - idtac "Case compile_stmt_correct/SIf/Else".
       (* execute branch instruction, which will jump over then-branch *)
@@ -1987,21 +1981,7 @@ Section Proofs.
           all: try safe_sidecond.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
-          simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
-          destruct cond eqn:E; scost_unfold;
-          unfold ForallVars_bcond in *;
-          repeat match goal with
-                 | H : ForallVars_bcond _ |- _ => unfold ForallVars_bcond in H; destruct H
-                 end;
-          repeat match goal with
-                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
-                 end;
-          try MetricsToRiscv.solve_MetricLog.
-          destruct H6p0.
-          repeat match goal with
-                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
-                 end.
-          MetricsToRiscv.solve_MetricLog.
+          simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done. finishcost.
 
     - idtac "Case compile_stmt_correct/SLoop".
       match goal with
@@ -2073,21 +2053,7 @@ Section Proofs.
             all: try safe_sidecond.
           }
           (* at end of loop, just prove that computed post satisfies required post *)
-          simpl. intros. destruct_RiscvMachine middle. fwd. run1done.
-          destruct cond eqn:blah; scost_unfold;
-          unfold ForallVars_bcond in *;
-          repeat match goal with
-                 | H : ForallVars_bcond _ |- _ => unfold ForallVars_bcond in H; destruct H
-                 end;
-          repeat match goal with
-                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
-                 end;
-          try MetricsToRiscv.solve_MetricLog.
-          destruct H11p0.
-          repeat match goal with
-                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
-                 end.
-          MetricsToRiscv.solve_MetricLog.
+          simpl. intros. destruct_RiscvMachine middle. fwd. run1done. finishcost.
 
         * (* false: done, jump over body2 *)
           eapply runsToStep. {
@@ -2096,21 +2062,7 @@ Section Proofs.
               try safe_sidecond.
           }
           simpl_MetricRiscvMachine_get_set.
-          intros. destruct_RiscvMachine mid. fwd. run1done.
-          destruct cond eqn:blah; scost_unfold;
-          unfold ForallVars_bcond in *;
-          repeat match goal with
-                 | H : ForallVars_bcond _ |- _ => unfold ForallVars_bcond in H; destruct H
-                 end;
-          repeat match goal with
-                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
-                 end;
-          try MetricsToRiscv.solve_MetricLog.
-          destruct H11p0.
-          repeat match goal with
-                 | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
-                 end.
-          MetricsToRiscv.solve_MetricLog.
+          intros. destruct_RiscvMachine mid. fwd. run1done. finishcost.
 
     - idtac "Case compile_stmt_correct/SSeq".
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]

@@ -396,7 +396,7 @@ Section LowerPipeline.
       forall p_funcs stack_start stack_pastend ret_addr Rdata Rexec (initial: MetricRiscvMachine),
         map.get initial.(getRegs) RegisterNames.ra = Some ret_addr ->
         initial.(getLog) = t ->
-        raiseMetrics (cost_SCall_L initial.(getMetrics)) = mc ->
+        raiseMetrics (cost_compile_spec initial.(getMetrics)) = mc ->
         word.unsigned ret_addr mod 4 = 0 ->
         arg_regs_contain initial.(getRegs) argvals ->
         req_stack_size <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->
@@ -692,16 +692,12 @@ Section LowerPipeline.
         eapply map.getmany_of_list_length.
         exact GM.
       + eexists. split; [|eassumption].
+        subst.
         apply raise_metrics_ineq in H10p3.
-        destruct (getMetrics final).
-        destruct (getMetrics initial).
-        unfold raiseMetrics, lowerMetrics in *.
         unfold_MetricLog.
-        simpl_MetricLog.
-        simpl in *.
-        inversion H2.
+        cbn in H10p3.
+        cbn.
         solve_MetricLog.
-        (* XXX ???? *)
       + eapply only_differ_subset. 1: eassumption.
         rewrite ListSet.of_list_list_union.
         rewrite ?singleton_set_eq_of_list.
