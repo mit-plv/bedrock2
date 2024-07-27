@@ -49,7 +49,7 @@ Section chacha20.
 End chacha20.
 
 (*
-Require Import Coq.Strings.String bedrock2.ToCString coqutil.Macros.WithBaseName.
+From Coq Require Import String bedrock2.ToCString coqutil.Macros.WithBaseName.
 Example chacha20_block_c_string := Eval vm_compute in
   ToCString.c_module &[,chacha20_block; chacha20_quarter].
 Print chacha20_block_c_string.

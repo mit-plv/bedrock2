@@ -9,10 +9,10 @@ Require Import bedrock2.Syntax.
 Require Import bedrock2.MetricLogging.
 Require Import bedrock2.Semantics bedrock2.MetricSemantics.
 Require Import coqutil.Macros.unique.
-Require Import Coq.Bool.Bool.
+From Coq Require Import Bool.
 Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Tactics.Simp.
-Require Import Coq.Program.Tactics.
+From Coq.Program Require Import Tactics.
 Require Import coqutil.Datatypes.String.
 Require Import compiler.FlattenExprDef.
 Require Export coqutil.Word.SimplWordExpr.

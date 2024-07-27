@@ -1,5 +1,5 @@
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Memory.
-Require Import Coq.Lists.List Coq.ZArith.BinInt. Local Open Scope Z_scope.
+From Coq Require Import List BinInt. Local Open Scope Z_scope.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte.

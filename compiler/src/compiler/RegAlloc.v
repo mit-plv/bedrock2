@@ -1,7 +1,7 @@
 Require Import compiler.util.Common.
 Require Import compiler.FlatImp.
 Require Import coqutil.Tactics.simpl_rewrite.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import List. Import ListNotations.
 Require Import riscv.Utility.Utility.
 Require Import coqutil.Map.MapEauto.
 Require Import bedrock2.Syntax.

@@ -1,6 +1,6 @@
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.Word.Interface.
-Require Import Coq.Logic.Classical_Prop.
+From Coq Require Import Classical_Prop.
 Require Import coqutil.Tactics.ident_ops.
 
 Ltac eval_constant_pows :=

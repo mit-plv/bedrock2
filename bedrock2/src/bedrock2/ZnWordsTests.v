@@ -1,7 +1,7 @@
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
 Require Import bedrock2.ZnWords.
 Require Import coqutil.Word.Interface.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import List. Import ListNotations.
 Require Import coqutil.Datatypes.Inhabited.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 

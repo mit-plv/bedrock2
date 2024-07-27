@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.BinInt Coq.Strings.String Coq.Lists.List. Import ListNotations.
+From Coq Require Import BinInt String List. Import ListNotations.
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 Require Import bedrock2.NotationsCustomEntry.
 Require Import coqutil.sanity.

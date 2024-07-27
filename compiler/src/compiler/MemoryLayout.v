@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.Word.Interface.
 Require Import riscv.Utility.Utility.
 Require Import compiler.SeparationLogic.

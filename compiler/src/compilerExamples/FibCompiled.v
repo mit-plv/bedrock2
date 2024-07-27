@@ -1,4 +1,4 @@
-Require Import Coq.Arith.Arith.
+From Coq Require Import Arith.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import bedrock2.ptsto_bytes.
 Require Import coqutil.Decidable.

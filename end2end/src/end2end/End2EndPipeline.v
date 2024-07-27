@@ -1,8 +1,8 @@
 Require Import String.
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
-Require Import Coq.Lists.List. Import ListNotations.
-Require Import Coq.Logic.FunctionalExtensionality.
+From Coq Require Import List. Import ListNotations.
+From Coq Require Import FunctionalExtensionality.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Utility.Utility.
 Require Import coqutil.Word.LittleEndian.
@@ -47,7 +47,7 @@ Require Import compiler.ExprImpEventLoopSpec.
 
 Local Open Scope Z_scope.
 
-Require Import Coq.Classes.Morphisms.
+From Coq Require Import Morphisms.
 
 #[global] Instance word_riscv_ok: @RiscvWordProperties.word.riscv_ok 32 KamiWord.wordW.
 refine (@KamiRiscvWordProperties.kami_word_riscv_ok 5 _ _).

@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil.Byte.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import coqutil.Decidable.
@@ -11,7 +11,7 @@ Require Import bedrock2.Memory bedrock2.ptsto_bytes bedrock2.Map.Separation.
 Require Import bedrock2.Semantics bedrock2.MetricSemantics.
 Require Import bedrock2.Map.DisjointUnion bedrock2.Map.split_alt.
 
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 
 Section semantics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.

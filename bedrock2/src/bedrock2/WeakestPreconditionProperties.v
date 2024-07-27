@@ -2,7 +2,7 @@ Require Import coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface 
 Require Import coqutil.Word.Bitwidth.
 Require bedrock2.WeakestPrecondition.
 
-Require Import Coq.Classes.Morphisms.
+From Coq Require Import Morphisms.
 
 Section WeakestPrecondition.
   Context {width} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.

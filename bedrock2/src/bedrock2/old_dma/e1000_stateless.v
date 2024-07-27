@@ -10,8 +10,8 @@ https://www.intel.com/content/dam/doc/manual/pci-pci-x-family-gbe-controllers-so
 These network cards were launched in the 2000s and discontinued in the 2010s, but continue to be a popular choice for virtualization, where they are often referred to as "e1000".
  *)
 
-Require Import Coq.Strings.String.
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import String.
+From Coq Require Import ZArith.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.

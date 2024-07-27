@@ -1,5 +1,5 @@
-Require Export Coq.Lists.List. Export ListNotations.
-Require Export Coq.ZArith.ZArith. Open Scope Z_scope.
+From Coq Require Export List. Export ListNotations.
+From Coq Require Export ZArith. Open Scope Z_scope.
 Require Export coqutil.Word.Interface coqutil.Word.Properties.
 Require Export coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.rdelta coqutil.Tactics.destr coqutil.Decidable.

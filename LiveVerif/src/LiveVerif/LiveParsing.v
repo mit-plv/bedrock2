@@ -1,6 +1,6 @@
-Require Import Coq.setoid_ring.InitialRing. (* for isZcst *)
-Require Import Coq.Strings.String.
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+From Coq Require Import InitialRing. (* for isZcst *)
+From Coq Require Import String.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
 Require Import bedrock2.Syntax.
 Require Import LiveVerif.LiveExpr.
 Require Import LiveVerif.LiveSnippet.

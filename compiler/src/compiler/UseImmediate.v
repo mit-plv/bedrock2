@@ -1,6 +1,6 @@
 Require Import compiler.util.Common.
 Require Import compiler.FlatImp.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import List. Import ListNotations.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Tactics.fwd.
 Require Import String.

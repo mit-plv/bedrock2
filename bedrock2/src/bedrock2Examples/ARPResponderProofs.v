@@ -1,4 +1,4 @@
-From Coq Require Import Strings.String Lists.List ZArith.BinInt.
+From Coq Require Import String List BinInt.
 From coqutil.Word Require Import Interface.
 From bedrock2 Require Import Semantics BasicC32Semantics ProgramLogic.
 Require Import coqutil.Byte.

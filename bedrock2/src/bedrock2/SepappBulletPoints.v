@@ -1,6 +1,6 @@
 (* Notations to display a list of sepapp predicates as a bullet point list *)
 
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.Map.Interface coqutil.Word.Interface.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.

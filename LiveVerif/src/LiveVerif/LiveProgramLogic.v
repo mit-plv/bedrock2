@@ -1,7 +1,7 @@
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import Coq.micromega.Lia.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
+From Coq Require Import Lia.
 Require Import coqutil.Z.Lia.
-Require Import Coq.Strings.String.
+From Coq Require Import String.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.

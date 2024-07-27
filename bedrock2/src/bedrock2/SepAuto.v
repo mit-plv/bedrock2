@@ -6,7 +6,7 @@
    undo the `Ltac fwd_rewrites ::= fwd_rewrite_db_in_star.` patching, so `fwd` and
    tactics using `fwd` will do fewer simplifications than intended *)
 
-Require Import Coq.ZArith.ZArith. Open Scope Z_scope. (* TODO remove *)
+From Coq Require Import ZArith. Open Scope Z_scope. (* TODO remove *)
 Require Import coqutil.Byte.
 Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Tactics.Tactics.

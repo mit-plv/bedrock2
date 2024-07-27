@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.Word.Interface.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.Lift1Prop.

@@ -1,10 +1,10 @@
 Require Import coqutil.Z.Lia.
-Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import ZArith. Open Scope Z_scope.
+From Coq Require Import List. Import ListNotations.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth32.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics.
-Require Import Coq.Strings.String.
+From Coq Require Import String.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import bedrock2.Semantics bedrock2.MetricSemantics.
 Require Import bedrock2.Syntax.

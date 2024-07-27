@@ -9,7 +9,7 @@ Require Import riscv.Utility.Utility.
 Require Import bedrock2.MetricLogging.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Macros.unique.
-Require Import Coq.Bool.Bool.
+From Coq Require Import Bool.
 Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Tactics.Simp.
 Require Import coqutil.Datatypes.String.

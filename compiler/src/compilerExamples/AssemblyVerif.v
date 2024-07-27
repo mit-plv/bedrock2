@@ -1,4 +1,4 @@
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 Require Import coqutil.Z.Lia.
 Import ListNotations.
 Require Import coqutil.Word.Properties.
@@ -6,7 +6,7 @@ Require Import riscv.Utility.Monads.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.
 Require Import riscv.Spec.Machine.
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Platform.Memory.
 Require Import riscv.Platform.Run.

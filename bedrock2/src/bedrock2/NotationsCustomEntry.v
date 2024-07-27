@@ -1,8 +1,8 @@
-Require Import Coq.ZArith.BinIntDef Coq.Strings.String.
+From Coq Require Import BinIntDef String.
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 Require Import coqutil.Macros.ident_to_string.
 
-Export Coq.Strings.String.StringSyntax.
+Export String.StringSyntax.
 Export bedrock2.Syntax.Coercions.
 Number Notation BinInt.Z BinInt.Z.of_num_int BinInt.Z.to_num_int : Z_scope.
 

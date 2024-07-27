@@ -1,7 +1,7 @@
 (* constraints on FlatImp ASTs, referenced by several phases *)
 Require Import compiler.FlatImp.
 Require Import compiler.Registers.
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 
 Fixpoint uses_standard_arg_regs(s: stmt Z): Prop :=
   match s with

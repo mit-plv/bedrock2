@@ -1,6 +1,6 @@
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import Coq.micromega.Lia.
-Require Import Coq.Logic.FunctionalExtensionality.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
+From Coq Require Import Lia.
+From Coq Require Import FunctionalExtensionality.
 Require Import coqutil.Tactics.fwd coqutil.Tactics.Tactics.
 Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.

@@ -1,5 +1,5 @@
 Require Export Coq.Lists.List.
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Export ListNotations.
 Require Export coqutil.Decidable.
 Require        compiler.ExprImp.

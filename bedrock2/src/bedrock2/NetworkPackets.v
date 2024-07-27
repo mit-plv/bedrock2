@@ -1,5 +1,5 @@
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
+From Coq Require Import List. Import ListNotations.
 
 Record ethernet_header_t := {
   src_mac: list Z;       (*  6 *)

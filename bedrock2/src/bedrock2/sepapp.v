@@ -1,6 +1,6 @@
 (* The seppapp operator: separating append, useful for contiguous memory regions *)
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import Coq.Logic.FunctionalExtensionality.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
+From Coq Require Import FunctionalExtensionality.
 Require Import coqutil.Tactics.Tactics coqutil.Tactics.fwd.
 Require Import coqutil.Byte.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.

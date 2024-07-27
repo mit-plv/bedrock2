@@ -5,10 +5,10 @@ Require coqutil.Map.SortedListString.
 Require Import bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Export bedrock2.Memory.
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 Require Import bedrock2.MetricLogging.
 Require Import bedrock2.Semantics.
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 
 Section semantics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.

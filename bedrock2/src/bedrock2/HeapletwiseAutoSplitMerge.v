@@ -1,6 +1,6 @@
-Require Import Coq.ZArith.ZArith.
-Require Import Coq.Init.Byte.
-Require Import Coq.micromega.Lia.
+From Coq Require Import ZArith.
+From Coq.Init Require Import Byte.
+From Coq Require Import Lia.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Datatypes.ZList.

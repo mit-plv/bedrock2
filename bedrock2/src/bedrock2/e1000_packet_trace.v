@@ -1,5 +1,5 @@
-Require Import Coq.ZArith.ZArith.
-Require Import Coq.Strings.String. Local Open Scope string_scope.
+From Coq Require Import ZArith.
+From Coq Require Import String. Local Open Scope string_scope.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Word.Interface.

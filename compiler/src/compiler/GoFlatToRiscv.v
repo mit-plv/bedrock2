@@ -2,7 +2,7 @@ From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.div_mod_to_equations.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import List. Import ListNotations.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import riscv.Utility.Monads.

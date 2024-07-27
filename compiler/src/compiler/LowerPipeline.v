@@ -1,4 +1,4 @@
-Require Import Coq.Logic.FunctionalExtensionality.
+From Coq Require Import FunctionalExtensionality.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.MapEauto.
 Require Import coqutil.Tactics.Tactics.

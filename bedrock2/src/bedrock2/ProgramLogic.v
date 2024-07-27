@@ -340,7 +340,7 @@ Ltac straightline :=
   | |- False \/ _ => right
   | |- _ \/ False => left
   | |- BinInt.Z.modulo ?z (Memory.bytes_per_word _) = BinInt.Z0 /\ _ =>
-      lazymatch Coq.setoid_ring.InitialRing.isZcst z with
+      lazymatch InitialRing.isZcst z with
       | true => split; [exact eq_refl|]
       end
   | |- _ => straightline_stackalloc
@@ -386,7 +386,7 @@ Ltac show_program :=
 Ltac subst_words :=
   repeat match goal with x := _ : coqutil.Word.Interface.word.rep |- _ => subst x end.
 
-Require Import coqutil.Tactics.eplace Coq.setoid_ring.Ring_tac.
+Require Import coqutil.Tactics.eplace Ring_tac.
 Ltac ring_simplify_words :=
   subst_words;
   repeat match goal with H : context [?w] |- _ =>

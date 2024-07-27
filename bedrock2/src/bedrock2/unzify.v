@@ -1,6 +1,6 @@
 (* Z-ify word expressions in an undoable (unzify) way *)
 
-Require Import Coq.ZArith.ZArith Coq.micromega.Lia.
+From Coq Require Import ZArith Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Datatypes.ZList.

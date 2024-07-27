@@ -1,6 +1,6 @@
-Require Import Coq.ZArith.ZArith.
-Require Import Coq.Lists.List. Import ListNotations.
-Require Import Coq.Program.Tactics.
+From Coq Require Import ZArith.
+From Coq Require Import List. Import ListNotations.
+From Coq.Program Require Import Tactics.
 Require Import riscv.Utility.Utility.
 Require Export bedrock2.Syntax.
 Require Export bedrock2.Semantics.

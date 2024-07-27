@@ -1,9 +1,9 @@
 Require Import riscv.Utility.Monads. Require Import riscv.Utility.MonadNotations.
 Require Import coqutil.Macros.unique.
 Require Import compiler.FlatImp.
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 Import ListNotations.
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Machine.
 Require Import riscv.Spec.PseudoInstructions.
@@ -14,9 +14,9 @@ Require Import riscv.Platform.Run.
 Require Import riscv.Platform.Memory.
 Require Import riscv.Utility.PowerFunc.
 Require Import coqutil.Decidable.
-Require Import Coq.Program.Tactics.
+From Coq.Program Require Import Tactics.
 Require Import coqutil.Tactics.rewr.
-Require Import Coq.Bool.Bool.
+From Coq Require Import Bool.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.

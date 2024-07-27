@@ -1,11 +1,11 @@
-Require Import Coq.Strings.Ascii.
-Require Import Coq.Strings.String.
-Require Import Coq.Lists.List.
+From Coq Require Import Ascii.
+From Coq Require Import String.
+From Coq Require Import List.
 Require Import compiler.util.Common.
 Require Import compiler.NameGen.
-Require Import Coq.NArith.NArith.
-Require Import Coq.Numbers.DecimalString.
-Require Import Coq.Numbers.DecimalN.
+From Coq Require Import NArith.
+From Coq Require Import DecimalString.
+From Coq Require Import DecimalN.
 
 Local Open Scope string_scope.
 Local Open Scope char_scope.

@@ -1,5 +1,5 @@
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.dlet.
-Require Import Coq.Classes.Morphisms BinIntDef.
+From Coq Require Import Morphisms BinIntDef.
 Require Import coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Interface. Import map.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Properties.

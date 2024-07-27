@@ -7,7 +7,7 @@ Ltac print_list_byte := ltac2:(bs |- print_list_byte (Option.get (Ltac1.to_const
 Ltac2 Notation "print_bytes" bs(constr) := print_list_byte bs.
 Tactic Notation "print_bytes" constr(bs) := print_list_byte bs.
 
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 Definition allBytes: list Byte.byte :=
   map (fun nn => match Byte.of_N (BinNat.N.of_nat nn) with
                  | Some b => b

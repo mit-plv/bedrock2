@@ -1,11 +1,11 @@
 (* Based on riscv.Platform.MinimalMMIO and riscv.Platform.MetricMinimalMMIO,
    but with a different nonmem_load and nonmem_store *)
 
-Require Import Coq.Strings.String.
+From Coq Require Import String.
 Require coqutil.Datatypes.String.
-Require Import Coq.ZArith.ZArith.
-Require Import Coq.Logic.FunctionalExtensionality.
-Require Import Coq.Logic.PropExtensionality.
+From Coq Require Import ZArith.
+From Coq Require Import FunctionalExtensionality.
+From Coq Require Import PropExtensionality.
 Require Import bedrock2.memory_mapped_ext_spec. (* import this early because bedrock2.Memory.load_bytes vs riscv.Platform.Memory.load_bytes *)
 Require Import bedrock2.TraceInspection.
 Require Import riscv.Utility.Monads.
@@ -16,7 +16,7 @@ Require Import riscv.Spec.Machine.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import List. Import ListNotations.
 Require Export riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Export riscv.Platform.MetricRiscvMachine.

@@ -1,5 +1,5 @@
-Require Import Coq.Logic.PropExtensionality Coq.Logic.FunctionalExtensionality.
-Require Import Coq.Lists.List. Import ListNotations. Open Scope list_scope.
+From Coq Require Import PropExtensionality FunctionalExtensionality.
+From Coq Require Import List. Import ListNotations. Open Scope list_scope.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.Tactics.

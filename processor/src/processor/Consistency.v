@@ -1,8 +1,8 @@
 Require Import String BinInt.
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import List. Import ListNotations.
 Require Import Kami.Lib.Word.
 Require Import Kami.Syntax Kami.Semantics.
 Require Import Kami.Ex.IsaRv32.

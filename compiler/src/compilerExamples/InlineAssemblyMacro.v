@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.Monads.
 Require Import coqutil.Map.SortedList.

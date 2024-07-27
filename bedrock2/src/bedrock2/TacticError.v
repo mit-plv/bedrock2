@@ -1,4 +1,4 @@
-Require Import Coq.Strings.String.
+From Coq Require Import String.
 (* Almost everyone importing this file will need strings in their error messages *)
 Export Coq.Strings.String.StringSyntax.
 Require Import coqutil.Datatypes.dlist.

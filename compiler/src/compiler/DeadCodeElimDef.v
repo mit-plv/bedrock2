@@ -1,5 +1,5 @@
 Require Import compiler.FlatImp.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import List. Import ListNotations.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Tactics.fwd.
 Require Import String.
@@ -12,8 +12,8 @@ Require Import compiler.util.Common.
 Require Import bedrock2.MetricLogging.
 Require Import coqutil.Tactics.fwd.
 (*  below only for of_list_list_diff *)
-Require Import Coq.Logic.PropExtensionality.
-Require Import Coq.Logic.FunctionalExtensionality.
+From Coq Require Import PropExtensionality.
+From Coq Require Import FunctionalExtensionality.
 
 Section WithArguments1.
   Context {width: Z}.

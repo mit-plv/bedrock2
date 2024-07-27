@@ -15,7 +15,8 @@ Require Import coqutil.Macros.symmetry.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import bedrock2.Semantics bedrock2.ProgramLogic bedrock2.Array.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
-Require Import Coq.Lists.List coqutil.Map.OfListWord.
+From Coq Require Import List.
+Require Import coqutil.Map.OfListWord.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.letexists.

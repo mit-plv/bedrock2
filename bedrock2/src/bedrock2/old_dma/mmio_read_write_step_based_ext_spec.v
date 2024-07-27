@@ -1,6 +1,6 @@
-Require Import Coq.Strings.String. Local Open Scope string_scope.
-Require Import Coq.ZArith.ZArith.
-Require Import Coq.Lists.List. Import ListNotations. Local Open Scope list_scope.
+From Coq Require Import String. Local Open Scope string_scope.
+From Coq Require Import ZArith.
+From Coq Require Import List. Import ListNotations. Local Open Scope list_scope.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import bedrock2.Semantics.

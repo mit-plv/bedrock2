@@ -1,9 +1,9 @@
 Require Import compiler.util.Common.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import compiler.FlatImp.
-Require Import Coq.Lists.List. Import ListNotations.
-Require Import Coq.Logic.PropExtensionality.
-Require Import Coq.Logic.FunctionalExtensionality.
+From Coq Require Import List. Import ListNotations.
+From Coq Require Import PropExtensionality.
+From Coq Require Import FunctionalExtensionality.
 Require Import riscv.Utility.Utility.
 Require Import coqutil.Map.MapEauto.
 Require Import coqutil.Tactics.Simp.
