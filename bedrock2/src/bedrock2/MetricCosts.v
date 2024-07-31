@@ -112,10 +112,35 @@ Definition isRegZ (var : Z) : bool :=
 Definition isRegStr (var : String.string) : bool :=
   String.prefix "reg_" var.
 
+(* awkward tactic use to avoid Qed slowness *)
+(* symmetry; reflexivity is black magic that shuffles orders of terms to make
+   heuristics choose the right things *)
 Ltac cost_unfold :=
-  unfold cost_interact, cost_call, cost_load, cost_store, cost_inlinetable,
-  cost_stackalloc, cost_lit, cost_op, cost_set, cost_if, cost_loop_true,
-  cost_loop_false, EmptyMetricLog in *.
+  repeat (
+    let H := match goal with
+             | H : context[cost_interact] |- _ => H
+             | H : context[cost_call] |- _ => H
+             | H : context[cost_load] |- _ => H
+             | H : context[cost_store] |- _ => H
+             | H : context[cost_inlinetable] |- _ => H
+             | H : context[cost_stackalloc] |- _ => H
+             | H : context[cost_lit] |- _ => H
+             | H : context[cost_op] |- _ => H
+             | H : context[cost_set] |- _ => H
+             | H : context[cost_if] |- _ => H
+             | H : context[cost_loop_true] |- _ => H
+             | H : context[cost_loop_false] |- _ => H
+             end in
+    let t := type of H in
+    let t' := eval cbv [cost_interact cost_call cost_load cost_store
+      cost_inlinetable cost_stackalloc cost_lit cost_op cost_set
+      cost_if cost_loop_true cost_loop_false] in t in
+    replace t with t' in H by (symmetry; reflexivity)
+  );
+  cbv [cost_interact cost_call cost_load cost_store cost_inlinetable
+  cost_stackalloc cost_lit cost_op cost_set cost_if cost_loop_true
+  cost_loop_false];
+  unfold EmptyMetricLog in *.
 
 Ltac cost_destr :=
   repeat match goal with

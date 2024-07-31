@@ -113,12 +113,25 @@ Ltac fold_MetricLog :=
 Ltac simpl_MetricLog :=
   cbn [instructions loads stores jumps] in *.
 
+(* need this to define solve_MetricLog, but need solve_MetricLog inside of MetricArith, oops *)
+Lemma add_assoc' : forall n m p, (n + (m + p) = n + m + p)%metricsH.
+Proof. intros. unfold_MetricLog. f_equal; apply Z.add_assoc. Qed.
+
+Lemma metriclit : forall a b c d a' b' c' d' mc,
+  metricsAdd (mkMetricLog a b c d) (metricsAdd (mkMetricLog a' b' c' d') mc) =
+  metricsAdd (mkMetricLog (a+a') (b+b') (c+c') (d+d')) mc.
+Proof. intros. rewrite add_assoc'. reflexivity. Qed.
+
+Ltac flatten_MetricLog := repeat rewrite metriclit in *.
+
 Ltac solve_MetricLog :=
+  flatten_MetricLog;
   repeat unfold_MetricLog;
   repeat simpl_MetricLog;
   blia.
 
 Ltac solve_MetricLog_piecewise :=
+  flatten_MetricLog;
   repeat unfold_MetricLog;
   repeat simpl_MetricLog;
   f_equal; blia.
@@ -163,30 +176,3 @@ Create HintDb metric_arith.
 #[export] Hint Resolve MetricArith.le_trans MetricArith.le_refl MetricArith.add_0_r MetricArith.sub_0_r MetricArith.add_comm MetricArith.add_assoc : metric_arith.
 #[export] Hint Resolve <- MetricArith.le_sub_mono : metric_arith.
 #[export] Hint Resolve -> MetricArith.le_sub_mono : metric_arith.
-
-Lemma applyAddInstructions n a b c d : addMetricInstructions n {| instructions := a; stores := b; loads := c; jumps := d |} = {| instructions := a+n; stores := b; loads := c; jumps := d |}. Proof. auto. Qed.
-Lemma applyAddStores n a b c d : addMetricStores n {| instructions := a; stores := b; loads := c; jumps := d |} = {| instructions := a; stores := b+n; loads := c; jumps := d |}. Proof. auto. Qed.
-Lemma applyAddLoads n a b c d : addMetricLoads n {| instructions := a; stores := b; loads := c; jumps := d |} = {| instructions := a; stores := b; loads := c+n; jumps := d |}. Proof. auto. Qed.
-Lemma applyAddJumps n a b c d : addMetricJumps n {| instructions := a; stores := b; loads := c; jumps := d |} = {| instructions := a; stores := b; loads := c; jumps := d+n |}. Proof. auto. Qed.
-
-Ltac applyAddMetricsGoal := (
-  repeat (
-    try rewrite applyAddInstructions;
-    try rewrite applyAddStores;
-    try rewrite applyAddLoads;
-    try rewrite applyAddJumps
-  );
-  repeat rewrite <- Z.add_assoc;
-  cbn [Z.add Pos.add Pos.succ]
-                         ).
-
-Ltac applyAddMetrics H := (
-  repeat (
-    try rewrite applyAddInstructions in H;
-    try rewrite applyAddStores in H;
-    try rewrite applyAddLoads in H;
-    try rewrite applyAddJumps in H
-  );
-  repeat rewrite <- Z.add_assoc in H;
-  cbn [Z.add Pos.add Pos.succ] in H
-).

@@ -100,36 +100,9 @@ Proof.
     blia.
 Qed.
 
-Lemma metriclit : forall a b c d a' b' c' d' mc,
-  metricsAdd (mkMetricLog a b c d) (metricsAdd (mkMetricLog a' b' c' d') mc) =
-  metricsAdd (mkMetricLog (a+a') (b+b') (c+c') (d+d')) mc.
-Proof. intros. rewrite MetricArith.add_assoc. reflexivity. Qed.
-
 Ltac s := unfold initCost, iterCost, endCost in *;
-          repeat (
-            let H := match goal with
-                     | H : context[cost_interact] |- _ => H
-                     | H : context[cost_call] |- _ => H
-                     | H : context[cost_load] |- _ => H
-                     | H : context[cost_store] |- _ => H
-                     | H : context[cost_inlinetable] |- _ => H
-                     | H : context[cost_stackalloc] |- _ => H
-                     | H : context[cost_lit] |- _ => H
-                     | H : context[cost_op] |- _ => H
-                     | H : context[cost_set] |- _ => H
-                     | H : context[cost_if] |- _ => H
-                     | H : context[cost_loop_true] |- _ => H
-                     | H : context[cost_loop_false] |- _ => H
-                     end in
-            let t := type of H in
-            let t' := eval cbv [cost_interact cost_call cost_load cost_store
-              cost_inlinetable cost_stackalloc cost_lit cost_op cost_set
-              cost_if cost_loop_true cost_loop_false] in t in
-            replace t with t' in H by (symmetry; reflexivity)
-          );
           cost_unfold;
           cbn in *;
-          repeat rewrite metriclit in *;
           solve_MetricLog.
 
 Lemma ipow_ok : program_logic_goal_for_function! ipow.
