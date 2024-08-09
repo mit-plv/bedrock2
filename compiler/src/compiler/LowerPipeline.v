@@ -21,6 +21,7 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.MetricCosts.
 Require Import compiler.FitsStack.
 Require Import compiler.Registers.
 Require Import riscv.Utility.InstructionCoercions.
@@ -31,6 +32,17 @@ Local Arguments Z.of_nat: simpl never.
 Local Arguments Z.modulo : simpl never.
 Local Arguments Z.pow: simpl never.
 Local Arguments Z.sub: simpl never.
+
+Lemma raise_metrics_ineq : forall m1 m2,
+  (m1 <= m2)%metricsL -> (raiseMetrics m1 <= raiseMetrics m2)%metricsH.
+Proof.
+  intros.
+  destr m1; destr m2.
+  destruct H as (?&?&?&?).
+  unfold_MetricLog.
+  simpl in *.
+  repeat split; assumption.
+Qed.
 
 Section WithWordAndMem.
   Context {width: Z} {word: word.word width} {mem: map.map word byte}.
@@ -376,14 +388,15 @@ Section LowerPipeline.
                                      (FlatImp.SInteract resvars extcall argvars).
 
   Definition riscv_call(p: list Instruction * pos_map * Z)
-             (f_name: string)(t: Semantics.trace)(mH: mem)(argvals: list word)
-             (post: Semantics.trace -> mem -> list word -> Prop): Prop :=
+             (f_name: string)(t: Semantics.trace)(mH: mem)(argvals: list word)(mc: MetricLog)
+             (post: Semantics.trace -> mem -> list word -> MetricLog -> Prop): Prop :=
     let '(instrs, finfo, req_stack_size) := p in
     exists f_rel_pos,
       map.get finfo f_name = Some f_rel_pos /\
       forall p_funcs stack_start stack_pastend ret_addr Rdata Rexec (initial: MetricRiscvMachine),
         map.get initial.(getRegs) RegisterNames.ra = Some ret_addr ->
         initial.(getLog) = t ->
+        raiseMetrics (cost_compile_spec initial.(getMetrics)) = mc ->
         word.unsigned ret_addr mod 4 = 0 ->
         arg_regs_contain initial.(getRegs) argvals ->
         req_stack_size <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->
@@ -392,7 +405,7 @@ Section LowerPipeline.
         machine_ok p_funcs stack_start stack_pastend instrs mH Rdata Rexec initial ->
         runsTo initial (fun final => exists mH' retvals,
           arg_regs_contain final.(getRegs) retvals /\
-          post final.(getLog) mH' retvals /\
+          post final.(getLog) mH' retvals (raiseMetrics final.(getMetrics)) /\
           map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
           final.(getPc) = ret_addr /\
           machine_ok p_funcs stack_start stack_pastend instrs mH' Rdata Rexec final).
@@ -468,16 +481,18 @@ Section LowerPipeline.
   Qed.
 
   Lemma flat_to_riscv_correct: forall p1 p2,
-      map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
+     map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
       riscvPhase p1 = Success p2 ->
-      forall fname t m argvals post,
+      forall fname t m argvals mcH post,
       (exists argnames retnames fbody l,
           map.get p1 fname = Some (argnames, retnames, fbody) /\
           map.of_list_zip argnames argvals = Some l /\
-          forall mc, FlatImp.exec p1 fbody t m l mc (fun t' m' l' mc' =>
+          FlatImp.exec PostSpill isRegZ p1 fbody t m l mcH (fun t' m' l' mc' =>
                          exists retvals, map.getmany_of_list l' retnames = Some retvals /\
-                                         post t' m' retvals)) ->
-      riscv_call p2 fname t m argvals post.
+                                         post t' m' retvals mc')) ->
+      forall mcL,
+      riscv_call p2 fname t m argvals mcL (fun t m a mcL' =>
+        exists mcH', metricsLeq (mcL' - mcL) (mcH' - mcH) /\ post t m a mcH').
   Proof.
     unfold riscv_call.
     intros. destruct p2 as ((finstrs & finfo) & req_stack_size).
@@ -517,7 +532,7 @@ Section LowerPipeline.
           (l := l)
           (post := fun t' m' l' mc' =>
                      (exists retvals,
-                         map.getmany_of_list l' retnames = Some retvals /\ post t' m' retvals)).
+                         map.getmany_of_list l' retnames = Some retvals /\ post t' m' retvals mc')).
       eapply Q with
           (g := {| rem_stackwords :=
                      word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
@@ -676,7 +691,13 @@ Section LowerPipeline.
         symmetry.
         eapply map.getmany_of_list_length.
         exact GM.
-      + eassumption.
+      + eexists. split; [|eassumption].
+        subst.
+        apply raise_metrics_ineq in H10p3.
+        unfold_MetricLog.
+        cbn in H10p3.
+        cbn.
+        solve_MetricLog.
       + eapply only_differ_subset. 1: eassumption.
         rewrite ListSet.of_list_list_union.
         rewrite ?singleton_set_eq_of_list.
@@ -770,8 +791,6 @@ Section LowerPipeline.
       + assumption.
       + assumption.
       + assumption.
-    Unshelve.
-    all: try exact EmptyMetricLog.
   Qed.
 
 End LowerPipeline.

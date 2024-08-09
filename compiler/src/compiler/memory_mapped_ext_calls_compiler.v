@@ -422,7 +422,7 @@ Section MMIO.
       { eapply MapEauto.only_differ_union_l.
         eapply MapEauto.only_differ_put.
         cbn. left. reflexivity. }
-      { MetricsToRiscv.solve_MetricLog. }
+      { unfold MetricCosts.cost_interact in *; MetricsToRiscv.solve_MetricLog. }
       { eapply map.put_extends. eassumption. }
       { eapply map.forall_keys_put; assumption. }
       { rewrite map.get_put_diff; eauto. unfold RegisterNames.sp.
@@ -537,7 +537,7 @@ Section MMIO.
         eapply map.split_empty_r. reflexivity. }
       { reflexivity. }
       { eapply MapEauto.only_differ_refl. }
-      { MetricsToRiscv.solve_MetricLog. }
+      { unfold MetricCosts.cost_interact in *; MetricsToRiscv.solve_MetricLog. }
       { eassumption. }
       { assumption. }
       { assumption. }
