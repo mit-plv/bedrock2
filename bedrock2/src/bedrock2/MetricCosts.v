@@ -113,8 +113,7 @@ Definition isRegStr (var : String.string) : bool :=
   String.prefix "reg_" var.
 
 (* awkward tactic use to avoid Qed slowness *)
-(* symmetry; reflexivity is black magic that shuffles orders of terms to make
-   heuristics choose the right things *)
+(* this is slow with (eq_refl t) and fast with (eq_refl t') due to black box heuristics *)
 Ltac cost_unfold :=
   repeat (
     let H := match goal with
