@@ -135,7 +135,7 @@ Ltac cost_unfold :=
     let t' := eval cbv [cost_interact cost_call cost_load cost_store
       cost_inlinetable cost_stackalloc cost_lit cost_op cost_set
       cost_if cost_loop_true cost_loop_false] in t in
-    replace t with t' in H by (symmetry; reflexivity)
+    replace t with t' in H by (exact (eq_refl t'))
   );
   cbv [cost_interact cost_call cost_load cost_store cost_inlinetable
   cost_stackalloc cost_lit cost_op cost_set cost_if cost_loop_true
