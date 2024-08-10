@@ -2751,7 +2751,7 @@ Derive critical_bit SuchThat (fun_correct! critical_bit) As critical_bit_ok.    
   move i at bottom. .**/
   while (i < 8 * sizeof(uintptr_t) - 1
     && ((k1 >> (8 * sizeof(uintptr_t) - 1 - i) & 1)
-          == ((k2 >> (8 * sizeof(uintptr_t) - 1 - i) & 1))))
+          == (k2 >> (8 * sizeof(uintptr_t) - 1 - i) & 1)))
     /* decreases (ltac:(bw) - \[i]) */ {                                   /**. .**/
     i = i + 1;                                                             /**. .**/
   }                                                                        /**.
