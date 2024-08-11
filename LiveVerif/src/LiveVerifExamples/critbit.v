@@ -3978,13 +3978,13 @@ Qed.
 Lemma map_take_ge_monotone : forall c c' k,
   map.extends c c' -> map.extends (map_take_ge c k) (map_take_ge c' k).
 Proof.
-  unfold map_take_ge. auto using map_filter_by_key_monotone.
+  unfold map_take_ge. intros ? ? ?. apply map_filter_by_key_monotone.
 Qed.
 
 Lemma map_take_ge_extends : forall c k,
   map.extends c (map_take_ge c k).
 Proof.
-  unfold map_take_ge. auto using map_filter_by_key_extends.
+  unfold map_take_ge. intros ? ? ?. apply map_filter_by_key_extends.
 Qed.
 
 Definition map_min_key_value (c: word_map) : option (word * word) := map.fold
@@ -4606,7 +4606,7 @@ Qed.
 Lemma map_take_gt_extends : forall (c : word_map) (k : word),
   map.extends c (map_take_gt c k).
 Proof.
-  eauto using map_filter_extends.
+  intros ? ?. eapply map_filter_extends.
 Qed.
 
 Lemma map_take_gt_get_nnone : forall (c : word_map) (k k' : word),
@@ -5154,7 +5154,7 @@ Qed.
 Lemma map_take_gt_some : forall c k1 k2 v,
   map.get (map_take_gt c k1) k2 = Some v -> map.get c k2 = Some v.
 Proof.
-  intros. unfold map_take_gt in *. eauto using map_filter_by_key_Some'.
+  intros. unfold map_take_gt in *. eapply map_filter_by_key_Some'. eassumption.
 Qed.
 
 Lemma ww_list_sorted_from : forall n l, ww_list_sorted l -> ww_list_sorted (l[n:]).
