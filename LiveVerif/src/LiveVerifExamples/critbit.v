@@ -4,6 +4,7 @@ Require Import LiveVerifExamples.onesize_malloc.
 Require Import coqutil.Datatypes.PropSet.
 
 Require Coq.Bool.Bool.
+Require Import Coq.Classes.DecidableClass.
 
 (* sometimes used in a heuristic to differentiate between maps
    - representing memory
@@ -72,9 +73,7 @@ Ltac prove_ante H :=
   | ?A -> ?C => let HA := fresh in assert (HA: A); [ | specialize (H HA); clear HA ]
   end.
 
-Ltac purge x := repeat match goal with
-                       | H: context[ x ] |- _ => clear H
-                       end; clear x.
+Ltac purge x := clear dependent x.
 
 Ltac eq_neq_cases k1 k2 :=
   let H := fresh "H" in assert (H: k1 = k2 \/ k1 <> k2) by solve [ steps ]; destruct H.
@@ -105,6 +104,16 @@ Ltac simple_finish_step :=
   | H: ?a = Some _ |- ?a <> None => rewrite H;
       let He := fresh in intro He; discriminate He
   end].
+
+Lemma word_eqb_0_1_false : word.eqb /[0] /[1] = false.
+Proof.
+  hwlia.
+Qed.
+
+Lemma word_eqb_1_0_false : word.eqb /[1] /[0] = false.
+Proof.
+  hwlia.
+Qed.
 
 (* replacing Bool.eqb _ _, word.eqb _ _, or _ =? _ with true or false
    when it's clear that that's what it evaluates to;
@@ -139,11 +148,11 @@ Ltac comparison_simpl_step :=
   | Hne: ?n <> ?m, H: context con [ ?m =? ?n ] |- _ =>
       let cnvrt := context con [ m =? n ] in change cnvrt in H;
       replace (m =? n) with false in H
-        by (symmetry; apply Z.eqb_neq; symmetry; exact Hne)
+        by (symmetry; apply Z.eqb_neq; exact (not_eq_sym Hne))
   | Hne: ?n <> ?m |- context con [ ?m =? ?n ] =>
       let cnvrt := context con [ m =? n ] in change cnvrt;
       replace (m =? n) with false
-        by (symmetry; apply Z.eqb_neq; symmetry; exact Hne)
+        by (symmetry; apply Z.eqb_neq; exact (not_eq_sym Hne))
 
   | Hne: ?w <> /[0] |- context[ \[?w] =? 0 ] => replace (\[w] =? 0) with false by hwlia
   | Hne: ?w <> /[0], H2: context[ \[?w] =? 0 ] |- _ =>
@@ -233,11 +242,11 @@ Ltac comparison_simpl_step :=
   | Hne: ?b1 <> ?b2, H: context con [ Bool.eqb ?b2 ?b1 ] |- _ =>
       let cnvrt := context con [ Bool.eqb b2 b1 ] in change cnvrt in H;
       replace (Bool.eqb b2 b1) with false in H
-        by (symmetry; rewrite Bool.eqb_false_iff; symmetry; exact Hne)
+        by (symmetry; rewrite Bool.eqb_false_iff; exact (not_eq_sym Hne))
   | Hne: ?b1 <> ?b2 |- context con [ Bool.eqb ?b2 ?b1 ] =>
       let cnvrt := context con [ Bool.eqb b2 b1 ] in change cnvrt;
       replace (Bool.eqb b2 b1) with false
-        by (symmetry; rewrite Bool.eqb_false_iff; symmetry; exact Hne)
+        by (symmetry; rewrite Bool.eqb_false_iff; exact (not_eq_sym Hne))
 
   | H: Bool.eqb ?b1 ?b2 = true |- _ => apply Bool.eqb_prop in H
   | H: Bool.eqb ?b1 ?b2 = false |- _ => rewrite Bool.eqb_false_iff in H
@@ -245,6 +254,11 @@ Ltac comparison_simpl_step :=
   (* word.eqb _ _ *)
   | H: context[ word.eqb ?w ?w ] |- _ => rewrite word.eqb_eq in H by reflexivity
   | |- context[ word.eqb ?w ?w ] => rewrite word.eqb_eq by reflexivity
+
+  | H: context [ word.eqb /[0] /[1] ] |- _ => rewrite word_eqb_0_1_false in H
+  | |- context [ word.eqb /[0] /[1] ] => rewrite word_eqb_0_1_false
+  | H: context [ word.eqb /[1] /[0] ] |- _ => rewrite word_eqb_1_0_false in H
+  | |- context [ word.eqb /[1] /[0] ] => rewrite word_eqb_1_0_false
 
   | Heq: ?w1 = ?w2, H: context con [ word.eqb ?w1 ?w2 ] |- _ =>
       let cnvrt := context con [ word.eqb w1 w2 ] in change cnvrt in H;
@@ -276,11 +290,11 @@ Ltac comparison_simpl_step :=
   | Hne: ?w1 <> ?w2, H: context con [ word.eqb ?w2 ?w1 ] |- _ =>
       let cnvrt := context con [ word.eqb w2 w1 ] in change cnvrt in H;
       replace (word.eqb w2 w1) with false in H
-        by (symmetry; apply word.eqb_ne; symmetry; exact Hne)
+        by (symmetry; apply word.eqb_ne; exact (not_eq_sym Hne))
   | Hne: ?w1 <> ?w2 |- context con [ word.eqb ?w2 ?w1 ] =>
       let cnvrt := context con [ word.eqb w2 w1 ] in change cnvrt;
       replace (word.eqb w2 w1) with false
-        by (symmetry; apply word.eqb_ne; symmetry; exact Hne)
+        by (symmetry; apply word.eqb_ne; exact (not_eq_sym Hne))
 end.
 
 Lemma identical_if_branches : forall {T} (b: bool) (v: T), (if b then v else v) = v.
@@ -293,8 +307,24 @@ Proof.
   intros. destruct b1, b2; steps.
 Qed.
 
-(* 12 because it comes up as the size (in bytes) of a CBT node allocation *)
-Lemma unsigned_of_Z_12 : \[/[12]] = 12.
+Ltac wsize_term := eval cbn in (sizeof uintptr).
+Ltac wsize := let x := wsize_term in exact x.
+Ltac is_wsize := constr_eq wsize_term.
+
+Ltac wsize3_term := eval cbn in (3 * ltac:(wsize)).
+Ltac wsize3 := let x := wsize3_term in exact x.
+Ltac is_wsize3 := constr_eq wsize3_term.
+
+Ltac bw_term := eval cbn in (8 * ltac:(wsize)).
+Ltac bw := let x := bw_term in exact x.
+Ltac is_bw := constr_eq bw_term.
+
+Ltac bwm1_term := eval cbn in (ltac:(bw) - 1).
+Ltac bwm1 := let x := bwm1_term in exact x.
+Ltac is_bwm1 := constr_eq bwm1_term.
+
+(* because it comes up as the size of a CBT node allocation *)
+Lemma unsigned_of_Z_3words : \[/[ltac:(wsize3)]] = ltac:(wsize3).
 Proof.
   hwlia.
 Qed.
@@ -324,8 +354,8 @@ Ltac misc_simpl_step :=
   | |- context [ \[/[0]] ] => rewrite word.unsigned_of_Z_0
   | H: context [ \[/[1]] ] |- _ => rewrite word.unsigned_of_Z_1 in H
   | |- context [ \[/[1]] ] => rewrite word.unsigned_of_Z_1
-  | H: context [ \[/[12]] ] |- _ => rewrite unsigned_of_Z_12 in H
-  | |- context [ \[/[12]] ] => rewrite unsigned_of_Z_12
+  | H: context [ \[/[ ?x ]] ] |- _ => is_wsize3 x; rewrite unsigned_of_Z_3words in H
+  | |- context [ \[/[ ?x ]] ] => is_wsize3 x; rewrite unsigned_of_Z_3words
 
   | H: context[ if false then _ else _ ] |- _ => cbv iota in H
   | |- context[ if false then _ else _ ] => cbv iota
@@ -343,6 +373,7 @@ Ltac misc_simpl_step :=
        replace w2' with w1'; [ reflexivity | subst w1' w2' ]
 
   | H: ?Q, H2: ?Q -> ?P |- _ => specialize (H2 H)
+  | H: ?a = ?a -> _ |- _ => specialize (H eq_refl)
   | H: ?b = ?a, H2: ?a = ?b -> ?P |- _ => specialize (H2 (eq_sym H))
   | H: Some _ <> None |- _ => clear H
   | H: None <> Some _ |- _ => clear H
@@ -363,7 +394,14 @@ Qed.
 (* END GENERAL *)
 (* BEGIN INDIVIDUAL BITS *)
 
-Definition bit_at (w: word) (i: Z) := word.eqb (word.and (w ^>> /[i]) /[1]) /[1].
+(* we want:
+   - in a CBT, nodes closer to the root to have lower c.b. indices
+   - to be able to efficiently use the CBT to find next key w.r.t. to the ordering of
+     keys interpreted as integers
+  -> therefore, we choose to have bit_at _ 0 give the most significant bit
+     and bit_at _ ltac:(bwm1) give the least significant bit (and not the other way around) *)
+Definition bit_at (w: word) (i: Z) :=
+  word.eqb (word.and (w ^>> /[ltac:(bwm1) - i]) /[1]) /[1].
 
 Ltac step_hook ::=
   match goal with
@@ -373,34 +411,35 @@ Ltac step_hook ::=
   end.
 
 Lemma and_not_1_iff_bit_at_false : forall (w: word) (i: Z),
-  word.and (w ^>> /[i]) /[1] <> /[1] <-> bit_at w i = false.
+  word.and (w ^>> /[ltac:(bwm1) - i]) /[1] <> /[1] <-> bit_at w i = false.
 Proof.
   unfold bit_at. split; steps.
 Qed.
 
 Lemma and_not_1_iff_bit_at_false_w : forall w i: word,
-  word.and (w ^>> i) /[1] <> /[1] <-> bit_at w \[i] = false.
+  word.and (w ^>> (/[ltac:(bwm1)] ^- i)) /[1] <> /[1] <-> bit_at w \[i] = false.
 Proof.
-  unfold bit_at. split; steps.
+  unfold bit_at. split; rewrite word.ring_morph_sub; steps.
 Qed.
 
 Lemma and_1_iff_bit_at_true : forall (w: word) (i: Z),
-  word.and (w ^>> /[i]) /[1] = /[1] <-> bit_at w i = true.
+  word.and (w ^>> /[ltac:(bwm1) - i]) /[1] = /[1] <-> bit_at w i = true.
 Proof.
   unfold bit_at. split; steps.
 Qed.
 
 Lemma and_1_iff_bit_at_true_w : forall w i: word,
-  word.and (w ^>> i) /[1] = /[1] <-> bit_at w \[i] = true.
+  word.and (w ^>> (/[ltac:(bwm1)] ^- i)) /[1] = /[1] <-> bit_at w \[i] = true.
 Proof.
-  unfold bit_at. split; steps.
+  unfold bit_at. split; rewrite word.ring_morph_sub; steps.
 Qed.
 
 Lemma and_1_eq_bit_at : forall (w1 i1 w2 i2: word),
-  word.and (w1 ^>> i1) /[1] = word.and (w2 ^>> i2) /[1] ->
+  word.and (w1 ^>> (/[ltac:(bwm1)] ^- i1)) /[1] =
+  word.and (w2 ^>> (/[ltac:(bwm1)] ^- i2)) /[1] ->
   bit_at w1 \[i1] = bit_at w2 \[i2].
 Proof.
-  unfold bit_at. steps.
+  unfold bit_at. steps. repeat rewrite word.ring_morph_sub. steps.
 Qed.
 
 Lemma Z_bits_1 : forall n : Z, Z.testbit 1 n = (n =? 0).
@@ -429,10 +468,12 @@ Proof.
 Qed.
 
 Lemma and_1_ne_bit_at : forall (w1 i1 w2 i2: word),
-  word.and (w1 ^>> i1) /[1] <> word.and (w2 ^>> i2) /[1] ->
+  word.and (w1 ^>> (/[ltac:(bwm1)] ^- i1)) /[1] <>
+    word.and (w2 ^>> (/[ltac:(bwm1)] ^- i2)) /[1] ->
   bit_at w1 \[i1] <> bit_at w2 \[i2].
 Proof.
   unfold bit_at. steps. intro. apply_ne.
+  repeat rewrite word.ring_morph_sub in *.
   match goal with
   | H: _ = word.eqb ?wa ?wb |- _ => destruct (word.eqb wa wb) eqn:E
   end; steps.
@@ -442,13 +483,35 @@ Proof.
 Qed.
 
 Lemma bit_at_expand : forall w i,
-  bit_at w i = word.eqb (word.and (w ^>> /[i]) /[1]) /[1].
+  bit_at w i = word.eqb (word.and (w ^>> (/[ltac:(bwm1)] ^- /[i])) /[1]) /[1].
 Proof.
-  unfold bit_at. steps.
+  unfold bit_at. steps. rewrite word.ring_morph_sub. reflexivity.
+Qed.
+
+Lemma bit_at_to_standard : forall k i,
+  word.and (k ^>> (word.opp /[i] ^+ /[ltac:(bwm1)])) /[1] =
+  word.and (k ^>> /[ltac:(bwm1) - i]) /[1].
+Proof.
+  intros. f_equal. f_equal. hwlia.
+Qed.
+
+Lemma bit_at_to_standard' : forall k i,
+  word.and (k ^>> (word.opp i ^+ /[ltac:(bwm1)])) /[1] =
+  word.and (k ^>> (/[ltac:(bwm1)] ^- i)) /[1].
+Proof.
+  intros. f_equal. f_equal. hwlia.
 Qed.
 
 Ltac bit_at_step :=
   match goal with
+  | H: context [ word.and (_ ^>> (word.opp /[_] ^+ /[?x])) /[1] ] |- _ =>
+       is_bwm1 x; rewrite bit_at_to_standard in H
+  | |- context [ word.and (_ ^>> (word.opp /[_] ^+ /[?x])) /[1] ] =>
+       is_bwm1 x; rewrite bit_at_to_standard
+  | H: context [ word.and (_ ^>> (word.opp _ ^+ /[?x])) /[1] ] |- _ =>
+       is_bwm1 x; rewrite bit_at_to_standard' in H
+  | |- context [ word.and (_ ^>> (word.opp _ ^+ /[?x])) /[1] ] =>
+       is_bwm1 x; rewrite bit_at_to_standard'
   | H: word.and (_ ^>> /[_]) /[1] = /[1] |- _ => apply and_1_iff_bit_at_true in H
   | H: word.and (_ ^>> _) /[1] = /[1] |- _ => apply and_1_iff_bit_at_true_w in H
   | H: word.and (_ ^>> /[_]) /[1] <> /[1] |- _ => apply and_not_1_iff_bit_at_false in H
@@ -457,13 +520,14 @@ Ltac bit_at_step :=
        apply and_1_eq_bit_at
   | H: word.and (_ ^>> _) /[1] <> word.and (_ ^>> _) /[1] |- _ =>
        apply and_1_ne_bit_at
-  | H: context [ word.eqb (word.and (?w ^>> /[?i]) /[1]) /[1] ] |- _ =>
-       rewrite <- bit_at_expand in H
-  | |- context [ word.eqb (word.and (?w ^>> /[?i]) /[1]) /[1] ] =>
-       rewrite <- bit_at_expand
+  | H: context [ word.eqb (word.and (?w ^>> (/[?x] ^- /[?i])) /[1]) /[1] ] |- _ =>
+       is_bwm1 x; rewrite <- bit_at_expand in H
+  | |- context [ word.eqb (word.and (?w ^>> (/[?x] ^- /[?i])) /[1]) /[1] ] =>
+       is_bwm1 x; rewrite <- bit_at_expand
   end.
 
-Lemma Z_testbit_is_bit_at : forall w i, 0 <= i < 32 -> Z.testbit \[w] i = bit_at w i.
+Lemma Z_testbit_is_bit_at : forall w i,
+  0 <= i < ltac:(bw) -> Z.testbit \[w] i = bit_at w (ltac:(bwm1) - i).
 Proof.
   intros. unfold bit_at. rewrite word.unsigned_eqb. rewrite word.unsigned_and_nowrap.
   steps. rewrite word.unsigned_sru_nowrap by hwlia. replace \[/[i]] with i by hwlia.
@@ -477,9 +541,10 @@ Proof.
   rewrite Z.bit0_odd. rewrite Z.testbit_odd. reflexivity.
 Qed.
 
-Lemma Z_testbit_past_word_width : forall w i, ~(0 <= i < 32) -> Z.testbit \[w] i = false.
+Lemma Z_testbit_past_word_width : forall w i,
+  ~(0 <= i < ltac:(bw)) -> Z.testbit \[w] i = false.
 Proof.
-  intros. assert (Hcmp: i < 0 \/ 0 <= i < 32 \/ 32 <= i) by lia.
+  intros. assert (Hcmp: i < 0 \/ 0 <= i < ltac:(bw) \/ ltac:(bw) <= i) by lia.
   destruct Hcmp as [ Hc | [ Hc | Hc ] ]; steps.
   - apply Z.testbit_neg_r. lia.
   - replace w with /[\[w]] by steps. rewrite word.unsigned_of_Z. unfold word.wrap.
@@ -487,10 +552,10 @@ Proof.
 Qed.
 
 Lemma bit_at_inj : forall w1 w2,
-  (forall i, 0 <= i < 32 -> bit_at w1 i = bit_at w2 i) -> w1 = w2.
+  (forall i, 0 <= i < ltac:(bw) -> bit_at w1 i = bit_at w2 i) -> w1 = w2.
 Proof.
   steps. apply word.unsigned_inj. apply Z.bits_inj. unfold Z.eqf. intros.
-  assert (Hcmp: 0 <= n < 32 \/ ~(0 <= n < 32)) by lia. destruct Hcmp.
+  assert (Hcmp: 0 <= n < ltac:(bw) \/ ~(0 <= n < ltac:(bw))) by lia. destruct Hcmp.
   - repeat rewrite Z_testbit_is_bit_at by lia.
     match goal with
     | H: forall _, _ |- _ => apply H
@@ -545,9 +610,9 @@ Class pfx := {
 
   (* pfx_emb *)
   pfx_emb : word -> prefix;
-  pfx_emb_len : forall w, pfx_len (pfx_emb w) = 32;
+  pfx_emb_len : forall w, pfx_len (pfx_emb w) = ltac:(bw);
   pfx_emb_spec : forall w i,
-    0 <= i < 32 -> pfx_bit (pfx_emb w) i = Some (bit_at w i)
+    0 <= i < ltac:(bw) -> pfx_bit (pfx_emb w) i = Some (bit_at w i)
 }.
 
 Fixpoint pfx'_le (l1 l2: list bool) :=
@@ -573,11 +638,12 @@ Fixpoint pfx'_meet (l1 l2: list bool) :=
 Fixpoint pfx'_emb_rec (w: word) (remaining: nat): list bool :=
   match remaining with
   | O => nil
-  | S n => cons (bit_at w (32 - Z.of_nat remaining)) (pfx'_emb_rec w n)
+  | S n => cons (bit_at w (ltac:(bw) - Z.of_nat remaining)) (pfx'_emb_rec w n)
   end.
 
 Lemma pfx'_emb_rec_bit : forall w (n: nat) i,
-  0 <= i < Z.of_nat n -> List.get (pfx'_emb_rec w n) i = bit_at w (32 - Z.of_nat n + i).
+  0 <= i < Z.of_nat n ->
+  List.get (pfx'_emb_rec w n) i = bit_at w (ltac:(bw) - Z.of_nat n + i).
 Proof.
   induction n.
   - lia.
@@ -594,7 +660,7 @@ Instance list_pfx : pfx := {
   pfx_le := pfx'_le;
   pfx_meet := pfx'_meet;
   pfx_snoc p b := p ++ [|b|];
-  pfx_emb w := pfx'_emb_rec w 32
+  pfx_emb w := pfx'_emb_rec w (Z.to_nat ltac:(bw))
 }.
 Proof.
   - lia.
@@ -667,7 +733,7 @@ Proof.
   - induction p; simpl; steps.
   - intros. replace ((0 <=? len p) && (len p <? len (p ++ [|b|]))) with true by steps.
     steps.
-  - intros. simpl. steps.
+  - intros. simpl. reflexivity.
   - intros. simpl len.
     match goal with
     | |- context [ if ?cond then _ else _ ] => replace cond with true by steps
@@ -861,13 +927,13 @@ Proof.
 Qed.
 
 Lemma pfx_meet_neq_emb_len : forall w1 w2,
-  w1 <> w2 -> pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2)) < 32.
+  w1 <> w2 -> pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2)) < ltac:(bw).
 Proof.
   intros.
   match goal with
-  | |- ?l < 32 => assert (Hb: l <= 32);
+  | |- ?l < _ => assert (Hb: l <= ltac:(bw));
        [ rewrite <- (pfx_emb_len w1); apply pfx_le_len; apply pfx_meet_le_l
-       | enough (l <> 32) by lia ]; clear Hb
+       | enough (l <> ltac:(bw)) by lia ]; clear Hb
   end.
   intro. apply_ne. assert (pfx_meet (pfx_emb w1) (pfx_emb w2) = pfx_emb w1). {
     apply pfx_lele_len_eq with (p:=pfx_emb w1). apply pfx_meet_le_l.
@@ -918,7 +984,7 @@ Proof.
 Qed.
 
 Lemma pfx_cb_charac : forall k1 k2 n,
-  0 <= n < 32 ->
+  0 <= n < ltac:(bw) ->
   (forall i, 0 <= i < n -> bit_at k1 i = bit_at k2 i) -> bit_at k1 n <> bit_at k2 n ->
   pfx_len (pfx_meet (pfx_emb k1) (pfx_emb k2)) = n.
 Proof.
@@ -935,13 +1001,13 @@ Proof.
 Qed.
 
 Lemma pfx_meet_left_emb_len_bound : forall p w,
-  pfx_len (pfx_meet (pfx_emb w) p) <= 32.
+  pfx_len (pfx_meet (pfx_emb w) p) <= ltac:(bw).
 Proof.
   intros. rewrite <- (pfx_emb_len w). apply pfx_le_len. apply pfx_meet_le_l.
 Qed.
 
 Lemma pfx_meet_right_emb_len_bound : forall p w,
-  pfx_len (pfx_meet p (pfx_emb w)) <= 32.
+  pfx_len (pfx_meet p (pfx_emb w)) <= ltac:(bw).
 Proof.
   intros. rewrite <- (pfx_emb_len w). apply pfx_le_len. apply pfx_meet_le_r.
 Qed.
@@ -969,72 +1035,359 @@ Ltac pfx_step :=
        rewrite (pfx_meet_le_eq' p1 p2 Hle) in H
   | Hle: pfx_le ?p1 ?p2 |- context [ pfx_meet ?p2 ?p1 ] =>
        rewrite (pfx_meet_le_eq' p1 p2 Hle)
-  | |- pfx_len (pfx_meet (pfx_emb _) _) <= 32 => apply pfx_meet_left_emb_len_bound
-  | |- pfx_len (pfx_meet _ (pfx_emb _)) <= 32 => apply pfx_meet_right_emb_len_bound
+  | |- pfx_len (pfx_meet (pfx_emb _) _) <= ?x =>
+       is_bw x; apply pfx_meet_left_emb_len_bound
+  | |- pfx_len (pfx_meet _ (pfx_emb _)) <= ?x =>
+       is_bw x; apply pfx_meet_right_emb_len_bound
   | |- ?p1 = pfx_meet ?p1 ?p2 => symmetry; apply pfx_meet_le_eq
   | |- ?p1 = pfx_meet ?p2 ?p1 => symmetry; apply pfx_meet_le_eq'
   | |- pfx_meet ?p1 ?p2 = ?p1 => apply pfx_meet_le_eq
   | |- pfx_meet ?p2 ?p1 = ?p1 => apply pfx_meet_le_eq'
-  | H: ?k1 <> ?k2 |- pfx_len (pfx_meet (pfx_emb ?k1) (pfx_emb ?k2)) < 32 =>
-       exact (pfx_meet_neq_emb_len k1 k2 H)
+  | H: ?k1 <> ?k2 |- pfx_len (pfx_meet (pfx_emb ?k1) (pfx_emb ?k2)) < ?x =>
+       is_bw x; exact (pfx_meet_neq_emb_len k1 k2 H)
   end.
 
 (* END PREFIXES *)
 (* BEGIN BASIC SMALL MAP OPS *)
 
+(* TODO: move to coqutil *)
+Section WithMap.
+  Context {key value : Type} {map : map.map key value} {map_ok : map.ok map}.
+  Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
+
+  Lemma map_get_singleton_same (k : key) (v : value)
+    : map.get (map.singleton k v) k = Some v.
+  Proof. apply map.get_put_same. Qed.
+
+  Lemma map_get_singleton_same_eq (k k' : key) (v : value)
+    : k' = k -> map.get (map.singleton k v) k' = Some v.
+  Proof. intro. subst. apply map.get_put_same. Qed.
+
+  Lemma map_get_singleton_diff (k k' : key) (v : value)
+    : k' <> k -> map.get (map.singleton k v) k' = None.
+  Proof.
+    intro. unfold map.singleton. rewrite map.get_put_diff, map.get_empty by assumption.
+    reflexivity.
+  Qed.
+
+  Lemma map_put_singleton_same (k : key) (v v' : value)
+    : map.put (map.singleton k v) k v' = map.singleton k v'.
+  Proof. apply map.put_put_same. Qed.
+
+  Lemma map_put_singleton_same_eq (k k' : key) (v v' : value)
+    : k' = k -> map.put (map.singleton k v) k' v' = map.singleton k v'.
+  Proof. intro. subst. apply map.put_put_same. Qed.
+
+  Lemma map_remove_singleton_same (k : key) (v : value)
+    : map.remove (map.singleton k v) k = map.empty.
+  Proof. eauto using eq_trans, map.remove_put_same, map.remove_empty. Qed.
+
+  Lemma map_remove_singleton_same_eq (k k' : key) (v : value)
+    : k' = k -> map.remove (map.singleton k v) k' = map.empty.
+  Proof. intro. subst. apply map_remove_singleton_same. Qed.
+
+  Lemma map_remove_singleton_diff (k k' : key) (v : value)
+    : k <> k' -> map.remove (map.singleton k v) k' = map.singleton k v.
+  Proof.
+    intro. unfold map.singleton. rewrite map.remove_put_diff by assumption. f_equal.
+    apply map.remove_empty.
+  Qed.
+
+  Lemma map_get_singleton_not_None (k k' : key) (v : value)
+    : map.get (map.singleton k v) k' <> None -> k' = k.
+  Proof.
+    intro Hg. destr (key_eqb k' k); auto. contradict Hg.
+    auto using map_get_singleton_diff.
+  Qed.
+
+  Lemma map_singleton_inj (k1 k2 : key) (v1 v2 : value)
+    : map.singleton k1 v1 = map.singleton k2 v2 -> k1 = k2 /\ v1 = v2.
+  Proof.
+    intro Heq. apply (f_equal (fun m => map.get m k1)) in Heq.
+    destr (key_eqb k1 k2); repeat rewrite map_get_singleton_same in Heq.
+    - intuition congruence.
+    - rewrite map_get_singleton_diff in Heq by assumption. discriminate.
+  Qed.
+
+  Lemma map_all_get_None_is_empty (m : map)
+    : (forall k, map.get m k = None) -> m = map.empty.
+  Proof. intro Hgets. apply map.map_ext. intro k. rewrite map.get_empty. auto. Qed.
+
+  Lemma map_empty_iff_all_get_None (m : map)
+    : m = map.empty <-> (forall k, map.get m k = None).
+  Proof.
+    split; [ intros; subst; apply map.get_empty | apply map_all_get_None_is_empty ].
+  Qed.
+
+  Lemma map_extends_get_None (m1 m2 : map) (k : key)
+    : map.extends m1 m2 -> map.get m1 k = None -> map.get m2 k = None.
+  Proof.
+    intros Hext Hg. destruct (map.get m2 k) eqn:E; [ apply Hext in E | ]; congruence.
+  Qed.
+
+  Lemma map_empty_extends_is_empty (m : map) : map.extends map.empty m -> m = map.empty.
+  Proof. eauto using map_all_get_None_is_empty, map_extends_get_None, map.get_empty. Qed.
+
+  Lemma map_extends_nonempty (m1 m2 : map)
+    : map.extends m1 m2 -> m2 <> map.empty -> m1 <> map.empty.
+  Proof.
+    intros Hext Hnem. contradict Hnem. subst. auto using map_empty_extends_is_empty.
+  Qed.
+
+  Lemma map_extends_get_not_None (m1 m2 : map) k
+    : map.extends m1 m2 -> map.get m2 k <> None -> map.get m1 k <> None.
+  Proof. intros Hext Hg. contradict Hg. eauto using map_extends_get_None. Qed.
+
+  Lemma map_extends_put_new (m : map) k v
+    : map.get m k = None -> map.extends (map.put m k v) m.
+  Proof.
+    intros Hg k' w Hg'. destr (key_eqb k' k).
+    - congruence.
+    - rewrite map.get_put_diff; assumption.
+  Qed.
+
+  Lemma map_extends_trans (m1 m2 m3 : map)
+    : map.extends m1 m2 -> map.extends m2 m3 -> map.extends m1 m3.
+  Proof. unfold map.extends. auto. Qed.
+
+  Lemma map_get_not_None_nonempty (m : map) k : map.get m k <> None -> m <> map.empty.
+  Proof. intro Hg. contradict Hg. subst. apply map.get_empty. Qed.
+
+  Lemma map_put_nonempty (m : map) k v : map.put m k v <> map.empty.
+  Proof. eapply map_get_not_None_nonempty. rewrite map.get_put_same. discriminate. Qed.
+
+  Lemma map_singleton_nonempty (k : key) (v : value) : map.singleton k v <> map.empty.
+  Proof. apply map_put_nonempty. Qed.
+
+  Lemma map_remove_monotone (m1 m2 : map) k
+    : map.extends m1 m2 -> map.extends (map.remove m1 k) (map.remove m2 k).
+  Proof.
+    intros Hext k' w Hg. destr (key_eqb k' k).
+    - rewrite map.get_remove_same in Hg. discriminate.
+    - rewrite map.get_remove_diff in *; auto.
+  Qed.
+
+  Lemma map_extends_remove (m : map) k : map.extends m (map.remove m k).
+  Proof.
+    intros k' w Hg. destr (key_eqb k' k).
+    - rewrite map.get_remove_same in Hg. discriminate.
+    - rewrite map.get_remove_diff in *; auto.
+  Qed.
+
+  Lemma map_remove_get_nnone (m : map) k k'
+    : map.get (map.remove m k) k' <> None -> map.get m k' <> None.
+  Proof. eauto using map_extends_get_not_None, map_extends_remove. Qed.
+
+  Definition map_any_key : map -> option key
+    := map.fold (fun _ k _ => Some k) None.
+
+  Lemma map_any_key_empty : map_any_key map.empty = None.
+  Proof. apply map.fold_empty. Qed.
+
+  Lemma map_any_key_nonempty (m : map) : m <> map.empty -> map_any_key m <> None.
+  Proof. unfold map_any_key. apply map.fold_spec; intuition discriminate. Qed.
+
+  Lemma map_any_key_in (m : map)
+    : forall k, map_any_key m = Some k -> map.get m k <> None.
+  Proof.
+    unfold map_any_key. eapply map.fold_spec; [ discriminate | ].
+    intros ? ? ? ? ? ? ? Hsmeq. injection Hsmeq. intro. subst. rewrite map.get_put_same.
+    discriminate.
+  Qed.
+
+  Lemma map_any_key_singleton (k : key) (v : value)
+    : map_any_key (map.singleton k v) = Some k.
+  Proof. apply map.fold_singleton. Qed.
+
+  Lemma map_nonempty_exists_key (m : map)
+    : m <> map.empty -> exists k, map.get m k <> None.
+  Proof.
+    intros Hnem%map_any_key_nonempty. destruct (map_any_key m) eqn:E; [ | tauto ].
+    eauto using map_any_key_in.
+  Qed.
+
+  Definition map_filter (m : map) (f : key -> value -> bool) :=
+    map.fold (fun macc k v => if f k v then map.put macc k v else macc) map.empty m.
+
+  Definition map_filter_by_key (m : map) (f : key -> bool) :=
+    map_filter m (fun k _ => f k).
+
+  Lemma map_filter_get (m : map) (f : key -> value -> bool) (k : key)
+    : map.get (map_filter m f) k =
+       match map.get m k with
+       | Some v => if f k v then Some v else None
+       | None => None
+       end.
+  Proof.
+    unfold map_filter. apply map.fold_spec; clear m.
+    - rewrite map.get_empty. reflexivity.
+    - intros k' v m r Hnon Hgr. destr (key_eqb k k').
+      + rewrite map.get_put_same. rewrite Hnon in Hgr. destruct (f k' v);
+        [ rewrite map.get_put_same | ]; auto.
+      + rewrite map.get_put_diff by assumption. destruct (map.get m k) eqn:E2;
+        (destruct (f k' v); [ rewrite map.get_put_diff | ]; assumption).
+  Qed.
+
+  Lemma map_filter_by_key_get (m : map) (f : key -> bool) (k : key)
+    : map.get (map_filter_by_key m f) k = if f k then map.get m k else None.
+  Proof.
+    unfold map_filter_by_key. rewrite map_filter_get.
+    destruct (map.get m k), (f k); reflexivity.
+  Qed.
+
+  Lemma map_filter_get_Some m f k v
+    : map.get (map_filter m f) k = Some v <-> map.get m k = Some v /\ f k v = true.
+  Proof.
+    rewrite map_filter_get. destruct (map.get m k) as [ v' | ] eqn:E;
+    [ destruct (f k v') eqn:E2 | ]; intuition congruence.
+  Qed.
+
+  Lemma map_filter_by_key_get_Some m f k v
+    : map.get (map_filter_by_key m f) k = Some v <-> map.get m k = Some v /\ f k = true.
+  Proof. etransitivity. apply map_filter_get_Some. tauto. Qed.
+
+  Lemma map_filter_Some' m f k v
+    : map.get (map_filter m f) k = Some v -> map.get m k = Some v.
+  Proof. rewrite map_filter_get_Some. tauto. Qed.
+
+  Lemma map_filter_by_key_Some' m f k v
+    : map.get (map_filter_by_key m f) k = Some v -> map.get m k = Some v.
+  Proof. apply map_filter_Some'. Qed.
+
+  Lemma map_filter_extends m f : map.extends m (map_filter m f).
+  Proof.
+    unfold map.extends. intros. rewrite map_filter_get in *.
+    destruct (map.get m x); [ | discriminate ]. destruct (f x v); congruence.
+  Qed.
+
+  Lemma map_filter_by_key_extends m f : map.extends m (map_filter_by_key m f).
+  Proof. apply map_filter_extends. Qed.
+
+  Lemma map_filter_empty f : map_filter map.empty f = map.empty.
+  Proof. apply map.fold_empty. Qed.
+
+  Lemma map_filter_by_key_empty f : map_filter_by_key map.empty f = map.empty.
+  Proof. apply map_filter_empty. Qed.
+
+  Lemma map_filter_get_None m f k
+    : map.get m k = None -> map.get (map_filter m f) k = None.
+  Proof. intro Hg. rewrite map_filter_get, Hg. reflexivity. Qed.
+
+  Lemma map_filter_by_key_get_None m f k
+    : map.get m k = None -> map.get (map_filter_by_key m f) k = None.
+  Proof. apply map_filter_get_None. Qed.
+
+  Lemma map_filter_by_key_get_true m f k
+    : f k = true -> map.get (map_filter_by_key m f) k = map.get m k.
+  Proof. intro Htrue. rewrite map_filter_by_key_get, Htrue. reflexivity. Qed.
+
+  Lemma map_filter_by_key_get_false m f k
+    : f k = false -> map.get (map_filter_by_key m f) k = None.
+  Proof. intro Hfalse. rewrite map_filter_by_key_get, Hfalse. reflexivity. Qed.
+
+  Lemma map_filter_eq_empty m f
+    : (forall k v, map.get m k = Some v -> f k v = false) -> map_filter m f = map.empty.
+  Proof.
+    intro Hfalse. apply map_all_get_None_is_empty. intro k. rewrite map_filter_get.
+    destruct (map.get m k) eqn:E; auto. rewrite Hfalse; auto.
+  Qed.
+
+  Lemma map_filter_by_key_eq_empty m f
+    : (forall k, map.get m k <> None -> f k = false) ->
+      map_filter_by_key m f = map.empty.
+  Proof.
+    intro Hfalse. apply map_filter_eq_empty. intros k v Hg. apply Hfalse. congruence.
+  Qed.
+
+  Lemma map_filter_get_Some_true m f k v
+    : map.get (map_filter m f) k = Some v -> f k v = true.
+  Proof.
+    rewrite map_filter_get. intro Hg. destruct (map.get m k) as [ v' | ];
+    [ destruct (f k v') eqn:E | ]; congruence.
+  Qed.
+
+  Lemma map_filter_by_key_get_not_None_true m f k
+    : map.get (map_filter_by_key m f) k <> None -> f k = true.
+  Proof. rewrite map_filter_by_key_get. destruct (f k); auto. Qed.
+
+  Lemma map_filter_monotone m1 m2 f
+    : map.extends m1 m2 -> map.extends (map_filter m1 f) (map_filter m2 f).
+  Proof. intros Hext k w. rewrite 2map_filter_get_Some. intuition. Qed.
+
+  Lemma map_filter_by_key_monotone m1 m2 f
+    : map.extends m1 m2 -> map.extends (map_filter_by_key m1 f) (map_filter_by_key m2 f).
+  Proof. apply map_filter_monotone. Qed.
+
+  Lemma map_filter_ext m f1 f2
+    : (forall k v, f1 k v = f2 k v) -> map_filter m f1 = map_filter m f2.
+  Proof.
+    intro Hfeq. apply map.map_ext. intro k. rewrite 2map_filter_get.
+    destruct (map.get m k); [ rewrite Hfeq | ]; reflexivity.
+  Qed.
+
+  Lemma map_filter_by_key_ext m f1 f2
+    : (forall k, f1 k = f2 k) -> map_filter_by_key m f1 = map_filter_by_key m f2.
+  Proof. intro Hfeq. apply map_filter_ext. auto. Qed.
+
+  Lemma map_filter_all_false m f
+    : (forall k v, f k v = false) -> map_filter m f = map.empty.
+  Proof. auto using map_filter_eq_empty. Qed.
+
+  Lemma map_filter_by_key_all_false m f
+    : (forall k, f k = false) -> map_filter_by_key m f = map.empty.
+  Proof. auto using map_filter_by_key_eq_empty. Qed.
+
+  Lemma map_filter_filter m f1 f2
+    : map_filter (map_filter m f1) f2 = map_filter m (fun k v => andb (f1 k v) (f2 k v)).
+  Proof.
+    apply map.map_ext. intro k. rewrite 3map_filter_get.
+    destruct (map.get m k) as [ v | ]; [ destruct (f1 k v), (f2 k v) | ]; reflexivity.
+  Qed.
+
+  Lemma map_filter_by_key_filter_by_key m f1 f2
+    : map_filter_by_key (map_filter_by_key m f1) f2
+      = map_filter_by_key m (fun k => andb (f1 k) (f2 k)).
+  Proof.
+    apply map.map_ext. intro k. rewrite 3map_filter_by_key_get.
+    destruct (f1 k), (f2 k); reflexivity.
+  Qed.
+
+  Lemma map_filter_stronger_refilter m f1 f2
+    : (forall k v, f2 k v = true -> f1 k v = true) ->
+      map_filter (map_filter m f1) f2 = map_filter m f2.
+  Proof.
+    intro Hpow. rewrite map_filter_filter. apply map_filter_ext. intros.
+    specialize (Hpow k v). destruct (f1 k v), (f2 k v); tauto.
+  Qed.
+
+  Lemma map_filter_by_key_stronger_refilter m f1 f2
+    : (forall k, f2 k = true -> f1 k = true) ->
+      map_filter_by_key (map_filter_by_key m f1) f2 = map_filter_by_key m f2.
+  Proof. intro Hpow. apply map_filter_stronger_refilter. auto. Qed.
+
+  Definition map_size : map -> nat := map.fold (fun acc _ _ => S acc) O.
+
+  Lemma map_size_empty : map_size map.empty = O.
+  Proof. apply map.fold_empty. Qed.
+
+  Lemma map_size_empty_eq m : m = map.empty -> map_size m = O.
+  Proof. intro. subst. apply map_size_empty. Qed.
+
+  Lemma map_size_0_empty m : map_size m = O -> m = map.empty.
+  Proof. unfold map_size. apply map.fold_spec; intuition discriminate. Qed.
+
+  Lemma map_size_0_iff_empty m : map_size m = O <-> m = map.empty.
+  Proof. split; [ apply map_size_0_empty | apply map_size_empty_eq ]. Qed.
+
+  #[global, refine]
+  Instance map_empty_dec (m : map) : Decidable (m = map.empty) := {
+    Decidable_witness := (map_size m =? 0)%nat
+  }.
+  Proof. rewrite Nat.eqb_eq. apply map_size_0_iff_empty. Defined.
+End WithMap.
+
 Context {word_map: map.map word word}.
 Context {word_map_ok: map.ok word_map}.
-
-Lemma map_get_singleton_same : forall (k v: word),
-  map.get (map.singleton k v) k = Some v.
-Proof.
-  intros. unfold map.singleton. apply map.get_put_same.
-Qed.
-
-Lemma map_get_singleton_same_eq : forall k v k': word,
-  k = k' -> map.get (map.singleton k v) k' = Some v.
-Proof.
-  intros. subst. apply map_get_singleton_same.
-Qed.
-
-Lemma map_get_singleton_diff : forall k v k' : word,
-  k <> k' -> map.get (map.singleton k v) k' = None.
-Proof.
-  intros. unfold map.singleton. rewrite map.get_put_diff. apply map.get_empty.
-  congruence.
-Qed.
-
-Lemma map_put_singleton_same : forall k v v': word,
-  map.put (map.singleton k v) k v' = map.singleton k v'.
-Proof.
-  intros. unfold map.singleton. apply map.put_put_same.
-Qed.
-
-Lemma map_put_singleton_same_eq : forall k v k' v': word,
-  k = k' -> map.put (map.singleton k v) k' v' = map.singleton k v'.
-Proof.
-  intros. subst. apply map_put_singleton_same.
-Qed.
-
-Lemma map_remove_singleton_same : forall k v : word,
-  map.remove (map.singleton k v) k = map.empty.
-Proof.
-  intros. unfold map.singleton. rewrite map.remove_put_same.
-  rewrite map.remove_empty. reflexivity.
-Qed.
-
-Lemma map_remove_singleton_same_eq : forall k v k' : word,
-  k = k' -> map.remove (map.singleton k v) k' = map.empty.
-Proof.
-  intros. subst. apply map_remove_singleton_same.
-Qed.
-
-Lemma map_remove_singleton_diff : forall k v k' : word,
-  k <> k' -> map.remove (map.singleton k v) k' = map.singleton k v.
-Proof.
-  intros. unfold map.singleton. rewrite map.remove_put_diff.
-  rewrite map.remove_empty. reflexivity. congruence.
-Qed.
 
 (* simplify basic map operations (get, put, remove) operating on
    map.empty or map.singleton *)
@@ -1049,25 +1402,25 @@ Ltac small_map_basic_op_simpl_step :=
   | |- context [ map.get (map.singleton ?k ?v) ?k ] =>
       rewrite map_get_singleton_same
 
-  | Heq: ?k = ?k', H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_get_singleton_same_eq k v k') in H by (exact Heq)
-  | Heq: ?k = ?k' |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_get_singleton_same_eq k v k') by (exact Heq)
-
   | Heq: ?k' = ?k, H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_get_singleton_same_eq k v k') in H by (symmetry; exact Heq)
+      rewrite (map_get_singleton_same_eq k k' v) in H by (exact Heq)
   | Heq: ?k' = ?k |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_get_singleton_same_eq k v k') by (symmetry; exact Heq)
+      rewrite (map_get_singleton_same_eq k k' v) by (exact Heq)
 
-  | Hne: ?k <> ?k', H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_get_singleton_diff k v k') in H by (exact Hne)
-  | Hne: ?k <> ?k' |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_get_singleton_diff k v k') by (exact Hne)
+  | Heq: ?k = ?k', H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
+      rewrite (map_get_singleton_same_eq k k' v) in H by (symmetry; exact Heq)
+  | Heq: ?k = ?k' |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
+      rewrite (map_get_singleton_same_eq k k' v) by (symmetry; exact Heq)
 
   | Hne: ?k' <> ?k, H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_get_singleton_diff k v k') in H by (symmetry; exact Hne)
+      rewrite (map_get_singleton_diff k k' v) in H by (exact Hne)
   | Hne: ?k' <> ?k |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_get_singleton_diff k v k') by (symmetry; exact Hne)
+      rewrite (map_get_singleton_diff k k' v) by (exact Hne)
+
+  | Hne: ?k <> ?k', H: context [ map.get (map.singleton ?k ?v) ?k' ] |- _ =>
+      rewrite (map_get_singleton_diff k k' v) in H by (symmetry; exact Hne)
+  | Hne: ?k <> ?k' |- context [ map.get (map.singleton ?k ?v) ?k' ] =>
+      rewrite (map_get_singleton_diff k k' v) by (symmetry; exact Hne)
 
   (* map.put *)
   | H: context [ map.put map.empty ?k ?v ] |- _ =>
@@ -1080,15 +1433,15 @@ Ltac small_map_basic_op_simpl_step :=
   | |- context [ map.put (map.singleton ?k ?v) ?k ?v' ] =>
       rewrite map_put_singleton_same
 
-  | Heq: ?k = ?k', H: context [ map.put (map.singleton ?k ?v) ?k' ?v' ] |- _ =>
-      rewrite (map_put_singleton_same_eq k v k' v') in H by (exact Heq)
-  | Heq: ?k = ?k' |- context [ map.put (map.singleton ?k ?v) ?k' ?v' ] =>
-      rewrite (map_put_singleton_same_eq k v k' v') by (exact Heq)
-
   | Heq: ?k' = ?k, H: context [ map.put (map.singleton ?k ?v) ?k' ?v' ] |- _ =>
-      rewrite (map_put_singleton_same_eq k v k' v') in H by (symmetry; exact Heq)
+      rewrite (map_put_singleton_same_eq k k' v v') in H by (exact Heq)
   | Heq: ?k' = ?k |- context [ map.put (map.singleton ?k ?v) ?k' ?v' ] =>
-      rewrite (map_put_singleton_same_eq k v k' v') by (symmetry; exact Heq)
+      rewrite (map_put_singleton_same_eq k k' v v') by (exact Heq)
+
+  | Heq: ?k = ?k', H: context [ map.put (map.singleton ?k ?v) ?k' ?v' ] |- _ =>
+      rewrite (map_put_singleton_same_eq k k' v v') in H by (symmetry; exact Heq)
+  | Heq: ?k = ?k' |- context [ map.put (map.singleton ?k ?v) ?k' ?v' ] =>
+      rewrite (map_put_singleton_same_eq k k' v v') by (symmetry; exact Heq)
 
   (* map.remove *)
   | H: context [ map.remove map.empty _ ] |- _ =>
@@ -1102,24 +1455,24 @@ Ltac small_map_basic_op_simpl_step :=
       rewrite map_remove_singleton_same
 
   | Heq: ?k = ?k', H: context [ map.remove (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_remove_singleton_same_eq k v k') in H by (exact Heq)
+      rewrite (map_remove_singleton_same_eq k k' v) in H by (exact Heq)
   | Heq: ?k = ?k' |- context [ map.remove (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_remove_singleton_same_eq k v k') by (exact Heq)
+      rewrite (map_remove_singleton_same_eq k k' v) by (exact Heq)
 
   | Heq: ?k' = ?k, H: context [ map.remove (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_remove_singleton_same_eq k v k') in H by (symmetry; exact Heq)
+      rewrite (map_remove_singleton_same_eq k k' v) in H by (symmetry; exact Heq)
   | Heq: ?k' = ?k |- context [ map.remove (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_remove_singleton_same_eq k v k') by (symmetry; exact Heq)
+      rewrite (map_remove_singleton_same_eq k k' v) by (symmetry; exact Heq)
 
   | Hne: ?k <> ?k', H: context [ map.remove (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_remove_singleton_diff k v k') in H by (exact Hne)
+      rewrite (map_remove_singleton_diff k k' v) in H by (exact Hne)
   | Hne: ?k <> ?k' |- context [ map.remove (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_remove_singleton_diff k v k') by (exact Hne)
+      rewrite (map_remove_singleton_diff k k' v) by (exact Hne)
 
   | Hne: ?k' <> ?k, H: context [ map.remove (map.singleton ?k ?v) ?k' ] |- _ =>
-      rewrite (map_remove_singleton_diff k v k') in H by (symmetry; exact Hne)
+      rewrite (map_remove_singleton_diff k k' v) in H by (symmetry; exact Hne)
   | Hne: ?k' <> ?k |- context [ map.remove (map.singleton ?k ?v) ?k' ] =>
-      rewrite (map_remove_singleton_diff k v k') by (symmetry; exact Hne)
+      rewrite (map_remove_singleton_diff k k' v) by (symmetry; exact Hne)
   end.
 
 (* END BASIC SMALL MAP OPS *)
@@ -1135,80 +1488,6 @@ Ltac step_hook ::=
   | |- _ => pfx_step
   | |- _ => small_map_basic_op_simpl_step
   end.
-
-Lemma map_get_singleton_not_None : forall (k v k': word),
-  map.get (map.singleton k v) k' <> None -> k = k'.
-Proof.
-  intros. eq_neq_cases k k'; steps.
-Qed.
-
-Lemma map_singleton_inj : forall (k1 k2 v1 v2 : word),
-    map.singleton k1 v1 = map.singleton k2 v2 -> k1 = k2 /\ v1 = v2.
-Proof.
-  intros. assert (k1 = k2). { eq_neq_cases k1 k2; steps. exfalso.
-  f_apply (fun m: word_map => map.get m k2) H. steps. }
-  steps. f_apply (fun m: word_map => map.get m k2) H. steps.
-Qed.
-
-Lemma map_extends_nonempty : forall (cbig csmall: word_map),
-  map.extends cbig csmall -> csmall <> map.empty -> cbig <> map.empty.
-Proof.
-  unfold map.extends. intros. intro.
-  match goal with
-  | H: csmall <> map.empty |- _ => apply H
-  end. apply map.map_ext. steps. destruct (map.get csmall k) eqn:E;
-  [ exfalso | reflexivity ].
-  match goal with
-  | H: forall _, _ |- _ => apply H in E
-  end.
-  steps.
-Qed.
-
-Lemma map_extends_get_nnone : forall (cbig csmall: word_map) k,
-  map.extends cbig csmall -> map.get csmall k <> None -> map.get cbig k <> None.
-Proof.
-  unfold map.extends. intros. destruct (map.get csmall k) eqn:E; steps.
-  match goal with
-  | H: forall _, _ |- _ => apply H in E
-  end.
-  congruence.
-Qed.
-
-Lemma map_extends_put_new : forall (c: word_map) (k v: word),
-  map.get c k = None -> map.extends (map.put c k v) c.
-Proof.
-  unfold map.extends. intros. eq_neq_cases k x.
-  - congruence.
-  - rewrite map.get_put_diff; steps.
-Qed.
-
-Lemma map_extends_trans : forall c1 c2 c3: word_map,
-  map.extends c1 c2 -> map.extends c2 c3 -> map.extends c1 c3.
-Proof.
-  unfold map.extends. auto.
-Qed.
-
-Lemma map_put_nonempty : forall (c: word_map) k v,
-  map.put c k v <> map.empty.
-Proof.
-  intros.
-  match goal with
-  | |- ?L <> ?R => enough (map.get L k <> map.get R k)
-  end.
-  congruence.
-  steps. rewrite map.get_put_same. steps.
-Qed.
-
-Lemma map_get_nnone_nonempty : forall (c: word_map) k,
-  map.get c k <> None -> c <> map.empty.
-Proof.
-  intros. intro. steps.
-Qed.
-
-Lemma map_singleton_nonempty : forall (k v: word), map.singleton k v <> map.empty.
-Proof.
-  intros. intro He. f_apply (fun m: word_map => map.get m k) He. steps.
-Qed.
 
 Ltac map_step :=
   match goal with
@@ -1278,7 +1557,7 @@ Ltac map_step :=
         replace (map.get (map.remove c k) k') with (map.get c k') by
         (symmetry; apply map.get_remove_diff; exact Hne)
 
-  | H: map.get ?c ?k <> None |- ?c <> map.empty => apply (map_get_nnone_nonempty c k H)
+  | H: map.get ?c ?k <> None |- ?c <> map.empty => apply (map_get_not_None_nonempty c k H)
 
   | |- map.singleton _ _ <> map.empty => apply map_singleton_nonempty
   end.
@@ -1294,52 +1573,6 @@ Ltac step_hook ::=
   | |- _ => small_map_basic_op_simpl_step
   | |- _ => map_step
   end.
-
-Lemma map_extends_remove_in_both : forall (cbig csmall: word_map) k,
-  map.extends cbig csmall -> map.extends (map.remove cbig k) (map.remove csmall k).
-Proof.
-  unfold map.extends. intros. eq_neq_cases k x.
-  - subst. rewrite map.get_remove_same in *. discriminate.
-  - rewrite map.get_remove_diff in *. auto. congruence. congruence.
-Qed.
-
-Lemma map_extends_remove : forall (c: word_map) k,
-  map.extends c (map.remove c k).
-Proof.
-  unfold map.extends. intros. eq_neq_cases k x; subst; steps.
-Qed.
-
-Lemma map_nonempty_exists_key : forall (c: word_map),
-  c <> map.empty -> exists k, map.get c k <> None.
-Proof.
-  intros. exists (map.fold (fun _ k _ => k) /[0] c).
-  eassert (HP: _). eapply map.fold_spec
-    with (P:=fun m state => m <> map.empty -> map.get m state <> None)
-         (m:=c) (r0:=/[0]) (f:=fun _ k _ => k); steps.
-  auto.
-Qed.
-
-Lemma map_empty_eq : forall c: word_map,
-   c = map.empty <-> map.fold (fun _ _ _ => true) false c = false.
-Proof.
-  intros. split.
-  - intros. subst. apply map.fold_empty.
-  - apply map.fold_spec; steps.
-Qed.
-
-Lemma map_eq_empty_dec : forall (c1: word_map), c1 = map.empty \/ c1 <> map.empty.
-Proof.
-  intros. rewrite map_empty_eq.
-  match goal with
-  | |- context [ ?E = false ] => destruct E
-  end; steps.
-Qed.
-
-Lemma map_remove_get_nnone : forall (c: word_map) k k',
-  map.get (map.remove c k) k' <> None -> map.get c k' <> None.
-Proof.
-  intros. eapply map_extends_get_nnone. 2: eassumption. apply map_extends_remove.
-Qed.
 
 (* END MAPS *)
 (* BEGIN CUSTOM MAP OPS *)
@@ -1363,11 +1596,12 @@ Proof.
   rewrite map.fold_singleton. reflexivity.
 Qed.
 
-Lemma pfx_mmeet_len : forall c, pfx_len (pfx_mmeet c) <= 32.
+Lemma pfx_mmeet_len : forall c, pfx_len (pfx_mmeet c) <= ltac:(bw).
 Proof.
   intros. unfold pfx_mmeet, pfx'_mmeet.
   eassert (HP: _). eapply map.fold_spec
-    with (P:=fun _ state => state = None \/ exists p, state = Some p /\ pfx_len p <= 32).
+    with (P:=fun _ state => state = None \/
+             exists p, state = Some p /\ pfx_len p <= ltac:(bw)).
   3: (destruct HP as [ HP | HP ]; [ rewrite HP | ]).
   left. steps. steps. right. destruct_or. all: steps.
 Qed.
@@ -1381,32 +1615,13 @@ Proof.
   lia.
 Qed.
 
-Definition map_filter (c: word_map) (f: word -> bool) :=
-  map.fold (fun state k v => if f k then map.put state k v else state)
-           map.empty
-           c.
-
-Lemma map_filter_get : forall c f k,
-  map.get (map_filter c f) k = if f k then map.get c k else None.
-Proof.
-  intros. unfold map_filter. apply map.fold_spec; steps.
-  destruct (f k0) eqn:E; destruct (f k) eqn:E2; eq_neq_cases k k0; subst; steps;
-  congruence.
-Qed.
-
 Definition half_subcontent c b :=
-  map_filter c (fun k => Bool.eqb (bit_at k (pfx_len (pfx_mmeet c))) b).
-
-Lemma map_filter_extends : forall c f,
-  map.extends c (map_filter c f).
-Proof.
-  unfold map.extends. intros. rewrite map_filter_get in *. destruct (f x); congruence.
-Qed.
+  map_filter_by_key c (fun k => Bool.eqb (bit_at k (pfx_len (pfx_mmeet c))) b).
 
 Lemma half_subcontent_extends : forall c b,
   map.extends c (half_subcontent c b).
 Proof.
-  intros. apply map_filter_extends.
+  intros. apply map_filter_by_key_extends.
 Qed.
 
 Lemma half_subcontent_get : forall c b k,
@@ -1414,7 +1629,7 @@ Lemma half_subcontent_get : forall c b k,
                                     then map.get c k
                                     else None.
 Proof.
-  intros. unfold half_subcontent. apply map_filter_get.
+  intros. unfold half_subcontent. rewrite map_filter_by_key_get. reflexivity.
 Qed.
 
 Lemma half_subcontent_get_nNone : forall c k,
@@ -1482,10 +1697,9 @@ Proof.
   destruct (map.get c k) eqn:E; steps.
   replace c with (map.put (map.remove c k) k r) at 2
     by (rewrite map.put_remove_same; apply map.put_idemp; assumption).
-  pose proof (map_eq_empty_dec (map.remove c k)) as Hemp.
-  destruct Hemp as [ Hemp | Hemp ].
-    - rewrite Hemp. steps. do 2 rewrite pfx_mmeet_singleton. steps.
-    - repeat rewrite pfx_mmeet_put_new; steps. all: apply map.get_remove_same.
+  decide (map.remove c k = map.empty) as Hemp.
+  - rewrite Hemp. steps. do 2 rewrite pfx_mmeet_singleton. steps.
+  - repeat rewrite pfx_mmeet_put_new; steps. all: apply map.get_remove_same.
 Qed.
 
 Ltac custom_map_ops_pre_step :=
@@ -1631,13 +1845,6 @@ Proof.
   intros. rewrite half_subcontent_get in *. steps.
 Qed.
 
-Definition map_some_key (c: word_map) default := map.fold (fun _ k _ => k) default c.
-
-Lemma map_some_key_singleton : forall k v k', map_some_key (map.singleton k v) k' = k.
-Proof.
-  intros. unfold map_some_key, map.singleton. apply map.fold_singleton.
-Qed.
-
 Lemma pfx_mmeet_all_le : forall c p,
   c <> map.empty ->
   (forall k, map.get c k <> None -> pfx_le p (pfx_emb k)) -> (pfx_le p (pfx_mmeet c)).
@@ -1678,11 +1885,15 @@ Proof.
 Qed.
 
 Lemma pfx_mmeet_nonsingle_len : forall (c: word_map) k0 k1,
-  map.get c k0 <> None -> map.get c k1 <> None -> k0 <> k1 -> pfx_len (pfx_mmeet c) < 32.
+  map.get c k0 <> None -> map.get c k1 <> None -> k0 <> k1 ->
+  pfx_len (pfx_mmeet c) < ltac:(bw).
 Proof.
   intros.
-  enough (pfx_len (pfx_mmeet c) <= pfx_len (pfx_meet (pfx_emb k0) (pfx_emb k1)) < 32)
-  by lia. split. apply pfx_le_len. apply pfx_meet_le_both; steps. steps.
+  enough
+    (pfx_len (pfx_mmeet c) <= pfx_len (pfx_meet (pfx_emb k0) (pfx_emb k1)) < ltac:(bw))
+    by lia.
+  split. apply pfx_le_len. apply pfx_meet_le_both; steps.
+  auto using pfx_meet_neq_emb_len.
 Qed.
 
 Lemma half_subcontent_empty : forall (c: word_map) b k0 k1,
@@ -1716,11 +1927,11 @@ Proof.
   - enough (pfx_le (pfx_mmeet (map.remove c k)) (pfx_emb k)).
     + apply pfx_mmeet_all_le. steps. intros. eq_neq_cases k k0; subst; steps.
       apply pfx_mmeet_key_le. steps.
-    + destruct (map_eq_empty_dec (half_subcontent c (negb b))).
+    + decide (half_subcontent c (negb b) = map.empty).
       * match goal with
         | H: _ <> map.empty |- _ => apply map_nonempty_exists_key in H
         end. fwd. eq_neq_cases k k0; subst; steps. assert (map.get c k0 <> None).
-        eapply map_extends_get_nnone. 2: eassumption. steps.
+        eapply map_extends_get_not_None. 2: eassumption. steps.
         exfalso. eauto using half_subcontent_empty.
       * do 2 match goal with
            | H: _ <> map.empty |- _ => apply map_nonempty_exists_key in H
@@ -1730,12 +1941,12 @@ Proof.
         assert (bit_at k0 (pfx_len (pfx_mmeet c)) = negb b).
         rewrite half_subcontent_get in *. steps.
         intro. subst. steps. }
-      steps. eapply map_extends_get_nnone. 2: eassumption. steps.
-      eapply map_extends_get_nnone. 2: eassumption.
-      apply map_extends_remove_in_both. steps.
+      steps. eapply map_extends_get_not_None. 2: eassumption. steps.
+      eapply map_extends_get_not_None. 2: eassumption.
+      apply map_remove_monotone. steps.
       apply pfx_le_trans with (pfx_mmeet c). 2: steps.
       apply pfx_lele_len_ord with (pfx_emb k0); steps. apply pfx_mmeet_key_le.
-      eapply map_extends_get_nnone. 2: eassumption. steps.
+      eapply map_extends_get_not_None. 2: eassumption. steps.
       match goal with
       | H: context [ map.remove ] |- _ => apply map_remove_get_nnone in H
       end.
@@ -1744,7 +1955,7 @@ Proof.
                 rewrite half_subcontent_get in H
            end. steps.
       purge k. subst.
-      assert (0 <= pfx_len (pfx_mmeet c) < 32). {
+      assert (0 <= pfx_len (pfx_mmeet c) < ltac:(bw)). {
         eassert _. { apply (pfx_mmeet_nonsingle_len c k0 k1); steps.
           intro. subst. steps. }
         pose proof (pfx_len_nneg (pfx_mmeet c)). lia. }
@@ -1755,7 +1966,7 @@ Proof.
       end.
       apply Bool.no_fixpoint_negb.
   - apply pfx_mmeet_remove_le. eapply map_extends_nonempty. 2: eassumption.
-    apply map_extends_remove_in_both. apply half_subcontent_extends.
+    apply map_remove_monotone. apply half_subcontent_extends.
 Qed.
 
 Lemma half_subcontent_remove_same : forall c k b,
@@ -1765,7 +1976,7 @@ Lemma half_subcontent_remove_same : forall c k b,
 Proof.
   intros. apply map.map_ext. intros. eq_neq_cases k k0.
   - subst. steps. apply eq_None_by_false. intro Hnn.
-    eapply map_extends_get_nnone in Hnn. 2: apply half_subcontent_extends. steps.
+    eapply map_extends_get_not_None in Hnn. 2: apply half_subcontent_extends. steps.
   - steps. do 2 rewrite half_subcontent_get. steps.
     rewrite pfx_mmeet_remove_unchanged with (b:=b); steps.
 Qed.
@@ -1806,7 +2017,7 @@ Qed.
 Lemma half_subcontent_get_nnone : forall c b k,
   map.get (half_subcontent c b) k <> None -> map.get c k <> None.
 Proof.
-  intros. eapply map_extends_get_nnone. eapply half_subcontent_extends. eassumption.
+  intros. eapply map_extends_get_not_None. eapply half_subcontent_extends. eassumption.
 Qed.
 
 Ltac custom_map_ops_step :=
@@ -1897,14 +2108,14 @@ Fixpoint cbt' (tree: tree_skeleton) (c: word_map) (a: word): mem -> Prop :=
   match tree with
   | Leaf => EX k v,
         <{ * emp (a <> /[0])
-           * freeable 12 a
-           * <{ + uintptr /[32]
+           * freeable ltac:(wsize3) a
+           * <{ + uintptr /[ltac:(bw)]
                 + uintptr k
                 + uintptr v }> a
            * emp (c = map.singleton k v) }>
   | Node treeL treeR => EX (aL: word) (aR: word),
           <{ * emp (a <> /[0])
-             * freeable 12 a
+             * freeable ltac:(wsize3) a
              * <{ + uintptr /[pfx_len (pfx_mmeet c)]
                   + uintptr aL
                   + uintptr aR }> a
@@ -1962,8 +2173,8 @@ Qed.
 
 Lemma acbt_prefix_length : forall (tree: tree_skeleton) (c: word_map),
     acbt tree c -> match tree with
-                   | Node _ _ => pfx_len (pfx_mmeet c) < 32
-                   | Leaf => pfx_len (pfx_mmeet c) = 32
+                   | Node _ _ => pfx_len (pfx_mmeet c) < ltac:(bw)
+                   | Leaf => pfx_len (pfx_mmeet c) = ltac:(bw)
                    end.
 Proof.
   intros. destruct tree; simpl acbt in *; steps.
@@ -1992,7 +2203,7 @@ Qed.
 
 Lemma cbt_expose_fields (tree: tree_skeleton) (c: word_map) (a: word):
   iff1 (cbt' tree c a) (EX w2 w3,
-    <{ * freeable 12 a
+    <{ * freeable ltac:(wsize3) a
        * <{ + uintptr /[pfx_len (pfx_mmeet c)]
             + uintptr w2
             + uintptr w3 }> a
@@ -2013,16 +2224,16 @@ Fixpoint cbt_best_lookup tree c k :=
   | Node treeL treeR => if bit_at k (pfx_len (pfx_mmeet c))
                         then cbt_best_lookup treeR (half_subcontent c true) k
                         else cbt_best_lookup treeL (half_subcontent c false) k
-  | Leaf => map_some_key c k
+  | Leaf => Option.force (map_any_key c)
   end.
 
 Lemma cbt_best_lookup_in : forall tree c k,
   acbt tree c -> map.get c (cbt_best_lookup tree c k) <> None.
 Proof.
   induction tree.
-  - steps. simpl in *. steps. subst. steps. rewrite map_some_key_singleton. steps.
+  - steps. simpl in *. steps. subst. steps. rewrite map_any_key_singleton. cbn. steps.
   - steps. simpl in *. steps. destruct (bit_at k (pfx_len (pfx_mmeet c))) eqn:E;
-    (eapply map_extends_get_nnone; [ eapply half_subcontent_extends | eauto ]).
+    (eapply map_extends_get_not_None; [ eapply half_subcontent_extends | eauto ]).
 Qed.
 
 Lemma cbt_best_lookup_subcontent_in_parent : forall tree c k k' b,
@@ -2034,27 +2245,27 @@ Proof.
 Qed.
 
 Lemma node_prefix_length : forall sk1 sk2 c,
-  acbt (Node sk1 sk2) c -> 0 <= pfx_len (pfx_mmeet c) < 32.
+  acbt (Node sk1 sk2) c -> 0 <= pfx_len (pfx_mmeet c) < ltac:(bw).
 Proof.
   steps. apply acbt_prefix_length in H. pose proof (pfx_len_nneg (pfx_mmeet c)). lia.
 Qed.
 
-Lemma node_prefix_length_word_not_32 : forall sk1 sk2 c,
-  acbt (Node sk1 sk2) c -> /[pfx_len (pfx_mmeet c)] <> /[32].
+Lemma node_prefix_length_word_not_bw : forall sk1 sk2 c,
+  acbt (Node sk1 sk2) c -> /[pfx_len (pfx_mmeet c)] <> /[ltac:(bw)].
 Proof.
   steps. apply node_prefix_length in H. hwlia.
 Qed.
 
 Ltac cbt_step :=
   match goal with
-  | H: acbt (Node _ _) ?c |- 0 <= pfx_len (pfx_mmeet ?c) < 32 =>
-    apply node_prefix_length in H
+  | H: acbt (Node _ _) ?c |- 0 <= pfx_len (pfx_mmeet ?c) < ?x =>
+    is_bw x; apply node_prefix_length in H
   | Hacbt: acbt ?sk (half_subcontent ?c ?b),
     Hlkup: cbt_best_lookup ?t (half_subcontent ?c ?b) ?k' = ?k
     |- map.get ?c ?k <> None =>
     apply (cbt_best_lookup_subcontent_in_parent t c k k' b Hacbt Hlkup)
-  | Hacbt: acbt (Node _ _) ?c, Hpl: /[pfx_len (pfx_mmeet ?c)] = /[32] |- _ =>
-    destruct (node_prefix_length_word_not_32 _ _ _ Hacbt Hpl)
+  | Hacbt: acbt (Node _ _) ?c, Hpl: /[pfx_len (pfx_mmeet ?c)] = /[?x] |- _ =>
+    is_bw x; destruct (node_prefix_length_word_not_bw _ _ _ Hacbt Hpl)
   | |- impl1 (cbt' ?sk ?c1 ?a) (cbt' ?sk ?c2 ?a) => replace c2 with c1; [ reflexivity | ]
   | Hacbt: acbt ?sk ?c |- ?c <> map.empty => exact (acbt_nonempty sk c Hacbt)
   | Hacbt: acbt ?sk ?c |- map.get ?c (cbt_best_lookup ?sk ?c ?k) <> None =>
@@ -2090,7 +2301,7 @@ Ltac step_hook ::=
   end.
 
 Lemma cbt_best_lookup_cb_not_node : forall sk c k,
-  acbt sk c -> pfx_len (pfx_mmeet c) < 32 -> pfx_le (pfx_mmeet c) (pfx_emb k) ->
+  acbt sk c -> pfx_len (pfx_mmeet c) < ltac:(bw) -> pfx_le (pfx_mmeet c) (pfx_emb k) ->
   pfx_len (pfx_mmeet c) <
     pfx_len (pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k))).
 Proof.
@@ -2118,6 +2329,7 @@ Qed.
       => constructor : suppressed_warnings.
 #[local] Hint Extern 1 (cannot_purify (cbt' _ _ _ _))
       => constructor : suppressed_warnings.
+(* change from #[local] to #[export]? *)
 #[local] Hint Extern 1 (cannot_purify (cbt _ _))
       => constructor : suppressed_warnings.
 #[local] Hint Extern 1 (cannot_purify (wand _ _))
@@ -2142,13 +2354,15 @@ Qed.
       => constructor : suppressed_warnings.
 #[local] Hint Extern 1 (PredicateSize_not_found (sep allocator))
       => constructor : suppressed_warnings.
+#[local] Hint Extern 1 (PredicateSize_not_found (cbt _))
+      => constructor : suppressed_warnings.
 
-#[local] Hint Unfold cbt : heapletwise_always_unfold.
+(* #[local] Hint Unfold cbt : heapletwise_always_unfold. *)
 #[local] Hint Unfold nncbt : heapletwise_always_unfold.
 
 Hint Resolve purify_cbt' : purify.
 
-Local Hint Extern 1 (PredicateSize (cbt' ?sk)) => exact 12 : typeclass_instances.
+Local Hint Extern 1 (PredicateSize (cbt' ?sk)) => wsize3 : typeclass_instances.
 
 Ltac predicates_safe_to_cancel_hook hypPred conclPred ::=
   lazymatch conclPred with
@@ -2175,10 +2389,10 @@ uintptr_t cbt_raw_node_alloc(uintptr_t w1, uintptr_t w2, uintptr_t w3) /**#
   requires t m := <{ * allocator * R }> m;
   ensures t' m' res := t' = t
            /\ <{ * (if \[res] =? 0 then
-                     allocator_failed_below 12
+                     allocator_failed_below ltac:(wsize3)
                     else
                      <{ * allocator
-                        * freeable 12 res
+                        * freeable ltac:(wsize3) res
                         * <{ + uintptr w1
                              + uintptr w2
                              + uintptr w3 }> res }>)
@@ -2186,17 +2400,17 @@ uintptr_t cbt_raw_node_alloc(uintptr_t w1, uintptr_t w2, uintptr_t w3) /**#
 Derive cbt_raw_node_alloc SuchThat (fun_correct! cbt_raw_node_alloc)
   As cbt_raw_node_alloc_ok.                                                     .**/
 {                                                                          /**. .**/
-  uintptr_t p = Malloc(12);                                                /**. .**/
+  uintptr_t p = Malloc(3 * sizeof(uintptr_t));                             /**. .**/
   if (p == 0) /* split */ {                                                /**. .**/
     return 0;                                                              /**. .**/
   }                                                                        /**. .**/
   else {                                                                   /**. .**/
     store(p, w1);                                                          /**. .**/
-    store(p + 4, w2);                                                      /**. .**/
-    store(p + 8, w3);                                                      /**. .**/
+    store(p + sizeof(uintptr_t), w2);                                      /**. .**/
+    store(p + 2 * sizeof(uintptr_t), w3);                                  /**. .**/
     return p;                                                              /**. .**/
   }                                                                        /*?.
-  repeat clear_array_0. steps. .**/
+  repeat clear_array_0. steps. steps. .**/
 }                                                                          /**.
 Qed.
 
@@ -2205,7 +2419,7 @@ Qed.
 void cbt_raw_node_free(uintptr_t node) /**#
   ghost_args := (R: mem -> Prop);
   requires t m := <{ * allocator
-                     * freeable 12 node
+                     * freeable (ltac:(wsize3)) node
                      * (EX w1 w2 w3, <{ + uintptr w1
                                         + uintptr w2
                                         + uintptr w3 }> node)
@@ -2215,34 +2429,35 @@ Derive cbt_raw_node_free SuchThat (fun_correct! cbt_raw_node_free)
   As cbt_raw_node_free_ok.                                                      .**/
 {                                                                          /**. .**/
   Free(node);                                                              /*?.
-  instantiate (5:=/[12]). steps. .**/
+  instantiate (5:=/[ltac:(wsize3)]). steps. .**/
 }                                                                          /**.
 
   (* FIXME: this should probably be done more automatically *)
   unfold impl1. intro m'. steps.
   eapply cast_to_anybytes.
-  replace 12 with (4 + (4 + (4 + 0))).
+  replace (ltac:(wsize3)) with (ltac:(wsize) + (ltac:(wsize) + (ltac:(wsize) + 0)))
+    by reflexivity.
   eapply sepapps_cons_contiguous.
   instantiate (1:=uintptr w1).
   pose proof uintptr_contiguous as Hcntg.
-  eassert (Hw: 4 = _); cycle 1. rewrite Hw. apply Hcntg.
-  compute. steps.
+  eassert (Hw: ltac:(wsize) = _); cycle 1. rewrite Hw. apply Hcntg.
+  reflexivity.
 
   eapply sepapps_cons_contiguous.
   instantiate (1:=uintptr w2).
   pose proof uintptr_contiguous as Hcntg.
-  eassert (Hw: 4 = _); cycle 1. rewrite Hw. apply Hcntg.
-  compute. steps.
+  eassert (Hw: ltac:(wsize) = _); cycle 1. rewrite Hw. apply Hcntg.
+  reflexivity.
 
   eapply sepapps_cons_contiguous.
   instantiate (1:=uintptr w3).
   pose proof uintptr_contiguous as Hcntg.
-  eassert (Hw: 4 = _); cycle 1. rewrite Hw. apply Hcntg.
-  compute. steps.
+  eassert (Hw: ltac:(wsize) = _); cycle 1. rewrite Hw. apply Hcntg.
+  reflexivity.
 
   eapply sepapps_nil_contiguous.
 
-  steps. steps.
+  steps.
 Qed.
 
 #[export] Instance spec_of_cbt_raw_node_copy_new: fnspec :=                     .**/
@@ -2256,10 +2471,10 @@ uintptr_t cbt_raw_node_copy_new(uintptr_t src) /**#
                      * R }> m;
   ensures t' m' res := t' = t
            /\ <{ * (if \[res] =? 0 then
-                     allocator_failed_below 12
+                     allocator_failed_below ltac:(wsize3)
                     else
                      <{ * allocator
-                        * freeable 12 res
+                        * freeable ltac:(wsize3) res
                         * <{ + uintptr w1
                              + uintptr w2
                              + uintptr w3 }> res }>)
@@ -2271,8 +2486,8 @@ Derive cbt_raw_node_copy_new SuchThat (fun_correct! cbt_raw_node_copy_new)
   As cbt_raw_node_copy_new_ok. .**/
 {                                                                          /**. .**/
   uintptr_t p = cbt_raw_node_alloc(load(src),
-                                   load(src + 4),
-                                   load(src + 8));                         /**. .**/
+                                   load(src + sizeof(uintptr_t)),
+                                   load(src + 2 * sizeof(uintptr_t)));     /**. .**/
   return p;                                                                /**. .**/
 }                                                                          /**.
 Qed.
@@ -2300,8 +2515,8 @@ Derive cbt_raw_node_copy_replace SuchThat (fun_correct! cbt_raw_node_copy_replac
   As cbt_raw_node_copy_replace_ok. .**/
 {                                                                          /**. .**/
   store(dst, load(src));                                                   /**. .**/
-  store(dst + 4, load(src + 4));                                           /**. .**/
-  store(dst + 8, load(src + 8));                                           /**. .**/
+  store(dst + sizeof(uintptr_t), load(src + sizeof(uintptr_t)));           /**. .**/
+  store(dst + 2 * sizeof(uintptr_t), load(src + 2 * sizeof(uintptr_t)));   /**. .**/
 }                                                                          /**.
 Qed.
 
@@ -2345,7 +2560,8 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   move R after Scope1.
   loop invariant above m.
                                                                                 .**/
-  while (load(p) != 32) /* initial_ghosts(p, c, R); decreases tree */ {  /*?.
+  while (load(p) != 8 * sizeof(uintptr_t))
+    /* initial_ghosts(p, c, R); decreases tree */ {  /*?.
   subst v0.
   repeat heapletwise_step.
   match goal with
@@ -2353,12 +2569,12 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   end.
   steps. destruct tree. { exfalso. steps. }
   rename w2 into aL. rename w3 into aR. .**/
-    if (((k >> load(p)) & 1) == 1) /* split */ {                             /**. .**/
-      p = load(p + 8);                                                       /**. .**/
+    if (((k >> (8 * sizeof(uintptr_t) - 1 - load(p))) & 1) == 1) /* split */ { /**. .**/
+      p = load(p + 2 * sizeof(uintptr_t));                                   /**. .**/
     }                                                                        /**.
   new_ghosts(p, half_subcontent c true,
                  <{ * R
-                    * freeable 12 p'
+                    * freeable ltac:(wsize3) p'
                     * cbt' tree1 (half_subcontent c false) aL
                     * <{ + uintptr /[pfx_len (pfx_mmeet c)]
                          + uintptr aL
@@ -2367,12 +2583,12 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
 
   clear Error.
   assert (map.get c retv <> None) by steps.
-  destruct (word.eqb retv k) eqn:E; simpl cbt'; steps; subst k; steps. idtac. .**/
+  destruct (word.eqb retv k) eqn:E; simpl cbt'; steps; subst k; steps. .**/
     else {                                                                   /**. .**/
-      p = load(p + 4);                                                       /**. .**/
+      p = load(p + sizeof(uintptr_t));                                       /**. .**/
     }                                                                        /**.
   new_ghosts(p, half_subcontent c false, <{ * R
-                       * freeable 12 p'
+                       * freeable ltac:(wsize3) p'
                        * cbt' tree2 (half_subcontent c true) aR
                        * <{ + uintptr /[pfx_len (pfx_mmeet c)]
                             + uintptr p
@@ -2384,15 +2600,17 @@ Derive cbt_update_or_best SuchThat (fun_correct! cbt_update_or_best)
   destruct (word.eqb retv k) eqn:E; simpl cbt'; steps; subst k; steps. .**/
   }                                                                          /**.
   destruct tree; cycle 1. { exfalso. steps. } .**/
-    if (load(p + 4) == k) /* split */ {                                      /**. .**/
-    store(p + 8, v);                                                        /**. .**/
+    if (load(p + sizeof(uintptr_t)) == k) /* split */ {                     /**. .**/
+    store(p + 2 * sizeof(uintptr_t), v);                                    /**. .**/
     return k;                                                               /**. .**/
   }                                                                         /**.
-  simpl. apply map_some_key_singleton. clear Error. simpl cbt'. steps. .**/
+  simpl. rewrite map_any_key_singleton. reflexivity. clear Error. simpl cbt'.
+  steps. .**/
   else {                                                                    /**. .**/
-    return load(p + 4);                                                     /**. .**/
+    return load(p + sizeof(uintptr_t));                                     /**. .**/
   }                                                                         /**.
-  simpl. apply map_some_key_singleton. clear Error. simpl cbt'. steps. .**/
+  simpl. rewrite map_any_key_singleton. reflexivity. clear Error. simpl cbt'.
+  steps. .**/
 }                                                                           /**.
 Qed.
 
@@ -2428,38 +2646,38 @@ Derive cbt_lookup_impl SuchThat (fun_correct! cbt_lookup_impl)
   end.
   move sk at bottom.
   .**/
-  while (load(p) != 32) /* initial_ghosts(p,c,R); decreases sk */ {           /*?.
+  while (load(p) != 8 * sizeof(uintptr_t))
+    /* initial_ghosts(p,c,R); decreases sk */ {                              /*?.
   repeat heapletwise_step.
   match goal with
   | H: _ |= cbt' _ _ _ |- _ => apply cbt_expose_fields in H
   end. steps.
   destruct sk. { exfalso. steps. }
   rename w2 into aL. rename w3 into aR. .**/
-    if (((k >> load(p)) & 1) == 1) /* split */ {                             /**. .**/
-      p = load(p + 8);                                                       /**. .**/
+    if (((k >> (8 * sizeof(uintptr_t) - 1 - load(p))) & 1) == 1) /* split */ { /**. .**/
+      p = load(p + 2 * sizeof(uintptr_t));                                   /**. .**/
     }                                                                        /**.
   new_ghosts(p, half_subcontent c true, <{ * R
-                       * freeable 12 p'
+                       * freeable ltac:(wsize3) p'
                        * cbt' sk1 (half_subcontent c false) aL
                        * <{ + uintptr /[pfx_len (pfx_mmeet c)]
                             + uintptr aL
                             + uintptr p }> p' }>).
-  steps. clear Error. simpl cbt'. steps.
-.**/
+  steps. clear Error. simpl cbt'. steps. .**/
     else {                                                                   /**. .**/
-      p = load(p + 4);                                                       /**. .**/
+      p = load(p + sizeof(uintptr_t));                                       /**. .**/
     }                                                                        /**.
   new_ghosts(p, half_subcontent c false, <{ * R
-                           * freeable 12 p'
+                           * freeable ltac:(wsize3) p'
                            * cbt' sk2 (half_subcontent c true) aR
                            * <{ + uintptr /[pfx_len (pfx_mmeet c)]
                                 + uintptr p
                                 + uintptr aR }> p' }>).
   steps. clear Error. simpl cbt'. steps. .**/
     }                                                                          /**.
-  destruct sk; cycle 1. { exfalso. steps. } simpl cbt' in *. .**/
-  if (load(p + 4) == k) /* split */ {                                        /**. .**/
-    store(val_out, load(p + 8));                                             /**. .**/
+  destruct sk; cycle 1. { exfalso. steps. } simpl cbt'. .**/
+  if (load(p + sizeof(uintptr_t)) == k) /* split */ {                        /**. .**/
+    store(val_out, load(p + 2 * sizeof(uintptr_t)));                         /**. .**/
     return 1;                                                                /**. .**/
   }                                                                          /**. .**/
   else {                                                                     /**. .**/
@@ -2483,7 +2701,8 @@ uintptr_t cbt_lookup(uintptr_t tp, uintptr_t k, uintptr_t val_out) /**#
                             end) val_out
                  * R }> m'         #**/                                     /**.
 Derive cbt_lookup SuchThat (fun_correct! cbt_lookup) As cbt_lookup_ok.           .**/
-{                                                                           /**. .**/
+{                                                                           /**.
+  unfold cbt, nncbt in *. .**/
   if (tp == 0) /* split */ {                                                /**. .**/
     return 0;                                                               /**. .**/
   }                                                                         /**. .**/
@@ -2501,14 +2720,14 @@ uintptr_t cbt_alloc_leaf(uintptr_t k, uintptr_t v) /**#
   requires t m := <{ * allocator * R }> m;
   ensures t' m' res := t' = t
            /\ <{ * (if \[res] =? 0 then
-                     allocator_failed_below 12
+                     allocator_failed_below ltac:(wsize3)
                    else
                      <{ * allocator
                         * cbt' Leaf (map.singleton k v) res }>)
                  * R }> m' #**/                                            /**.
 Derive cbt_alloc_leaf SuchThat (fun_correct! cbt_alloc_leaf) As cbt_alloc_leaf_ok. .**/
 {                                                                          /**. .**/
-  uintptr_t p = cbt_raw_node_alloc(32, k, v);                              /**. .**/
+  uintptr_t p = cbt_raw_node_alloc(8 * sizeof(uintptr_t), k, v);           /**. .**/
   return p;                                                                /**. .**/
 }                                                                          /**.
   simpl cbt'. destruct (\[p] =? 0) eqn:E; steps.
@@ -2519,53 +2738,48 @@ Qed.
 uintptr_t critical_bit(uintptr_t k1, uintptr_t k2) /**#
   requires t m := k1 <> k2;
   ensures t' m' res := t = t' /\ m' = m
-                /\ 0 <= \[res] < 32
+                /\ 0 <= \[res] < ltac:(bw)
                 /\ \[res] = pfx_len (pfx_meet (pfx_emb k1) (pfx_emb k2)) #**/
 /**.
 Derive critical_bit SuchThat (fun_correct! critical_bit) As critical_bit_ok.    .**/
 {                                                                          /**. .**/
   uintptr_t i = 0;                                                         /**.
-  prove (0 <= \[i] < 32).
-  assert (forall n, 0 <= n < \[i] -> bit_at k1 n = bit_at k2 n).
-  intros. hwlia.
+  prove (0 <= \[i] < ltac:(bw)).
+  prove (forall n, 0 <= n < \[i] -> bit_at k1 n = bit_at k2 n).
   delete #(i = /[0]).
   loop invariant above H.
   move i at bottom. .**/
-  while (i < 31 && ((k1 >> i & 1) == ((k2 >> i & 1))))
-    /* decreases (32 - \[i]) */ {                                          /**. .**/
+  while (i < 8 * sizeof(uintptr_t) - 1
+    && ((k1 >> (8 * sizeof(uintptr_t) - 1 - i) & 1)
+          == (k2 >> (8 * sizeof(uintptr_t) - 1 - i) & 1)))
+    /* decreases (ltac:(bw) - \[i]) */ {                                   /**. .**/
     i = i + 1;                                                             /**. .**/
   }                                                                        /**.
-  assert (Hcmp: n = \[i'] \/ n < \[i']) by lia. destruct Hcmp.
-  { subst. steps. }
-  { match goal with | H: forall _, _ |- _ => apply H end. lia. } .**/
+  decide (n = \[i']). { steps. } apply_forall. steps. .**/
   return i;                                                                /**. .**/
 }                                                                          /**.
   symmetry. apply pfx_cb_charac; steps.
-  { unzify. destruct_or. assert (Hui: \[i] = 31) by lia. rewrite Hui in *. intro.
-  match goal with
-  | H: k1 <> k2 |- _ => apply H
-  end.
-  apply bit_at_inj. intros. assert (Hcmp: i0 = 31 \/ i0 < 31) by lia. destruct Hcmp.
-  { steps. } { match goal with | H: forall _, _ |- _ => apply H end. lia. }
-  steps. }
+  { unzify. destruct_or. assert (Hui: \[i] = ltac:(bwm1)) by lia.
+    rewrite Hui in *. intro. apply_ne. apply bit_at_inj. intros.
+    decide (i0 = ltac:(bwm1)). { steps. } apply_forall. steps. steps. }
 Qed.
 
 #[export] Instance spec_of_cbt_insert_at: fnspec :=                             .**/
 
 uintptr_t cbt_insert_at(uintptr_t tp, uintptr_t cb, uintptr_t k, uintptr_t v) /**#
   ghost_args := (sk: tree_skeleton) (c: word_map) (R: mem -> Prop);
-  requires t m := <{ * allocator
-                     * cbt' sk c tp
-                     * R }> m
-                  /\ 0 <= \[cb] < 32
+  requires t m := 0 <= \[cb] < ltac:(bw)
                   /\ pfx_len
                        (pfx_meet
                          (pfx_emb k)
                          (pfx_emb (cbt_best_lookup sk c k)))
-                      = \[cb];
+                      = \[cb]
+                  /\ <{ * allocator
+                        * cbt' sk c tp
+                        * R }> m;
   ensures t' m' res := t' = t
                        /\ if \[res] =? 0 then
-                            <{ * allocator_failed_below 12
+                            <{ * allocator_failed_below ltac:(wsize3)
                                * cbt' sk c tp
                                * R
                                * (fun _ => True) }> m'
@@ -2604,11 +2818,11 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   end.
   steps. destruct sk. { exfalso. steps. }
   .**/
-    if (((k >> load(p)) & 1) == 1) /* split */ {                            /**. .**/
-      p = load(p + 8);                                                      /**. .**/
+    if (((k >> (8 * sizeof(uintptr_t) - 1 - load(p))) & 1) == 1) /* split */ { /**. .**/
+      p = load(p + 2 * sizeof(uintptr_t));                                  /**. .**/
     }                                                                       /**.
   new_ghosts(p, half_subcontent c true, <{ * R
-                           * freeable 12 p'
+                           * freeable ltac:(wsize3) p'
                            * cbt' sk1 (half_subcontent c false) w2
                            * <{ + uintptr /[pfx_len (pfx_mmeet c)]
                                 + uintptr w2
@@ -2622,11 +2836,11 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   simpl cbt_best_lookup in *. simpl cbt' in *. steps. subst k'. steps.
   instantiate (1:=Node sk1 sk'). simpl cbt'. clear Error. steps. .**/
     else {                                                                    /**. .**/
-      p = load(p + 4);                                                        /**. .**/
+      p = load(p + sizeof(uintptr_t));                                        /**. .**/
     }                                                                         /**.
   new_ghosts (p, half_subcontent c false,
       <{ * R
-         * freeable 12 p'
+         * freeable ltac:(wsize3) p'
          * <{ + uintptr /[pfx_len (pfx_mmeet c)]
               + uintptr p
               + uintptr w3 }> p'
@@ -2653,9 +2867,9 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   clear Error. destruct sk; simpl cbt' in *; steps. .**/
     else {                                                                   /**. .**/
       store(p, cb);                                                          /**. .**/
-      if (((k >> cb) & 1) == 1) /* split */ {                                /**. .**/
-        store(p + 4, new_node);                                              /**. .**/
-        store(p + 8, new_leaf);                                              /**. .**/
+      if (((k >> (8 * sizeof(uintptr_t) - 1 - cb)) & 1) == 1) /* split */ { /**. .**/
+        store(p + sizeof(uintptr_t), new_node);                              /**. .**/
+        store(p + 2 * sizeof(uintptr_t), new_leaf);                          /**. .**/
         return tp;                                                           /**. .**/
       }                                                                      /**.
   clear Error. instantiate (1:=Node sk Leaf). simpl cbt'.
@@ -2688,8 +2902,8 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
   destruct sk; simpl cbt' in *; steps.  symmetry.
   apply half_subcontent_put_excl_bulk. lia. steps. congruence. .**/
       else {                                                                  /**. .**/
-        store(p + 4, new_leaf);                                               /**. .**/
-        store(p + 8, new_node);                                               /**. .**/
+        store(p + sizeof(uintptr_t), new_leaf);                               /**. .**/
+        store(p + 2 * sizeof(uintptr_t), new_node);                           /**. .**/
         return tp;                                                            /**. .**/
       }                                                                       /**.
   clear Error. instantiate (1:=Node Leaf sk). simpl cbt'.
@@ -2732,7 +2946,7 @@ uintptr_t cbt_insert(uintptr_t tp, uintptr_t k, uintptr_t v) /**#
                      * R }> m;
   ensures t' m' res := t' = t
            /\ if \[res] =? 0 then
-                 <{ * allocator_failed_below 12
+                 <{ * allocator_failed_below ltac:(wsize3)
                     * cbt c tp
                     * R
                     * fun _ => True }> m'
@@ -2741,7 +2955,8 @@ uintptr_t cbt_insert(uintptr_t tp, uintptr_t k, uintptr_t v) /**#
                     * cbt (map.put c k v) res
                     * R }> m' #**/                                         /**.
 Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          .**/
-{                                                                          /**. .**/
+{                                                                          /**.
+  unfold cbt, nncbt in *. .**/
   if (tp == 0) /* split */ {                                               /**.
     (* a direct `return cbt_alloc_leaf(k, v);` gives a type error
        (the assignment_rhs type vs the expr type) *)                            .**/
@@ -2756,6 +2971,11 @@ Derive cbt_insert SuchThat (fun_correct! cbt_insert) As cbt_insert_ok.          
     else {                                                                 /**. .**/
       uintptr_t cb = critical_bit(k, best_k);                              /**. .**/
       uintptr_t result = cbt_insert_at(tp, cb, k, v);                      /**.
+  (* TODO: figure out why instantiate_frame_evar_with_remaining_obligation
+           fails here when canceling the frace ?R, and so we need to
+           manually unfold enable_frame_trick *)
+  (* ...maybe has something to do what the memory we are canceling in is only
+     one heaplet and not a union? *)
   subst. steps. unfold enable_frame_trick.enable_frame_trick. steps. .**/
       return result;                                                       /**. .**/
     }                                                                      /**.
@@ -2786,16 +3006,16 @@ Derive cbt_delete_from_nonleaf SuchThat
   uintptr_t cur = 0;                                                       /**. .**/
   uintptr_t sib = 0;                                                       /**. .**/
   uintptr_t par = tp;                                                      /**.
-  assert (0 <= pfx_len (pfx_mmeet c) < 32) by steps.
+  assert (0 <= pfx_len (pfx_mmeet c) < ltac:(bw)) by steps.
   simpl cbt' in *. repeat heapletwise_step.
   (* context packaging fails if we don't `simpl cbt'` before the `if`
      because of variables being introduced too late *) .**/
-  if (((k >> deref(par)) & 1) == 1) {                                      /**. .**/
-    sib = load(par + 4);                                                   /**. .**/
-    cur = load(par + 8);                                                   /**. .**/
+  if (((k >> (8 * sizeof(uintptr_t) - 1 - deref(par))) & 1) == 1) {                               /**. .**/
+    sib = load(par + sizeof(uintptr_t));                                   /**. .**/
+    cur = load(par + 2 * sizeof(uintptr_t));                               /**. .**/
   } else {                                                                 /**. .**/
-    cur = load(par + 4);                                                   /**. .**/
-    sib = load(par + 8);                                                   /**. .**/
+    cur = load(par + sizeof(uintptr_t));                                   /**. .**/
+    sib = load(par + 2 * sizeof(uintptr_t));                               /**. .**/
   }                                                                        /**. merge.
   rename c0 into brc.
   loop invariant above cur.
@@ -2849,12 +3069,12 @@ Derive cbt_delete_from_nonleaf SuchThat
   | H: par = tp |- _ => rewrite <- H in *; rewrite H at 2; clear H
   end.
   match goal with
-  | H1: par <> /[0], H2: 0 <= pfx_len (pfx_mmeet c) < 32 |- _ =>
+  | H1: par <> /[0], H2: 0 <= pfx_len (pfx_mmeet c) < _ |- _ =>
     move H1 at bottom; move H2 at bottom
   end.
   .**/
-  while (load(cur) != 32) /* initial_ghosts(c, cur, skS, sib, par, R);
-    decreases skC */ {  /*?.
+  while (load(cur) != 8 * sizeof(uintptr_t))
+    /* initial_ghosts(c, cur, skS, sib, par, R); decreases skC */ {  /*?.
   repeat heapletwise_step.
   match goal with
   | H: _ |= cbt' _ _ cur |- _ => apply cbt_expose_fields in H
@@ -2865,13 +3085,14 @@ Derive cbt_delete_from_nonleaf SuchThat
   | H: half_subcontent c brc = _ |- _ => rewrite H in *
   end. steps. } .**/
     par = cur;                                                             /**. .**/
-    if (((k >> load(par)) & 1) == 1) /* split */ {                         /**. .**/
-      sib = load(par + 4);                                                 /**. .**/
-      cur = load(par + 8);                                                 /**. .**/
+    if (((k >> (8 * sizeof(uintptr_t) - 1 - load(par))) & 1) == 1) /* split */
+    {                                                                      /**. .**/
+      sib = load(par + sizeof(uintptr_t));                                 /**. .**/
+      cur = load(par + 2 * sizeof(uintptr_t));                             /**. .**/
     }                                                                      /**.
   new_ghosts(half_subcontent c brc, _, _, _, _,
               <{ * R
-                 * freeable 12 par'
+                 * freeable ltac:(wsize3) par'
                    (* FIXME: replacing the values of the `uintptr`s with the
                              '_' placeholder leads to incomplete shelved goals
                              at the end of this proof. Why? *)
@@ -2879,83 +3100,93 @@ Derive cbt_delete_from_nonleaf SuchThat
                       + uintptr (if brc then sib' else par)
                       + uintptr (if brc then par else sib') }> par'
                  * cbt' _ _ sib' }>).
-  unpurify. steps. subst. rewrite half_subcontent_get. steps.
+  unpurify. steps.
+  1-4:
+  match goal with
+  | |- context [ word.eqb ?a ?b ] => replace (word.eqb a b) with true; reflexivity
+  end.
+  rewrite half_subcontent_get. steps.
   clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
   unpurify. destruct brc eqn:E; simpl cbt'; steps.
 
   (* TODO: move at least some of the steps in the proof code below into step_hook *)
-  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). congruence.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). steps.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   pose proof (half_subcontent_remove_other c k true) as Hhcr. steps. rewrite Hhcr.
-  steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  steps. eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
-  rewrite half_subcontent_remove_same. steps. congruence.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  rewrite half_subcontent_remove_same. steps. steps.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
-  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). congruence.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). steps.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
-  erewrite half_subcontent_remove_same. steps. congruence.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  erewrite half_subcontent_remove_same. steps. steps.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   pose proof (half_subcontent_remove_other c k false) as Hhcr. steps.
-  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ false). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps. .**/
     else {                                                                 /**. .**/
-      cur = load(par + 4);                                                 /**. .**/
-      sib = load(par + 8);                                                 /**. .**/
+      cur = load(par + sizeof(uintptr_t));                                 /**. .**/
+      sib = load(par + 2 * sizeof(uintptr_t));                             /**. .**/
     }                                                                      /**.
   new_ghosts(half_subcontent c brc, _, _, _, _,
                   <{ * R
-                     * freeable 12 par'
+                     * freeable ltac:(wsize3) par'
                      * <{ + uintptr /[pfx_len (pfx_mmeet c)]
                           + uintptr (if brc then sib' else par)
                           + uintptr (if brc then par else sib') }> par'
                      * cbt' _ _ sib' }>).
-  unpurify. steps. subst. rewrite half_subcontent_get. steps.
+  unpurify. steps.
+  1-4:
+  match goal with
+  | |- context [ word.eqb ?a ?b ] => replace (word.eqb a b) with false; reflexivity
+  end.
+  rewrite half_subcontent_get. steps.
   clear Error. instantiate (1:=if brc then Node skS sk' else Node sk' skS).
 
   destruct brc eqn:E; simpl cbt'; unpurify; steps.
 
-  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). congruence.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=true). steps.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   pose proof (half_subcontent_remove_other c k true) as Hhcr. steps.
-  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
-  erewrite half_subcontent_remove_same. steps. congruence.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  erewrite half_subcontent_remove_same. steps. steps.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
-  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). congruence.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  erewrite pfx_mmeet_remove_unchanged. steps. instantiate (1:=false). steps.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
-  erewrite half_subcontent_remove_same. steps. congruence.
-  eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  erewrite half_subcontent_remove_same. steps. steps.
+  eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps.
 
   pose proof (half_subcontent_remove_other c k false) as Hhcr. steps.
-  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_extends_remove_in_both.
+  rewrite Hhcr. steps. eapply map_extends_nonempty. eapply map_remove_monotone.
   eapply (half_subcontent_extends _ true). rewrite map.remove_not_in. steps.
   rewrite half_subcontent_get. steps. .**/
   }                                                                        /**.
@@ -2963,7 +3194,7 @@ Derive cbt_delete_from_nonleaf SuchThat
   repeat match goal with
   | H: acbt (Node _ _) _ |- _ => apply acbt_prefix_length in H
   end. pose proof (pfx_len_nneg (pfx_mmeet (half_subcontent c brc))). hwlia. }  .**/
-  if (load(cur + 4) == k) /* split */ {                                    /**.
+  if (load(cur + sizeof(uintptr_t)) == k) /* split */ {                    /**.
   match goal with
   | H: _ |= cbt' _ _ sib |- _ => apply cbt_expose_fields in H
   end. repeat heapletwise_step.
@@ -2974,7 +3205,7 @@ Derive cbt_delete_from_nonleaf SuchThat
     return 1;                                                              /**. .**/
   }                                                                        /**.
   assert (map.get c k <> None). {
-  eapply map_extends_get_nnone. apply half_subcontent_extends.
+  eapply map_extends_get_not_None. apply half_subcontent_extends.
   match goal with
   | H: half_subcontent _ _ = map.singleton _ _ |- _ => rewrite H
   end. steps. } destruct (map.get c k); steps.
@@ -2990,7 +3221,9 @@ Derive cbt_delete_from_nonleaf SuchThat
   assert (Hgn: map.get c k = None). {
   apply eq_None_by_false. intro HnN. apply half_subcontent_get_nNone in HnN.
   match goal with
-  | H: brc = bit_at _ _ |- _ => rewrite <- H in HnN
+  | H: brc = word.eqb _ _ |- _ =>
+       rewrite word.ring_morph_sub in H; rewrite <- bit_at_expand in H;
+       rewrite <- H in HnN
   end.
   match goal with
   | H: half_subcontent c brc = map.singleton _ _ |- _ => rewrite H in HnN
@@ -3022,7 +3255,8 @@ uintptr_t cbt_delete(uintptr_t tpp, uintptr_t k) /**#
                                     * cbt (map.remove c k) tp' }>)
                       * R }> m' #**/                                       /**.
 Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          .**/
-{                                                                          /**. .**/
+{                                                                          /**.
+  unfold cbt, nncbt in *. .**/
   uintptr_t tp = load(tpp);                                                /**. .**/
   if (tp == 0) /* split */ {                                               /**. .**/
     return 0;                                                              /**. .**/
@@ -3034,13 +3268,13 @@ Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          
   | H: _ |= cbt' _ _ tp |- _ => pose proof (purify_cbt' _ _ _ _ H);
                                 apply cbt_expose_fields in H
   end. repeat heapletwise_step. .**/
-    if (load(tp) == 32) /* split */ {                                      /**.
+    if (load(tp) == 8 * sizeof(uintptr_t)) /* split */ {                   /**.
   destruct tree; cycle 1. { exfalso.
   match goal with
   | H: acbt _ _ |- _ => apply acbt_prefix_length in H
   end.
   pose proof (pfx_len_nneg (pfx_mmeet c)). hwlia. } .**/
-      if (load(tp + 4) == k) /* split */ {                                 /**. .**/
+      if (load(tp + sizeof(uintptr_t)) == k) /* split */ {                 /**. .**/
         cbt_raw_node_free(tp);                                             /**. .**/
         store(tpp, 0);                                                     /**. .**/
         return 1;                                                          /**. .**/
@@ -3053,10 +3287,2186 @@ Derive cbt_delete SuchThat (fun_correct! cbt_delete) As cbt_delete_ok.          
     else {                                                                 /**.
   destruct tree. { exfalso. steps. } .**/
       uintptr_t ret = cbt_delete_from_nonleaf(tp, k);                      /**.
-  simpl cbt'. clear Error. steps.
-  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+  simpl cbt'. clear Error. steps. .**/
       return ret;                                                          /**. .**/
     }                                                                      /**. .**/
+  }                                                                        /**. .**/
+}                                                                          /**.
+Qed.
+
+(* TODO: hoist *)
+Lemma half_subcontent_get_some : forall c b k v,
+  map.get (half_subcontent c b) k = Some v -> map.get c k = Some v.
+Proof.
+  intros. rewrite half_subcontent_get in *.
+  match goal with
+  | H: context [ if ?cond then _ else _ ] |- _ => destruct cond
+  end; steps.
+Qed.
+
+Lemma Z_land_0_land_ldiff : forall c a b,
+  Z.land (Z.ldiff a c) (Z.land b c) = 0.
+Proof.
+  intros. apply Z.bits_inj'. intros. repeat rewrite Z.land_spec. rewrite Z.ldiff_spec.
+  rewrite Z.bits_0. destruct (Z.testbit c n); lia.
+Qed.
+
+Lemma Z_land_le : forall a b,
+  0 <= b -> Z.land a b <= b.
+Proof.
+  intros.
+  pose proof (bitblast.Z.or_to_plus _ _ (Z_land_0_land_ldiff a b b)).
+  rewrite Z.lor_ldiff_and in *.
+  assert (0 <= Z.ldiff b a). { rewrite Z.ldiff_nonneg. lia. } rewrite Z.land_comm. lia.
+Qed.
+
+Lemma Z_ones_nonneg : forall i, 0 <= i -> 0 <= Z.ones i.
+Proof.
+  intros. unfold Z.ones. rewrite Z.shiftl_1_l. lia.
+Qed.
+
+Lemma Z_testbit_lt : forall n1 n2 i,
+  Z.testbit n1 i = false -> Z.testbit n2 i = true ->
+  (forall j, i < j -> Z.testbit n1 j = Z.testbit n2 j) ->
+  n1 < n2.
+Proof.
+  intros. assert (0 <= i). { enough (Hni: ~(i < 0)) by lia. intro.
+    match goal with
+    | H: Z.testbit _ _ = true |- _ => rewrite Z.testbit_neg_r in H by lia
+    end. discriminate. }
+  remember (Z.ldiff n1 (Z.ones (i + 1))) as nc.
+  assert (n1 = Z.lor nc (Z.land n1 (Z.ones (i + 1)))).
+  { subst. symmetry. apply Z.lor_ldiff_and. }
+  assert (n2 = Z.lor nc (Z.land n2 (Z.ones (i + 1)))).
+  { subst. replace (Z.ldiff n1 (Z.ones (i + 1))) with (Z.ldiff n2 (Z.ones (i + 1))).
+    symmetry. apply Z.lor_ldiff_and. apply Z.bits_inj'. intros.
+    do 2 rewrite Z.ldiff_spec. assert (Hcmp: n <= i \/ i < n) by lia.
+    rewrite Z.testbit_ones_nonneg by lia.
+    destruct Hcmp; steps. replace (n <? i + 1) with false by lia. steps.
+    symmetry. eauto. }
+  do 2 match goal with
+       | H: _ = Z.lor _ _ |- _ =>
+            rewrite bitblast.Z.or_to_plus in H by (subst; apply Z_land_0_land_ldiff)
+       end.
+  do 2 match goal with
+       | H: _ = nc + _ |- _ => rewrite H; clear H
+       end.
+  apply Zplus_lt_compat_l.
+  enough (Hb: Z.land n1 (Z.ones (i + 1)) <= Z.ones i /\
+              Z.shiftl 1 i <= Z.land n2 (Z.ones (i + 1))).
+  { assert (1 <= Z.shiftl 1 (i + 1)). { rewrite Z.shiftl_1_l. lia. }
+    destruct Hb. unfold Z.ones in *. lia. }
+  split.
+  - replace (Z.land n1 (Z.ones (i + 1))) with (Z.land n1 (Z.ones i)).
+    { apply Z_land_le. auto using Z_ones_nonneg. }
+    apply Z.bits_inj'. intros. do 2 rewrite Z.land_spec.
+    do 2 rewrite bitblast.Z.testbit_ones_nonneg by lia.
+    eq_neq_cases n i. { subst.  match goal with | H: _ = false |- _ => rewrite H end.
+      steps. }
+    f_equal. lia.
+  - eassert (Hsub: _).
+    { apply (Z.sub_nocarry_ldiff (Z.land n2 (Z.ones (i + 1))) (Z.shiftl 1 i)).
+      apply Z.bits_inj'. intros. rewrite Z.bits_0. rewrite Z.ldiff_spec.
+      rewrite Z.shiftl_spec by lia. rewrite Z_bits_1. rewrite Z.land_spec.
+      rewrite Z.testbit_ones_nonneg by lia. destruct (Z.testbit n2 n) eqn:E; steps.
+      enough (n <> i) by lia. intro. subst. congruence. }
+    match type of Hsub with
+    | _ = ?r => assert (0 <= r)
+    end.
+    { rewrite Z.ldiff_nonneg. left. rewrite Z.land_nonneg.
+      right. apply Z_ones_nonneg. lia. }
+    lia.
+Qed.
+
+Lemma bit_at_lt : forall w1 w2 i, 0 <= i < ltac:(bw) ->
+  (forall j, 0 <= j < i -> bit_at w1 j = bit_at w2 j) ->
+  bit_at w1 i = false -> bit_at w2 i = true ->
+  \[w1] < \[w2].
+Proof.
+  intros. eapply (Z_testbit_lt _ _ (ltac:(bwm1) - i)).
+  - rewrite Z_testbit_is_bit_at; steps.
+  - rewrite Z_testbit_is_bit_at; steps.
+  - intros. assert (Hcmp: 0 <= j < ltac:(bw) \/ ~(0 <= j < ltac:(bw))) by lia. destruct Hcmp.
+    + do 2 rewrite Z_testbit_is_bit_at by lia. apply_forall. lia.
+    + do 2 rewrite Z_testbit_past_word_width by assumption. reflexivity.
+Qed.
+
+Lemma bit_at_le : forall w1 w2 i, 0 <= i < ltac:(bw) ->
+  (forall j, 0 <= j < i -> bit_at w1 j = bit_at w2 j) ->
+  bit_at w1 i = false -> bit_at w2 i = true ->
+  \[w1] <= \[w2].
+Proof.
+  intros. enough (\[w1] < \[w2]) by lia. eauto using bit_at_lt.
+Qed.
+
+Lemma pfx_le_bit_at_wlt : forall p w1 w2,
+  pfx_le p (pfx_emb w1) -> pfx_le p (pfx_emb w2) -> pfx_len p < ltac:(bw) ->
+  bit_at w1 (pfx_len p) = false -> bit_at w2 (pfx_len p) = true -> \[w1] < \[w2].
+Proof.
+  intros. eapply bit_at_lt; try eassumption.
+  - pose proof (pfx_len_nneg p). lia.
+  - intros. rewrite <- pfx_le_spec in *.
+    do 2 match goal with
+         | Hfa: forall _, _, Hrng: _ <= _ < _ |- _ => specialize (Hfa _ Hrng)
+         end.
+    rewrite pfx_emb_spec in * by lia. congruence.
+Qed.
+
+(* TODO: hoist *)
+Lemma half_subcontent_in_false_true_lt : forall c k k',
+  map.get (half_subcontent c false) k <> None ->
+  map.get (half_subcontent c true) k' <> None ->
+  \[k] < \[k'].
+Proof.
+  intros. eapply pfx_le_bit_at_wlt with (p:=pfx_mmeet c);
+  eauto using half_subcontent_get_nnone, pfx_mmeet_key_le, half_subcontent_in_bit.
+  apply (pfx_mmeet_nonsingle_len _ k k'); eauto using half_subcontent_get_nnone.
+  intro. subst k'.
+  do 2 match goal with
+       | H: map.get _ _ <> None |- _ => apply half_subcontent_in_bit in H
+       end.
+  congruence.
+Qed.
+
+(* TODO: hoist *)
+(* actually, even `_lt` holds *)
+Lemma half_subcontent_in_false_true_le : forall c k k',
+  map.get (half_subcontent c false) k <> None ->
+  map.get (half_subcontent c true) k' <> None ->
+  \[k] <= \[k'].
+Proof.
+  intros. enough (\[k] < \[k']) by lia. eauto using half_subcontent_in_false_true_lt.
+Qed.
+
+#[export] Instance spec_of_cbt_get_min_impl: fnspec :=                          .**/
+void cbt_get_min_impl(uintptr_t tp, uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (sk: tree_skeleton) (c: word_map)
+                (key_out_orig: word) (val_out_orig: word) (R: mem -> Prop);
+  requires t m := <{ * cbt' sk c tp
+                     * uintptr key_out_orig key_out
+                     * uintptr val_out_orig val_out
+                     * R }> m;
+  ensures t' m' := t' = t
+           /\ <{ * cbt' sk c tp
+                 * (EX k v,
+                      <{ * emp (map.get c k = Some v)
+                         * emp (forall k', map.get c k' <> None -> \[k] <= \[k'])
+                         * uintptr k key_out
+                         * uintptr v val_out }>)
+                 * R }> m'         #**/                                    /**.
+Derive cbt_get_min_impl SuchThat (fun_correct! cbt_get_min_impl)
+  As cbt_get_min_impl_ok.                                                       .**/
+{                                                                          /**.
+  move sk at bottom.
+  loop invariant above m. .**/
+  while (load(tp) != 8 * sizeof(uintptr_t)) /* initial_ghosts(tp,c,R); decreases sk */ {      /*?.
+  repeat heapletwise_step.
+  match goal with
+  | H: _ |= cbt' _ _ tp |- _ => pose proof (purify_cbt' _ _ _ _ H);
+                                apply cbt_expose_fields in H
+  end. steps. destruct sk. { exfalso; steps. } .**/
+      tp = load(tp + sizeof(uintptr_t));                                   /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c false,
+      <{ * cbt' sk2 (half_subcontent c true) w3
+         * freeable ltac:(wsize3) tp'
+         * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+              + uintptr tp
+              + uintptr w3 }> tp'
+         * R }>).
+  steps. clear Error. simpl cbt'. steps.
+  eapply half_subcontent_get_some. eassumption.
+  match goal with
+  | H: map.get _ _ <> None |- _ => apply half_subcontent_get_nNone in H
+  end.
+  { match goal with
+    | H: context [ map.get (half_subcontent _ ?b) _ <> None ] |- _ => destruct b
+    end.
+    - eapply half_subcontent_in_false_true_le; [ | eassumption ]. steps.
+    - apply_forall. steps. }
+  destruct sk; [ | exfalso; steps ]. .**/
+  store(key_out, load(tp + sizeof(uintptr_t)));                            /**.
+  (* TODO: figure out why enable_frame_trick appears here *)
+  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+  store(val_out, load(tp + 2 * sizeof(uintptr_t)));                        /**. .**/
+}                                                                          /**.
+simpl cbt'. clear Error. steps. subst. steps.
+Qed.
+
+#[export] Instance spec_of_cbt_get_min: fnspec :=                                .**/
+uintptr_t cbt_get_min(uintptr_t tp, uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (c: word_map) (key_out_orig: word) (val_out_orig: word)
+                (R: mem -> Prop);
+  requires t m := <{ * cbt c tp
+                     * uintptr key_out_orig key_out
+                     * uintptr val_out_orig val_out
+                     * R }> m;
+  ensures t' m' res := t' = t
+           /\ <{ * emp (res = if word.eqb tp /[0] then /[0] else /[1])
+                 * cbt c tp
+                 * (if word.eqb tp /[0] then
+                      <{ * uintptr key_out_orig key_out
+                         * uintptr val_out_orig val_out }>
+                    else
+                      (EX k v,
+                        <{ * emp (map.get c k = Some v)
+                           * emp (forall k', map.get c k' <> None -> \[k] <= \[k'])
+                           * uintptr k key_out
+                           * uintptr v val_out }>))
+                 * R }> m'         #**/                                    /**.
+Derive cbt_get_min SuchThat (fun_correct! cbt_get_min) As cbt_get_min_ok.       .**/
+{                                                                          /**.
+  unfold cbt, nncbt in *. .**/
+  if (tp == 0) /* split */ {                                               /**. .**/
+    return 0;                                                              /**. .**/
+  }                                                                        /**. .**/
+  else {                                                                   /**. .**/
+    cbt_get_min_impl(tp, key_out, val_out);                                /**. .**/
+    return 1;                                                              /**. .**/
+  }                                                                        /**.
+  apply_forall; steps. .**/
+}                                                                          /**.
+Qed.
+
+#[export] Instance spec_of_cbt_get_max: fnspec :=                                .**/
+uintptr_t cbt_get_max(uintptr_t tp, uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (c: word_map) (key_out_orig: word) (val_out_orig: word)
+                (R: mem -> Prop);
+  requires t m := <{ * cbt c tp
+                     * uintptr key_out_orig key_out
+                     * uintptr val_out_orig val_out
+                     * R }> m;
+  ensures t' m' res := t' = t
+           /\ <{ * emp (res = if word.eqb tp /[0] then /[0] else /[1])
+                 * cbt c tp
+                 * (if word.eqb tp /[0] then
+                      <{ * uintptr key_out_orig key_out
+                         * uintptr val_out_orig val_out }>
+                    else
+                      (EX k v,
+                        <{ * emp (map.get c k = Some v)
+                           * emp (forall k', map.get c k' <> None -> \[k'] <= \[k])
+                           * uintptr k key_out
+                           * uintptr v val_out }>))
+                 * R }> m'         #**/                                    /**.
+Derive cbt_get_max SuchThat (fun_correct! cbt_get_max) As cbt_get_max_ok.       .**/
+{                                                                          /**.
+  unfold cbt, nncbt in *. .**/
+  if (tp == 0) /* split */ {                                               /**. .**/
+    return 0;                                                              /**. .**/
+  }                                                                        /**. .**/
+  else {                                                                   /**.
+  move tree at bottom.
+  loop invariant above m. .**/
+    while (load(tp) != 8 * sizeof(uintptr_t))
+      /* initial_ghosts(tp,c,R); decreases tree */ {   /*?.
+  repeat heapletwise_step.
+  match goal with
+  | H: _ |= cbt' _ _ tp |- _ => pose proof (purify_cbt' _ _ _ _ H);
+                                apply cbt_expose_fields in H
+  end. steps. destruct tree. { exfalso; steps. } .**/
+      tp = load(tp + 2 * sizeof(uintptr_t));                               /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c true,
+      <{ * cbt' tree1 (half_subcontent c false) w2
+         * freeable ltac:(wsize3) tp'
+         * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+              + uintptr w2
+              + uintptr tp }> tp'
+         * R }>).
+  steps. instantiate (1:=Node tree1 tree). clear Error. simpl cbt'. steps.
+  eapply half_subcontent_get_some. eassumption.
+  match goal with
+  | H: map.get _ _ <> None |- _ => apply half_subcontent_get_nNone in H
+  end.
+  { match goal with
+    | H: context [ map.get (half_subcontent _ ?b) _ <> None ] |- _ => destruct b
+    end.
+    - apply_forall. steps.
+    - eapply half_subcontent_in_false_true_le; [ eassumption | steps ]. }
+  destruct tree; [ | exfalso; steps ]. .**/
+    store(key_out, load(tp + sizeof(uintptr_t)));                          /**.
+  (* TODO: (analogous to one in cbt_get_min) figure out why
+           enable_frame_trick left here *)
+  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+    store(val_out, load(tp + 2 * sizeof(uintptr_t)));                      /**. .**/
+    return 1;                                                              /**. .**/
+  }                                                                        /**.
+  instantiate (1:=Leaf). simpl cbt'. clear Error. steps. subst. steps. .**/
+}                                                                          /**.
+Qed.
+
+Definition set_bit_at (w: word) (i: Z) := word.or w (/[1] ^<< /[ltac:(bwm1) - i]).
+
+Fixpoint cbt_lookup_trace sk c k :=
+  match sk with
+  | Node skL skR => set_bit_at
+            (if bit_at k (pfx_len (pfx_mmeet c))
+            then cbt_lookup_trace skR (half_subcontent c true) k
+            else cbt_lookup_trace skL (half_subcontent c false) k)
+            (pfx_len (pfx_mmeet c))
+  | Leaf => /[0]
+  end.
+
+#[export] Instance spec_of_cbt_best_with_trace: fnspec :=                       .**/
+uintptr_t cbt_best_with_trace(uintptr_t tp, uintptr_t k, uintptr_t trace_out,
+                              uintptr_t val_out) /**#
+  ghost_args := (sk: tree_skeleton) (c: word_map)
+                (val_out_orig: word) (R: mem -> Prop);
+  requires t m := <{ * (EX old_val, uintptr old_val trace_out)
+                     * cbt' sk c tp
+                     * uintptr val_out_orig val_out
+                     * R }> m;
+  ensures t' m' res := t' = t /\ cbt_best_lookup sk c k = res /\
+                  <{ * uintptr (cbt_lookup_trace sk c k) trace_out
+                     * cbt' sk c tp
+                     * (if word.eqb k res then
+                         (EX v, <{ * uintptr v val_out
+                                   * emp (map.get c k = Some v) }>)
+                       else
+                         uintptr val_out_orig val_out)
+                     * R }> m' #**/                                        /**.
+Derive cbt_best_with_trace SuchThat (fun_correct! cbt_best_with_trace)
+  As cbt_best_with_trace_ok.       .**/
+{                                                                          /**. .**/
+  uintptr_t trace = 0;                                                     /**.
+  move sk at bottom.
+  loop invariant above m.
+  move Def0 after t.
+  (* introducing `trace` into the postcondition *)
+  replace (cbt_lookup_trace sk c k) with (word.or trace (cbt_lookup_trace sk c k))
+   by (subst; apply word.or_0_l). .**/
+  while (load(tp) != 8 * sizeof(uintptr_t)) /* initial_ghosts(tp,c,trace,R); decreases sk */ {      /*?.
+  repeat heapletwise_step.
+  match goal with
+  | H: _ |= cbt' _ _ tp |- _ => pose proof (purify_cbt' _ _ _ _ H);
+                                apply cbt_expose_fields in H
+  end. steps. destruct sk. { exfalso; steps. } .**/
+    trace = trace | (1 << (8 * sizeof(uintptr_t) - 1 - load(tp)));         /**. .**/
+    if (((k >> (8 * sizeof(uintptr_t) - 1 - load(tp))) & 1) == 1) /* split */ { /**. .**/
+      tp = load(tp + 2 * sizeof(uintptr_t));                               /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c true, trace,
+      <{ * cbt' sk1 (half_subcontent c false) w2
+         * freeable ltac:(wsize3) tp'
+         * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+              + uintptr w2
+              + uintptr tp }> tp'
+         * R }>).
+  steps.
+  { simpl cbt_best_lookup. steps. }
+  { simpl cbt_lookup_trace. steps. subst trace. rewrite <- word.or_assoc.
+    unfold set_bit_at. f_equal. rewrite word.or_comm. steps.
+    rewrite word.ring_morph_sub. f_equal. f_equal. hwlia. }
+  { simpl cbt'. clear Error. steps. } .**/
+    else {                                                                 /**. .**/
+      tp = load(tp + sizeof(uintptr_t));                                   /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c false, trace,
+      <{ * cbt' sk2 (half_subcontent c true) w3
+         * freeable ltac:(wsize3) tp'
+         * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+              + uintptr tp
+              + uintptr w3 }> tp'
+         * R }>).
+  steps.
+  { simpl cbt_best_lookup. steps. }
+  { simpl cbt_lookup_trace. steps. subst trace. rewrite <- word.or_assoc.
+    unfold set_bit_at. f_equal. rewrite word.or_comm. steps.
+    rewrite word.ring_morph_sub. f_equal. f_equal. hwlia. }
+  { simpl cbt'. clear Error. steps. } .**/
+  }                                                                        /**.
+  destruct sk; [ | exfalso; steps ]. .**/
+  store(trace_out, trace);                                                 /**. .**/
+  uintptr_t best_k = load(tp + sizeof(uintptr_t));                         /**. .**/
+  if (best_k == k) /* split */ {                                           /**. .**/
+    store(val_out, load(tp + 2 * sizeof(uintptr_t)));                      /**. .**/
+    return best_k;                                                         /**. .**/
+  }                                                                        /**.
+  { simpl cbt_best_lookup. rewrite map_any_key_singleton. reflexivity. }
+  { simpl cbt_lookup_trace. rewrite word.or_0_r. steps. }
+  { simpl cbt'. clear Error. steps. } .**/
+  else {                                                                   /**. .**/
+    return best_k;                                                         /**. .**/
+  }                                                                        /**.
+  { simpl cbt_best_lookup. rewrite map_any_key_singleton. reflexivity. }
+  { simpl cbt_lookup_trace. rewrite word.or_0_r. steps. }
+  { simpl cbt'. clear Error. steps. } .**/
+}                                                                          /**.
+Qed.
+
+Fixpoint cbt_max_key sk c :=
+  match sk with
+  | Leaf => Option.force (map_any_key c)
+  | Node skL skR => cbt_max_key skR (half_subcontent c true)
+  end.
+
+Lemma cbt_max_key_in : forall sk c, acbt sk c -> map.get c (cbt_max_key sk c) <> None.
+Proof.
+  induction sk; cbn; steps.
+  - rewrite map_any_key_singleton. simpl. steps.
+  - eauto using half_subcontent_get_nnone.
+Qed.
+
+Lemma cbt_max_key_max : forall sk c k,
+  acbt sk c -> map.get c k <> None -> \[k] <= \[cbt_max_key sk c].
+Proof.
+  induction sk.
+  - intros. cbn in *. steps. subst. rewrite map_any_key_singleton. reflexivity.
+  - intros.
+    match goal with
+    | H: map.get _ _ <> None |- _ => apply half_subcontent_get_nNone in H
+    end.
+    cbn in *. steps. destruct (bit_at k (pfx_len (pfx_mmeet c)));
+    eauto using cbt_max_key_in, half_subcontent_in_false_true_le.
+Qed.
+
+Lemma Z_testbit_is_bit_at' : forall w i,
+  0 <= i < ltac:(bw) -> Z.testbit \[w] (ltac:(bwm1) - i) = bit_at w i.
+Proof.
+  intros. rewrite Z_testbit_is_bit_at; steps.
+Qed.
+
+Lemma bit_at_0 : forall i, 0 <= i < ltac:(bw) -> bit_at /[0] i = false.
+Proof.
+  intros. rewrite <- Z_testbit_is_bit_at' by lia. steps. apply Z.bits_0.
+Qed.
+
+Lemma set_bit_at_bit_at : forall w i i',
+  0 <= i < ltac:(bw) -> 0 <= i' < ltac:(bw) ->
+  bit_at (set_bit_at w i) i' = bit_at w i' || (i =? i').
+Proof.
+  intros. do 2 rewrite <- Z_testbit_is_bit_at' by lia. unfold set_bit_at.
+  rewrite word.unsigned_or_nowrap. rewrite Z.lor_spec. f_equal.
+  rewrite word.unsigned_slu by hwlia. steps. unfold word.wrap.
+  rewrite Z.mod_pow2_bits_low by lia. rewrite Z.shiftl_spec by lia. rewrite Z_bits_1.
+  lia.
+Qed.
+
+Lemma set_bit_at_bit_at' : forall w i i',
+  0 <= i < ltac:(bw) -> 0 <= i' < ltac:(bw) ->
+  bit_at (set_bit_at w i) i' = if i =? i' then true else bit_at w i'.
+Proof.
+  intros. rewrite set_bit_at_bit_at by assumption. destruct (i =? i'); steps.
+  apply Bool.orb_false_r.
+Qed.
+
+Lemma set_bit_at_true : forall w i i',
+  0 <= i < ltac:(bw) -> 0 <= i' < ltac:(bw) -> bit_at w i = true ->
+  bit_at (set_bit_at w i') i = true.
+Proof.
+  intros ? ? ? ? ? Hba. rewrite set_bit_at_bit_at by assumption. rewrite Hba.
+  apply Bool.orb_true_l.
+Qed.
+
+Lemma set_bit_at_bit_at_diff_ix : forall w i i',
+  0 <= i < ltac:(bw) -> 0 <= i' < ltac:(bw) -> i' <> i -> bit_at (set_bit_at w i) i' = bit_at w i'.
+Proof.
+  intros. rewrite set_bit_at_bit_at' by assumption. steps.
+Qed.
+
+Lemma set_bit_at_bit_at_same_ix : forall w i,
+  0 <= i < ltac:(bw) -> bit_at (set_bit_at w i) i = true.
+Proof.
+  intros. rewrite set_bit_at_bit_at'; steps.
+Qed.
+
+Lemma bit_at_set_true_invert : forall w i i',
+  0 <= i < ltac:(bw) -> 0 <= i' < ltac:(bw) ->
+  bit_at (set_bit_at w i') i = true -> i = i' \/ bit_at w i = true.
+Proof.
+  intros ? ? ? ? ? Hba. rewrite set_bit_at_bit_at' in Hba by lia. steps.
+  destruct Hba; auto.
+Qed.
+
+Lemma cbt_max_key_trace_bits : forall sk c i,
+  acbt sk c -> 0 <= i < ltac:(bw) ->
+  bit_at (cbt_lookup_trace sk c (cbt_max_key sk c)) i = true ->
+  bit_at (cbt_max_key sk c) i = true.
+Proof.
+  induction sk.
+  - steps. cbn in *.
+    match goal with
+    | H: bit_at _ _ = _ |- _ => rewrite bit_at_0 in H by lia; discriminate
+    end.
+  - steps. assert (0 <= pfx_len (pfx_mmeet c) < ltac:(bw)) by steps. cbn in *. steps.
+    erewrite half_subcontent_in_bit in * by (eauto using cbt_max_key_in). steps.
+    match goal with
+    | H: bit_at _ _ = _ |- _ => apply bit_at_set_true_invert in H; steps; destruct H
+    end.
+    + subst. auto using half_subcontent_in_bit, cbt_max_key_in.
+    + auto.
+Qed.
+
+Lemma cbt_trace_fixes_prefix : forall sk c i k1 k2 bts,
+  acbt sk c -> 0 <= i < ltac:(bw) ->
+  map.get c k1 <> None ->
+  (forall j, 0 <= j <= i -> bit_at (cbt_lookup_trace sk c k1) j = true ->
+    bit_at k1 j = bts j) ->
+  map.get c k2 <> None ->
+  (forall j, 0 <= j <= i -> bit_at (cbt_lookup_trace sk c k2) j = true ->
+    bit_at k2 j = bts j) ->
+  (forall j, 0 <= j <= i -> bit_at k1 j = bit_at k2 j).
+Proof.
+  induction sk.
+  - steps. cbn in *. steps.
+  - intros ? ? ? ? ? ? ? ? Htm1 ? Htm2 ?.
+    steps. assert (0 <= pfx_len (pfx_mmeet c) < ltac:(bw)) by steps. cbn in *.
+    destruct (Bool.eqb (bit_at k1 (pfx_len (pfx_mmeet c)))
+                       (bit_at k2 (pfx_len (pfx_mmeet c)))) eqn:E; steps.
+    + destruct (bit_at k1 (pfx_len (pfx_mmeet c))) eqn:E2; symmetry in E.
+      * eapply IHsk2 with (bts:=bts) (i:=i); steps.
+       -- eassumption.
+       -- steps.
+       -- apply Htm1; steps. apply set_bit_at_true; steps.
+       -- steps.
+       -- apply Htm2; steps. apply set_bit_at_true; steps.
+      * eapply IHsk1 with (bts:=bts) (i:=i); steps.
+       -- eassumption.
+       -- steps.
+       -- apply Htm1; steps. apply set_bit_at_true; steps.
+       -- steps.
+       -- apply Htm2; steps. apply set_bit_at_true; steps.
+    + assert (i < pfx_len (pfx_mmeet c)).
+      { enough (~(pfx_len (pfx_mmeet c) <= i)) by lia.
+        intro.
+        do 2 match goal with
+             | H: forall _, 0 <= _ <= _ -> _ |- _ =>
+                  specialize (H (pfx_len (pfx_mmeet c))); prove_ante H; [ lia | ];
+                  prove_ante H; [ apply set_bit_at_bit_at_same_ix; lia | ]
+             end.
+        congruence. }
+      assert (Hle1: pfx_le (pfx_mmeet c) (pfx_emb k1)) by steps.
+      assert (Hle2: pfx_le (pfx_mmeet c) (pfx_emb k2)) by steps.
+      rewrite <- pfx_le_spec in *.
+      specialize (Hle1 j). prove_ante Hle1. { lia. }
+      specialize (Hle2 j). prove_ante Hle2. { lia. }
+      rewrite pfx_emb_spec in * by lia.
+      congruence.
+Qed.
+
+Lemma cbt_best_lookup_matches_on_trace : forall sk c k i,
+  acbt sk c -> 0 <= i < ltac:(bw) -> bit_at (cbt_lookup_trace sk c k) i = true ->
+  bit_at (cbt_best_lookup sk c k) i = bit_at k i.
+Proof.
+  induction sk.
+  - cbn in *. steps.
+    match goal with
+    | H: bit_at _ _ = true |- _ => rewrite bit_at_0 in H; steps
+    end.
+  - cbn [ cbt_lookup_trace cbt_best_lookup ]. steps.
+    destruct (bit_at k (pfx_len (pfx_mmeet c))) eqn:E;
+    match goal with
+    | H: bit_at (set_bit_at _ _) _ = _ |- _ =>
+         apply bit_at_set_true_invert in H; steps; destruct H
+    end;
+    subst; cbn [ acbt ] in *; steps; auto; rewrite E;
+    auto using half_subcontent_in_bit, cbt_best_lookup_in.
+Qed.
+
+Lemma cbt_lookup_trace_best : forall sk c k,
+  acbt sk c -> cbt_lookup_trace sk c (cbt_best_lookup sk c k) = cbt_lookup_trace sk c k.
+Proof.
+  induction sk.
+  - intros. cbn in *. steps.
+  - steps. cbn in *. destruct (bit_at k (pfx_len (pfx_mmeet c))) eqn:E.
+    + match goal with
+      | |- context [ if ?cond then _ else _ ] => replace cond with true
+      end.
+      * f_equal. steps. eauto.
+      * symmetry. steps. auto using half_subcontent_in_bit, cbt_best_lookup_in.
+    + match goal with
+      | |- context [ if ?cond then _ else _ ] => replace cond with false
+      end.
+      * f_equal. steps. eauto.
+      * symmetry. steps. auto using half_subcontent_in_bit, cbt_best_lookup_in.
+Qed.
+
+Lemma pfx_mmeet_snoc_le_node : forall sk1 sk2 c b,
+  acbt (Node sk1 sk2) c ->
+  pfx_le (pfx_snoc (pfx_mmeet c) b) (pfx_mmeet (half_subcontent c b)).
+Proof.
+  intros. apply pfx_mmeet_all_le. { cbn in *. destruct b; steps. }
+  intros ? Hget. apply pfx_snoc_ext_le. { apply pfx_mmeet_key_le. steps. }
+  apply half_subcontent_in_bit in Hget. rewrite <- Hget. apply pfx_emb_spec. steps.
+Qed.
+
+Lemma pfx_mmeet_len_lt_node : forall sk1 sk2 c b,
+  acbt (Node sk1 sk2) c ->
+  pfx_len (pfx_mmeet c) < pfx_len (pfx_mmeet (half_subcontent c b)).
+Proof.
+  intros. eassert (Hle: _). { eapply pfx_mmeet_snoc_le_node with (b:=b). eassumption. }
+  apply pfx_le_len in Hle. rewrite pfx_snoc_len in Hle. lia.
+Qed.
+
+Lemma trace_bit_after_root : forall sk c k i,
+  0 <= i < ltac:(bw) -> acbt sk c -> bit_at (cbt_lookup_trace sk c k) i = true ->
+  pfx_len (pfx_mmeet c) <= i.
+Proof.
+  induction sk.
+  - cbn in *. steps. exfalso. eassert _. { apply bit_at_0. eassumption. } congruence.
+  -  cbn [ cbt_lookup_trace ]. steps.
+    match goal with
+    | H: bit_at _ _ = true |- _ => apply bit_at_set_true_invert in H; steps;
+                                   destruct H as [ ? | Hbt ]
+    end.
+    + subst. reflexivity.
+    + destruct (bit_at k (pfx_len (pfx_mmeet c))).
+      * apply IHsk2 in Hbt; steps.
+        eassert _. { eapply pfx_mmeet_len_lt_node with (b:=true). eassumption. } lia.
+        cbn in *. steps.
+      * apply IHsk1 in Hbt; steps.
+        eassert _. { eapply pfx_mmeet_len_lt_node with (b:=false). eassumption. } lia.
+        cbn in *. steps.
+Qed.
+
+Lemma pfx_le_emb_bit_same_prefix : forall p w1 w2 i,
+  pfx_le p (pfx_emb w1) -> pfx_le p (pfx_emb w2) -> 0 <= i < pfx_len p ->
+  bit_at w1 i = bit_at w2 i.
+Proof.
+  intros ? ? ? ? Hle1 Hle2 Hrng.
+  assert (pfx_len p <= ltac:(bw)). { apply pfx_le_len in Hle1. steps. }
+  enough (pfx_bit (pfx_emb w1) i = pfx_bit (pfx_emb w2) i).
+  { do 2 rewrite pfx_emb_spec in * by lia. steps. }
+  rewrite <- pfx_le_spec in *.
+  specialize (Hle1 i). specialize (Hle2 i). steps. congruence.
+Qed.
+
+Lemma pfx_meet_emb_bit_at_eq : forall w1 w2 i,
+  0 <= i < pfx_len (pfx_meet (pfx_emb w1) (pfx_emb w2)) ->
+  bit_at w1 i = bit_at w2 i.
+Proof.
+  intros. eapply pfx_le_emb_bit_same_prefix; try eassumption; steps.
+Qed.
+
+Definition map_take_ge (c : word_map) k :=
+  map_filter_by_key c (fun k' => \[k] <=? \[k']).
+Definition map_take_gt (c : word_map) k :=
+  map_filter_by_key c (fun k' => \[k] <? \[k']).
+
+Lemma map_take_ge_empty : forall k, map_take_ge map.empty k = map.empty.
+Proof.
+  intros. apply map_filter_empty.
+Qed.
+
+Lemma map_take_ge_get_ge : forall c k k',
+  \[k] <= \[k'] -> map.get (map_take_ge c k) k' = map.get c k'.
+Proof.
+  intros. unfold map_take_ge. rewrite map_filter_by_key_get_true; steps.
+Qed.
+
+Lemma map_take_ge_eq_empty : forall c k,
+  (forall k', map.get c k' <> None -> \[k'] < \[k]) -> map_take_ge c k = map.empty.
+Proof.
+  intros ? ? Hsm. unfold map_take_ge. apply map_filter_by_key_eq_empty. intros k'' Hnn.
+  specialize (Hsm k'' Hnn). lia.
+Qed.
+
+Lemma map_take_ge_get_nnone : forall c k k',
+  map.get (map_take_ge c k) k' <> None -> \[k] <= \[k'].
+Proof.
+  unfold map_take_ge. intros ? ? ? Hnn.
+  apply map_filter_by_key_get_not_None_true in Hnn. lia.
+Qed.
+
+Lemma map_take_ge_get_nnone' : forall c k k',
+  \[k] <= \[k'] -> map.get c k' <> None -> map.get (map_take_ge c k) k' <> None.
+Proof.
+  intros. rewrite map_take_ge_get_ge; assumption.
+Qed.
+
+Lemma map_take_ge_monotone : forall c c' k,
+  map.extends c c' -> map.extends (map_take_ge c k) (map_take_ge c' k).
+Proof.
+  unfold map_take_ge. intros ? ? ?. apply map_filter_by_key_monotone.
+Qed.
+
+Lemma map_take_ge_extends : forall c k,
+  map.extends c (map_take_ge c k).
+Proof.
+  unfold map_take_ge. intros ? ? ?. apply map_filter_by_key_extends.
+Qed.
+
+Definition map_min_key_value (c: word_map) : option (word * word) := map.fold
+  (fun cur k v => match cur with
+                  | Some (k', _) => if \[k] <? \[k'] then Some (k, v) else cur
+                  | None => Some (k, v)
+                  end) None c.
+
+Lemma map_min_key_value_in : forall c k v,
+  map_min_key_value c = Some (k, v) ->
+  map.get c k = Some v.
+Proof.
+  intros ? ? ? Heq.
+  eassert (HP: _). eapply map.fold_spec
+    with (P:=fun m state => forall k v, state = Some (k, v) -> map.get m k = Some v).
+  all: cycle 2. { eauto. } all: purge c; purge k; purge v; steps.
+  cbn in *. destruct r as [ [ rk rv ] | ].
+  - destruct (\[k] <? \[rk]) eqn:E; steps; subst.
+    match goal with
+    | H: forall _, _ |- _ => specialize (H k0 v0); prove_ante H; steps
+    end.
+    rewrite map.get_put_diff; [ assumption | ]. intro; congruence.
+  - steps.
+Qed.
+
+Lemma map_min_key_value_none_empty : forall c,
+  map_min_key_value c = None -> c = map.empty.
+Proof.
+  intros ?.
+  eassert (HP: _). eapply map.fold_spec
+    with (P:=fun m state => state = None -> m = map.empty).
+  all: cycle 2. { eassumption. }
+  all: steps. cbn in *. destruct r; steps; destruct (\[k] <? \[r]); steps.
+Qed.
+
+Lemma map_min_key_value_key_le : forall c k v k',
+  map_min_key_value c = Some (k, v) ->
+  map.get c k' <> None ->
+  \[k] <= \[k'].
+Proof.
+  intros ? ? ? ? Heq Hget'.
+  eassert (HP: _). eapply map.fold_spec
+    with (P:=fun m state => (state = None -> m = map.empty) /\
+      (forall k v k', state = Some (k, v) -> map.get m k' <> None -> \[k] <= \[k'])).
+  all: cycle 2. { apply proj2 in HP. eauto. }
+  all: purge c; purge k; purge v; purge k'; steps.
+  { match goal with
+    | H: context [ if ?cond then _ else _ ] |- _ => destruct cond; steps
+    end. }
+  destruct r as [ [ rk rv ] | ].
+  - match goal with
+    | H: forall _, _ |- _ => specialize (H rk rv); rename H into IH
+    end.
+    eq_neq_cases k k';
+    [ subst k' | specialize (IH k'); prove_ante IH; [ reflexivity | ] ];
+    destruct (\[k] <? \[rk]) eqn:E; steps; subst; steps.
+  - steps. subst. steps.
+Qed.
+
+Lemma map_min_key_value_eq : forall c k v,
+  map.get c k = Some v ->
+  (forall k', map.get c k' <> None -> \[k] <= \[k']) ->
+  map_min_key_value c = Some (k, v).
+Proof.
+  intros ? ? ? Hget Hleast. destruct (map_min_key_value c) as [ [ mnk mnv ] | ] eqn:E.
+  - specialize (Hleast mnk).
+    pose proof E as Hmnin. apply map_min_key_value_in in Hmnin.
+    prove_ante Hleast. { steps. }
+    eapply map_min_key_value_key_le in E; [ | rewrite Hget ]; steps.
+    assert (mnk = k); steps. subst. congruence.
+  - apply map_min_key_value_none_empty in E. steps.
+Qed.
+
+Lemma map_min_key_value_take_ge_has_min : forall c k v,
+  map.get c k = Some v -> map_min_key_value (map_take_ge c k) = Some (k, v).
+Proof.
+  intros c k v Hin.
+  apply map_min_key_value_eq.
+  - rewrite map_take_ge_get_ge; steps.
+  - intros k' Hink'. eauto using map_take_ge_get_nnone.
+Qed.
+
+Lemma some_not_none : forall (X : Type) (x : X) o, o = Some x -> o <> None.
+Proof.
+  intros. destruct o; [ intro | ]; discriminate.
+Qed.
+
+#[export] Instance spec_of_cbt_next_ge_impl_uptrace: fnspec :=                .**/
+void cbt_next_ge_impl_uptrace(uintptr_t tp, uintptr_t k, uintptr_t i,
+                                 uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (sk: tree_skeleton) (c: word_map) (cb: Z) (R: mem -> Prop);
+  requires t m :=
+    cb = pfx_len (pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k)))
+    /\ 0 <= cb < ltac:(bw)
+    /\ 0 <= \[i] < cb
+    /\ k <> cbt_best_lookup sk c k
+    /\ (forall j, \[i] + 1 <= j < pfx_len
+                                   (pfx_meet
+                                     (pfx_emb k)
+                                     (pfx_emb (cbt_best_lookup sk c k))) ->
+          bit_at (cbt_lookup_trace sk c k) j = true ->
+          bit_at k j = true)
+    /\ bit_at (cbt_lookup_trace sk c k) \[i] = true
+    /\ bit_at k \[i] = false
+    /\ bit_at (cbt_best_lookup sk c k) cb = false
+    /\ bit_at k cb = true
+    /\ <{ * cbt' sk c tp
+          * (EX k0, uintptr k0 key_out)
+          * (EX v0, uintptr v0 val_out)
+          * R }> m;
+  ensures t' m' := t' = t
+           /\ <{ * cbt' sk c tp
+                 * (EX k_res v_res,
+                    <{ * emp (map_min_key_value (map_take_ge c k) = Some (k_res, v_res))
+                       * uintptr k_res key_out
+                       * uintptr v_res val_out }>)
+                 * R }> m' #**/                                            /**.
+Derive cbt_next_ge_impl_uptrace SuchThat (fun_correct! cbt_next_ge_impl_uptrace)
+  As cbt_next_ge_impl_uptrace_ok.                                                .**/
+{                                                                          /**.
+  loop invariant above m.
+  move sk at bottom.
+  prove (pfx_len (pfx_mmeet c) <= \[i]).
+  { eapply trace_bit_after_root; steps; eassumption. }
+  assert (bit_at (cbt_lookup_trace sk c k) \[i] = true) by steps. .**/
+  while (load(tp) < i) /* initial_ghosts(tp,c,R); decreases sk */ { /*?.
+  repeat heapletwise_step.
+  subst v.
+  match goal with
+  | H: _ |= cbt' _ _ _ |- _ => apply cbt_expose_fields in H
+  end.
+  steps. destruct sk. { exfalso. steps. } repeat heapletwise_step. .**/
+    if (((k >> (8 * sizeof(uintptr_t) - 1 - load(tp))) & 1) == 1) /* split */ { /**. .**/
+      tp = load(tp + 2 * sizeof(uintptr_t));                               /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c true,
+    <{ * cbt' sk1 (half_subcontent c false) w2
+       * freeable ltac:(wsize3) tp'
+       * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+            + uintptr w2
+            + uintptr tp }> tp'
+       * R }>). steps; simpl cbt_best_lookup in *; try steps.
+  { apply_forall. steps. simpl cbt_lookup_trace. steps.
+    rewrite set_bit_at_bit_at_diff_ix by steps. steps. }
+  { simpl cbt_lookup_trace in *. steps.
+    rewrite set_bit_at_bit_at_diff_ix in * by steps. steps. }
+  { simpl cbt_lookup_trace in *. steps.
+    rewrite set_bit_at_bit_at_diff_ix in * by steps. steps.
+    eapply trace_bit_after_root; steps; eassumption. }
+  { simpl cbt_lookup_trace in *. steps.
+    rewrite set_bit_at_bit_at_diff_ix in * by steps. steps. }
+  simpl cbt'. clear Error. steps.
+  { apply map_min_key_value_eq.
+    - match goal with
+      | H: map_min_key_value _ = Some _ |- _ => apply map_min_key_value_in in H
+      end.
+      eauto using map_take_ge_monotone, map.extends_get, half_subcontent_extends.
+    - intros k' Hink'. destruct (bit_at k' (pfx_len (pfx_mmeet c))) eqn:E.
+      + eapply map_min_key_value_key_le; [ eassumption | ].
+        apply map_take_ge_get_nnone'.
+        * eauto using map_take_ge_get_nnone.
+        * rewrite <- E. apply half_subcontent_get_nNone.
+          eauto using map_extends_get_not_None, map_take_ge_extends.
+      + exfalso. enough (\[k'] < \[k]) by (apply map_take_ge_get_nnone in Hink'; lia).
+        eapply bit_at_lt with (i:=pfx_len (pfx_mmeet c)); steps.
+        transitivity (bit_at (cbt_best_lookup sk2 (half_subcontent c true) k) j).
+        * assert (pfx_len (pfx_mmeet c)
+           <= pfx_len (pfx_meet
+                        (pfx_emb k')
+                        (pfx_emb (cbt_best_lookup sk2 (half_subcontent c true) k)))).
+          { apply pfx_le_len. apply pfx_meet_le_both.
+            - eauto using pfx_mmeet_key_le, map_extends_get_not_None, map_take_ge_extends.
+            - eauto using pfx_mmeet_key_le, map_extends_get_not_None,
+                          half_subcontent_extends, cbt_best_lookup_in. }
+          apply pfx_meet_emb_bit_at_eq. lia.
+        * apply pfx_meet_emb_bit_at_eq. rewrite pfx_meet_comm. lia. } .**/
+     else {                                                                /**. .**/
+       tp = load(tp + sizeof(uintptr_t));                                  /**. .**/
+     }                                                                     /**.
+  new_ghosts(tp, half_subcontent c false,
+    <{ * cbt' sk2 (half_subcontent c true) w3
+       * freeable ltac:(wsize3) tp'
+       * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+            + uintptr tp
+            + uintptr w3 }> tp'
+       * R }>). steps; simpl cbt_best_lookup in *; try steps.
+  { apply_forall. steps. simpl cbt_lookup_trace. steps.
+    rewrite set_bit_at_bit_at_diff_ix by steps. steps. }
+  { simpl cbt_lookup_trace in *. steps.
+    rewrite set_bit_at_bit_at_diff_ix in * by steps. steps. }
+  { simpl cbt_lookup_trace in *. steps.
+    rewrite set_bit_at_bit_at_diff_ix in * by steps. steps.
+    eapply trace_bit_after_root; steps; eassumption. }
+  { simpl cbt_lookup_trace in *. steps.
+    rewrite set_bit_at_bit_at_diff_ix in * by steps. steps. }
+  simpl cbt'. clear Error. steps.
+  { apply map_min_key_value_eq.
+    - eauto using map_take_ge_monotone, map_min_key_value_in, map.extends_get,
+                  half_subcontent_extends.
+    - intros k' Hink'. destruct (bit_at k' (pfx_len (pfx_mmeet c))) eqn:E.
+      + eapply bit_at_le with (i:=pfx_len (pfx_mmeet c)); steps.
+        assert (pfx_len (pfx_mmeet c) <=
+                  pfx_len (pfx_meet (pfx_emb k_res) (pfx_emb k'))).
+        { apply pfx_le_len. apply pfx_meet_le_both. apply pfx_mmeet_key_le.
+          eapply map_extends_get_not_None. apply (half_subcontent_extends _ false).
+          eapply map_extends_get_not_None. apply map_take_ge_extends.
+          erewrite map_min_key_value_in; [ | eassumption ]. steps.
+          eauto using pfx_mmeet_key_le, map_extends_get_not_None, map_take_ge_extends. }
+        apply pfx_meet_emb_bit_at_eq. lia.
+        match goal with
+        | H: map_min_key_value _ = Some _ |- _ => apply map_min_key_value_in in H
+        end.
+        apply half_subcontent_in_bit. eapply some_not_none.
+        eauto using map_take_ge_extends, map.extends_get.
+      + eapply map_min_key_value_key_le; [ eassumption | ]. apply map_take_ge_get_nnone'.
+        eauto using map_take_ge_get_nnone.
+        rewrite <- E. apply half_subcontent_get_nNone.
+        eauto using map_extends_get_not_None, map_take_ge_extends. } .**/
+  }                                                                        /**.
+  assert (Hieq: pfx_len (pfx_mmeet c) = \[i]) by lia. rewrite <- Hieq in *.
+  destruct sk. { exfalso; steps. } .**/
+  tp = load(tp + 2 * sizeof(uintptr_t));                                   /**. .**/
+  cbt_get_min_impl(tp, key_out, val_out);                                  /**. .**/
+}                                                                          /**.
+  simpl cbt'. clear Error. steps.
+  { apply map_min_key_value_eq. rewrite map_take_ge_get_ge.
+    - eauto using map.extends_get, half_subcontent_extends.
+    - apply bit_at_le with (i:=pfx_len (pfx_mmeet c)); steps.
+      + transitivity (bit_at (cbt_best_lookup (Node sk1 sk2) c k) j).
+        * apply pfx_meet_emb_bit_at_eq. lia.
+        * apply pfx_meet_emb_bit_at_eq.
+          assert (Hpfxle: pfx_le
+                            (pfx_mmeet c)
+                            (pfx_meet
+                              (pfx_emb (cbt_best_lookup (Node sk1 sk2) c k))
+                              (pfx_emb k1))).
+          { apply pfx_meet_le_both. apply pfx_mmeet_key_le. steps.
+            apply pfx_mmeet_key_le. eapply map_extends_get_not_None.
+            apply (half_subcontent_extends _ true). steps. }
+          apply pfx_le_len in Hpfxle. steps.
+      + rewrite half_subcontent_get in *. steps.
+    - intros k' Hink'. destruct (bit_at k' (pfx_len (pfx_mmeet c))) eqn:E.
+      + apply_forall. rewrite <- E.
+        eauto using half_subcontent_get_nNone, map_extends_get_not_None,
+                    map_take_ge_extends.
+      + exfalso. enough (\[cbt_max_key sk1 (half_subcontent c false)] < \[k]).
+        * assert (\[k'] <= \[cbt_max_key sk1 (half_subcontent c false)]).
+          { apply cbt_max_key_max; steps.
+            eauto using half_subcontent_get_nNone, map_extends_get_not_None,
+                    map_take_ge_extends. }
+          match goal with
+          | H: map.get (map_take_ge _ _) _ <> None |- _ =>
+               apply map_take_ge_get_nnone in H
+          end. lia.
+        * apply bit_at_lt with (i:=cb). { steps. } steps.
+          transitivity (bit_at (cbt_best_lookup sk1 (half_subcontent c false) k) j).
+          { eapply cbt_trace_fixes_prefix with
+              (bts:=fun _ => true) (sk:=sk1) (c:=half_subcontent c false) (i:=cb); steps.
+            - apply cbt_max_key_in. steps.
+            - apply cbt_max_key_trace_bits; steps.
+            - destruct (j0 =? cb) eqn:E2; steps. { exfalso. subst j0.
+              rewrite cbt_lookup_trace_best in * by steps.
+              pose proof (pfx_meet_emb_bit_at_len
+                           k
+                           (cbt_best_lookup sk1 (half_subcontent c false) k)) as Hbneq.
+              prove_ante Hbneq. simpl cbt_best_lookup in *. steps.
+              apply_ne. symmetry. apply cbt_best_lookup_matches_on_trace; steps.
+              simpl cbt_best_lookup in *. steps. simpl cbt_best_lookup in *. steps.
+              congruence. }
+              transitivity (bit_at k j0).
+              apply pfx_meet_emb_bit_at_eq. simpl cbt_best_lookup in *. steps.
+              subst cb. rewrite pfx_meet_comm. steps.
+              simpl cbt_best_lookup in *. steps.
+              match goal with
+              | H: forall _, _ -> _ -> bit_at _ _ = true |- _ => apply H
+              end.
+              enough (pfx_len (pfx_mmeet c) + 1 <= j0). {
+                subst cb. simpl cbt_best_lookup in *. steps. }
+              rewrite cbt_lookup_trace_best in * by steps.
+              match goal with
+              | H: bit_at (cbt_lookup_trace _ _ _) _ = true |- _ =>
+                   apply trace_bit_after_root in H; steps
+              end.
+              enough (pfx_len (pfx_mmeet c) <
+                        pfx_len (pfx_mmeet (half_subcontent c false))) by lia.
+              apply pfx_mmeet_len_lt_node with (sk1:=sk1) (sk2:=sk2). simpl. steps.
+              rewrite cbt_lookup_trace_best in * by steps.
+              simpl cbt_lookup_trace. steps. apply set_bit_at_true; steps. }
+          { apply pfx_meet_emb_bit_at_eq. simpl cbt_best_lookup in *. steps.
+            rewrite pfx_meet_comm. steps. }
+          { steps. simpl cbt_best_lookup in *. steps.
+            match goal with
+            | H: bit_at (cbt_best_lookup _ _ _) _ = false |- _ => rewrite <- H at 2
+            end.
+            eapply cbt_trace_fixes_prefix with
+              (bts:=fun _ => true) (sk:=sk1) (c:=half_subcontent c false) (i:=cb); steps.
+            { apply cbt_max_key_in; steps. }
+            { apply cbt_max_key_trace_bits; steps. }
+            { destruct (j =? cb) eqn:E2; steps. { exfalso. subst j.
+                rewrite cbt_lookup_trace_best in * by steps.
+                pose proof (pfx_meet_emb_bit_at_len
+                             k
+                             (cbt_best_lookup sk1 (half_subcontent c false) k)) as Hbneq.
+                prove_ante Hbneq. simpl cbt_best_lookup in *. steps.
+                apply_ne. symmetry. apply cbt_best_lookup_matches_on_trace; steps.
+                simpl cbt_best_lookup in *. steps. congruence. }
+                transitivity (bit_at k j).
+                apply pfx_meet_emb_bit_at_eq.
+                subst cb. rewrite pfx_meet_comm. steps.
+                match goal with
+                | H: forall _, _ -> _ -> bit_at _ _ = true |- _ => apply H
+                end.
+                enough (pfx_len (pfx_mmeet c) + 1 <= j) by steps.
+                rewrite cbt_lookup_trace_best in * by steps.
+                match goal with
+                | H: bit_at (cbt_lookup_trace _ _ _) _ = true |- _ =>
+                     apply trace_bit_after_root in H; steps
+                end.
+                enough (pfx_len (pfx_mmeet c) <
+                          pfx_len (pfx_mmeet (half_subcontent c false))) by lia.
+                apply pfx_mmeet_len_lt_node with (sk1:=sk1) (sk2:=sk2). simpl. steps.
+                rewrite cbt_lookup_trace_best in * by steps.
+                simpl cbt_lookup_trace. steps. apply set_bit_at_true; steps. } }
+          { steps. } }
+Qed.
+
+Create HintDb content_maps.
+
+Hint Resolve map_take_ge_get_nnone map_take_ge_get_nnone'
+             map_take_ge_monotone map_take_ge_extends
+             half_subcontent_extends
+             map.extends_get map_extends_get_not_None
+             half_subcontent_get_nNone
+             map_min_key_value_in
+             some_not_none
+  : content_maps.
+
+#[export] Instance spec_of_cbt_next_ge_impl_at_cb: fnspec :=                    .**/
+void cbt_next_ge_impl_at_cb(uintptr_t tp, uintptr_t k, uintptr_t cb,
+                                 uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (sk: tree_skeleton) (c: word_map) (R: mem -> Prop);
+  requires t m :=
+    \[cb] = pfx_len (pfx_meet (pfx_emb k) (pfx_emb (cbt_best_lookup sk c k)))
+    /\ 0 <= \[cb] < ltac:(bw)
+    /\ k <> cbt_best_lookup sk c k
+    /\ bit_at (cbt_best_lookup sk c k) \[cb] = true
+    /\ bit_at k \[cb] = false
+    /\ <{ * cbt' sk c tp
+          * (EX k0, uintptr k0 key_out)
+          * (EX v0, uintptr v0 val_out)
+          * R }> m;
+  ensures t' m' := t' = t
+           /\ <{ * cbt' sk c tp
+                 * (EX k_res v_res,
+                    <{ * emp (map_min_key_value (map_take_ge c k) = Some (k_res, v_res))
+                       * uintptr k_res key_out
+                       * uintptr v_res val_out }>)
+                 * R }> m' #**/                                            /**.
+Derive cbt_next_ge_impl_at_cb SuchThat (fun_correct! cbt_next_ge_impl_at_cb)
+  As cbt_next_ge_impl_at_cb_ok.                                                 .**/
+{                                                                          /**.
+  loop invariant above m.
+  move sk at bottom. .**/
+  while (load(tp) < cb) /* initial_ghosts(tp,c,R); decreases sk */ { /*?.
+  repeat heapletwise_step.
+  subst v.
+  match goal with
+  | H: _ |= cbt' _ _ _ |- _ => apply cbt_expose_fields in H
+  end.
+  steps. destruct sk. { exfalso. steps. } repeat heapletwise_step. .**/
+    if (((k >> (8 * sizeof(uintptr_t) - 1 - load(tp))) & 1) == 1) /* split */ { /**. .**/
+      tp = load(tp + 2 * sizeof(uintptr_t));                               /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c true,
+    <{ * cbt' sk1 (half_subcontent c false) w2
+       * freeable ltac:(wsize3) tp'
+       * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+            + uintptr w2
+            + uintptr tp }> tp'
+       * R }>).
+  steps; simpl cbt_best_lookup in *; try steps.
+  { clear Error. simpl cbt'. steps. apply map_min_key_value_eq.
+    - eauto with content_maps.
+    - intros k' Hink'. destruct (bit_at k' (pfx_len (pfx_mmeet c))) eqn:E.
+      + eapply map_min_key_value_key_le; [ eassumption | ].
+        apply map_take_ge_get_nnone'.
+        * eauto with content_maps.
+        * rewrite <- E. eauto with content_maps.
+      + exfalso. enough (\[k'] < \[k]) by (apply map_take_ge_get_nnone in Hink'; lia).
+        apply bit_at_lt with (pfx_len (pfx_mmeet c)); steps.
+        transitivity (bit_at (cbt_best_lookup (Node sk1 sk2) c k) j).
+        * apply pfx_le_emb_bit_same_prefix with (pfx_mmeet c); steps.
+          apply pfx_mmeet_key_le. eauto with content_maps.
+          apply pfx_mmeet_key_le. steps.
+        * simpl cbt_best_lookup. steps. apply pfx_meet_emb_bit_at_eq.
+        rewrite pfx_meet_comm. lia. } .**/
+    else {                                                                 /**. .**/
+      tp = load(tp + sizeof(uintptr_t));                                   /**. .**/
+    }                                                                      /**.
+  new_ghosts(tp, half_subcontent c false,
+    <{ * cbt' sk2 (half_subcontent c true) w3
+       * freeable ltac:(wsize3) tp'
+       * <{ + uintptr /[pfx_len (pfx_mmeet c)]
+            + uintptr tp
+            + uintptr w3 }> tp'
+       * R }>). steps; simpl cbt_best_lookup in *; try steps.
+  { clear Error. simpl cbt'. steps.
+    apply map_min_key_value_eq.
+    - eauto with content_maps.
+    - intros k' Hink'. destruct (bit_at k' (pfx_len (pfx_mmeet c))) eqn:E.
+      + apply half_subcontent_in_false_true_le with (c:=c); steps;
+        eauto with content_maps.
+      + eapply map_min_key_value_key_le; [ eassumption | ]. rewrite <- E.
+        eauto with content_maps. } .**/
+  }                                                                        /**. .**/
+  cbt_get_min_impl(tp, key_out, val_out);                                  /**.
+  clear Error. instantiate (3:=c). instantiate (3:=sk).
+  unfold canceling. steps. unfold seps. destruct sk; simpl cbt'; steps.
+  unfold enable_frame_trick.enable_frame_trick. steps. .**/
+}                                                                          /**.
+  destruct (\[cb] =? pfx_len (pfx_mmeet c)) eqn:E. {
+    exfalso. destruct sk; steps. simpl cbt_best_lookup in *.
+    match goal with
+    | H: \[cb] = _ |- _ => rewrite H in *
+    end. steps.
+    assert (Hwrh: map.get (half_subcontent c false)
+                    (cbt_best_lookup sk1 (half_subcontent c false) k) <> None) by steps.
+    rewrite half_subcontent_get in Hwrh. steps. }
+  steps.
+  { apply map_min_key_value_eq.
+    - rewrite map_take_ge_get_ge. { eauto with content_maps. }
+      apply bit_at_le with \[cb]; steps.
+      + transitivity (bit_at (cbt_best_lookup sk c k) j).
+        * apply pfx_meet_emb_bit_at_eq. steps.
+        * apply pfx_le_emb_bit_same_prefix with (pfx_mmeet c); steps.
+          apply pfx_mmeet_key_le. steps.
+      + transitivity (bit_at (cbt_best_lookup sk c k) \[cb]).
+        * apply pfx_le_emb_bit_same_prefix with (pfx_mmeet c); steps.
+          apply pfx_mmeet_key_le. steps.
+        * destruct (bit_at (cbt_best_lookup sk c k) \[cb]) eqn:E2; steps.
+    - intros k' Hink'. apply_forall. eauto with content_maps. }
+Qed.
+
+
+#[export] Instance spec_of_cbt_next_ge: fnspec :=                                .**/
+uintptr_t cbt_next_ge(uintptr_t tp, uintptr_t k,
+                      uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (c: word_map) (key_out_orig: word) (val_out_orig: word)
+                (R: mem -> Prop);
+  requires t m := <{ * cbt c tp
+                     * uintptr key_out_orig key_out
+                     * uintptr val_out_orig val_out
+                     * R }> m;
+  ensures t' m' res := t' = t
+        /\ <{ * cbt c tp
+              * (if decide (map_take_ge c k = map.empty) then
+                   <{ * uintptr key_out_orig key_out
+                      * uintptr val_out_orig val_out
+                      * emp (res = /[0]) }>
+                 else
+                   (EX k_res v_res,
+                     <{ * emp (map_min_key_value (map_take_ge c k) = Some (k_res, v_res))
+                        * uintptr k_res key_out
+                        * uintptr v_res val_out
+                        * emp (res = /[1]) }>))
+                 * R }> m'         #**/                                    /**.
+Derive cbt_next_ge SuchThat (fun_correct! cbt_next_ge) As cbt_next_ge_ok.       .**/
+{                                                                          /**.
+  unfold cbt, nncbt in *. .**/
+  if (tp == 0) /* split */ {                                               /**. .**/
+    return 0;                                                              /**. .**/
+  }                                                                        /**.
+  rewrite map_take_ge_empty. rewrite Decidable_complete by reflexivity. steps. .**/
+  else {                                                                   /**. .**/
+    uintptr_t orig_in_key_out = load(key_out);                             /**. .**/
+    uintptr_t best_k = cbt_best_with_trace(tp, k, key_out, val_out);       /**.
+  (* FIXME: removing orphaned heaplet from before the function call
+            (it should've been removed automatically) *)
+  match goal with
+  | H: ?m |= uintptr val_out_orig val_out |- _ => purge m
+  end. .**/
+    if (best_k == k) /* split */ {                                         /**. .**/
+      store(key_out, k);                                                   /**. .**/
+      return 1;                                                            /**. .**/
+    }                                                                      /**.
+  rewrite Decidable_sound_alt; steps.
+  auto using map_min_key_value_take_ge_has_min.
+  apply map_get_not_None_nonempty with (k:=k).
+  rewrite map_take_ge_get_ge; subst; steps. .**/
+    else {                                                                 /**. .**/
+      uintptr_t trace = load(key_out);                                     /**. .**/
+      uintptr_t cb = critical_bit(best_k, k);                              /**. .**/
+      if (((k >> (8 * sizeof(uintptr_t) - 1 - cb)) & 1) == 1) /* split */ { /**. .**/
+        uintptr_t i = cb - 1;                                              /**.
+  prove (forall j,
+    (\[i ^+ /[1]] <= j < \[cb]) -> bit_at trace j = true -> bit_at k j = true).
+  prove (\[cb] <= \[i] -> i = /[-1]).
+  delete #(i = cb ^- ??).
+  loop invariant above i. .**/
+        while (i != -1 &&
+          (((trace >> (8 * sizeof(uintptr_t) - 1 - i)) & 1) != 1
+             || ((k >> (8 * sizeof(uintptr_t) - 1 - i)) & 1) == 1))
+          /* decreases (i ^+ /[1]) */ {                                    /**. .**/
+          i = i - 1;                                                       /**. .**/
+        }                                                                  /**.
+  assert (Hor: j = \[i'] \/ \[i'] + 1 <= j) by hwlia. destruct Hor.
+  { match goal with
+    | H: word.and _ _ <> _ \/ word.and _ _ = _ |- _ => destruct H
+    end; steps. congruence. }
+  apply_forall; steps.
+  (* FIXME: again, shouldn't be clearing this *)
+  purge m'. purge m0. purge m2. purge m3. purge m4.
+  (* FIXME: should this v still be around in the first place? *)
+  purge v.
+  .**/
+        if (i == -1) /* split */ {                                         /**. .**/
+          store(key_out, orig_in_key_out);                                 /**. .**/
+          return 0;                                                        /**. .**/
+        }                                                                  /**.
+  rewrite Decidable_complete; cycle 1. apply map_take_ge_eq_empty.
+  steps.
+  assert (\[k'] <= \[cbt_max_key tree c]) by (apply cbt_max_key_max; steps).
+  enough (\[cbt_max_key tree c] < \[k]) by lia. purge k'.
+  assert (forall j, 0 <= j <= \[cb] ->
+    bit_at (cbt_max_key tree c) j = bit_at best_k j).
+  { symmetry. eapply cbt_trace_fixes_prefix with (bts:=(fun _ => true)).
+    - eassumption.
+    - eassumption.
+    - subst; steps.
+    - steps. subst.
+      match goal with
+      | H: context [ cbt_lookup_trace _ _ (cbt_best_lookup _ _ _) ] |- _ =>
+           rewrite cbt_lookup_trace_best in H
+      end.
+      assert (Hor: j0 = \[cb] \/ j0 < \[cb]) by lia. destruct Hor.
+      + subst.
+        match goal with
+        | H: \[cb] = _ |- _ => rewrite H in *
+        end.
+        match goal with
+        | H: bit_at (cbt_lookup_trace _ _ _) _ = true |- _ => rename H into Hbt
+        end.
+        apply cbt_best_lookup_matches_on_trace in Hbt; steps.
+        apply pfx_meet_emb_bit_at_len in Hbt; steps.
+      + replace (bit_at (cbt_best_lookup tree c k) j0) with (bit_at k j0).
+        apply_forall; steps. symmetry. apply cbt_best_lookup_matches_on_trace; steps.
+      + steps.
+    - apply cbt_max_key_in; steps.
+    - steps. apply cbt_max_key_trace_bits; steps.
+    - steps. }
+  apply bit_at_lt with (i:=\[cb]); steps.
+  { match goal with
+    | H: forall _, _ |- _ => rewrite H; clear H
+    end.
+    apply pfx_meet_emb_bit_at_eq. steps. steps. }
+  { match goal with
+    | H: forall _, _ -> bit_at _ _ = bit_at _ _ |- _ => rewrite H; clear H
+    end.
+    subst. pose proof (pfx_meet_emb_bit_at_len (cbt_best_lookup tree c k) k) as Hb.
+    prove_ante Hb. steps.
+    match goal with
+    | H: \[cb] = _ |- _ => rewrite H in *
+    end.
+    match goal with
+    | |- ?v = false => destruct v eqn:E
+    end; steps.
+    - congruence.
+    - steps. } steps. .**/
+        else {                                                             /**.
+  destruct_or. congruence. fwd. .**/
+          cbt_next_ge_impl_uptrace(tp, k, i, key_out, val_out);            /**.
+  { rewrite pfx_meet_comm. subst. steps. }
+  { rewrite pfx_meet_comm. subst. steps. }
+  { apply_forall. subst. steps.
+    match goal with
+    | H: \[i] + 1 <= j < pfx_len _ |- _ => rewrite pfx_meet_comm in H
+    end. steps. subst. steps. }
+  { subst. steps. }
+  { subst. steps. rewrite pfx_meet_comm.
+    pose proof (pfx_meet_emb_bit_at_len (cbt_best_lookup tree c k) k) as Hbneq.
+    prove_ante Hbneq. steps.
+    match goal with
+    | |- ?v = false => destruct v eqn:E; steps; congruence
+    end. }
+  { rewrite pfx_meet_comm. congruence. } .**/
+          return 1;                                                        /**. .**/
+        }                                                                  /**.
+  rewrite Decidable_sound_alt. steps.
+  eauto using map_get_not_None_nonempty with content_maps. .**/
+      }                                                                    /**. .**/
+      else {                                                               /**. .**/
+        cbt_next_ge_impl_at_cb(tp, k, cb, key_out, val_out);               /**.
+  { subst. rewrite pfx_meet_comm. steps. }
+  { match goal with
+    | |- ?v = true => destruct v eqn:E; steps
+    end.
+    exfalso. apply (pfx_meet_emb_bit_at_len (cbt_best_lookup tree c k) k); steps.
+    congruence. } .**/
+        return 1;                                                           /**. .**/
+      }                                                                     /**.
+  rewrite Decidable_sound_alt. steps.
+  eauto using map_get_not_None_nonempty with content_maps. .**/
+    }                                                                       /**. .**/
+  }                                                                         /**. .**/
+}                                                                           /**.
+Qed.
+
+Lemma map_take_gt_max : forall c, map_take_gt c (word.opp /[1]) = map.empty.
+Proof.
+  intros. apply map_filter_by_key_all_false. intros. hwlia.
+Qed.
+
+Lemma map_take_gt_get_gt : forall (c : word_map) (k k' : word),
+  \[k] < \[k'] -> map.get (map_take_gt c k) k' = map.get c k'.
+Proof.
+  intros. apply map_filter_by_key_get_true. lia.
+Qed.
+
+Lemma map_take_gt_extends : forall (c : word_map) (k : word),
+  map.extends c (map_take_gt c k).
+Proof.
+  intros ? ?. eapply map_filter_extends.
+Qed.
+
+Lemma map_take_gt_get_nnone : forall (c : word_map) (k k' : word),
+  map.get (map_take_gt c k) k' <> None -> \[k] < \[k'].
+Proof.
+  intros ? ? ? Hnn. apply map_filter_by_key_get_not_None_true in Hnn. lia.
+Qed.
+
+#[export] Instance spec_of_cbt_next_gt: fnspec :=                                .**/
+uintptr_t cbt_next_gt(uintptr_t tp, uintptr_t k,
+                      uintptr_t key_out, uintptr_t val_out) /**#
+  ghost_args := (c: word_map) (key_out_orig: word) (val_out_orig: word)
+                (R: mem -> Prop);
+  requires t m := <{ * cbt c tp
+                     * uintptr key_out_orig key_out
+                     * uintptr val_out_orig val_out
+                     * R }> m;
+  ensures t' m' res := t' = t
+        /\ <{ * cbt c tp
+              * (if decide (map_take_gt c k = map.empty) then
+                   <{ * uintptr key_out_orig key_out
+                      * uintptr val_out_orig val_out
+                      * emp (res = /[0]) }>
+                 else
+                   (EX k_res v_res,
+                     <{ * emp (map_min_key_value (map_take_gt c k) = Some (k_res, v_res))
+                        * uintptr k_res key_out
+                        * uintptr v_res val_out
+                        * emp (res = /[1]) }>))
+                 * R }> m'         #**/                                    /**.
+Derive cbt_next_gt SuchThat (fun_correct! cbt_next_gt) As cbt_next_gt_ok.       .**/
+{                                                                          /**. .**/
+  if (k == -1) /* split */ {                                               /**. .**/
+    return 0;                                                              /**. .**/
+  }                                                                        /**.
+  rewrite Decidable_complete. steps. subst. apply map_take_gt_max. .**/
+  else {                                                                   /**. .**/
+    uintptr_t res = cbt_next_ge(tp, k + 1, key_out, val_out);              /**.
+  instantiate (7:=c). steps. .**/
+    return res;                                                            /**. .**/
+  }                                                                        /**.
+  match goal with
+  | H: context [ if ?condH then _ else _ ] |- context [ if ?condG then _ else _ ] =>
+       replace (condH) with (condG) in H; [ destruct condG eqn:E | ]
+  end. steps. steps.
+  { apply map_min_key_value_eq. rewrite map_take_gt_get_gt. eauto with content_maps.
+    enough (\[k ^+ /[1]] <= \[k_res]) by hwlia. eauto with content_maps.
+    intros k' Hink'. eapply map_min_key_value_key_le; [ eassumption | ].
+    rewrite map_take_ge_get_ge.
+    eauto using map_take_gt_extends with content_maps.
+    enough (\[k] < \[k']) by hwlia. eauto using map_take_gt_get_nnone. }
+  { unfold map_take_gt, map_take_ge. erewrite map_filter_by_key_ext. reflexivity.
+    intros. cbv beta. hwlia. } .**/
+}                                                                          /**.
+Qed.
+
+Lemma list_len_0_nil : forall [A: Type] (l: list A), len l = 0 -> l = nil.
+Proof.
+  steps. destruct l.
+  - steps.
+  - simpl len in *. lia.
+Qed.
+
+Lemma array_len_1 : forall v a, impl1 (uintptr v a) (array uintptr 1 [|v|] a).
+Proof.
+  steps. unfold impl1, array, Array.array. intro m'. steps.
+  assert (mmap.Def m' = mmap.Def m') by steps. steps. clear Error.
+  unfold find_hyp_for_range, canceling, seps. steps.
+  apply sep_comm. assert (mmap.Def m = mmap.Def m) by steps. steps. clear Error.
+  unfold find_hyp_for_range, canceling, seps. steps.
+Qed.
+
+Lemma no_shared_byte : forall b1 b2 a (m : mem),
+  ~<{ * (fun m => m = map.singleton a b1)
+      * (fun m => m = map.singleton a b2)
+      * (fun _ => True) }> m.
+Proof.
+  intros. intro. steps.
+  match goal with
+  | H1: context [ b1 ], H2: context [ b2 ] |- _ =>
+    match type of H1 with
+    | ?tma |= _ => rename tma into ma; rename H1 into Ha
+    end;
+    match type of H2 with
+    | ?tmb |= _ => rename tmb into mb; rename H2 into Hb
+    end
+  end.
+  assert (Hdsj: map.disjoint ma mb).
+  { rewrite <- mmap.du_assoc in D.
+    destruct (ma ||| mb) as [ mcm | ] eqn:E; try discriminate.
+    rewrite <- split_du in E. unfold map.split in E. tauto. }
+  unfold "|=" in Ha. unfold "|=" in Hb. subst. unfold map.disjoint in *.
+  eapply Hdsj with (k:=a); unfold map.singleton; apply map.get_put_same.
+Qed.
+
+Lemma no_shared_uintptr : forall a m,
+  ~<{ * (EX v, uintptr v a) * (EX v, uintptr v a) * (fun _ => True) }> m.
+Proof.
+  intros. intro. steps.
+  unfold uintptr, scalar, truncated_word, truncated_scalar, littleendian, ptsto_bytes,
+         ptsto in *.
+  do 2 match goal with
+       | H: context [ Array.array ] |- _ => simpl in H
+       end.
+  match goal with
+  | H1: context [ byte.of_Z \[ ?v1 ] ], H2: context [ byte.of_Z \[ ?v2 ] ] |- _ =>
+        apply (no_shared_byte (byte.of_Z \[v1]) (byte.of_Z \[v2]) a m)
+  end.
+  steps.
+Qed.
+
+Lemma array_max_len : forall n l a m,
+  array uintptr n l a m -> n <= 2 ^ ltac:(bw) / ltac:(wsize).
+Proof.
+  intros ? ? ? ? Har.
+  enough (~(2 ^ ltac:(bw) / ltac:(wsize) < n)) by lia. intro. purify_hyp Har.
+  eapply split_array with (i := 2^ltac:(bw) / ltac:(wsize)) in Har. 2: steps.
+  replace (a ^+ /[ltac:(wsize) * (2 ^ ltac:(bw) / ltac:(wsize))]) with a in * by hwlia.
+  (* hack/fixme:
+           when processing `heapletwise_step` here,
+           somewhere down the ltac callstack, `typeclasses eauto with purify` is run
+           to solve the goal
+           `purify (array uintptr (2 ^ 32 / 4) l[:2 ^ 32 / 4] a) _`
+           and that takes something on the order of a minutes to finish; it runs quicker
+           when 2^32 is replaced with a smaller number, so it seems the tactic
+           at some point computes the big number (2^32/4)
+           -> workaround: hide the big number using `remember` *)
+  remember (2 ^ ltac:(bw) / ltac:(wsize)) as ec. repeat heapletwise_step. subst.
+  do 2
+    match goal with
+    | H: _ |= array _ _ _ a |- _ =>
+         eapply split_off_elem_from_array with (i := 0) (a' := a) in H; steps
+    end.
+  apply (no_shared_uintptr a m). steps.
+Qed.
+
+Fixpoint sorted_word_word_insert (p : word * word) (l : list (word * word)) :=
+  match l with
+  | cons (k', v') l' => if \[fst p] <=? \[k']
+                          then cons p l
+                          else cons (k', v') (sorted_word_word_insert p l')
+  | nil => cons p nil
+  end.
+
+Lemma sorted_ww_insert_len : forall p l,
+  len (sorted_word_word_insert p l) = len l + 1.
+Proof.
+  induction l as [ | hd l ].
+  - reflexivity.
+  - destruct p as [ pk pv ]. destruct hd as [ hk hv ].
+    cbn [ sorted_word_word_insert fst ].
+    destruct (\[pk] <=? \[hk]); cbn [ List.length ]; lia.
+Qed.
+
+Lemma sorted_ww_insert_in : forall p p' l,
+  List.In p' (sorted_word_word_insert p l) -> p' = p \/ List.In p' l.
+Proof.
+  induction l as [ | hd l ]; cbn.
+  - steps. auto.
+  - destruct p as [ pk pv ]. destruct hd as [ hk hv ]. cbn [ fst ].
+    destruct (\[pk] <=? \[hk]); cbn; steps; repeat destruct_or; try tauto; auto.
+Qed.
+
+Lemma sorted_ww_insert_in' : forall p l,
+  List.In p (sorted_word_word_insert p l).
+Proof.
+  induction l as [ | hd l ]; cbn.
+  - auto.
+  - destruct p as [ pk pv ]. destruct hd as [ hk hv ]. cbn [ fst ].
+    destruct (\[pk] <=? \[hk]); cbn; tauto.
+Qed.
+
+Lemma sorted_ww_insert_in'' : forall p l,
+  List.incl l (sorted_word_word_insert p l).
+Proof.
+  induction l as [ | hd l ]; cbn.
+  - apply List.incl_nil_l.
+  - destruct p as [ pk pv ]. destruct hd as [ hk hv ]. cbn [ fst ].
+    destruct (\[pk] <=? \[hk]);
+    auto using List.incl_cons, List.incl_tl, List.in_eq, List.incl_refl.
+Qed.
+
+Instance product_inhabited X1 X2 `{ inhabited X1, inhabited X2 }
+  : inhabited (X1 * X2) := { default := (default, default) }.
+
+Definition ww_list_sorted (l : list (word * word)) : Prop :=
+  forall i j, 0 <= i < len l -> 0 <= j < len l -> i <= j ->
+  forall ki vi kj vj, l[i] = (ki, vi) -> l[j] = (kj, vj) -> \[ki] <= \[kj].
+
+Definition ww_list_unique_keys (l : list (word * word)) : Prop :=
+  forall i1 i2, 0 <= i1 < len l -> 0 <= i2 < len l -> fst l[i1] = fst l[i2] -> i1 = i2.
+
+Lemma ww_list_sorted_nil : ww_list_sorted nil.
+Proof.
+  unfold ww_list_sorted. cbn. steps.
+Qed.
+
+Lemma ww_list_sorted_singleton : forall p, ww_list_sorted [|p|].
+Proof.
+  unfold ww_list_sorted. cbn. intros. assert (i = 0) by lia. assert (j = 0) by lia.
+  subst. cbn in *. assert (ki = kj) by congruence. subst. reflexivity.
+Qed.
+
+Lemma ww_list_sorted_tail : forall p l, ww_list_sorted (p :: l) -> ww_list_sorted l.
+Proof.
+  intros ? ? Hsrt. intros i j ? ? ?. specialize (Hsrt (i + 1) (j + 1)).
+  do 3 (prove_ante Hsrt; [ cbn [ List.length ] in *; lia | ]).
+  intros ? ? ? ?. specialize (Hsrt ki vi kj vj). intros Hgeti Hgetj.
+  do 2 (prove_ante Hsrt ; [ steps | ]). assumption.
+Qed.
+
+Lemma ww_list_unique_keys_tail : forall p l,
+  ww_list_unique_keys (p :: l) -> ww_list_unique_keys l.
+Proof.
+  intros ? ? Huqk. intros i1 i2 ? ? ?. specialize (Huqk (i1 + 1) (i2 + 1)).
+  do 2 (prove_ante Huqk; [ cbn [ List.length ] in *; lia | ]).
+  prove_ante Huqk. { steps. } lia.
+Qed.
+
+Lemma ww_list_unique_keys_nil : ww_list_unique_keys nil.
+Proof.
+  unfold ww_list_unique_keys. cbn. steps.
+Qed.
+
+Lemma ww_list_unique_keys_singleton : forall p, ww_list_unique_keys [|p|].
+Proof.
+  unfold ww_list_unique_keys. cbn. intros. lia.
+Qed.
+
+Lemma list_get_cons_tail [A : Type] {inh : inhabited A} : forall n (a : A) l,
+  0 < n -> (a :: l)[n] = l[n - 1].
+Proof.
+  auto using push_down_get_tail.
+Qed.
+
+Lemma list_get_in1 [A : Type] {inh : inhabited A} : forall n (l : list A),
+  0 <= n < len l -> List.In (l[n]) l.
+Proof.
+  intros ? ? Hnr. unfold List.get. replace (n <? 0) with false by lia.
+  apply List.nth_In. lia.
+Qed.
+
+Lemma list_get_in1' [A : Type] {inh : inhabited A} : forall n (a : A) l,
+  0 <= n < len l -> l[n] = a -> List.In a l.
+Proof.
+  intros. subst. auto using list_get_in1.
+Qed.
+
+Lemma list_get_in2 [A : Type] {inh : inhabited A} : forall a (l : list A),
+  List.In a l -> exists n, 0 <= n < len l /\ l[n] = a.
+Proof.
+  intros ? ? Hlin. eapply List.In_nth in Hlin. destruct Hlin as [ nn [ Hrng Hlnth ] ].
+  exists (Z.of_nat nn). split. { lia. } unfold List.get.
+  replace (Z.of_nat nn <? 0) with false by lia. rewrite Nat2Z.id. eassumption.
+Qed.
+
+Lemma ww_list_sorted_prepend : forall kn vn k v l,
+  \[kn] <= \[k] -> ww_list_sorted ((k, v) :: l) ->
+  ww_list_sorted ((kn, vn) :: (k, v) :: l).
+Proof.
+  intros ? ? ? ? ? Hkcmp Hsrt. unfold ww_list_sorted. intros i j Hirng Hjrng Hijcmp.
+  assert (Hiv: i = 0 \/ i >= 1) by lia; destruct Hiv;
+  assert (Hjv: j = 0 \/ j >= 1) by lia; destruct Hjv;
+  subst; cbn; intros ? ? ? ? Hgeti Hgetj; steps; subst; steps;
+  [ specialize (Hsrt 0 (j - 1)) | specialize (Hsrt (i - 1) (j - 1)) ];
+  do 3 (prove_ante Hsrt; [ cbn [ List.length ] in *; lia | ]).
+  - specialize (Hsrt k v kj vj).
+    prove_ante Hsrt. { cbn. reflexivity. }
+    prove_ante Hsrt. { rewrite list_get_cons_tail in Hgetj by lia. assumption. }
+    lia.
+  - specialize (Hsrt ki vi kj vj).
+    apply Hsrt; erewrite <- list_get_cons_tail by lia; eassumption.
+Qed.
+
+Lemma sorted_ww_insert_sorted : forall p l,
+  ww_list_sorted l -> ww_list_sorted (sorted_word_word_insert p l).
+Proof.
+  induction l as [ | hd l ]; cbn.
+  - intros. apply ww_list_sorted_singleton.
+  - destruct p as [ pk pv ]. destruct hd as [ hk hv ]. cbn [ fst ]. intros Hsrt.
+    destruct (\[pk] <=? \[hk]) eqn:E.
+    + steps. auto using ww_list_sorted_prepend.
+    + prove_ante IHl. { eauto using ww_list_sorted_tail. }
+      destruct (sorted_word_word_insert (pk, pv) l) as [ | [ sk sv ] l' ] eqn:E2.
+      { apply ww_list_sorted_singleton. }
+      steps. apply ww_list_sorted_prepend; try assumption.
+      enough (Hin: List.In (sk, sv) (sorted_word_word_insert (pk, pv) l)).
+      * apply sorted_ww_insert_in in Hin. destruct Hin as [ ? | Hin ].
+        { steps. subst. steps. }
+        eapply list_get_in2 in Hin. destruct Hin as [ n [ Hnrng Hnget ] ].
+        specialize (Hsrt 0 (n + 1)).
+        do 3 (prove_ante Hsrt; [ cbn [ List.length ] in *; lia | ]).
+        specialize (Hsrt hk hv sk sv).
+        prove_ante Hsrt. { steps. } prove_ante Hsrt. { steps. eassumption. }
+        assumption.
+      * rewrite E2. cbn. tauto.
+Qed.
+
+Lemma ww_list_unique_keys_cons : forall k v l,
+  (forall v', ~List.In (k, v') l) -> ww_list_unique_keys l ->
+  ww_list_unique_keys ((k, v) :: l).
+Proof.
+  intros ? ? ? Hnin Huqk. intros i1 i2 Hrng1 Hrng2 Hkeq.
+  assert (Hcmp: i1 = 0 \/ i1 >= 1) by lia; destruct Hcmp;
+  assert (Hcmp: i2 = 0 \/ i2 >= 1) by lia; destruct Hcmp;
+  steps; subst; cbn [ List.length ] in *;
+  repeat match goal with
+         | Hi: ?i >= 1, Hl: context [ (?a :: ?l)[?i] ] |- _ =>
+               replace ((a :: l)[i]) with (l[i - 1]) in Hl by steps
+         end.
+  1-2:
+  exfalso; cbn in Hkeq;
+  match type of Hkeq with
+  | context [ ?l [?i - 1] ] => destruct (l[i - 1]) as [ fk fv] eqn:E
+  end;
+  cbn in Hkeq; subst fk; specialize (Hnin fv); apply Hnin;
+  eapply list_get_in1'; [ | eassumption ]; lia.
+  specialize (Huqk (i1 - 1) (i2 - 1)). do 2 (prove_ante Huqk; [ lia | ]). steps.
+Qed.
+
+Lemma ww_list_unique_keys_cons_in : forall k v v' l,
+  ww_list_unique_keys ((k, v) :: l) -> ~List.In (k, v') l.
+Proof.
+  intros ? ? ? ? Huqk Hin. eapply list_get_in2 in Hin.
+  destruct Hin as [ n [ Hrng Hget ] ]. specialize (Huqk 0 (n + 1)).
+  do 2 (prove_ante Huqk; [ cbn [ List.length ] in *; lia | ]).
+  prove_ante Huqk. { steps. rewrite Hget. steps. } lia.
+Qed.
+
+Lemma ww_list_unique_keys_cons_in' : forall a l,
+  ww_list_unique_keys (a :: l) -> ~List.In a l.
+Proof.
+  intros. destruct a. eauto using ww_list_unique_keys_cons_in.
+Qed.
+
+Lemma sorted_ww_insert_unique_keys : forall k v l,
+  (forall v', ~List.In (k, v') l) ->
+  ww_list_unique_keys l -> ww_list_unique_keys (sorted_word_word_insert (k, v) l).
+Proof.
+  induction l as [ | hd l ]; cbn.
+  - intros. apply ww_list_unique_keys_singleton.
+  - destruct hd as [ hk hv ]. intros Hninu Huqk. destruct (\[k] <=? \[hk]) eqn:E.
+    + steps.
+      apply ww_list_unique_keys_cons; [ | assumption ].
+      intros v' Hin. specialize (Hninu v'). apply Hninu. apply List.in_inv in Hin.
+      assumption.
+    + apply ww_list_unique_keys_cons.
+      * intros v' Hin. apply sorted_ww_insert_in in Hin.
+        destruct Hin. { steps. subst. steps. }
+        eapply ww_list_unique_keys_cons_in; eauto.
+      * apply IHl; [ | eauto using ww_list_unique_keys_tail ].
+        intros v' Hin. eapply Hninu. eauto.
+Qed.
+
+Lemma ww_list_sorted_head : forall k v l,
+  ww_list_sorted ((k, v) :: l) -> forall i, 0 <= i < len l -> \[k] <= \[fst l[i]].
+Proof.
+  intros ? ? ? Hsrt ? ?.
+  specialize (Hsrt 0 (i + 1)).
+  do 3 (prove_ante Hsrt; [ cbn [ List.length ] in *; lia | ]).
+  eapply Hsrt with (vi:=v) (vj:=snd l[i]); steps. destruct l[i]; steps.
+Qed.
+
+Lemma ww_list_sorted_head' : forall k v l,
+  ww_list_sorted ((k, v) :: l) -> forall k' v', List.In (k', v') l -> \[k] <= \[k'].
+Proof.
+  intros ? ? ? Hsrt ? ? Hlin.
+  eapply list_get_in2 in Hlin. destruct Hlin as [ n [ Hnrng Hlin ] ].
+  replace k' with (fst l[n]) by (rewrite Hlin; reflexivity).
+  eapply ww_list_sorted_head. { eassumption. } lia.
+Qed.
+
+Lemma ww_list_unique_keys_values : forall l, ww_list_unique_keys l ->
+  forall k v1 v2, List.In (k, v1) l -> List.In (k, v2) l -> v1 = v2.
+Proof.
+  intros ? Huqk ? ? ? Hin1 Hin2.
+  eapply list_get_in2 in Hin1. destruct Hin1 as [ n1 [ Hrng1 Hget1 ] ].
+  eapply list_get_in2 in Hin2. destruct Hin2 as [ n2 [ Hrng2 Hget2 ] ].
+  specialize (Huqk n1 n2). steps. rewrite Hget1 in Huqk. rewrite Hget2 in Huqk.
+  cbn [ fst ] in *. steps. congruence.
+Qed.
+
+Lemma list_incl_l_cons_tail [A : Type] {inh : inhabited A} :
+  forall (a : A) l l', List.incl (a :: l) l' -> List.incl l l'.
+Proof.
+  intros ? ? ? Hincl. apply List.incl_cons_inv in Hincl. tauto.
+Qed.
+
+Lemma list_incl_r_cons_tail [A : Type] {inh : inhabited A } :
+  forall (a : A) l l', ~List.In a l -> List.incl l (a :: l') -> List.incl l l'.
+Proof.
+  intros ? ? ? Hnin Hincl. intros a' Hin. specialize (Hincl a'). steps.
+  apply List.in_inv in Hincl. destruct_or; subst; tauto.
+Qed.
+
+Lemma ww_list_unique_sorted : forall l1 l2,
+  List.incl l1 l2 -> List.incl l2 l1 ->
+  ww_list_sorted l1 -> ww_list_sorted l2 ->
+  ww_list_unique_keys l1 -> ww_list_unique_keys l2 ->
+  l1 = l2.
+Proof.
+  intros. generalize dependent l2. induction l1 as [ | a1 l1 ]; intros.
+  - match goal with
+    | H: List.incl _ nil |- _ => apply List.incl_l_nil in H; subst; reflexivity
+    end.
+  - prove_ante IHl1. { eauto using ww_list_sorted_tail. }
+    prove_ante IHl1. { eauto using ww_list_unique_keys_tail. }
+    destruct l2 as [ | a2 l2 ].
+    { match goal with
+      | H: List.incl _ nil |- _ => apply List.incl_l_nil in H; discriminate
+      end. }
+    destruct a1 as [ k1 v1 ]. destruct a2 as [ k2 v2 ].
+    assert (\[k1] <= \[k2] /\ \[k2] <= \[k1]).
+    { split;
+      [ assert (Hlin: List.In (k2, v2) ((k1, v1) :: l1)) by (auto using List.in_eq)
+      | assert (Hlin: List.In (k1, v1) ((k2, v2) :: l2)) by (auto using List.in_eq) ];
+      apply List.in_inv in Hlin;
+      (destruct Hlin as [ Heq | Hlin ];
+       [ steps; subst; steps | eauto using ww_list_sorted_head' ]). }
+    assert (k1 = k2) by hwlia. subst k2. rename k1 into k.
+    assert (Hlin1: List.In (k, v1) ((k, v1) :: l1)) by (auto using List.in_eq).
+    assert (Hlin2: List.In (k, v2) ((k, v1) :: l1)) by (auto using List.in_eq).
+    match goal with
+    | H: ww_list_unique_keys (_ :: l1) |- _ => rename H into Huqk1
+    end.
+    epose proof (ww_list_unique_keys_values _ Huqk1 k v1 v2 Hlin1 Hlin2).
+    subst v2. rename v1 into v. f_equal. apply IHl1.
+    1-2: (eapply list_incl_r_cons_tail;
+      [ apply product_inhabited; apply word_inhabited
+      | eapply ww_list_unique_keys_cons_in'; eassumption
+      | eapply list_incl_l_cons_tail; try eassumption;
+        apply product_inhabited; apply word_inhabited ]).
+    eauto using ww_list_sorted_tail. eauto using ww_list_unique_keys_tail.
+Qed.
+
+Definition map_to_sorted_list : word_map -> list (word * word)
+  := map.fold (fun l k v => sorted_word_word_insert (k, v) l) nil.
+
+Lemma map_to_sorted_list_length : forall c,
+  len (map_to_sorted_list c) = Z.of_nat (map_size c).
+Proof.
+  intros. unfold map_to_sorted_list, map_size.
+  match goal with
+  | |- len ?fl1 = _ ?fl2 => pattern c, fl1, fl2
+  end.
+  apply map.fold_two_spec; steps. rewrite sorted_ww_insert_len. lia.
+Qed.
+
+Lemma map_to_sorted_list_empty : map_to_sorted_list map.empty = nil.
+Proof.
+  apply map.fold_empty.
+Qed.
+
+Lemma map_to_sorted_list_empty' : forall c, map_to_sorted_list c = nil -> c = map.empty.
+Proof.
+  intros ? Hnil. f_apply uconstr:(fun l => len l) Hnil. cbn in Hnil.
+  rewrite map_to_sorted_list_length in Hnil. apply map_size_0_empty. lia.
+Qed.
+
+Lemma map_to_sorted_list_in : forall c k v,
+  List.In (k, v) (map_to_sorted_list c) <-> map.get c k = Some v.
+Proof.
+  intros ?.
+  eassert (HP: _). eapply map.fold_spec
+    with (P:=fun m state =>
+      forall k v, List.In (k, v) state <-> map.get m k = Some v).
+  all: cycle 2. { eassumption. }
+  - steps. split; steps. exfalso. eauto using List.in_nil.
+  - cbn. steps. split; steps.
+    + match goal with
+      | H: List.In _ _ |- _ => apply sorted_ww_insert_in in H; destruct_or; steps
+      end.
+      rewrite map.get_put_diff. { apply_forall. assumption. } intro. subst.
+      match goal with
+      | Hu: forall _, _, Hlin: List.In _ _ |- _ => apply Hu in Hlin
+      end.
+      congruence.
+    + eq_neq_cases k k0.
+      * subst. rewrite map.get_put_same in *. steps. subst. apply sorted_ww_insert_in'.
+      * rewrite map.get_put_diff in * by (symmetry; assumption).
+        apply sorted_ww_insert_in''. apply_forall. assumption.
+Qed.
+
+Lemma map_to_sorted_list_sorted : forall c,
+  ww_list_sorted (map_to_sorted_list c).
+Proof.
+  intros. unfold map_to_sorted_list.
+  eapply map.fold_spec; eauto using ww_list_sorted_nil, sorted_ww_insert_sorted.
+Qed.
+
+Lemma map_to_sorted_list_unique_keys : forall c,
+  ww_list_unique_keys (map_to_sorted_list c).
+Proof.
+  intros.
+  eassert (HP: _). eapply map.fold_spec
+    with (P:=fun m state => (forall k v, List.In (k, v) state -> map.get m k = Some v)
+                            /\ ww_list_unique_keys state).
+  all: cycle 2. { eapply proj2 in HP. eassumption. }
+  - split.
+    + intros. exfalso. eapply List.in_nil. eassumption.
+    + apply ww_list_unique_keys_nil.
+  - intros. cbn beta. steps.
+    + match goal with
+      | H: List.In _ _ |- _ => apply sorted_ww_insert_in in H; destruct H; steps
+      end.
+      eq_neq_cases k k0.
+      * exfalso. subst k0. eapply some_not_none; [ | eassumption ]. eauto.
+      * steps. auto.
+    + apply sorted_ww_insert_unique_keys; [ | assumption ]. intros v' Hin.
+      eapply some_not_none; [ | eassumption ]. eauto.
+Qed.
+
+Lemma map_to_sorted_list_first : forall c,
+  c <> map.empty -> map_min_key_value c = Some ((map_to_sorted_list c)[0]).
+Proof.
+  intros. destruct ((map_to_sorted_list c)[0]) as [ k0 v0 ] eqn:E.
+  assert (Z.of_nat (map_size c) > 0).
+  { enough (map_size c <> O) by lia. rewrite map_size_0_iff_empty. assumption. }
+  apply map_min_key_value_eq.
+  - eapply map_to_sorted_list_in; try eassumption.
+    eapply list_get_in1'; [ | eassumption ]. rewrite map_to_sorted_list_length. lia.
+  - intros. destruct (map.get c k') as [ v' | ] eqn:E2; steps.
+    rewrite <- map_to_sorted_list_in in E2. eapply list_get_in2 in E2.
+    destruct E2 as [ n [ Hnrng Hnget ] ].
+    eapply map_to_sorted_list_sorted with (i:=0) (j:=n); try eassumption; lia.
+Qed.
+
+Lemma list_map_get (X Y : Type) `{ inhabited X, inhabited Y }
+  : forall (l : list X) (f : X -> Y) i,
+  0 <= i < len l -> (List.map f l)[i] = f l[i].
+Proof.
+  intros. unfold List.get. replace (i <? 0) with false by lia.
+  rewrite <- List.map_nth with (f:=f).
+  apply List.nth_indep. rewrite List.map_length. lia.
+Qed.
+
+Lemma list_from_get (X : Type) { _ : inhabited X }
+  : forall (l : list X) i1 i2, i1 >= 0 -> i2 >= 0 -> l[i1:][i2] = l[i1 + i2].
+Proof.
+  intros. unfold List.from. unfold List.get.
+  replace (i2 <? 0) with false by lia. replace (i1 + i2 <? 0) with false by lia.
+  rewrite List.nth_skipn. f_equal. lia.
+Qed.
+
+Lemma map_take_gt_some : forall c k1 k2 v,
+  map.get (map_take_gt c k1) k2 = Some v -> map.get c k2 = Some v.
+Proof.
+  intros. unfold map_take_gt in *. eapply map_filter_by_key_Some'. eassumption.
+Qed.
+
+Lemma ww_list_sorted_from : forall n l, ww_list_sorted l -> ww_list_sorted (l[n:]).
+Proof.
+  intros ? ? Hsrt.
+  decide (n < 0). { rewrite List.from_beginning; steps. }
+  decide (n >= len l). { rewrite List.from_pastend by lia. apply ww_list_sorted_nil. }
+  unfold ww_list_sorted. intros. rewrite list_from_get in * by lia.
+  rewrite List.len_from in * by lia.
+  eapply (Hsrt (n + i) (n + j)); try eassumption; lia.
+Qed.
+
+Lemma ww_list_unique_keys_from : forall n l,
+  ww_list_unique_keys l -> ww_list_unique_keys (l[n:]).
+Proof.
+  intros ? ? Huqk.
+  decide (n < 0). { rewrite List.from_beginning; steps. }
+  decide (n >= len l).
+  { rewrite List.from_pastend by lia. apply ww_list_unique_keys_nil. }
+  unfold ww_list_unique_keys. intros. repeat rewrite list_from_get in * by lia.
+  rewrite List.len_from in * by lia.
+  enough (n + i1 = n + i2) by lia. eapply Huqk; steps.
+Qed.
+
+Lemma map_to_sorted_list_take_gt : forall c i k,
+  0 <= i < Z.of_nat (map_size c) ->
+  fst ((map_to_sorted_list c)[i]) = k ->
+  map_to_sorted_list (map_take_gt c k) = (map_to_sorted_list c)[i + 1:].
+Proof.
+  intros. apply ww_list_unique_sorted;
+  try apply ww_list_sorted_from; try apply map_to_sorted_list_sorted;
+  try apply ww_list_unique_keys_from; try apply map_to_sorted_list_unique_keys.
+  - intros [ k' v' ] Hin. rewrite map_to_sorted_list_in in Hin.
+    assert (\[k] < \[k']) by (eauto using map_take_gt_get_nnone, some_not_none).
+    apply map_take_gt_some in Hin. rewrite <- map_to_sorted_list_in in Hin.
+    eapply list_get_in2 in Hin. destruct Hin as [ i' [ Hrng Hget ] ].
+    pose proof (map_to_sorted_list_sorted c) as Hsrt.
+    assert (~(i' <= i)).
+    { intro. enough (\[k'] <= \[k]) by hwlia.
+      destruct ((map_to_sorted_list c)[i]) as [ kk v ] eqn:E. cbn [ fst ] in *. subst kk.
+      specialize (Hsrt i' i). rewrite <- map_to_sorted_list_length in *. steps.
+      specialize (Hsrt k' v' k v). eauto. }
+    eapply list_get_in1' with (n:=i' - (i + 1)); steps.
+  - intros [ k' v' ] Hin. rewrite map_to_sorted_list_in.
+    eapply list_get_in2 in Hin. destruct Hin as [ io [ Hrng Hget ] ].
+    rewrite <- map_to_sorted_list_length in *.
+    rewrite list_from_get in Hget by lia. rewrite List.len_from in Hrng by lia.
+    remember (i + 1 + io) as i'. assert (io = i' - i - 1) by lia. subst io. clear Heqi'.
+    rewrite map_take_gt_get_gt.
+    + rewrite <- map_to_sorted_list_in. eapply list_get_in1'; [ | eassumption ]. lia.
+    + pose proof (map_to_sorted_list_sorted c) as Hsrt.
+      destruct (map_to_sorted_list c)[i] as [ kk v ] eqn:E. cbn in *. subst kk.
+      assert (\[k] <= \[k']). { eapply (Hsrt i i'); try lia; eassumption. }
+      enough (k <> k') by hwlia. intro. subst k'.
+      enough (i = i') by steps.
+      pose proof (map_to_sorted_list_unique_keys c) as Huqk.
+      apply Huqk; steps. rewrite E. rewrite Hget. reflexivity.
+Qed.
+
+Lemma map_to_sorted_list_key_gt_size : forall c i k,
+  0 <= i < Z.of_nat (map_size c) ->
+  fst ((map_to_sorted_list c)[i]) = k ->
+  Z.of_nat (map_size (map_take_gt c k)) = Z.of_nat (map_size c) - 1 - i.
+Proof.
+  intros ? ? ? Hirng Hel. pose proof (map_to_sorted_list_take_gt c i k Hirng Hel) as Heq.
+  f_apply (fun (l : list (word * word)) => len l) Heq.
+  rewrite <- (map_to_sorted_list_length c) in *.
+  rewrite map_to_sorted_list_length in Heq.
+  rewrite List.len_from in Heq; lia.
+Qed.
+
+Lemma map_to_sorted_list_in'' : forall c i k,
+  0 <= i < Z.of_nat (map_size c) ->
+  fst ((map_to_sorted_list c)[i]) = k ->
+  map.get c k <> None.
+Proof.
+  intros. destruct ((map_to_sorted_list c)[i]) as [ kk v ] eqn:E. cbn in *. subst kk.
+  rewrite <- map_to_sorted_list_length in *. apply list_get_in1' in E; [ | assumption ].
+  rewrite map_to_sorted_list_in in E. steps.
+Qed.
+
+Lemma map_take_gt_take_ge : forall c k1 k2,
+  \[k1] <= \[k2] -> map_take_gt (map_take_ge c k1) k2 = map_take_gt c k2.
+Proof.
+  intros. apply map_filter_by_key_stronger_refilter. intros. hwlia.
+Qed.
+
+#[export] Instance spec_of_page_from_cbt: fnspec :=                         .**/
+uintptr_t page_from_cbt(uintptr_t tp, uintptr_t k, uintptr_t n,
+                        uintptr_t keys_out, uintptr_t vals_out) /**#
+  ghost_args := (c: word_map) (keys_out_orig: list word) (vals_out_orig: list word)
+                (R: mem -> Prop);
+  requires t m := <{ * cbt c tp
+                     * array uintptr \[n] keys_out_orig keys_out
+                     * array uintptr \[n] vals_out_orig vals_out
+                     * R }> m;
+  ensures t' m' res := t' = t /\
+     let sl := map_to_sorted_list (map_take_ge c k) in
+     let skeys := List.map fst sl in
+     let svals := List.map snd sl in
+       res = /[Z.min (len sl) \[n]] /\
+       <{ * cbt c tp
+          * array uintptr \[n] (skeys[:\[res]] ++ keys_out_orig[\[res]:]) keys_out
+          * array uintptr \[n] (svals[:\[res]] ++ vals_out_orig[\[res]:]) vals_out
+          * R }> m' #**/                                                     /**.
+Derive page_from_cbt SuchThat (fun_correct! page_from_cbt) As page_from_cbt_ok.   .**/
+{                                                                            /**.
+  assert (\[n] <= 2 ^ ltac:(bw) / ltac:(wsize)) by (eauto using array_max_len). .**/
+  if (n == 0) /* split */  {                                                 /**. .**/
+    return 0;                                                                /**. .**/
+  }                                                                          /**. .**/
+  else {                                                                     /**.
+  assert (len keys_out_orig = \[n]) by steps.
+  assert (len vals_out_orig = \[n]) by steps. .**/
+    uintptr_t next_res = cbt_next_ge(tp, k, keys_out, vals_out);             /**.
+  instantiate (7:=c). steps. .**/
+    if (next_res == 0) /* split */ {                                         /**. .**/
+      return 0;                                                              /**. .**/
+    }                                                                        /*?.
+  match goal with
+  | H: context [ if ?cond then _ else _ ] |- _ =>
+       destruct cond eqn:E; [ | exfalso; steps ]
+  end.
+  apply Decidable_sound in E. rewrite E. rewrite map_to_sorted_list_empty. cbn.
+  repeat heapletwise_step.
+  replace (\[keys_out ^- keys_out] / ltac:(wsize)) with 0 in * by steps.
+  replace (\[vals_out ^- vals_out] / ltac:(wsize)) with 0 in * by steps.
+  replace (\[n] - 0 - 1) with (\[n] - 1) in * by steps.
+  merge_step. merge_step. steps. .**/
+    else {                                                                   /**.
+  match goal with
+  | H: context [ if ?cond then _ else _ ] |- _ =>
+       destruct cond eqn:E; [ exfalso; steps | ]
+  end.
+  apply Decidable_complete_alt in E.
+  repeat heapletwise_step. .**/
+      uintptr_t k_it = load(keys_out);                                       /**. .**/
+      uintptr_t finished = 0;                                                /**. .**/
+      uintptr_t i = 1;                                                       /**.
+  loop invariant above m'. move Scope6 at bottom.
+  do 10 match reverse goal with
+  | H: _ |= _ |- _ => move H at bottom
+  end.
+  (* TODO: investitage/document why this this has to be done manually *)
+  replace (\[keys_out ^- keys_out] / ltac:(wsize)) with 0 in * by steps.
+  replace (\[vals_out ^- vals_out] / ltac:(wsize)) with 0 in * by steps.
+  replace (\[n] - 0 - 1) with (\[n] - 1) in * by steps.
+  merge_step. merge_step.
+  remember (map_to_sorted_list (map_take_ge c k)) as sl.
+  remember (List.map fst sl) as skeys.
+  remember (List.map snd sl) as svals.
+  assert (Hszg0: 0 < Z.of_nat (map_size (map_take_ge c k))).
+  { rewrite <- map_size_0_iff_empty in E. lia. }
+  assert (skeys[\[i] - 1] = k_it).
+  { pose proof (map_to_sorted_list_first (map_take_ge c k)) as Hfrst.
+    prove_ante Hfrst. { assumption. }
+    match goal with
+    | H: map_min_key_value _ = Some (_, _) |- _ => rewrite H in Hfrst
+    end.
+    injection Hfrst. intros Hff. subst. steps.
+    erewrite list_map_get by (rewrite map_to_sorted_list_length; lia).
+    rewrite <- Hff. reflexivity. }
+  replace (nil ++ [|k_it|] ++ keys_out_orig[1:])
+    with (skeys[:\[i]] ++ keys_out_orig[\[i]:]) in *; cycle 1.
+  { steps.
+    - enough (len skeys <> 0) by steps. intros Hlen0. apply list_len_0_nil in Hlen0.
+      rewrite Hlen0 in *. symmetry in Heqskeys. apply List.map_eq_nil in Heqskeys.
+      rewrite Heqskeys in *. symmetry in Heqsl. apply map_to_sorted_list_empty' in Heqsl.
+      tauto. }
+   replace (nil ++ [|v_res|] ++ vals_out_orig[1:])
+     with (svals[:\[i]] ++ vals_out_orig[\[i]:]) in *; cycle 1.
+   { steps.
+    - enough (len svals <> 0) by steps. intros Hlen0. apply list_len_0_nil in Hlen0.
+      rewrite Hlen0 in *. symmetry in Heqsvals. apply List.map_eq_nil in Heqsvals.
+      rewrite Heqsvals in *. symmetry in Heqsl. apply map_to_sorted_list_empty' in Heqsl.
+      tauto.
+    - pose proof (map_to_sorted_list_first (map_take_ge c k)) as Hfrst.
+      prove_ante Hfrst. { assumption. }
+      match goal with
+      | H: map_min_key_value _ = Some (_, _) |- _ => rewrite H in Hfrst
+      end.
+      injection Hfrst. intros Hff. subst.
+      erewrite list_map_get by (rewrite map_to_sorted_list_length; lia).
+      rewrite <- Hff. reflexivity. }
+  assert (finished <> /[0] -> map_take_gt c k_it = map.empty) by steps.
+  assert (\[i] <= Z.of_nat (map_size (map_take_ge c k))) by steps.
+  clear Hszg0.
+  prove (\[i] >= 1).
+  match goal with
+  | H1: finished = /[0], H2: i = /[1] |- _ => clear H1 H2
+  end.
+  move finished at bottom.
+  move i at bottom.
+  move k_it at bottom.
+  move Heqsl after Scope6.
+  move Heqskeys after Scope6.
+  move Heqsvals after Scope6.
+  purge v_res. .**/
+      while (i < n && !finished)
+        /* decreases (\[n] + 1 - \[i] - \[finished]) */ {                  /**. .**/
+        uintptr_t next_res_loop =
+          cbt_next_gt(tp, k_it,
+            keys_out + sizeof(uintptr_t) * i,
+            vals_out + sizeof(uintptr_t) * i);                             /**.
+  instantiate (3:=c). steps. .**/
+        if (next_res_loop == 1) /* split */ {                              /**.
+  match goal with
+  | H: context [ if ?cond then _ else _ ] |- _ =>
+       destruct cond eqn:E2; [ solve [ exfalso; steps ] | ]
+  end.
+  repeat heapletwise_step.
+  replace (keys_out ^+ /[ltac:(wsize)] ^* i ^- keys_out)
+    with (/[ltac:(wsize)] ^* i) in * by hwlia.
+  replace (vals_out ^+ /[ltac:(wsize)] ^* i ^- vals_out)
+    with (/[ltac:(wsize)] ^* i) in * by hwlia.
+  replace (\[/[ltac:(wsize)] ^* i] / ltac:(wsize)) with \[i] in * by hwlia.
+  merge_step. merge_step. .**/
+          k_it = load(keys_out + sizeof(uintptr_t) * i);                   /**. .**/
+          i = i + 1;                                                       /**. .**/
+        }                                                                  /*?.
+  assert (\[k] <= \[k_it']).
+  { pose proof (map_to_sorted_list_in'' (map_take_ge c k) (\[i'] - 1) k_it') as Hkitin.
+    prove_ante Hkitin. lia. prove_ante Hkitin. subst skeys sl.
+    match goal with
+    | H: _ = k_it' |- _ => erewrite list_map_get in H
+        by (rewrite map_to_sorted_list_length; lia)
+    end. assumption. eauto using map_take_ge_get_nnone. }
+  assert (\[i'] < Z.of_nat (map_size (map_take_ge c k))).
+  { pose proof (map_to_sorted_list_key_gt_size (map_take_ge c k) (\[i'] - 1) k_it')
+      as Hnsz. prove_ante Hnsz. lia. prove_ante Hnsz. subst skeys sl.
+    match goal with
+    | H: _ = k_it' |- _ => erewrite list_map_get in H
+        by (rewrite map_to_sorted_list_length; lia)
+    end.
+    assumption. rewrite map_take_gt_take_ge in Hnsz by assumption.
+    enough (map_size (map_take_gt c k_it') <> O) by lia. rewrite map_size_0_iff_empty.
+    eapply map_get_not_None_nonempty. eapply some_not_none.
+    eauto using map_min_key_value_in. }
+  assert (\[i'] < len sl).
+  { subst sl. rewrite map_to_sorted_list_length. assumption. }
+  assert (\[i'] < len svals).
+  { subst svals. rewrite List.map_length. assumption. }
+  assert (\[i'] < len skeys).
+  { subst skeys. rewrite List.map_length. assumption. }
+  assert (Hsli': sl[\[i']] = (k_it, v_res)).
+  { pose proof (map_to_sorted_list_first (map_take_gt c k_it')) as Hshfr.
+    prove_ante Hshfr. eapply map_get_not_None_nonempty. eapply some_not_none.
+    eauto using map_min_key_value_in. rewrite Hshfr in *.
+    match goal with
+    | H: Some _ = Some _ |- _ => injection H; intros Hili; clear H
+    end.
+    rewrite <- map_take_gt_take_ge with (k1:=k) in Hili by assumption.
+    erewrite map_to_sorted_list_take_gt in Hili; cycle 2.
+    subst skeys sl.
+    match goal with
+    | H: _ = k_it' |- _ => erewrite list_map_get in H
+    end. eassumption. rewrite map_to_sorted_list_length. lia. 2: lia.
+    assert (\[i'] < len (map_to_sorted_list (map_take_ge c k))).
+    { rewrite map_to_sorted_list_length. lia. }
+    replace ((map_to_sorted_list (map_take_ge c k))[\[i'] - 1 + 1:][0])
+      with ((map_to_sorted_list (map_take_ge c k))[\[i']]) in Hili by steps.
+    subst sl. assumption. }
+  steps.
+  { subst svals. erewrite list_map_get by lia. rewrite Hsli'. reflexivity. }
+  { subst skeys. erewrite list_map_get by lia. rewrite Hsli'. reflexivity. }
+  { subst skeys. erewrite list_map_get by lia. subst i. steps.
+    rewrite Hsli'. reflexivity. } .**/
+        else {                                                             /**.
+  match goal with
+  | H: context [ if ?cond then _ else _ ] |- _ =>
+       destruct cond eqn:E2; [ | solve [ exfalso; steps ] ]
+  end.
+  repeat heapletwise_step.
+  replace (keys_out ^+ /[ltac:(wsize)] ^* i ^- keys_out)
+    with (/[ltac:(wsize)] ^* i) in * by hwlia.
+  replace (vals_out ^+ /[ltac:(wsize)] ^* i ^- vals_out)
+    with (/[ltac:(wsize)] ^* i) in * by hwlia.
+  replace (\[/[ltac:(wsize)] ^* i] / ltac:(wsize)) with \[i] in * by hwlia.
+  merge_step. merge_step.
+  apply Decidable_sound in E2. .**/
+          finished = 1;                                                    /**. .**/
+        }                                                                  /*?.
+  steps. .**/
+      }                                                                    /**. .**/
+      return i;                                                            /**. .**/
+    }                                                                      /*?.
+  step. step. steps. step.
+  assert (\[i] <= len sl). { subst sl. rewrite map_to_sorted_list_length. assumption. }
+  assert (\[i] <= \[n]).
+  { assert (\[i] <= len skeys). { subst skeys. rewrite List.map_length. assumption. }
+    steps. }
+  match goal with
+  | H: _ \/ finished <> /[0] |- _ => destruct H
+  end.
+  { assert (i = n) by hwlia. subst i. hwlia. }
+  { enough (\[i] = len sl) by hwlia. subst sl. rewrite map_to_sorted_list_length.
+    pose proof (map_to_sorted_list_key_gt_size (map_take_ge c k) (\[i] - 1) k_it) as Hsz.
+    prove_ante Hsz. lia. prove_ante Hsz. subst skeys.
+    match goal with
+    | H: _ = k_it |- _ => erewrite list_map_get in H; steps
+    end.
+    rewrite map_take_gt_take_ge in Hsz.
+    assert (map_size (map_take_gt c k_it) = O).
+    { assert (Htem: map_take_gt c k_it = map.empty) by auto. rewrite Htem.
+      apply map_size_empty. }
+    lia.
+    eapply map_take_ge_get_nnone. subst skeys. eapply map_to_sorted_list_in''; cycle 1.
+    match goal with
+    | H: _ = k_it |- _ => erewrite list_map_get in H by steps
+    end.
+    eassumption. lia. }
+  steps. .**/
   }                                                                        /**. .**/
 }                                                                          /**.
 Qed.
