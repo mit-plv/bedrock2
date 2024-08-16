@@ -45,6 +45,7 @@ Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.MetricsToRiscv.
 Require Export compiler.regs_initialized.
+Require Import bedrock2.MetricCosts.
 
 Require Import coqutil.Word.Interface.
 Local Hint Mode Word.Interface.word - : typeclass_instances.
@@ -288,7 +289,8 @@ Section WithParameters.
       exists pos, map.get finfo f = Some pos /\ pos mod 4 = 0.
 
   Local Notation stmt := (stmt Z).
-
+  Local Notation exec := (exec PostSpill isRegZ). 
+  
   (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
      we enter a new function body, to make sure functions cannot call themselves, while
      [e_impl] and [e_pos] remain the same throughout because that's mandated by

@@ -2,6 +2,7 @@ Require Import Coq.Bool.Bool.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.MetricCosts.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
 Require Import compiler.util.Common.
@@ -280,6 +281,9 @@ Module exec.
             {env_ok: map.ok env}
             {ext_spec_ok: ext_spec.ok ext_spec}.
 
+    Variable (phase: compphase).
+    Variable (isReg: varname -> bool).
+
     Variable (e: env).
 
     Local Notation metrics := MetricLog.
@@ -292,6 +296,30 @@ Module exec.
       | Var vo => map.get l vo
       | Const co => Some (word.of_Z co)
       end.
+
+    (* Helper functions for computing costs of instructions *)
+
+    Definition cost_SOp x y z mc :=
+      cost_op (fun v => match v with | Var vo => isReg vo | Const _ => true end)
+      (Var x) (Var y) z mc.
+
+    Definition cost_SIf bcond mc :=
+      match bcond with
+      | CondBinary _ x y => cost_if isReg x (Some y)
+      | CondNez x => cost_if isReg x None
+      end mc.
+
+    Definition cost_SLoop_true bcond mc :=
+      match bcond with
+      | CondBinary _ x y => cost_loop_true isReg x (Some y)
+      | CondNez x => cost_loop_true isReg x None
+      end mc.
+
+    Definition cost_SLoop_false bcond mc :=
+      match bcond with
+      | CondBinary _ x y => cost_loop_false isReg x (Some y)
+      | CondNez x => cost_loop_false isReg x None
+      end mc.
 
     (* alternative semantics which allow non-determinism *)
     Inductive exec:
@@ -308,92 +336,69 @@ Module exec.
             exists l', map.putmany_of_list_zip resvars resvals l = Some l' /\
             forall m', map.split m' mKeep mReceive ->
             post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l'
-                 (addMetricInstructions 1
-                 (addMetricStores 1
-                 (addMetricLoads 2 mc)))) ->
+                 (cost_interact phase mc)) ->
         exec (SInteract resvars action argvars) t m l mc post
     | call: forall t m l mc binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list_zip params argvs map.empty = Some st0 ->
-        exec fbody t m st0 (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc)))) outcome ->
+        exec fbody t m st0 mc outcome ->
         (forall t' m' mc' st1,
             outcome t' m' st1 mc' ->
             exists retvs l',
               map.getmany_of_list st1 rets = Some retvs /\
               map.putmany_of_list_zip binds retvs l = Some l' /\
-              post t' m' l' (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc'))))) ->
+              post t' m' l' (cost_call phase mc')) ->
         exec (SCall binds fname args) t m l mc post
-        (* TODO think about a non-fixed bound on the cost of function preamble and postamble *)
     | load: forall t m l mc sz x a o v addr post,
         map.get l a = Some addr ->
         load sz m (word.add addr (word.of_Z o)) = Some v ->
-        post t m (map.put l x v)
-             (addMetricLoads 2
-             (addMetricInstructions 1 mc)) ->
+        post t m (map.put l x v) (cost_load isReg x a mc)->
         exec (SLoad sz x a o) t m l mc post
     | store: forall t m m' mc l sz a o addr v val post,
         map.get l a = Some addr ->
         map.get l v = Some val ->
         store sz m (word.add addr (word.of_Z o)) val = Some m' ->
-        post t m' l
-             (addMetricLoads 1
-             (addMetricInstructions 1
-             (addMetricStores 1 mc))) ->
+        post t m' l (cost_store isReg a v mc) ->
         exec (SStore sz a v o) t m l mc post
     | inlinetable: forall sz x table i v index t m l mc post,
         (* compiled riscv code uses x as a tmp register and this shouldn't overwrite i *)
         x <> i ->
         map.get l i = Some index ->
         load sz (map.of_list_word table) index = Some v ->
-        post t m (map.put l x v)
-             (addMetricLoads 4
-             (addMetricInstructions 3
-             (addMetricJumps 1 mc))) ->
+        post t m (map.put l x v) (cost_inlinetable isReg x i mc) ->
         exec (SInlinetable sz x table i) t m l mc post
     | stackalloc: forall t mSmall l mc x n body post,
         n mod (bytes_per_word width) = 0 ->
         (forall a mStack mCombined,
             anybytes a n mStack ->
             map.split mCombined mSmall mStack ->
-            exec body t mCombined (map.put l x a) (addMetricLoads 1 (addMetricInstructions 1 mc))
+            exec body t mCombined (map.put l x a) mc
              (fun t' mCombined' l' mc' =>
               exists mSmall' mStack',
                 anybytes a n mStack' /\
                 map.split mCombined' mSmall' mStack' /\
-                post t' mSmall' l' mc')) ->
+                post t' mSmall' l' (cost_stackalloc isReg x mc'))) ->
         exec (SStackalloc x n body) t mSmall l mc post
     | lit: forall t m l mc x v post,
-        post t m (map.put l x (word.of_Z v))
-             (addMetricLoads 8
-             (addMetricInstructions 8 mc)) ->
+        post t m (map.put l x (word.of_Z v)) (cost_lit isReg x mc) ->
         exec (SLit x v) t m l mc post
     | op: forall t m l mc x op y y' z z' post,
         map.get l y = Some y' ->
         lookup_op_locals l z = Some z' ->
-        post t m (map.put l x (interp_binop op y' z'))
-             (addMetricLoads 2
-             (addMetricInstructions 2 mc)) ->
+        post t m (map.put l x (interp_binop op y' z')) (cost_SOp x y z mc) ->
         exec (SOp x op y z) t m l mc post
     | set: forall t m l mc x y y' post,
         map.get l y = Some y' ->
-        post t m (map.put l x y')
-             (addMetricLoads 1
-             (addMetricInstructions 1 mc)) ->
+        post t m (map.put l x y') (cost_set isReg x y mc) ->
         exec (SSet x y) t m l mc post
     | if_true: forall t m l mc cond  bThen bElse post,
         eval_bcond l cond = Some true ->
-        exec bThen t m l
-             (addMetricLoads 2
-             (addMetricInstructions 2
-             (addMetricJumps 1 mc))) post ->
+        exec bThen t m l (cost_SIf cond mc) post ->
         exec (SIf cond bThen bElse) t m l mc post
     | if_false: forall t m l mc cond bThen bElse post,
         eval_bcond l cond = Some false ->
-        exec bElse t m l
-             (addMetricLoads 2
-             (addMetricInstructions 2
-             (addMetricJumps 1 mc))) post ->
+        exec bElse t m l (cost_SIf cond mc) post ->
         exec (SIf cond bThen bElse) t m l mc post
     | loop: forall t m l mc cond body1 body2 mid1 mid2 post,
         (* This case is carefully crafted in such a way that recursive uses of exec
@@ -406,10 +411,7 @@ Module exec.
         (forall t' m' l' mc',
             mid1 t' m' l' mc' ->
             eval_bcond l' cond = Some false ->
-            post t' m' l'
-                 (addMetricLoads 1
-                 (addMetricInstructions 1
-                 (addMetricJumps 1 mc')))) ->
+            post t' m' l' (cost_SLoop_false cond mc')) ->
         (forall t' m' l' mc',
             mid1 t' m' l' mc' ->
             eval_bcond l' cond = Some true ->
@@ -417,9 +419,7 @@ Module exec.
         (forall t'' m'' l'' mc'',
             mid2 t'' m'' l'' mc'' ->
             exec (SLoop body1 cond body2) t'' m'' l''
-                 (addMetricLoads 2
-                 (addMetricInstructions 2
-                 (addMetricJumps 1 mc''))) post) ->
+                 (cost_SLoop_true cond mc'') post) ->
         exec (SLoop body1 cond body2) t m l mc post
     | seq: forall t m l mc s1 s2 mid post,
         exec s1 t m l mc mid ->
@@ -451,12 +451,12 @@ Module exec.
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list_zip params argvs map.empty = Some st ->
-        exec fbody t m st (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc))))
+        exec fbody t m st mc
              (fun t' m' st' mc' =>
                 exists retvs l',
                   map.getmany_of_list st' rets = Some retvs /\
                     map.putmany_of_list_zip binds retvs l = Some l' /\
-                    post t' m' l' (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc'))))) ->
+                    post t' m' l' (cost_call phase mc')) ->
       exec (SCall binds fname args) t m l mc post.
     Proof.
       intros. eapply call; try eassumption.
@@ -466,15 +466,15 @@ Module exec.
     Lemma loop_cps: forall body1 cond body2 t m l mc post,
       exec body1 t m l mc (fun t m l mc => exists b,
         eval_bcond l cond = Some b /\
-        (b = false -> post t m l (addMetricLoads 1 (addMetricInstructions 1 (addMetricJumps 1 mc)))) /\
+        (b = false -> post t m l (cost_SLoop_false cond mc)) /\
         (b = true -> exec body2 t m l mc (fun t m l mc =>
            exec (SLoop body1 cond body2) t m l
-                (addMetricLoads 2 (addMetricInstructions 2 (addMetricJumps 1 mc))) post))) ->
+                (cost_SLoop_true cond mc) post))) ->
       exec (SLoop body1 cond body2) t m l mc post.
     Proof.
       intros. eapply loop. 1: eapply H. all: cbv beta; intros; simp.
       - congruence.
-      - replace b with false in * by congruence. clear b. eauto.
+      - replace b with false in * by congruence. clear b. eauto. 
       - replace b with true in * by congruence. clear b. eauto.
       - assumption.
     Qed.
@@ -624,14 +624,17 @@ Section FlatImp2.
           {env_ok: map.ok env}
           {ext_spec_ok: ext_spec.ok ext_spec}.
 
+  Variable (phase: compphase).
+  Variable (isReg: varname -> bool).
+  
   Definition SimState: Type := trace * mem * locals * MetricLog.
   Definition SimExec(e: env)(c: stmt varname): SimState -> (SimState -> Prop) -> Prop :=
     fun '(t, m, l, mc) post =>
-      exec e c t m l mc (fun t' m' l' mc' => post (t', m', l', mc')).
+      exec phase isReg e c t m l mc (fun t' m' l' mc' => post (t', m', l', mc')).
 
   Lemma modVarsSound: forall e s initialT (initialSt: locals) initialM (initialMc: MetricLog) post,
-      exec e s initialT initialM initialSt initialMc post ->
-      exec e s initialT initialM initialSt initialMc
+      exec phase isReg e s initialT initialM initialSt initialMc post ->
+      exec phase isReg e s initialT initialM initialSt initialMc
            (fun finalT finalM finalSt _ => map.only_differ initialSt (modVars s) finalSt).
   Proof.
     induction 1;
@@ -651,7 +654,7 @@ Section FlatImp2.
     - eapply exec.stackalloc; try eassumption.
       intros.
       eapply exec.weaken.
-      + eapply exec.intersect.
+      + eapply exec.intersect; try eassumption.
         * eapply H0; eassumption.
         * eapply H1; eassumption.
       + simpl. intros. simp.
@@ -671,7 +674,7 @@ Section FlatImp2.
       + intros. simp. eauto.
       + intros. simp. simpl. map_solver locals_ok.
       + intros. simp. simpl in *.
-        eapply exec.intersect; [eauto|].
+        eapply exec.intersect; try eassumption; [eauto|].
         eapply exec.weaken.
         * eapply H3; eassumption.
         * simpl. intros. map_solver locals_ok.
@@ -689,3 +692,20 @@ Section FlatImp2.
   Qed.
 
 End FlatImp2.
+
+(* various helper tactics extending the ones from MetricCosts *)
+
+Ltac scost_unfold :=
+  unfold exec.cost_SOp, exec.cost_SIf, exec.cost_SLoop_true, exec.cost_SLoop_false in *; cost_unfold.
+
+Ltac scost_destr :=
+  repeat match goal with
+         | x : operand |- _ => destr x
+         | x : bbinop _ |- _ => destr x
+         | x : bcond _ |- _ => destr x
+         | _ => cost_destr
+         end.
+
+Ltac scost_solve := scost_unfold; scost_destr; try solve_MetricLog.
+Ltac scost_solve_piecewise := scost_unfold; scost_destr; try solve_MetricLog_piecewise.
+Ltac scost_hammer := try solve [eauto 3 with metric_arith | scost_solve].

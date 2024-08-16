@@ -112,7 +112,7 @@ Proof.
   repeat apply conj; auto; []. (* postcondition *)
   letexists. split.
   { exact eq_refl. }
-  { auto. }
+  { repeat straightline. }
 
   Unshelve.
   all: exact (word.of_Z 0).

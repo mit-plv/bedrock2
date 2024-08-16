@@ -15,7 +15,6 @@ Require Import riscv.Utility.runsToNonDet.
 Require Export riscv.Platform.MetricRiscvMachine.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Tactics.fwd.
-Require Import bedrock2.MetricLogging.
 Require Import compiler.ExprImp.
 Require Import compiler.FlattenExprDef.
 Require Import compiler.FlattenExpr.
@@ -39,7 +38,9 @@ Require Import compiler.SeparationLogic.
 Require Import compiler.Spilling.
 Require Import compiler.RegAlloc.
 Require Import compiler.RiscvEventLoop.
+Require Import compiler.MetricsToRiscv.
 Require Import bedrock2.MetricLogging.
+Require Import bedrock2.MetricCosts.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
 Require Import compiler.DivisibleBy4.
@@ -47,10 +48,11 @@ Require Export coqutil.Word.SimplWordExpr.
 Require Export compiler.Registers.
 Require Import compiler.ForeverSafe.
 Require Import FunctionalExtensionality.
+Require Import PropExtensionality.
 Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Require Import compiler.LowerPipeline.
-Require Import bedrock2.WeakestPreconditionProperties.
+Require Import bedrock2.MetricWeakestPreconditionProperties.
 Require Import compiler.UseImmediateDef.
 Require Import compiler.UseImmediate.
 Require Import compiler.DeadCodeElimDef.
@@ -64,8 +66,8 @@ Section WithWordAndMem.
     Program: Type;
     Valid: Program -> Prop;
     Call(p: Program)(funcname: string)
-        (t: trace)(m: mem)(argvals: list word)
-        (post: trace -> mem -> list word -> Prop): Prop;
+        (t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
+        (post: trace -> mem -> list word -> MetricLog -> Prop): Prop;
   }.
 
   Record phase_correct{L1 L2: Lang}
@@ -78,9 +80,12 @@ Section WithWordAndMem.
     phase_preserves_post: forall p1 p2,
         L1.(Valid) p1 ->
         compile p1 = Success p2 ->
-        forall fname t m argvals post,
-        L1.(Call) p1 fname t m argvals post ->
-        L2.(Call) p2 fname t m argvals post;
+        forall fname t m argvals mcH post,
+        L1.(Call) p1 fname t m argvals mcH post ->
+        forall mcL,
+        L2.(Call) p2 fname t m argvals mcL (fun t m a mcL' =>
+          exists mcH', metricsLeq (mcL' - mcL) (mcH' - mcH) /\ post t m a mcH'
+        );
   }.
 
   Arguments phase_correct : clear implicits.
@@ -92,6 +97,10 @@ Section WithWordAndMem.
              | Failure e => Failure e
              end.
 
+  Ltac post_ext :=
+    repeat (eapply functional_extensionality; intro);
+    apply propositional_extensionality.
+
   Lemma compose_phases_correct{L1 L2 L3: Lang}
         {compile12: L1.(Program) -> result L2.(Program)}
         {compile23: L2.(Program) -> result L3.(Program)}:
@@ -101,7 +110,10 @@ Section WithWordAndMem.
   Proof.
     unfold compose_phases.
     intros [V12 C12] [V23 C23].
-    split; intros; fwd; eauto.
+    split; intros; fwd; [eauto|].
+    erewrite f_equal; [eauto|].
+    post_ext.
+    split; [|destruct 1 as (?&?&?&?&?)]; eauto with metric_arith.
   Qed.
 
   Section WithMoreParams.
@@ -147,14 +159,29 @@ Section WithWordAndMem.
                       Cmd -> trace -> mem -> locals -> MetricLog ->
                       (trace -> mem -> locals -> MetricLog -> Prop) -> Prop)
                (e: string_keyed_map (list Var * list Var * Cmd)%type)(f: string)
-               (t: trace)(m: mem)(argvals: list word)
-               (post: trace -> mem -> list word -> Prop): Prop :=
+               (t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
+               (post: trace -> mem -> list word -> MetricLog -> Prop): Prop :=
       exists argnames retnames fbody l,
         map.get e f = Some (argnames, retnames, fbody) /\
         map.of_list_zip argnames argvals = Some l /\
-        forall mc, Exec e fbody t m l mc (fun t' m' l' mc' =>
+        Exec e fbody t m l (cost_spill_spec mc) (fun t' m' l' mc' =>
                        exists retvals, map.getmany_of_list l' retnames = Some retvals /\
-                                       post t' m' retvals).
+                                       post t' m' retvals mc').
+
+    Definition locals_based_call_spec_spilled{Var Cmd: Type}{locals: map.map Var word}
+               {string_keyed_map: forall T: Type, map.map string T}
+               (Exec: string_keyed_map (list Var * list Var * Cmd)%type ->
+                      Cmd -> trace -> mem -> locals -> MetricLog ->
+                      (trace -> mem -> locals -> MetricLog -> Prop) -> Prop)
+               (e: string_keyed_map (list Var * list Var * Cmd)%type)(f: string)
+               (t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
+               (post: trace -> mem -> list word -> MetricLog -> Prop): Prop :=
+      exists argnames retnames fbody l,
+        map.get e f = Some (argnames, retnames, fbody) /\
+        map.of_list_zip argnames argvals = Some l /\
+        Exec e fbody t m l mc (fun t' m' l' mc' =>
+                       exists retvals, map.getmany_of_list l' retnames = Some retvals /\
+                                       post t' m' retvals mc').
 
     Definition ParamsNoDup{Var: Type}: (list Var * list Var * FlatImp.stmt Var) -> Prop :=
       fun '(argnames, retnames, body) => NoDup argnames /\ NoDup retnames.
@@ -170,7 +197,7 @@ Section WithWordAndMem.
     Definition FlatWithStrVars: Lang := {|
       Program := string_keyed_map (list string * list string * FlatImp.stmt string);
       Valid := map.forall_values ParamsNoDup;
-      Call := locals_based_call_spec FlatImp.exec;
+      Call := locals_based_call_spec (FlatImp.exec PreSpill isRegStr);
     |}.
 
     (* |                 *)
@@ -189,7 +216,7 @@ Section WithWordAndMem.
     Definition FlatWithZVars: Lang := {|
       Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
       Valid := map.forall_values ParamsNoDup;
-      Call := locals_based_call_spec FlatImp.exec;
+      Call := locals_based_call_spec (FlatImp.exec PreSpill isRegZ);
     |}.
     (* |                 *)
     (* | Spilling        *)
@@ -197,7 +224,7 @@ Section WithWordAndMem.
     Definition FlatWithRegs: Lang := {|
       Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
       Valid := map.forall_values FlatToRiscvDef.valid_FlatImp_fun;
-      Call := locals_based_call_spec FlatImp.exec;
+      Call := locals_based_call_spec_spilled (FlatImp.exec PostSpill isRegZ);
     |}.
     (* |                 *)
     (* | FlatToRiscv     *)
@@ -243,7 +270,7 @@ Section WithWordAndMem.
       eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption.
       intros.
       eapply FlatImp.exec.weaken.
-      - eapply flattenStmt_correct_aux with (mcH := mc).
+      - eapply flattenStmt_correct_aux.
         + eassumption.
         + eauto.
         + reflexivity.
@@ -264,7 +291,9 @@ Section WithWordAndMem.
           eapply start_state_spec. 2: exact A.
           eapply ListSet.In_list_union_l. eapply ListSet.In_list_union_l. assumption.
         + eapply @freshNameGenState_disjoint_fbody.
-      - simpl. intros. fwd. eauto using map.getmany_of_list_extends.
+      - simpl. intros. fwd. eexists. split.
+        + eauto using map.getmany_of_list_extends.
+        + eexists. split; [|eassumption]. unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
     Lemma useimmediate_functions_NoDup: forall funs funs',
@@ -302,9 +331,10 @@ Section WithWordAndMem.
       eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption.
       intros.
       eapply exec.weaken.
-      - eapply useImmediate_correct_aux.
-        all: eauto.
-      - eauto.
+      - eapply useImmediate_correct_aux; eauto.
+      - simpl. destruct 1 as (?&?&?&?&?).
+        repeat (eexists; split; try eassumption).
+        unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
 
@@ -346,8 +376,7 @@ Section WithWordAndMem.
         exists retvals.
         split.
         + erewrite MapEauto.agree_on_getmany; [ eauto | eapply MapEauto.agree_on_comm; [ eassumption ] ].
-        + eassumption.
-       Unshelve. eauto.
+        + eexists; split; eauto. unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
     Lemma regalloc_functions_NoDup: forall funs funs',
@@ -401,8 +430,9 @@ Section WithWordAndMem.
         edestruct putmany_of_list_zip_states_compat as (lL' & P' & Cp); try eassumption.
         1: eapply states_compat_empty.
         rewrite H1 in P'. inversion P'. exact Cp.
-      - simpl. intros. fwd. eexists. split. 2: eassumption.
-        eauto using states_compat_getmany.
+      - simpl. intros. fwd. eexists. split.
+        + eauto using states_compat_getmany.
+        + eexists. split; [|eassumption]. unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
     Ltac debool :=
@@ -456,7 +486,7 @@ Section WithWordAndMem.
     Proof.
       unfold FlatWithZVars, FlatWithRegs. split; cbn.
       1: exact spilling_preserves_valid.
-      unfold locals_based_call_spec. intros. fwd.
+      unfold locals_based_call_spec, locals_based_call_spec_spilled. intros. fwd.
       pose proof H0 as GL.
       unfold spill_functions in GL.
       eapply map.try_map_values_fw in GL. 2: eassumption.
@@ -472,8 +502,11 @@ Section WithWordAndMem.
       fwd.
       exists argnames2, retnames2, fbody2, l'.
       split. 1: exact G2. split. 1: eassumption.
-      intros. eapply spill_fun_correct; try eassumption.
-      unfold call_spec. intros * E. rewrite E in *. fwd. eauto.
+      intros.
+      eapply FlatImp.exec.weaken.
+      - eapply spill_fun_correct; try eassumption.
+        unfold call_spec. intros * E. rewrite E in *. fwd. eauto.
+      - simpl. intros. fwd. repeat (eexists; split; eauto with metric_arith).
     Qed.
 
     Lemma riscv_phase_correct: phase_correct FlatWithRegs RiscvLang (riscvPhase compile_ext_call).
@@ -550,18 +583,19 @@ Section WithWordAndMem.
         (* function we choose to call: *)
         (fname: string)
         (* high-level initial state & post on final state: *)
-        (t: trace) (mH: mem) (argvals: list word) (post: trace -> mem -> list word -> Prop),
+        (t: trace) (mH: mem) (argvals: list word) (mc: MetricLog) (post: trace -> mem -> list word -> MetricLog -> Prop),
         valid_src_funs functions = true ->
         compile functions = Success (instrs, finfo, req_stack_size) ->
         (exists (argnames retnames: list string) (fbody: cmd) l,
             map.get (map.of_list (map := Semantics.env) functions) fname =
               Some (argnames, retnames, fbody) /\
             map.of_list_zip argnames argvals = Some l /\
-            forall mc,
-              MetricSemantics.exec (map.of_list functions) fbody t mH l mc
+              MetricSemantics.exec (map.of_list functions) fbody t mH l
+                (cost_spill_spec mc)
                 (fun t' m' l' mc' => exists retvals: list word,
                      map.getmany_of_list l' retnames = Some retvals /\
-                     post t' m' retvals)) ->
+                     post t' m' retvals mc')) ->
+        forall mcL,
         exists (f_rel_pos: Z),
           map.get (map.of_list finfo) fname = Some f_rel_pos /\
           forall (* low-level machine on which we're going to run the compiled program: *)
@@ -575,11 +609,14 @@ Section WithWordAndMem.
             word.unsigned ret_addr mod 4 = 0 ->
             arg_regs_contain initial.(getRegs) argvals ->
             initial.(getLog) = t ->
+            raiseMetrics (cost_compile_spec initial.(getMetrics)) = mcL ->
             machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
             runsTo initial (fun final : MetricRiscvMachine =>
               exists mH' retvals,
                 arg_regs_contain (getRegs final) retvals /\
-                post final.(getLog) mH' retvals /\
+                (exists mcH' : MetricLog,
+                  ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mc)%metricsH /\
+                  post (getLog final) mH' retvals mcH') /\
                 map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
                 final.(getPc) = ret_addr /\
                 machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final).
@@ -596,6 +633,7 @@ Section WithWordAndMem.
       }
       specialize C with (1 := H0').
       specialize C with (1 := H1).
+      specialize (C mcL).
       cbv iota in C.
       fwd. eauto 10.
     Qed.
@@ -619,7 +657,7 @@ Section WithWordAndMem.
         (* function we choose to call: *)
         (fname: string) (f_rel_pos: Z)
         (* high-level initial state & post on final state: *)
-        (t: trace) (mH: mem) (argvals: list word) (post: trace -> mem -> list word -> Prop)
+        (t: trace) (mH: mem) (argvals: list word) (mc: MetricLog) (post: trace -> mem -> list word -> MetricLog -> Prop)
         (* ghost vars that help describe the low-level machine: *)
         (stack_lo stack_hi ret_addr p_funcs: word) (Rdata Rexec: mem -> Prop)
         (* low-level machine on which we're going to run the compiled program: *)
@@ -627,7 +665,9 @@ Section WithWordAndMem.
         valid_src_funs fs = true ->
         NoDup (map fst fs) ->
         compile fs = Success (instrs, finfo, req_stack_size) ->
-        WeakestPrecondition.call (map.of_list fs) fname t mH argvals post ->
+        MetricWeakestPrecondition.call (map.of_list fs) fname t mH argvals
+          (cost_spill_spec mc) post ->
+        forall mcL,
         map.get (map.of_list finfo) fname = Some f_rel_pos ->
         req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
         word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
@@ -636,24 +676,27 @@ Section WithWordAndMem.
         word.unsigned ret_addr mod 4 = 0 ->
         arg_regs_contain initial.(getRegs) argvals ->
         initial.(getLog) = t ->
+        raiseMetrics (cost_compile_spec initial.(getMetrics)) = mcL ->
         machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
         runsTo initial (fun final : MetricRiscvMachine =>
           exists mH' retvals,
             arg_regs_contain (getRegs final) retvals /\
-            post final.(getLog) mH' retvals /\
+            (exists mcH' : MetricLog,
+              ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mc)%metricsH /\
+              post (getLog final) mH' retvals mcH') /\
             map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
             final.(getPc) = ret_addr /\
             machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final).
     Proof.
       intros.
-      let H := hyp WeakestPrecondition.call in rename H into WP.
+      let H := hyp MetricWeakestPrecondition.call in rename H into WP.
       edestruct compiler_correct with (fname := fname) (argvals := argvals) (post := post) as (f_rel_pos' & G & C);
         try eassumption.
       2: { eapply C; clear C; try assumption; try congruence; try eassumption. }
       intros.
-      unfold Semantics.call in WP. fwd.
+      unfold MetricSemantics.call in WP. fwd.
       do 5 eexists. 1: eassumption. split. 1: eassumption.
-      intros. eapply MetricSemantics.of_metrics_free. assumption.
+      intros. assumption.
     Qed.
 
   End WithMoreParams.

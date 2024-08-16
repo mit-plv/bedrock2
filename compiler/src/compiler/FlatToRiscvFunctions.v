@@ -32,6 +32,7 @@ Require Import coqutil.Word.DebugWordEq.
 Require Import compiler.MemoryLayout.
 Require Import coqutil.Map.MapEauto.
 Require Import compiler.Registers.
+Require Import bedrock2.MetricCosts.
 
 Import MetricLogging.
 
@@ -203,6 +204,13 @@ Section Proofs.
     * eauto.
   Qed.
 
+  Lemma valid_FlatImp_var_isRegZ : forall x,
+      valid_FlatImp_var x -> isRegZ x = true.
+  Proof.
+    unfold valid_FlatImp_var, isRegZ; blia.
+  Qed.
+  Hint Resolve valid_FlatImp_var_isRegZ.
+
   Ltac run1done :=
     apply runsToDone;
     simpl_MetricRiscvMachine_get_set;
@@ -212,7 +220,12 @@ Section Proofs.
            end; ssplit; simpl_word_exprs word_ok;
     match goal with
     | |- _ => solve_word_eq word_ok
-    | |- (_ <= _)%metricsL => MetricsToRiscv.solve_MetricLog
+    | |- (_ <= _)%metricsL =>
+        scost_unfold;
+        repeat match goal with
+               | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+               end;
+        MetricsToRiscv.solve_MetricLog
     | |- iff1 ?x ?x => reflexivity
     (* `exists stack_trash frame_trash, ...` from goodMachine *)
     | |- exists _ _, _ = _ /\ _ = _ /\ (_ * _)%sep _ =>
@@ -417,6 +430,13 @@ Section Proofs.
   Qed.
 
 
+  Local Notation exec := (exec PostSpill isRegZ).
+
+  Definition cost_compile_spec mc :=
+    Platform.MetricLogging.addMetricInstructions 95
+    (Platform.MetricLogging.addMetricJumps 95
+    (Platform.MetricLogging.addMetricLoads 95
+    (Platform.MetricLogging.addMetricStores 95 mc))).
 
   Lemma compile_function_body_correct: forall (e_impl_full : env) m l mc (argvs : list word)
     (st0 : locals) (post outcome : Semantics.trace -> mem -> locals -> MetricLog -> Prop)
@@ -481,10 +501,7 @@ Section Proofs.
               (of_list
                  (list_union Z.eqb (List.firstn binds_count (reg_class.all reg_class.arg)) []))
               (singleton_set RegisterNames.ra)) (getRegs finalL) /\
-          (getMetrics finalL - Platform.MetricLogging.addMetricInstructions 100
-                                 (Platform.MetricLogging.addMetricJumps 100
-                                    (Platform.MetricLogging.addMetricLoads 100
-                                       (Platform.MetricLogging.addMetricStores 100 (getMetrics mach)))) <=
+          (getMetrics finalL - cost_compile_spec (getMetrics mach) <=
              lowerMetrics (finalMetricsH - mc))%metricsL /\
           goodMachine finalTrace finalMH finalRegsH g finalL).
   Proof.
@@ -1095,6 +1112,7 @@ Section Proofs.
                  end
              end.
       cbn in H2p6.
+      (* cost_compile_spec constraint: cost_compile_spec >= (...93...) i think? *)
       blia.
 
     + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
@@ -1300,8 +1318,7 @@ Section Proofs.
         eapply List.Forall_filter.
         intros *. intro E. destr (reg_class.get a); try discriminate E.
         unfold reg_class.get in E0. fwd.
-        unfold FlatToRiscvDef.valid_FlatImp_var.
-        destruct_one_match_hyp.
+        unfold FlatToRiscvDef.valid_FlatImp_var. destruct_one_match_hyp.
         -- fwd. blia.
         -- destruct_one_match_hyp. 1: discriminate.
            destruct_one_match_hyp; discriminate.
@@ -1332,6 +1349,15 @@ Section Proofs.
     + assumption.
   Qed.
 
+
+  Ltac finishcost :=
+    scost_unfold;
+    repeat match goal with
+           | H : ForallVars_bcond _ ?cond |- _ => destruct cond eqn:?; unfold ForallVars_bcond in H
+           | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; rewrite H in *
+           | H : _ /\ _ |- _ => destruct H
+           end;
+    MetricsToRiscv.solve_MetricLog.
 
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
@@ -1597,18 +1623,17 @@ Section Proofs.
       replace mid_log with t in *.
       forget (Datatypes.length binds) as binds_count.
       subst binds.
-      eapply runsTo_weaken. {
-        match goal with
-        | H: (binds_count <= 8)%nat |- _ => rename H into BC
-        end.
-        move BC after OC.
-        repeat match goal with
-               | x := _ |- _ => clearbody x
-               end.
-        clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok pos_map_ok env_ok
-                  IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
-        revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
-        eapply compile_function_body_correct.
+      eapply runsTo_weaken.
+      1:{
+              match goal with
+              | H: (binds_count <= 8)%nat |- _ => rename H into BC
+              end.
+              move BC after OC.
+              repeat match goal with
+                     | x := _ |- _ => clearbody x
+                     end.
+              revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
+              eapply compile_function_body_correct.
       }
       subst mach. simpl_MetricRiscvMachine_get_set.
       intros. fwd. eexists. eexists. eexists. eexists.
@@ -1616,6 +1641,8 @@ Section Proofs.
       split; eauto 8 with map_hints.
       split; eauto 8 with map_hints.
       split; eauto 8 with map_hints.
+      (* cost_compile_spec constraint: cost_compile_spec + (1,1,1,0) <= cost_call *)
+      unfold cost_compile_spec, cost_call in *.
       MetricsToRiscv.solve_MetricLog.
 
     - idtac "Case compile_stmt_correct/SLoad".
@@ -1627,6 +1654,7 @@ Section Proofs.
       }
       inline_iff1.
       run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
+
 
     - idtac "Case compile_stmt_correct/SStore".
       inline_iff1.
@@ -1838,6 +1866,10 @@ Section Proofs.
         }
         run1done.
         cbn.
+        cost_unfold.
+        repeat match goal with
+               | H : valid_FlatImp_var _ |- _ => apply valid_FlatImp_var_isRegZ in H; try rewrite H in *
+               end.
         remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;
         symmetry in HeqfinalMetrics;
         pose proof update_metrics_for_literal_bounded (width := width) as Hlit;
@@ -1853,7 +1885,7 @@ Section Proofs.
       match goal with
       | op: Syntax.bopname.bopname |- _ => destr op
       end.
-      all: match goal with
+      all: scost_unfold; match goal with
            | y: operand, H: context[Syntax.bopname.eq] |- _ =>
                destr y; simpl in *;
                [ run1det; run1det; run1done;
@@ -1924,7 +1956,7 @@ Section Proofs.
           { eapply run_Jal0; try safe_sidecond. solve_divisibleBy4. }
           simpl_MetricRiscvMachine_get_set.
 
-          intros. destruct_RiscvMachine mid. fwd. run1done.
+          intros. destruct_RiscvMachine mid. fwd. run1done. finishcost.
 
     - idtac "Case compile_stmt_correct/SIf/Else".
       (* execute branch instruction, which will jump over then-branch *)
@@ -1949,7 +1981,7 @@ Section Proofs.
           all: try safe_sidecond.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
-          simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
+          simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done. finishcost.
 
     - idtac "Case compile_stmt_correct/SLoop".
       match goal with
@@ -2021,7 +2053,8 @@ Section Proofs.
             all: try safe_sidecond.
           }
           (* at end of loop, just prove that computed post satisfies required post *)
-          simpl. intros. destruct_RiscvMachine middle. fwd. run1done.
+          simpl. intros. destruct_RiscvMachine middle. fwd. run1done. finishcost.
+
         * (* false: done, jump over body2 *)
           eapply runsToStep. {
             eapply compile_bcond_by_inverting_correct with (l := lH') (b := false);
@@ -2029,7 +2062,7 @@ Section Proofs.
               try safe_sidecond.
           }
           simpl_MetricRiscvMachine_get_set.
-          intros. destruct_RiscvMachine mid. fwd. run1done.
+          intros. destruct_RiscvMachine mid. fwd. run1done. finishcost.
 
     - idtac "Case compile_stmt_correct/SSeq".
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]
@@ -2062,3 +2095,4 @@ Section Proofs.
 
 
 End Proofs.
+
