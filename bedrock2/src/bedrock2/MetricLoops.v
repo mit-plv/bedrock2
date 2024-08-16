@@ -295,8 +295,6 @@ Section Loops.
     split. { exists v0, g0, l0. split. 1: eapply reconstruct_enforce; eassumption. split; eauto. }
     intros vi ti mi lmapi mci (gi&?&?&?&Qi); subst.
     destruct (hlist.foralls_forall (hlist.foralls_forall (Hbody vi) gi ti mi mci) _ ltac:(eassumption)) as (brv&brmc&?&X).
-
-
     exists brv; exists brmc; split; [assumption|]. destruct X as (Htrue&Hfalse). split; intros Hbr;
       [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
     { eapply Proper_cmd; [ |eapply Hpc].
@@ -358,6 +356,248 @@ Section Loops.
     constructor. intros [y|] pf; eauto.
     constructor. intros [] [].
   Qed.
+
+  Lemma atleastonce_localsmap
+    {e c t} {m : mem} {l mc} {post : _->_->_->_-> Prop}
+    {measure : Type} (invariant:measure->_->_->_->_->Prop) lt
+    (Hwf : well_founded lt)
+    (Henter : exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc))
+      /\ (word.unsigned br <> 0 -> exists v', invariant v' t m l brmc)
+      /\ (word.unsigned br = 0%Z -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))
+    (Hbody : forall v t m l mc, invariant v t m l mc ->
+       cmd call c t m l mc (fun t m l mc =>
+         exists br brmc, expr m l e (cost_loop_true isRegStr UNK (Some UNK) mc) (eq (Datatypes.pair br brmc))
+         /\ (word.unsigned br <> 0 -> exists v', invariant v' t m l brmc /\ lt v' v)
+         /\ (word.unsigned br =  0 -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc))))
+    : cmd call (cmd.while e c) t m l mc post.
+  Proof.
+    eapply wp_while.
+    eexists (option measure), (with_bottom lt), (fun ov t m l mc =>
+      exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc))
+      /\ ((word.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v t m l brmc)
+      /\ (word.unsigned br =  0 -> ov = None /\ post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))).
+    split; auto using well_founded_with_bottom; []. split.
+    { destruct Henter as [br [brmc [He [Henterm Henter0]]]].
+      destruct (BinInt.Z.eq_dec (word.unsigned br) 0).
+      { exists None, br, brmc; split; trivial.
+        split; intros; try contradiction; split; eauto. }
+      { destruct (Henterm n) as [v Hinv].
+        exists (Some v), br, brmc.
+        split; trivial; []; split; try contradiction.
+        exists v; split; trivial. } }
+    intros vi ti mi li mci (br&brmc&Ebr&Hcontinue&Hexit).
+    eexists; eexists; split; [eassumption|]; split.
+    { intros Hc; destruct (Hcontinue Hc) as (v&?&Hinv); subst.
+      eapply Proper_cmd; [ |eapply Hbody; eassumption].
+      intros t' m' l' mc' (br'&brmc'&Ebr'&Hinv'&Hpost').
+      destruct (BinInt.Z.eq_dec (word.unsigned br') 0).
+      { exists None; split; try constructor.
+        exists br', brmc'; split; trivial; [].
+        split; intros; try contradiction.
+        split; eauto. }
+      { destruct (Hinv' ltac:(trivial)) as (v'&inv'&ltv'v).
+        exists (Some v'); split; trivial. (* NOTE: this [trivial] simpl-reduces [with_bottom] *)
+        exists br', brmc'; split; trivial.
+        split; intros; try contradiction.
+        eexists; split; eauto. } }
+    eapply Hexit.
+  Qed.
+
+  Lemma atleastonce
+    {e c t l mc} {m : mem}
+    (variables : list String.string)
+    {localstuple : tuple word (length variables)}
+    {Pl : enforce variables localstuple l}
+    {measure : Type} (invariant:measure->_->_->_->ufunc word (length variables) Prop)
+    lt (Hwf : well_founded lt)
+    {post : _->_->_->_-> Prop}
+    (Henter : exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc))
+      /\ (word.unsigned br <> 0 -> exists v', tuple.apply (invariant v' t m brmc) localstuple)
+      /\ (word.unsigned br = 0%Z -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))
+    (Hbody : forall v t m mc, tuple.foralls (fun localstuple =>
+      tuple.apply (invariant v t m mc) localstuple ->
+       cmd call c t m (reconstruct variables localstuple) mc (fun t m l mc =>
+         exists br brmc, expr m l e (cost_loop_true isRegStr UNK (Some UNK) mc) (eq (Datatypes.pair br brmc))
+         /\ (word.unsigned br <> 0 -> Markers.unique (Markers.left (tuple.existss (fun localstuple => enforce variables localstuple l /\ Markers.right (Markers.unique (exists v', tuple.apply (invariant v' t m brmc) localstuple /\ lt v' v))))))
+         /\ (word.unsigned br =  0 -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))))
+    : cmd call (cmd.while e c) t m l mc post.
+  Proof.
+    eapply (atleastonce_localsmap (fun v t m l mc => exists localstuple, Logic.and (enforce variables localstuple l) (tuple.apply (invariant v t m mc) localstuple))); eauto.
+    1: {
+      destruct Henter as [br [brmc [He [Henterm Henter0]]]].
+      do 3 eexists; eauto; split; eauto.
+      intro Hbr; destruct (Henterm Hbr); eauto.
+    }
+    intros vi ti mi li mci (?&X&Y).
+    specialize (Hbody vi ti mi mci).
+    eapply hlist.foralls_forall in Hbody.
+    specialize (Hbody Y).
+    rewrite <-(reconstruct_enforce _ _ _ X) in Hbody.
+    eapply Proper_cmd; [ |eapply Hbody].
+    intros t' m' l' mc' (?&?&?&HH&?).
+    eexists; eexists; split; eauto.
+    split; intros; eauto.
+    specialize (HH ltac:(eauto)).
+    eapply hlist.existss_exists in HH; destruct HH as (?&?&?&?&?).
+    eexists; split; eauto.
+  Qed.
+
+  Lemma tailrec_earlyout_localsmap
+    {e c t} {m : mem} {l mc} {post : _-> _->_->_-> Prop}
+    {measure : Type} (spec:_->_->_->_->_->(Prop*(_->_->_->_-> Prop))) lt
+    (Hwf : well_founded lt)
+    (v0 : measure) (P0 := (spec v0 t m l mc).(1)) (Hpre : P0)
+    (Q0 := (spec v0 t m l mc).(2))
+    (Hbody : forall v t m l mc,
+      let S := spec v t m l mc in let (P, Q) := S in
+      P ->
+      exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc)) /\
+      (word.unsigned br <> 0%Z -> cmd call c t m l brmc
+        (fun t' m' l' mc' =>
+          (exists br brmc,
+            expr m' l' e (cost_loop_true isRegStr UNK (Some UNK) mc') (eq (Datatypes.pair br brmc))
+            /\ word.unsigned br = 0 /\ Q t' m' l' (cost_loop_false isRegStr UNK (Some UNK) brmc)) \/
+          exists v', let S' := spec v' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc') in let '(P', Q') := S' in
+          P' /\
+          lt v' v /\
+          forall T M L MC, Q' T M L MC -> Q T M L MC)) /\
+      (word.unsigned br = 0%Z -> Q t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))
+    (Hpost : forall t m l mc, Q0 t m l mc -> post t m l mc)
+    : cmd call (cmd.while e c) t m l mc post.
+  Proof.
+    eapply wp_while.
+    eexists (option measure), (with_bottom lt), (fun v t m l mc =>
+      match v with
+      | None => exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc)) /\ word.unsigned br = 0 /\ Q0 t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)
+      | Some v =>
+          let S := spec v t m l mc in let '(P, Q) := S in
+          P /\ forall T M L MC, Q T M L MC -> Q0 T M L MC
+      end).
+    split; auto using well_founded_with_bottom; []; cbv [Markers.split] in *.
+    split.
+    { exists (Some v0); eauto. }
+    intros [vi|] ti mi li mci inv_i; [destruct inv_i as (?&Qi)|destruct inv_i as (br&Hebr&Hbr0&HQ)].
+    { destruct (Hbody _ _ _ _ _ ltac:(eassumption)) as (br&brmc&?&X); exists br, brmc; split; [assumption|].
+      destruct X as (Htrue&Hfalse). split; intros Hbr;
+        [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; eauto.
+      eapply Proper_cmd; [ |eapply Hpc].
+      intros tj mj lj mcj [(br'&brmc'&Hbr'&Hz&HQ)|(vj&dP&?&dQ)];
+          [exists None | exists (Some vj)]; cbn [with_bottom]; eauto 9. }
+    repeat esplit; destruct HQ; eauto; contradiction.
+  Qed.
+
+  Lemma tailrec_earlyout
+    {e c t localsmap} {m : mem}
+    (ghosttypes : polymorphic_list.list Type)
+    (variables : list String.string)
+    {l0 : tuple word (length variables)} {mc}
+    {Pl : enforce variables l0 localsmap}
+    {post : _->_->_->_-> Prop}
+    {measure : Type} (spec:_->HList.arrows ghosttypes (_->_->ufunc word (length variables) (MetricLog->Prop*(_->_->ufunc word (length variables) (MetricLog->Prop))))) lt
+    (Hwf : well_founded lt)
+    (v0 : measure)
+    : hlist.foralls (fun (g0 : hlist ghosttypes) => forall
+    (Hpre : (tuple.apply (hlist.apply (spec v0) g0 t m) l0 mc).(1))
+    (Hbody : forall v, hlist.foralls (fun g => forall t m mc, tuple.foralls (fun l =>
+      @dlet _ (fun _ => Prop) (reconstruct variables l) (fun localsmap : locals =>
+      match tuple.apply (hlist.apply (spec v) g t m) l mc with S_ =>
+      S_.(1) ->
+      Markers.unique (Markers.left (exists br brmc, expr m localsmap e mc (eq (Datatypes.pair br brmc)) /\ Markers.right (
+      (word.unsigned br <> 0%Z -> cmd call c t m localsmap brmc
+        (fun t' m' localsmap' mc' =>
+          Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
+          Markers.unique (Markers.left (exists br brmc, expr m' localsmap' e (cost_loop_true isRegStr UNK (Some UNK) mc') (eq (Datatypes.pair br brmc)) /\ Markers.right ( word.unsigned br = 0 /\ tuple.apply (S_.(2) t' m') l' (cost_loop_false isRegStr UNK (Some UNK) brmc)) ) ) \/
+          Markers.unique (Markers.left (hlist.existss (fun g' => exists v',
+          match tuple.apply (hlist.apply (spec v') g' t' m') l' (cost_loop_true isRegStr UNK (Some UNK) mc') with S' =>
+          S'.(1) /\ Markers.right (
+            lt v' v /\
+            forall T M, hlist.foralls (fun L => forall MC, tuple.apply (S'.(2) T M) L MC -> tuple.apply (S_.(2) T M) L MC)) end))))))))) /\
+      (word.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l (cost_loop_false isRegStr UNK (Some UNK) brmc)))))end))))
+    (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0 mc).(2) with Q0 => forall t m, hlist.foralls (fun l => forall mc, tuple.apply (Q0 t m) l mc -> post t m (reconstruct variables l) mc)end)
+    , cmd call (cmd.while e c) t m localsmap mc post).
+  Proof.
+    eapply hlist_forall_foralls; intros g0 **.
+    eapply wp_while.
+    eexists (option measure), (with_bottom lt), (fun vi ti mi localsmapi mci =>
+      exists li, localsmapi = reconstruct variables li /\
+      match vi with
+      | None => exists br brmc, expr mi localsmapi e mci (eq (Datatypes.pair br brmc))
+      /\ word.unsigned br = 0 /\ tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0 mc).(2) ti mi) li (cost_loop_false isRegStr UNK (Some UNK) brmc)
+      | Some vi => exists gi, match tuple.apply (hlist.apply (spec vi) gi ti mi) li mci with S_ =>
+      S_.(1) /\ forall T M L MC, tuple.apply (S_.(2) T M) L MC ->
+        tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0 mc).(2) T M) L MC end end).
+    cbv [Markers.unique Markers.split Markers.left Markers.right] in *.
+    split; eauto using well_founded_with_bottom.
+    split. { exists (Some v0), l0. split. 1: eapply reconstruct_enforce; eassumption. exists g0; split; eauto. }
+    intros [vi|] ti mi lmapi mci.
+    2: { intros (ld&Hd&br&brmc&Hbr&Hz&Hdone).
+      eexists; eexists; split; eauto.
+      split; intros; try contradiction.
+      subst; eapply (hlist.foralls_forall (Hpost ti mi) _ _ Hdone). }
+    intros (?&?&gi&?&Qi); subst.
+    destruct (hlist.foralls_forall (hlist.foralls_forall (Hbody vi) gi ti mi mci) _ ltac:(eassumption)) as (br&brmc&?&X).
+    exists br, brmc; split; [assumption|]. destruct X as (Htrue&Hfalse). split; intros Hbr;
+      [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
+    { eapply Proper_cmd; [ |eapply Hpc].
+      intros tj mj lmapj mcj Hlj; eapply hlist.existss_exists in Hlj.
+      destruct Hlj as (lj&Elj&HE); eapply reconstruct_enforce in Elj; subst lmapj.
+      destruct HE as [(br'&brmc'&Hevalr'&Hz'&Hdone)|HE].
+      { exists None; cbn. eauto 9. }
+      { eapply hlist.existss_exists in HE. destruct HE as (l&?&?&?&HR).
+        pose proof fun T M => hlist.foralls_forall (HR T M); clear HR.
+        eexists (Some _); eauto 9. } }
+    { pose proof fun t m => hlist.foralls_forall (Hpost t m); clear Hpost; eauto. }
+  Qed.
+
+  Lemma while_zero_iterations {e c t l mc brmc} {m : mem} {post : _->_->_->_-> Prop}
+    (HCond: expr m l e mc (eq (Datatypes.pair (word.of_Z 0) brmc)))
+    (HPost: post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc))
+    : cmd call (cmd.while e c) t m l mc post.
+  Proof.
+    eapply (while_localsmap (fun n t' m' l' mc' => t' = t /\ m' = m /\ l' = l /\ mc' = mc) (PeanoNat.Nat.lt_wf 0) 0%nat).
+    1: unfold split; auto. intros *. intros (? & ? & ? & ?). subst.
+    eexists. eexists. split. 1: exact HCond.
+    rewrite Properties.word.unsigned_of_Z_0.
+    split; intros; congruence.
+  Qed.
+
+
+  (* Bedrock-style loop rule *)
+  Local Open Scope sep_scope.
+  Local Infix "*" := Separation.sep : type_scope.
+  Local Infix "==>" := Lift1Prop.impl1.
+
+  Lemma tailrec_sep
+    e c t (m : mem) l mc (post : _->_->_->_-> Prop)
+    {measure : Type} P Q lt (Hwf : well_founded lt) (v0 : measure) R0
+    (Hpre : (P v0 t l mc * R0) m)
+    (Hbody : forall v t m l mc R, (P v t l mc * R) m ->
+      exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc)) /\
+      (word.unsigned br <> 0%Z -> cmd call c t m l brmc
+        (fun t' m' l' mc' => exists v' dR, (P v' t' l' (cost_loop_true isRegStr UNK (Some UNK) mc') * (R * dR)) m' /\
+          lt v' v /\
+          forall T L MC, Q v' T L MC * dR ==> Q v T L MC)) /\
+      (word.unsigned br = 0%Z -> (Q v t l (cost_loop_false isRegStr UNK (Some UNK) brmc) * R) m))
+    (Hpost : forall t m l mc, (Q v0 t l mc * R0) m -> post t m l mc)
+    : cmd call (cmd.while e c) t m l mc post.
+  Proof.
+    eapply wp_while.
+    eexists measure, lt, (fun v t m l mc => exists R, (P v t l mc * R) m /\
+                          forall T L MC, Q v T L MC * R ==> Q v0 T L MC * R0).
+    split; [assumption|].
+    split. { exists v0, R0. split; [assumption|]. intros. reflexivity. }
+    intros vi ti mi li mci (Ri&?&Qi).
+    destruct (Hbody _ _ _ _ _ _ ltac:(eassumption)) as (br&brmc&?&X); exists br, brmc; split; [assumption|].
+    destruct X as (Htrue&Hfalse). split; intros Hbr;
+      [pose proof(Htrue Hbr)as Hpc|pose proof(Hfalse Hbr)as Hpc]; clear Hbr Htrue Hfalse.
+    { eapply Proper_cmd; [ |eapply Hpc].
+      intros tj mj lj mcj (vj&dR&dP&?&dQ).
+      exists vj; split; [|assumption].
+      exists (Ri * dR); split; [assumption|].
+      intros. rewrite (sep_comm _ dR), <-(sep_assoc _ dR), dQ; trivial. }
+    { eapply Hpost, Qi, Hpc. }
+  Qed.
+
 End Loops.
 
 Ltac loop_simpl :=
