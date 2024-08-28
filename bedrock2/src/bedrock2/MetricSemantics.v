@@ -23,7 +23,7 @@ Section semantics.
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
 
-    Local Notation "' x <- a | y ; f" := (match a with x => f | _ => y end)
+    Local Notation "' x <- a ; f" := (match a with Some x => f | None => None end)
       (right associativity, at level 70, x pattern).
 
     (* TODO XXX possibly be a bit smarter about whether things are registers,
@@ -31,24 +31,21 @@ Section semantics.
     Fixpoint eval_expr (e : expr) (mc : metrics) : option (word * metrics) :=
       match e with
       | expr.literal v => Some (word.of_Z v, cost_lit isRegStr UNK mc)
-      | expr.var x => match map.get l x with
-                      | Some v => Some (v, cost_set isRegStr UNK x mc)
-                      | None => None
-                      end
+      | expr.var x => 'v <- map.get l x; Some (v, cost_set isRegStr UNK x mc)
       | expr.inlinetable aSize t index =>
-          'Some (index', mc') <- eval_expr index mc | None;
-          'Some v <- load aSize (map.of_list_word t) index' | None;
+          '(index', mc') <- eval_expr index mc;
+          'v <- load aSize (map.of_list_word t) index';
           Some (v, cost_inlinetable isRegStr UNK UNK mc')
       | expr.load aSize a =>
-          'Some (a', mc') <- eval_expr a mc | None;
-          'Some v <- load aSize m a' | None;
+          '(a', mc') <- eval_expr a mc;
+          'v <- load aSize m a';
           Some (v, cost_load isRegStr UNK UNK mc')
       | expr.op op e1 e2 =>
-          'Some (v1, mc') <- eval_expr e1 mc | None;
-          'Some (v2, mc'') <- eval_expr e2 mc' | None;
+          '(v1, mc') <- eval_expr e1 mc;
+          '(v2, mc'') <- eval_expr e2 mc';
           Some (interp_binop op v1 v2, cost_op isRegStr UNK UNK UNK mc'')
       | expr.ite c e1 e2 =>
-          'Some (vc, mc') <- eval_expr c mc | None;
+          '(vc, mc') <- eval_expr c mc;
           eval_expr (if word.eqb vc (word.of_Z 0) then e2 else e1)
                     (cost_if isRegStr UNK (Some UNK) mc')
       end.
@@ -56,8 +53,8 @@ Section semantics.
     Fixpoint eval_call_args (arges : list expr) (mc : metrics) :=
       match arges with
       | e :: tl =>
-        'Some (v, mc') <- eval_expr e mc | None;
-        'Some (args, mc'') <- eval_call_args tl mc' | None;
+        '(v, mc') <- eval_expr e mc;
+        '(args, mc'') <- eval_call_args tl mc';
         Some (v :: args, mc'')
       | _ => Some (nil, mc)
       end.
