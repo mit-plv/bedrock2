@@ -311,7 +311,7 @@ Section WithParams.
     - eapply exec.extend_env; eassumption.
   Qed.
 
-  Lemma of_metrics_free_eval_expr: forall m l e v,
+  Lemma to_plain_eval_expr: forall m l e v,
       Semantics.eval_expr m l e = Some v ->
       forall k mc, exists k' mc', MetricLeakageSemantics.eval_expr m l e k mc = Some (v, k', mc').
   Proof.
@@ -329,7 +329,7 @@ Section WithParams.
       eauto.
   Qed.
 
-  Lemma to_metrics_free_eval_expr: forall m l e k mc v k' mc',
+  Lemma of_plain_eval_expr: forall m l e k mc v k' mc',
       MetricLeakageSemantics.eval_expr m l e k mc = Some (v, k', mc') ->
       Semantics.eval_expr m l e = Some v.
   Proof.
@@ -343,26 +343,26 @@ Section WithParams.
     try congruence.
   Qed.
 
-  Lemma of_metrics_free_eval_call_args: forall m l arges args,
+  Lemma to_plain_eval_call_args: forall m l arges args,
       Semantics.eval_call_args m l arges = Some args ->
       forall k mc, exists k' mc', MetricLeakageSemantics.eval_call_args m l arges k mc = Some (args, k', mc').
   Proof.
     induction arges; cbn; intros.
     - eapply Option.eq_of_eq_Some in H. subst. eauto.
     - fwd.
-      eapply of_metrics_free_eval_expr in E. destruct E as (k' & mc' & E). rewrite E.
+      eapply to_plain_eval_expr in E. destruct E as (k' & mc' & E). rewrite E.
       specialize IHarges with (1 := eq_refl). specialize (IHarges k' mc').
       destruct IHarges as (k'' & mc'' & IH). rewrite IH. eauto.
   Qed.
 
-  Lemma to_metrics_free_eval_call_args: forall m l arges k mc args k' mc',
+  Lemma of_plain_eval_call_args: forall m l arges k mc args k' mc',
       MetricLeakageSemantics.eval_call_args m l arges k mc = Some (args, k', mc') ->
       Semantics.eval_call_args m l arges = Some args.
   Proof.
     induction arges; cbn; intros.
     - congruence.
     - fwd.
-      eapply to_metrics_free_eval_expr in E. rewrite E.
+      eapply of_plain_eval_expr in E. rewrite E.
       specialize IHarges with (1 := E0). rewrite IHarges. reflexivity.
   Qed.
 
@@ -370,66 +370,24 @@ Section WithParams.
   Context (sem_ext_spec : Semantics.ExtSpec := fun t mGive a args post => ext_spec t mGive a args (fun mReceive resvals klist => post mReceive resvals)).
   Existing Instance sem_ext_spec.
 
-  Lemma of_metrics_free: forall c t m l post,
+  Lemma to_plain_exec: forall c t m l post,
       Semantics.exec e c t m l post ->
       forall k mc, MetricLeakageSemantics.exec e c k t m l mc (fun _ t' m' l' _ => post t' m' l').
   Proof.
     induction 1; intros;
       repeat match reverse goal with
         | H: Semantics.eval_expr _ _ _ = Some _ |- _ =>
-            eapply of_metrics_free_eval_expr in H; destruct H as (? & ? & H)
+            eapply to_plain_eval_expr in H; destruct H as (? & ? & H)
         | H: Semantics.eval_call_args _ _ _ = Some _ |- _ =>
-            eapply of_metrics_free_eval_call_args in H; destruct H as (? & ? & H)
+            eapply to_plain_eval_call_args in H; destruct H as (? & ? & H)
         end;
       try solve [econstructor; eauto].
   Qed.
 
-  (*not easy to prove
-    Lemma to_metrics_free: forall c t m l mc post,
-      MetricSemantics.exec e c t m l mc post ->
-      Semantics.exec e c t m l (fun t' m' l' => exists mc', post t' m' l' mc').
-  Proof.
-    induction 1; intros;
-      repeat match reverse goal with
-        | H: eval_expr _ _ _ _ = Some _ |- _ =>
-            eapply to_metrics_free_eval_expr in H
-        | H: eval_call_args _ _ _ _ = Some _ |- _ =>
-            eapply to_metrics_free_eval_call_args in H
-        end;
-      try solve [econstructor; eauto].
-    { econstructor. 1: eauto.
-      intros.
-      eapply Semantics.exec.weaken. 1: eapply H1. all: eauto.
-      cbv beta.
-      clear. firstorder idtac. }
-    { econstructor.
-      1: eapply IHexec.
-      cbv beta. intros.
-      fwd.
-      eapply H1. eassumption. }
-    { econstructor; [ eassumption .. | ].
-      cbv beta. intros. fwd. eapply H3. eassumption. }
-    { econstructor. 1-4: eassumption.
-      cbv beta. intros. fwd. specialize H3 with (1 := H4). fwd. eauto 10. }
-    { econstructor. 1-3: eassumption.
-      intros. specialize H2 with (1 := H3). fwd. eauto. }
-  Qed.*)
-
-  Lemma of_metrics_free_call: forall f t m args post,
+  Lemma to_plain_call: forall f t m args post,
       Semantics.call e f t m args post ->
       forall k mc, call e f k t m args mc (fun _ t' m' rets _ => post t' m' rets).
   Proof.
-    unfold call, Semantics.call. intros. fwd. eauto 10 using of_metrics_free.
+    unfold call, Semantics.call. intros. fwd. eauto 10 using to_plain_exec.
   Qed.
-
-  (*not easy to prove
-    Lemma to_metrics_free_call: forall f t m args mc post,
-      call e f t m args mc post ->
-      Semantics.call e f t m args (fun t' m' rets => exists mc', post t' m' rets mc').
-  Proof.
-    unfold call, Semantics.call. intros. fwd.
-    do 4 eexists. 1: eassumption. do 2 eexists. 1: eassumption.
-    eapply Semantics.exec.weaken. 1: eapply to_metrics_free. 1: eassumption.
-    cbv beta. clear. firstorder idtac.
-  Qed.*)
 End WithParams.
