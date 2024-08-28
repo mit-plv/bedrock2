@@ -8,6 +8,7 @@ Require Export bedrock2.Memory.
 Require Import Coq.Lists.List.
 Require Import bedrock2.MetricLogging.
 Require Import bedrock2.MetricCosts.
+Require Import bedrock2.MetricSemantics.
 Require Import bedrock2.Semantics.
 Require Import bedrock2.LeakageSemantics.
 Require Import Coq.Lists.List.
@@ -84,7 +85,7 @@ Module exec. Section WithParams.
   | set x e
     k t m l mc post
     v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
-    (_ : post k t m (map.put l x v) (cost_set isRegStr x UNK mc'))
+    (_ : post k' t m (map.put l x v) (cost_set isRegStr x UNK mc'))
     : exec (cmd.set x e) k t m l mc post
   | unset x
     k t m l mc post
@@ -313,13 +314,14 @@ Section WithParams.
 
   Lemma to_plain_eval_expr: forall m l e v,
       Semantics.eval_expr m l e = Some v ->
-      forall k mc, exists k' mc', MetricLeakageSemantics.eval_expr m l e k mc = Some (v, k', mc').
+      forall k mc, exists k' mc', eval_expr m l e k mc = Some (v, k', mc').
   Proof.
     induction e; cbn; intros;
       repeat match goal with
         | H: Some _ = Some _ |- _ => eapply Option.eq_of_eq_Some in H; subst
-        | H: _ = Some _ |- _ => rewrite H
         | IH: forall _, Some _ = Some _ -> _ |- _ => specialize IH with (1 := eq_refl)
+        | IH: forall _ _, Semantics.eval_expr _ _ _ = Some _ -> _ |- _ =>
+            specialize (IH _ _ ltac:(eassumption))
         | IH: forall _: leakage, forall _: MetricLog, exists _: leakage, exists _: MetricLog,
             eval_expr ?m ?l ?e _ _ = Some _
           |- context[eval_expr ?m ?l ?e ?k ?mc] => specialize (IH k mc)
@@ -329,9 +331,45 @@ Section WithParams.
       eauto.
   Qed.
 
+  Lemma to_metric_eval_expr: forall m l e mc v mc',
+      MetricSemantics.eval_expr m l e mc = Some (v, mc') ->
+      forall k, exists k', eval_expr m l e k mc = Some (v, k', mc').
+  Proof.
+    induction e; cbn; intros;
+      repeat match goal with
+        | H: Some _ = Some _ |- _ => eapply Option.eq_of_eq_Some in H; subst
+        | IH: forall _, Some _ = Some _ -> _ |- _ => specialize IH with (1 := eq_refl)
+        | IH: forall _ _ _, MetricSemantics.eval_expr _ _ _ _ = Some _ -> _ |- _
+          => specialize (IH _ _ _ ltac:(eassumption))
+        | IH: forall _: leakage, exists _: leakage, eval_expr ?m ?l ?e _ _ = Some _
+          |- context[eval_expr ?m ?l ?e ?k ?mc] => specialize (IH k)
+        | |- _ => progress fwd
+        | |- _ => Tactics.destruct_one_match
+        end;
+      eauto.
+  Qed.
+
+  Lemma to_leakage_eval_expr: forall m l e k v k',
+      LeakageSemantics.eval_expr m l e k = Some (v, k') ->
+      forall mc, exists mc', eval_expr m l e k mc = Some (v, k', mc').
+  Proof.
+    induction e; cbn; intros;
+      repeat match goal with
+        | H: Some _ = Some _ |- _ => eapply Option.eq_of_eq_Some in H; subst
+        | IH: forall _, Some _ = Some _ -> _ |- _ => specialize IH with (1 := eq_refl)
+        | IH: forall _ _ _, LeakageSemantics.eval_expr _ _ _ _ = Some _ -> _ |- _
+          => specialize (IH _ _ _ ltac:(eassumption))
+        | IH: forall _: MetricLog, exists _: MetricLog, eval_expr ?m ?l ?e _ _ = Some _
+          |- context[eval_expr ?m ?l ?e ?k ?mc] => specialize (IH mc)
+        | |- _ => progress fwd
+        | |- _ => Tactics.destruct_one_match
+        end;
+      eauto.
+  Qed.
+
   Lemma to_plain_eval_call_args: forall m l arges args,
       Semantics.eval_call_args m l arges = Some args ->
-      forall k mc, exists k' mc', MetricLeakageSemantics.eval_call_args m l arges k mc = Some (args, k', mc').
+      forall k mc, exists k' mc', eval_call_args m l arges k mc = Some (args, k', mc').
   Proof.
     induction arges; cbn; intros.
     - eapply Option.eq_of_eq_Some in H. subst. eauto.
@@ -341,13 +379,37 @@ Section WithParams.
       destruct IHarges as (k'' & mc'' & IH). rewrite IH. eauto.
   Qed.
 
+  Lemma to_metric_eval_call_args: forall m l arges mc args mc',
+      MetricSemantics.eval_call_args m l arges mc = Some (args, mc') ->
+      forall k, exists k', eval_call_args m l arges k mc = Some (args, k', mc').
+  Proof.
+    induction arges; cbn; intros.
+    - inversion H. subst. eauto.
+    - fwd.
+      eapply to_metric_eval_expr in E. destruct E as (k' & E). rewrite E.
+      specialize (IHarges _ _ _ ltac:(eassumption) k').
+      destruct IHarges as (k'' & IH). rewrite IH. eauto.
+  Qed.
+
+  Lemma to_leakage_eval_call_args: forall m l arges k args k',
+      LeakageSemantics.eval_call_args m l arges k = Some (args, k') ->
+      forall mc, exists mc', eval_call_args m l arges k mc = Some (args, k', mc').
+  Proof.
+    induction arges; cbn; intros.
+    - inversion H. subst. eauto.
+    - fwd.
+      eapply to_leakage_eval_expr in E. destruct E as (mc' & E). rewrite E.
+      specialize (IHarges _ _ _ ltac:(eassumption) mc').
+      destruct IHarges as (mc'' & IH). rewrite IH. eauto.
+  Qed.
+
   Context (e: env).
   Context (sem_ext_spec : Semantics.ExtSpec := fun t mGive a args post => ext_spec t mGive a args (fun mReceive resvals klist => post mReceive resvals)).
   Existing Instance sem_ext_spec.
 
   Lemma to_plain_exec: forall c t m l post,
       Semantics.exec e c t m l post ->
-      forall k mc, MetricLeakageSemantics.exec e c k t m l mc (fun _ t' m' l' _ => post t' m' l').
+      forall k mc, exec e c k t m l mc (fun _ t' m' l' _ => post t' m' l').
   Proof.
     induction 1; intros;
       repeat match reverse goal with
@@ -359,10 +421,52 @@ Section WithParams.
       try solve [econstructor; eauto].
   Qed.
 
+  Lemma to_metric_exec: forall c t m l mc post,
+      MetricSemantics.exec e c t m l mc post ->
+      forall k, exec e c k t m l mc (fun _ t' m' l' mc' => post t' m' l' mc').
+  Proof.
+    induction 1; intros;
+      repeat match reverse goal with
+        | H: MetricSemantics.eval_expr _ _ _ _ = Some _ |- _ =>
+            eapply to_metric_eval_expr in H; destruct H as (? & H)
+        | H: MetricSemantics.eval_call_args _ _ _ _ = Some _ |- _ =>
+            eapply to_metric_eval_call_args in H; destruct H as (? & H)
+        end;
+      try solve [econstructor; eauto].
+  Qed.
+
+  Lemma to_leakage_exec: forall c t m l k post,
+      LeakageSemantics.exec e c k t m l post ->
+      forall mc, exec e c k t m l mc (fun k' t' m' l' _ => post k' t' m' l').
+  Proof.
+    induction 1; intros;
+      repeat match reverse goal with
+        | H: LeakageSemantics.eval_expr _ _ _ _ = Some _ |- _ =>
+            eapply to_leakage_eval_expr in H; destruct H as (? & H)
+        | H: LeakageSemantics.eval_call_args _ _ _ _ = Some _ |- _ =>
+            eapply to_leakage_eval_call_args in H; destruct H as (? & H)
+        end;
+      try solve [econstructor; eauto].
+  Qed.
+
   Lemma to_plain_call: forall f t m args post,
       Semantics.call e f t m args post ->
       forall k mc, call e f k t m args mc (fun _ t' m' rets _ => post t' m' rets).
   Proof.
     unfold call, Semantics.call. intros. fwd. eauto 10 using to_plain_exec.
+  Qed.
+
+  Lemma to_metric_call: forall f t m args mc post,
+      MetricSemantics.call e f t m args mc post ->
+      forall k, call e f k t m args mc (fun _ t' m' rets mc' => post t' m' rets mc').
+  Proof.
+    unfold call, MetricSemantics.call. intros. fwd. eauto 10 using to_metric_exec.
+  Qed.
+
+  Lemma to_leakage_call: forall f k t m args post,
+      LeakageSemantics.call e f k t m args post ->
+      forall mc, call e f k t m args mc (fun k' t' m' rets _ => post k' t' m' rets).
+  Proof.
+    unfold call, LeakageSemantics.call. intros. fwd. eauto 10 using to_leakage_exec.
   Qed.
 End WithParams.
