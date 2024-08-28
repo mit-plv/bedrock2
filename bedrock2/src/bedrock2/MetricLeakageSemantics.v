@@ -329,20 +329,6 @@ Section WithParams.
       eauto.
   Qed.
 
-  Lemma of_plain_eval_expr: forall m l e k mc v k' mc',
-      MetricLeakageSemantics.eval_expr m l e k mc = Some (v, k', mc') ->
-      Semantics.eval_expr m l e = Some v.
-  Proof.
-    induction e; cbn; intros; fwd;
-      repeat match goal with
-        | IH: forall _ _ _ _ _, eval_expr _ _ _ _ _ = _ -> _, H: eval_expr _ _ _ _ _ = _ |- _ =>
-          specialize IH with (1 := H)
-        | H: _ = Some _ |- _ => rewrite H
-        | |- _ => Tactics.destruct_one_match
-        end;
-    try congruence.
-  Qed.
-
   Lemma to_plain_eval_call_args: forall m l arges args,
       Semantics.eval_call_args m l arges = Some args ->
       forall k mc, exists k' mc', MetricLeakageSemantics.eval_call_args m l arges k mc = Some (args, k', mc').
@@ -353,17 +339,6 @@ Section WithParams.
       eapply to_plain_eval_expr in E. destruct E as (k' & mc' & E). rewrite E.
       specialize IHarges with (1 := eq_refl). specialize (IHarges k' mc').
       destruct IHarges as (k'' & mc'' & IH). rewrite IH. eauto.
-  Qed.
-
-  Lemma of_plain_eval_call_args: forall m l arges k mc args k' mc',
-      MetricLeakageSemantics.eval_call_args m l arges k mc = Some (args, k', mc') ->
-      Semantics.eval_call_args m l arges = Some args.
-  Proof.
-    induction arges; cbn; intros.
-    - congruence.
-    - fwd.
-      eapply of_plain_eval_expr in E. rewrite E.
-      specialize IHarges with (1 := E0). rewrite IHarges. reflexivity.
   Qed.
 
   Context (e: env).
