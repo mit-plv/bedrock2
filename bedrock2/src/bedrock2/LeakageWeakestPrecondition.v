@@ -1,12 +1,13 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import Coq.ZArith.BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
-Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
+Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics bedrock2.LeakageSemantics.
+Require Import Coq.Lists.List.
 
 Section WeakestPrecondition.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
-  Context {ext_spec: ExtSpec}.
-  Implicit Types (t : trace) (m : mem) (l : locals).
+  Context {ext_spec: ExtSpec} {pick_sp: PickSp}.
+  Implicit Types (k : leakage) (t : trace) (m : mem) (l : locals).
 
   Definition literal v (post : word -> Prop) : Prop :=
     dlet! v := word.of_Z v in post v.
@@ -19,26 +20,28 @@ Section WeakestPrecondition.
 
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
-    Definition expr_body rec (e : Syntax.expr) (post : word -> Prop) : Prop :=
+    Definition expr_body rec (k : leakage) (e : Syntax.expr) (post : leakage -> word -> Prop) : Prop :=
       match e with
       | expr.literal v =>
-        literal v post
+        literal v (post k)
       | expr.var x =>
-        get l x post
+        get l x (post k)
       | expr.op op e1 e2 =>
-        rec e1 (fun v1 =>
-        rec e2 (fun v2 =>
-        post (interp_binop op v1 v2)))
+        rec k e1 (fun k' v1 =>
+        rec k' e2 (fun k'' v2 =>
+        post (leak_binop op v1 v2 k'') (interp_binop op v1 v2)))
       | expr.load s e =>
-        rec e (fun a =>
-        load s m a post)
+        rec k e (fun k' a =>
+        load s m a (post (leak_word a :: k')))
       | expr.inlinetable s t e =>
-        rec e (fun a =>
-        load s (map.of_list_word t) a post)
+        rec k e (fun k' a =>
+        load s (map.of_list_word t) a (post (leak_word a :: k')))
       | expr.ite c e1 e2 =>
-        rec c (fun b => rec (if word.eqb b (word.of_Z 0) then e2 else e1) post)
+        rec k c (fun k' b =>
+        let b := word.eqb b (word.of_Z 0) in
+        rec (leak_bool b :: k') (if b then e2 else e1) post)
     end.
-    Fixpoint expr e := expr_body expr e.
+    Fixpoint expr k e := expr_body expr k e.
   End WithMemAndLocals.
 
   Section WithF.
@@ -54,78 +57,92 @@ Section WeakestPrecondition.
     Fixpoint list_map xs := list_map_body list_map xs.
   End WithF.
 
+  Section WithF'.
+    Context {A B T} (f: T -> A -> (T -> B -> Prop) -> Prop).
+    Definition list_map'_body rec (acc : T) (xs : list A) (post : T -> list B -> Prop) : Prop :=
+      match xs with
+      | nil => post acc nil
+      | cons x xs' =>
+        f acc x (fun acc' y =>
+        rec acc' xs' (fun acc'' ys' =>
+        post acc'' (cons y ys')))
+      end.
+    Fixpoint list_map' acc xs := list_map'_body list_map' acc xs.
+  End WithF'.
+
   Section WithFunctions.
     Context (e: env).
-    Definition dexpr m l e v := expr m l e (eq v).
-    Definition dexprs m l es vs := list_map (expr m l) es (eq vs).
+    Definition dexpr m l k e v k' := expr m l k e (fun k'2 v2 => eq k' k'2 /\ eq v v2).
+    Definition dexprs m l k es vs k' := list_map' (expr m l) k es (fun k'2 vs2 => eq k' k'2 /\ eq vs vs2).
     (* All cases except cmd.while and cmd.call can be denoted by structural recursion
        over the syntax.
        For cmd.while and cmd.call, we fall back to the operational semantics *)
-    Definition cmd_body (rec:_->_->_->_->_->Prop) (c : cmd) (t : trace) (m : mem) (l : locals)
-             (post : trace -> mem -> locals -> Prop) : Prop :=
+    Definition cmd_body (rec:_->_->_->_->_->_->Prop) (c : cmd) (k : leakage) (t : trace) (m : mem) (l : locals)
+             (post : leakage -> trace -> mem -> locals -> Prop) : Prop :=
       (* give value of each pure expression when stating its subproof *)
       match c with
-      | cmd.skip => post t m l
+      | cmd.skip => post k t m l
       | cmd.set x ev =>
-        exists v, dexpr m l ev v /\
+        exists v k', dexpr m l k ev v k' /\
         dlet! l := map.put l x v in
-        post t m l
+        post k' t m l
       | cmd.unset x =>
         dlet! l := map.remove l x in
-        post t m l
+        post k t m l
       | cmd.store sz ea ev =>
-        exists a, dexpr m l ea a /\
-        exists v, dexpr m l ev v /\
+        exists a k', dexpr m l k ea a k' /\
+        exists v k'', dexpr m l k' ev v k'' /\
         store sz m a v (fun m =>
-        post t m l)
+        post (leak_word a :: k'') t m l)
       | cmd.stackalloc x n c =>
         Z.modulo n (bytes_per_word width) = 0 /\
-        forall a mStack mCombined,
+        forall mStack mCombined,
+          let a := pick_sp k in
           anybytes a n mStack -> map.split mCombined m mStack ->
           dlet! l := map.put l x a in
-          rec c t mCombined l (fun t' mCombined' l' =>
+          rec c (leak_unit :: k) t mCombined l (fun k' t' mCombined' l' =>
           exists m' mStack',
           anybytes a n mStack' /\ map.split mCombined' m' mStack' /\
-          post t' m' l')
+          post k' t' m' l')
       | cmd.cond br ct cf =>
-        exists v, dexpr m l br v /\
-        (word.unsigned v <> 0%Z -> rec ct t m l post) /\
-        (word.unsigned v = 0%Z -> rec cf t m l post)
+        exists v k', dexpr m l k br v k' /\
+        (word.unsigned v <> 0%Z -> rec ct (leak_bool true :: k') t m l post) /\
+        (word.unsigned v = 0%Z -> rec cf (leak_bool false :: k') t m l post)
       | cmd.seq c1 c2 =>
-        rec c1 t m l (fun t m l => rec c2 t m l post)
-      | cmd.while _ _ => Semantics.exec e c t m l post
+        rec c1 k t m l (fun k t m l => rec c2 k t m l post)
+      | cmd.while _ _ => LeakageSemantics.exec e c k t m l post
       | cmd.call binds fname arges =>
-        exists args, dexprs m l arges args /\
-        Semantics.call e fname t m args (fun t m rets =>
+        exists args k', dexprs m l k arges args k' /\
+        LeakageSemantics.call e fname (leak_unit :: k') t m args (fun k'' t m rets =>
           exists l', map.putmany_of_list_zip binds rets l = Some l' /\
-          post t m l')
+          post k'' t m l')
       | cmd.interact binds action arges =>
-        exists args, dexprs m l arges args /\
+        exists args k', dexprs m l k arges args k' /\
         exists mKeep mGive, map.split m mKeep mGive /\
-        ext_spec t mGive action args (fun mReceive rets =>
+        ext_spec t mGive action args (fun mReceive rets klist =>
           exists l', map.putmany_of_list_zip binds rets l = Some l' /\
           forall m', map.split m' mKeep mReceive ->
-          post (cons ((mGive, action, args), (mReceive, rets)) t) m' l')
+          post (leak_list klist :: k') (cons ((mGive, action, args), (mReceive, rets)) t) m' l')
       end.
     Fixpoint cmd c := cmd_body cmd c.
   End WithFunctions.
 
-  Definition func call '(innames, outnames, c) (t : trace) (m : mem) (args : list word) (post : trace -> mem -> list word -> Prop) :=
+  Definition func call '(innames, outnames, c) (k : leakage) (t : trace) (m : mem) (args : list word) (post : leakage -> trace -> mem -> list word -> Prop) :=
       exists l, map.of_list_zip innames args = Some l /\
-      cmd call c t m l (fun t m l =>
+      cmd call c k t m l (fun k t m l =>
         list_map (get l) outnames (fun rets =>
-        post t m rets)).
+        post k t m rets)).
 
   Definition program := cmd.
 End WeakestPrecondition.
-Notation call := Semantics.call (only parsing).
+Notation call := LeakageSemantics.call (only parsing).
 
 Ltac unfold1_cmd e :=
   lazymatch e with
-    @cmd ?width ?BW ?word ?mem ?locals ?ext_spec ?CA ?c ?t ?m ?l ?post =>
+    @cmd ?width ?BW ?word ?mem ?locals ?ext_spec ?pick_sp ?CA ?c ?k ?t ?m ?l ?post =>
     let c := eval hnf in c in
-    constr:(@cmd_body width BW word mem locals ext_spec CA
-                      (@cmd width BW word mem locals ext_spec CA) c t m l post)
+    constr:(@cmd_body width BW word mem locals ext_spec pick_sp CA
+                      (@cmd width BW word mem locals ext_spec pick_sp CA) c k t m l post)
   end.
 Ltac unfold1_cmd_goal :=
   let G := lazymatch goal with |- ?G => G end in
@@ -134,9 +151,9 @@ Ltac unfold1_cmd_goal :=
 
 Ltac unfold1_expr e :=
   lazymatch e with
-    @expr ?width ?word ?mem ?locals ?m ?l ?arg ?post =>
+    @expr ?width ?BW ?word ?mem ?locals ?m ?l ?k ?arg ?post =>
     let arg := eval hnf in arg in
-    constr:(@expr_body width word mem locals m l (@expr width word mem locals m l) arg post)
+    constr:(@expr_body width BW word mem locals m l k (@expr width BW word mem locals m l k) arg post)
   end.
 Ltac unfold1_expr_goal :=
   let G := lazymatch goal with |- ?G => G end in
@@ -154,7 +171,20 @@ Ltac unfold1_list_map_goal :=
   let G := unfold1_list_map G in
   change G.
 
+Ltac unfold1_list_map' e :=
+  lazymatch e with
+    @list_map' ?A ?B ?T ?P ?t ?arg ?post =>
+    let arg := eval hnf in arg in
+    constr:(@list_map'_body A B T P (@list_map' A B T P) t arg post)
+  end.
+Ltac unfold1_list_map'_goal :=
+  let G := lazymatch goal with |- ?G => G end in
+  let G := unfold1_list_map' G in
+  change G.
+
 Import Coq.ZArith.ZArith.
+
+(*I'll deal with these notations later.  Not sure what to do with them.*)
 
 Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>
@@ -164,7 +194,7 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' 
                   .. (forall gn,
                          (forall tr mem,
                              pre ->
-                             WeakestPrecondition.call
+                             LeakageWeakestPrecondition.call
                                functions name tr mem (cons a0 .. (cons an nil) ..)
                                (fun tr' mem' rets =>
                                   (exists r0,
@@ -188,7 +218,7 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre 
                   .. (forall gn,
                          (forall tr mem,
                              pre ->
-                             WeakestPrecondition.call
+                             LeakageWeakestPrecondition.call
                                functions name tr mem (cons a0 .. (cons an nil) ..)
                                (fun tr' mem' rets =>
                                   rets = nil /\ post))) ..)) ..))
@@ -206,7 +236,7 @@ Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' tr mem := pre
         .. (forall an,
                (forall tr mem,
                    pre ->
-                   WeakestPrecondition.call
+                   LeakageWeakestPrecondition.call
                      functions name tr mem (cons a0 .. (cons an nil) ..)
                      (fun tr' mem' rets =>
                         (exists r0,
@@ -228,7 +258,7 @@ Notation "'fnspec!' name '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' tr mem :=
                   .. (forall gn,
                          (forall tr mem,
                              pre ->
-                             WeakestPrecondition.call
+                             LeakageWeakestPrecondition.call
                                functions name tr mem nil
                                (fun tr' mem' rets =>
                                   (exists r0,
@@ -249,7 +279,7 @@ Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures'
         .. (forall an,
                (forall tr mem,
                    pre ->
-                   WeakestPrecondition.call
+                   LeakageWeakestPrecondition.call
                      functions name tr mem (cons a0 .. (cons an nil) ..)
                      (fun tr' mem' rets =>
                         rets = nil /\ post))) ..))
@@ -266,7 +296,7 @@ Notation "'fnspec!' name '/' g0 .. gn ',' '{' 'requires' tr mem := pre ';' 'ensu
                   .. (forall gn,
                          (forall tr mem,
                              pre ->
-                             WeakestPrecondition.call
+                             LeakageWeakestPrecondition.call
                                functions name tr mem nil
                                (fun tr' mem' rets =>
                                   rets = nil /\ post))) ..))
@@ -281,7 +311,7 @@ Notation "'fnspec!' name '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ens
   (fun functions =>
      (forall tr mem,
          pre ->
-         WeakestPrecondition.call
+         LeakageWeakestPrecondition.call
            functions name tr mem nil
            (fun tr' mem' rets =>
               (exists r0,
