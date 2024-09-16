@@ -121,7 +121,7 @@ Section WithParameters.
         { constructor. }
         split.
         { constructor. }
-        subst v0. rewrite word.unsigned_of_Z. exact eq_refl. }
+        subst i. rewrite word.unsigned_of_Z. exact eq_refl. }
       exfalso. ZnWords. }
     repeat straightline.
     eapply MetricWeakestPreconditionProperties.interact_nomem; repeat straightline.
@@ -184,7 +184,7 @@ Section WithParameters.
     }
     (* CASE if-condition was false (word.unsigned v0 = 0), i.e. we'll set i=i^i and exit loop *)
     repeat straightline.
-    { subst v4.
+    { subst i.
       rewrite Properties.word.unsigned_xor_nowrap in *; rewrite Z.lxor_nilpotent in *; contradiction. }
     (* evaluate condition then split if *) letexists; letexists; split; [solve[repeat straightline]|split].
     1:contradiction.
@@ -204,7 +204,7 @@ Section WithParameters.
           right; eexists _, _; repeat split. } } }
     eexists; split; trivial.
     right.
-    subst v5.
+    subst busy.
     split.
     { f_equal. rewrite Properties.word.unsigned_xor_nowrap; rewrite Z.lxor_nilpotent; reflexivity. }
     cbv [lightbulb_spec.spi_write].
@@ -249,12 +249,12 @@ Section WithParameters.
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *; repeat straightline.
     { exact (Z.lt_wf 0). }
     { split; trivial; split; trivial.
-      subst v0; rewrite byte.unsigned_of_Z; cbv [byte.wrap];
+      subst b; rewrite byte.unsigned_of_Z; cbv [byte.wrap];
         rewrite Z.mod_small; rewrite word.unsigned_of_Z.
       2: { cbv. split; congruence. }
       split; trivial.
       eexists nil; split; trivial.
-      subst v1; rewrite word.unsigned_of_Z.
+      subst i; rewrite word.unsigned_of_Z.
       eexists nil; split; try split; solve [constructor]. }
     { exfalso. ZnWords. }
     { eapply MetricWeakestPreconditionProperties.interact_nomem; repeat straightline.
@@ -299,13 +299,13 @@ Section WithParameters.
         2: {
           subst v'.
           subst v.
-          subst v6.
+          subst i.
           rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent.
           ZnWords. }
         repeat straightline.
         repeat (split; trivial; []).
         split.
-        { subst v5.
+        { subst b.
           (* automatable: multi-word bitwise *)
           change (255) with (Z.ones 8).
           pose proof Properties.word.unsigned_range v0.
@@ -323,14 +323,14 @@ Section WithParameters.
           eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
           eexists. split.
           { econstructor; try eassumption; right; eauto. }
-          subst v6.
+          subst i.
           rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent in H1; contradiction. } }
       { (* copy-paste from above, trace manipulation *)
         eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
         eexists. split.
         { econstructor; try eassumption; right; eauto. }
-        eexists (byte.of_Z (word.unsigned v5)), _; split.
-        { subst v5; f_equal.
+        eexists (byte.of_Z (word.unsigned b)), _; split.
+        { subst b; f_equal.
           (* tag:bitwise *)
           (* automatable: multi-word bitwise *)
           change (255) with (Z.ones 8).
@@ -354,7 +354,7 @@ Section WithParameters.
           split.
           (* tag:bitwise *)
           { ZnWords. }
-          subst v5.
+          subst b.
           (* automatable: multi-word bitwise *)
           change (255) with (Z.ones 8).
           pose proof Properties.word.unsigned_range v0.

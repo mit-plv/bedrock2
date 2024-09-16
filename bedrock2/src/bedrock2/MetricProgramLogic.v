@@ -240,8 +240,8 @@ Ltac straightline :=
     let __ := match s with String.String _ _ => idtac | String.EmptyString => idtac end in
     ident_of_constr_string_cps s ltac:(fun x =>
       ensure_free x;
-      (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
-      letexists _ as x; split; [solve [repeat straightline]|])
+      (* NOTE: keep this consistent with the [exists _ _, _ /\ _] case far below *)
+      letexists _ as x; letexists; split; [solve [repeat straightline]|])
   | |- cmd _ ?c _ _ _ _ ?post =>
     let c := eval hnf in c in
     lazymatch c with
