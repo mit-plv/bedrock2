@@ -1,6 +1,7 @@
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import Coq.micromega.Lia coqutil.Ltac2Lib.Lia.
-Require Import Coq.Lists.List.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
+From Coq Require Import Lia.
+Require Import coqutil.Ltac2Lib.Lia.
+From Coq Require Import List.
 Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Datatypes.Inhabited.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.

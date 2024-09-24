@@ -1,4 +1,4 @@
-Require Import Coq.Strings.String.
+From Coq Require Import String.
 Require Import Ltac2.Ltac2.
 
 (* Converts the lower i + 1 bits of an Ltac2 integer into a bool list

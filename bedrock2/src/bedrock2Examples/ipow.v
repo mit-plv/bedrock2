@@ -1,4 +1,5 @@
-Require Import Coq.ZArith.ZArith coqutil.Z.div_mod_to_equations.
+From Coq Require Import ZArith.
+Require Import coqutil.Z.div_mod_to_equations.
 Require Import bedrock2.NotationsCustomEntry.
 Import Syntax BinInt String List.ListNotations ZArith.
 Require Import coqutil.Z.Lia.

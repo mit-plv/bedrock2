@@ -1,5 +1,5 @@
 Require Import Ltac2.Ltac2.
-Require Import Coq.micromega.Lia.
+From Coq Require Import Lia.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Tactics.fold_hyps coqutil.Tactics.foreach_hyp.

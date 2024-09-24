@@ -1,12 +1,12 @@
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Array coqutil.Word.LittleEndianList.
 Require Import bedrock2.Memory.
-Require Import Coq.Lists.List Coq.ZArith.ZArith.
+From Coq Require Import List ZArith.
 Require Import coqutil.Word.Interface coqutil.Map.Interface. (* coercions word and rep *)
 Require Import coqutil.Word.Properties.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Z.bitblast.
-Require Import coqutil.Z.Lia Coq.micromega.Lia.
+Require Import coqutil.Z.Lia Lia.
 Require Import coqutil.Byte.
 Require Import coqutil.Map.OfListWord.
 Require Import coqutil.Macros.symmetry.

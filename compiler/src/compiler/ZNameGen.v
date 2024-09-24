@@ -1,4 +1,4 @@
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 Require Import coqutil.Z.Lia.
 Require Import compiler.util.Common.
 Require Import compiler.NameGen.

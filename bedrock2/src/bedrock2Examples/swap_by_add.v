@@ -22,7 +22,7 @@ Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import Tactics letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Naive.
-Require Import coqutil.Tactics.eplace Coq.setoid_ring.Ring_tac.
+Require Import coqutil.Tactics.eplace Ring_tac.
 
 Section WithParameters.
   Context {mem: map.map word32 Byte.byte} {mem_ok: map.ok mem}.

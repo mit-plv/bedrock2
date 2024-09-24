@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Tactics.autoforward.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Map.Interface.

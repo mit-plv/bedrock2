@@ -1,5 +1,5 @@
 Require Import Ltac2.Ltac2.
-Require Import Coq.ZArith.BinInt Coq.Strings.String.
+From Coq Require Import BinInt String.
 Require Import bedrock2.Syntax bedrock2.ToCString. Import Syntax.Coercions.
 Local Open Scope Z_scope. Local Open Scope string_scope.
 

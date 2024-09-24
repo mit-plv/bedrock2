@@ -1,7 +1,7 @@
 Require Import coqutil.Ltac2Lib.Ltac2.
 Require Import coqutil.Ltac2Lib.Failf coqutil.Ltac2Lib.rdelta coqutil.Ltac2Lib.Lia.
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import Coq.micromega.Lia.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
+From Coq Require Import Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Datatypes.ZList.

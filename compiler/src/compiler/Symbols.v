@@ -1,6 +1,7 @@
-Require Import Coq.Strings.String Coq.Strings.HexString.
-Require Import Coq.Init.Byte coqutil.Byte.
-Require Import Coq.Lists.List.
+From Coq Require Import String HexString.
+From Coq.Init Require Import Byte.
+Require Import coqutil.Byte.
+From Coq Require Import List.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Z_keyed_SortedListMap.
 Local Open Scope string_scope.

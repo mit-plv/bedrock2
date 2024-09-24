@@ -8,9 +8,9 @@ The `word` instance can be abstract (more tested) or concrete (less tested), but
 `width` has to be concrete, because otherwise the Euclidean equations become non-linear
 and thus are not understood by `lia`.
 *)
-Require Import Coq.Program.Tactics.
-Require Import Coq.ZArith.ZArith.
-Require Import Coq.ZArith.Zpow_facts.
+From Coq.Program Require Import Tactics.
+From Coq Require Import ZArith.
+From Coq Require Import Zpow_facts.
 Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.

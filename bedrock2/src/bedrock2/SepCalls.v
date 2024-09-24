@@ -7,14 +7,14 @@
    Applying the call lemma is not handled by this file, but solving the above conjunction
    (except for solving finalPost) is. *)
 
-Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
+From Coq Require Import ZArith. Open Scope Z_scope.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte.
 Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Tactics.rewr coqutil.Tactics.rdelta.
-Require Import Coq.Program.Tactics.
+From Coq.Program Require Import Tactics.
 Require Import coqutil.Macros.symmetry.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.autoforward.
@@ -31,8 +31,8 @@ Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.groundcbv.
 Require Import bedrock2.TacticError.
 Require Import bedrock2.ident_to_string.
-Require Import Coq.Strings.String. Open Scope string_scope.
-Require Import Coq.Lists.List. (* to make sure `length` refers to list rather than string *)
+From Coq Require Import String. Open Scope string_scope.
+From Coq Require Import List. (* to make sure `length` refers to list rather than string *)
 Import List.ListNotations. Open Scope list_scope.
 
 Section SepLog.

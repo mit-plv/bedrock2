@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Z.BitOps.
 Require Import coqutil.Z.Lia.

@@ -1,4 +1,4 @@
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 Require Import bedrock2.ReversedListNotations. Local Open Scope list_scope.
 
 Section Interleave.

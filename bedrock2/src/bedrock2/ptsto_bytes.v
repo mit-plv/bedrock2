@@ -1,12 +1,12 @@
 Require Import coqutil.Map.Interface coqutil.Map.Properties bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Array.
 Require Import bedrock2.Memory.
-Require Import Coq.Lists.List Coq.ZArith.ZArith.
+From Coq Require Import List ZArith.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Map.Interface.
 Require Import coqutil.Z.div_mod_to_equations.
 Import HList List PrimitivePair.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte.
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 
 Open Scope Z_scope.
 

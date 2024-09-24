@@ -1,5 +1,6 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface coqutil.Map.OfListWord.
-Require Import Coq.ZArith.BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
+From Coq Require Import BinIntDef.
+Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 
 Section WeakestPrecondition.
@@ -154,7 +155,7 @@ Ltac unfold1_list_map_goal :=
   let G := unfold1_list_map G in
   change G.
 
-Import Coq.ZArith.ZArith.
+Import ZArith.
 
 Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>

@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
 Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Datatypes.Inhabited.

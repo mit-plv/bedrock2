@@ -1,4 +1,4 @@
-Require Import Coq.Strings.String Coq.ZArith.ZArith.
+From Coq Require Import String ZArith.
 From coqutil Require Import Word.Interface Word.Properties.
 From coqutil Require Import Tactics.rdelta Z.div_mod_to_equations.
 Require Import coqutil.Z.Lia.
@@ -43,7 +43,7 @@ Ltac named_pose_asfresh_or_id x n :=
   y.
 
 Ltac requireZcst z :=
-  lazymatch Coq.setoid_ring.InitialRing.isZcst z with
+  lazymatch InitialRing.isZcst z with
   | true => idtac
   end.
 Ltac requireZcstExpr e :=

@@ -1,5 +1,5 @@
-Require Import Coq.Strings.String.
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import String.
+From Coq Require Import ZArith.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.

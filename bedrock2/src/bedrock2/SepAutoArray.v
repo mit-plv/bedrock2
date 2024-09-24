@@ -1,5 +1,5 @@
-Require Import Coq.ZArith.BinInt.
-Require Import Coq.Init.Byte.
+From Coq Require Import BinInt.
+From Coq.Init Require Import Byte.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Tactics.rewr.
 Require Import coqutil.Map.Interface.

@@ -59,7 +59,7 @@ Ltac safe_implication_step :=
       end
   end.
 
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 
 Lemma list_app_eq_r: forall [A: Type] (xs ys1 ys2: list A),
     safe_implication (ys1 = ys2) (xs ++ ys1 = xs ++ ys2).
@@ -69,7 +69,7 @@ Lemma list_app_eq_l: forall [A: Type] (xs1 xs2 ys: list A),
     safe_implication (xs1 = xs2) (xs1 ++ ys = xs2 ++ ys).
 Proof. unfold safe_implication. intros. subst. reflexivity. Qed.
 
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Interface coqutil.Map.Interface.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.SepLib.

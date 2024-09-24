@@ -1,4 +1,4 @@
-Require Export Coq.ZArith.ZArith.
+From Coq Require Export ZArith.
 Require Export coqutil.Byte.
 Require Export coqutil.Datatypes.Inhabited.
 Require Export coqutil.Tactics.Tactics.

@@ -26,7 +26,7 @@ Ltac eval_constant_pows :=
              end
          end.
 
-Require Import Coq.Logic.Classical_Prop.
+From Coq Require Import Classical_Prop.
 
 Lemma ExistsNot_NotForall: forall AA (P: AA -> Prop), (exists a: AA, ~ P a) <-> ~ forall (a: AA), P a.
 Proof.

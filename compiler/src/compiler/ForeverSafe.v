@@ -1,4 +1,4 @@
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.Utility.

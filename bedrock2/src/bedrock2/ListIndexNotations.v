@@ -1,5 +1,5 @@
-Require Import Coq.Lists.List.
-Require Import Coq.micromega.Lia.
+From Coq Require Import List.
+From Coq Require Import Lia.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Datatypes.List.
 Require Import coqutil.Datatypes.Inhabited.

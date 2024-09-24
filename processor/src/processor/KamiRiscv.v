@@ -1,7 +1,7 @@
 Require Import String.
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import List. Import ListNotations.
 Require Import Kami.Lib.Word.
 Require Import Kami.Ex.IsaRv32 riscv.Spec.Decode.
 Require Import riscv.Utility.Encode.

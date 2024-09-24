@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Macros.unique.
 Require Import compiler.util.Common.
