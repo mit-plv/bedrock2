@@ -41,6 +41,7 @@ Definition spi_xchg := func! (b) ~> (b, busy) {
     unpack! b, busy = spi_read()
   }.
 
+Require Import bedrock2.MetricLogging bedrock2.MetricCosts.
 Require Import bedrock2.MetricProgramLogic.
 Require Import bedrock2.MetricWeakestPreconditionProperties.
 Require Import bedrock2.FE310CSemantics bedrock2.MetricSemantics.
@@ -71,7 +72,7 @@ Section WithParameters.
     MetricWeakestPrecondition.call functions "spi_write" t m [b] mc (fun T M RETS MC =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists err, RETS = [err] /\ Logic.or
         (((word.unsigned err <> 0) /\ lightbulb_spec.spi_write_full _ ^* ioh /\ Z.of_nat (length ioh) = patience))
-        (word.unsigned err = 0 /\ lightbulb_spec.spi_write word (byte.of_Z (word.unsigned b)) ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.spi_write word (byte.of_Z (word.unsigned b)) ioh /\ (MC - mc <= mkMetricLog 321 222 351 204 + Z.of_nat (length ioh) * mkMetricLog 157 109 169 102 + mkMetricLog 27 5 30 0)%metricsH)).
 
   Global Instance spec_of_spi_read : spec_of "spi_read" := fun functions => forall t m mc,
     MetricWeakestPrecondition.call functions "spi_read" t m [] mc (fun T M RETS MC =>
@@ -88,6 +89,14 @@ Section WithParameters.
          morphism (Properties.word.ring_morph (word := word)),
          constants [Properties.word_cst]).
 
+  Ltac metrics :=
+    repeat match goal with | H := _ : MetricLog |- _ => subst H end;
+    cost_unfold;
+    cbn;
+    repeat rewrite metriclit;
+    cbn;
+    solve_MetricLog.
+
   Import coqutil.Tactics.letexists.
   Import MetricLoops.
   Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
@@ -101,7 +110,8 @@ Section WithParameters.
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        lightbulb_spec.spi_write_full _ ^* th /\
-       Z.of_nat (length th) + word.unsigned I = patience
+       Z.of_nat (length th) + word.unsigned I = patience /\
+       (MC - mc <= Z.of_nat (length th) * mkMetricLog 157 109 169 102 + mkMetricLog 27 5 30 0)%metricsH
        )) _ _ _ _ _);
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
            HList.hlist.foralls HList.tuple.foralls
@@ -121,6 +131,7 @@ Section WithParameters.
         { constructor. }
         split.
         { constructor. }
+        split; [|metrics].
         subst i. rewrite word.unsigned_of_Z. exact eq_refl. }
       exfalso. ZnWords. }
     repeat straightline.
@@ -162,6 +173,7 @@ Section WithParameters.
           refine (kleene_step _ _ nil _ (kleene_empty _)).
           repeat econstructor.
           ZnWords. }
+        split; [|metrics].
         { ZnWordsL. } }
         { ZnWords. } }
     { (* SUBCASE loop condition was false (exit loop because of timeout *)
@@ -208,6 +220,7 @@ Section WithParameters.
     split.
     { f_equal. rewrite Properties.word.unsigned_xor_nowrap; rewrite Z.lxor_nilpotent; reflexivity. }
     cbv [lightbulb_spec.spi_write].
+    split; [|metrics].
     eexists _, _; split; eauto; []; split; eauto.
     eexists (cons _ nil), (cons _ nil); split; cbn [app]; eauto.
     split; repeat econstructor.
