@@ -791,10 +791,10 @@ Section WithParameters.
 
     (* TODO clean this up *)
     repeat (subst || straightline || straightline_call || ZnWords || intuition eauto).
-    { repeat (subst || straightline || straightline_call || ZnWords || intuition eauto || esplit). }
+    { repeat (straightline || intuition eauto || esplit). }
     esplit; esplit.
     esplit.
-    { repeat (subst || straightline || straightline_call || ZnWords || intuition eauto). }
+    { repeat straightline. }
     unfold dlet.dlet.
     intuition (esplit; esplit).
 
