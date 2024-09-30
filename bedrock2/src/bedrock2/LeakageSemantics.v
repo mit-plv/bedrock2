@@ -67,7 +67,7 @@ Existing Class PickSp.
 
 Section binops.
   Context {width : Z} {BW : Bitwidth width} {word : Word.Interface.word width}.
-  Definition leak_binop (bop : bopname) (x1 : word) (x2 : word) (k : leakage) : leakage :=
+  Definition leak_binop (bop : bopname) (x1 : word) (x2 : word) : leakage :=
     match bop with
     | bopname.divu | bopname.remu => cons (leak_word x2) (cons (leak_word x1) nil)
     | bopname.sru | bopname.slu | bopname.srs => cons (leak_word x2) nil
@@ -101,7 +101,7 @@ Section semantics.
       | expr.op op e1 e2 =>
           '(v1, k') <- eval_expr e1 k;
           '(v2, k'') <- eval_expr e2 k';
-          Some (interp_binop op v1 v2, leak_binop op v1 v2 k'')
+          Some (interp_binop op v1 v2, leak_binop op v1 v2 ++ k'')
       | expr.ite c e1 e2 =>
           '(vc, k') <- eval_expr c k;
           let b := word.eqb vc (word.of_Z 0) in

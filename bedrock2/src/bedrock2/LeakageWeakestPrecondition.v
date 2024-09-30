@@ -29,7 +29,7 @@ Section WeakestPrecondition.
       | expr.op op e1 e2 =>
         rec k e1 (fun k' v1 =>
         rec k' e2 (fun k'' v2 =>
-        post (leak_binop op v1 v2 k'') (interp_binop op v1 v2)))
+        post (leak_binop op v1 v2 ++ k'') (interp_binop op v1 v2)))
       | expr.load s e =>
         rec k e (fun k' a =>
         load s m a (post (leak_word a :: k')))
@@ -153,7 +153,7 @@ Ltac unfold1_expr e :=
   lazymatch e with
     @expr ?width ?BW ?word ?mem ?locals ?m ?l ?k ?arg ?post =>
     let arg := eval hnf in arg in
-    constr:(@expr_body width BW word mem locals m l k (@expr width BW word mem locals m l k) arg post)
+    constr:(@expr_body width BW word mem locals m l (@expr width BW word mem locals m l) k arg post)
   end.
 Ltac unfold1_expr_goal :=
   let G := lazymatch goal with |- ?G => G end in

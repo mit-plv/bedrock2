@@ -57,6 +57,8 @@ Section WeakestPrecondition.
     { eapply IHa2; eauto; intuition idtac. eapply Proper_load; eauto using Proper_load.
       cbv [pointwise_relation Basics.impl]. auto. }
     { eapply IHa2_1; eauto; intuition idtac.
+      eapply IHa2_2; eauto; intuition idtac. eauto. }
+    { eapply IHa2_1; eauto; intuition idtac.
       Tactics.destruct_one_match; eauto using Proper_load. }
   Qed.
 

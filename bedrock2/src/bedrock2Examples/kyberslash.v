@@ -157,7 +157,7 @@ Section WithWord.
                List.repeat Datatypes.length
                HList.polymorphic_list.repeat HList.polymorphic_list.length
                PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
-      { cbv [Loops.enforce]; cbn.
+      { cbv [LeakageLoops.enforce]; cbn.
           subst l l0.
           repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec; cbn). split.
           { exact eq_refl. }
@@ -216,7 +216,7 @@ Section WithWord.
             rewrite <- Ex1 in H3.
             ecancel_assumption. }
           repeat straightline. (* neat, why did that work now? *)
-          refine ((Loops.tailrec
+          refine ((LeakageLoops.tailrec
                      (* types of ghost variables*) (let c := HList.polymorphic_list.cons in c _ (c _ HList.polymorphic_list.nil))
                      (* program variables *) ("j" :: "i" :: "a_coeffs" :: "msg" :: nil))%string
                     (fun vj msg_vals a_coeffs_vals k t m j i a_coeffs msg =>
@@ -244,11 +244,11 @@ Section WithWord.
                    List.repeat Datatypes.length
                    HList.polymorphic_list.repeat HList.polymorphic_list.length
                    PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
-          { cbv [Loops.enforce]; cbn.
+          { cbv [LeakageLoops.enforce]; cbn.
             subst l.
             repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec; cbn). split.
             { exact eq_refl. }
-            { eapply map.map_ext; intros k0.
+            { eapply map.map_ext; intros k0'.
               repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec, ?map.get_empty; cbn -[String.eqb]).
               repeat (destruct String.eqb; trivial). } }
           { exact (Z.lt_wf _). }
@@ -427,11 +427,11 @@ Section WithWord.
                 repeat straightline. }
               repeat straightline.
               do 4 eexists. Print enforce. Print gather. split.
-              { Print enforce. repeat straightline. Print Loops.enforce. cbv [Loops.enforce]; cbn.
+              { Print enforce. repeat straightline. Print LeakageLoops.enforce. cbv [LeakageLoops.enforce]; cbn.
                 subst l6 l5 l4 l3 l2 l1 l0 l localsmap.
                 repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec; cbn). split.
                 { exact eq_refl. }
-                { eapply map.map_ext; intros k0.
+                { eapply map.map_ext; intros k0'.
                   repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec, ?map.get_empty; cbn -[String.eqb]).
                   repeat (destruct String.eqb; trivial). } }
               seprewrite_in (symmetry! @array_cons) H12.
@@ -471,7 +471,7 @@ Section WithWord.
               1,2,3: auto.
               subst v0. replace (Z.to_nat (8 mod 2 ^ width - word.unsigned x6)) with
                 (S (Z.to_nat (8 - word.unsigned (word.add x6 (word.of_Z 1))))).
-              { cbn [get_inner_leakage]. 
+              { cbn [get_inner_leakage].
                 rewrite H22. repeat rewrite app_assoc. Search (_ :: _ ++ _)%list.
                 assert (app_one_cons : forall A (a : A) l, (a :: l = (cons a nil) ++ l)%list).
                 { reflexivity. }
@@ -480,10 +480,7 @@ Section WithWord.
                 { f_equal.
                   { instantiate (1 := fun _ _ => _). simpl. reflexivity. }
                   { instantiate (1 := fun _ _ => _). simpl. reflexivity. } }
-                repeat (rewrite List.app_assoc || rewrite (app_one_cons _ _ (_ ++ k)%list)).
-                f_equal.
-                repeat rewrite <- List.app_assoc.
-                instantiate (1 := fun _ _ => _). simpl. reflexivity. }
+                instantiate (1 := fun _ _ => _). simpl. align_trace. }
               clear H22. rewrite word.unsigned_add. clear H12. cbv [word.wrap].
               rewrite word.unsigned_of_Z. cbv [word.wrap]. rewrite (Z.mod_small 1) by blia.
               rewrite (Z.mod_small 8) by blia. rewrite Z.mod_small.
@@ -511,7 +508,7 @@ Section WithWord.
                 reflexivity. }
             repeat straightline. }
           repeat straightline. eexists. eexists. eexists. split.
-          { cbv [Loops.enforce]; cbn.
+          { cbv [LeakageLoops.enforce]; cbn.
             subst l l0.
             repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec; cbn). split.
             { exact eq_refl. }
@@ -543,7 +540,7 @@ Section WithWord.
           repeat straightline. eexists. eexists. split; [|split; [|split] ].
           3: ecancel_assumption.
           1,2: assumption.
-          subst k0. subst k'. subst k''.
+          simpl. subst k1. subst k'. subst k''.
           replace (Z.to_nat v0) with (S (Z.to_nat
               (word.unsigned (word:=word) (word.divu (word.of_Z KYBER_N) (word.of_Z 8)) -
                  word.unsigned (word.add x1 (word.of_Z 1))))).
@@ -551,7 +548,8 @@ Section WithWord.
             rewrite H17. clear H17.
             assert (app_one_cons : forall A (a : A) l, (a :: l = (cons a nil) ++ l)%list).
             { reflexivity. }
-            repeat (rewrite List.app_assoc || rewrite (app_one_cons _ _ (_ ++ k)%list)).
+            simpl. Print align_trace. Check align_trace_app.
+            repeat (rewrite List.app_assoc || rewrite (app_one_cons _ _ (_ ++ k0)%list) || rewrite (app_one_cons _ _ k0)).
             f_equal. repeat rewrite <- List.app_assoc. f_equal.
             2: { instantiate (1 := fun _ => _). cbv beta. simpl. reflexivity. }
             f_equal.
