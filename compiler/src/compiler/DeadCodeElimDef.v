@@ -22,7 +22,8 @@ Section WithArguments1.
   Context {env: map.map string (list var * list var * stmt var) } { env_ok : map.ok env }.
   Context {mem: map.map word (Init.Byte.byte : Type) } {mem_ok : map.ok mem } .
   Context {locals: map.map string word } {locals_ok : map.ok locals }.
-  Context {ext_spec : Semantics.ExtSpec } {ext_spec_ok: Semantics.ext_spec.ok ext_spec } .
+  Context {ext_spec : LeakageSemantics.ExtSpec } {ext_spec_ok: LeakageSemantics.ext_spec.ok ext_spec } .
+  Context {pick_sp : LeakageSemantics.PickSp}.
   Ltac subset_union_solve :=
     match goal  with
     | |- subset (union _ _) _  => eapply subset_union_l; subset_union_solve
@@ -501,6 +502,198 @@ Section WithArguments1.
     | SSeq s1 s2 => SSeq (dce s1 (live s2 u)) (dce s2 u)
     | SSkip => SSkip
     end.
+
+  Require Import compiler.CustomFix.
+  Require Import bedrock2.LeakageSemantics.
+  Require Import Coq.Init.Wf Wellfounded.
+  Definition tuple : Type := leakage * stmt var * list var.
+  Definition project_tuple (tup : tuple) :=
+    let '(kH, s, u) := tup in (length kH, s).
+  Definition lt_tuple (x y : tuple) :=
+    lt_tuple' (project_tuple x) (project_tuple y).
+  
+  Lemma lt_tuple_wf : well_founded lt_tuple.
+  Proof.
+    cbv [lt_tuple]. apply wf_inverse_image. apply lt_tuple'_wf.
+  Defined.
+
+  Definition dtransform_stmt_trace_body
+    (e: env)
+    (tup : leakage * stmt var * list var)
+    (dtransform_stmt_trace : forall othertup, lt_tuple othertup tup -> leakage * leakage)
+    : leakage * leakage. (*skipH * kL*)
+    refine (
+        match tup as x return tup = x -> _ with
+        | (kH, s, u) =>
+            fun _ =>
+              match s as x return s = x -> _ with
+              | SInteract _ _ _ =>
+                  fun _ =>
+                    match kH with
+                    | leak_list l :: kH' => ([leak_list l], [leak_list l])
+                    | _ => (nil, nil)
+                    end
+              | SCall _ fname _ =>
+                  fun _ =>
+                    match kH as x return kH = x -> _ with
+                    | leak_unit :: kH' =>
+                        fun _ =>
+                          match @map.get _ _ env e fname with
+                          | Some (params, rets, fbody) =>
+                              let '(skip, kL) := dtransform_stmt_trace (kH', fbody, rets) _ in
+                              (leak_unit :: skip, leak_unit :: kL)
+                          | None => (nil, nil)
+                          end
+                    | _ => fun _ => (nil, nil)
+                    end eq_refl
+              | SLoad _ x _ _ =>
+                  fun _ =>
+                    match kH with
+                    | leak_word addr :: kH' =>
+                        if (existsb (eqb x) u) then
+                          ([leak_word addr], [leak_word addr])
+                        else
+                          ([leak_word addr], nil)
+                    | _ => (nil, nil)
+                    end
+              | SStore _ _ _ _ =>
+                  fun _ =>
+                    match kH with
+                    | leak_word addr :: kH' => ([leak_word addr], [leak_word addr])
+                    | _ => (nil, nil)
+                    end
+              | SInlinetable _ x _ _ =>
+                  fun _ =>
+                    match kH with
+                    | leak_word i :: kH' =>
+                        if (existsb (eqb x) u) then
+                          ([leak_word i], [leak_word i])
+                        else
+                          ([leak_word i], nil)
+                    | _ => (nil, nil)
+                    end
+              | SStackalloc x n body =>
+                  fun _ => dtransform_stmt_trace (kH, body, u) _
+              | SLit x _ =>
+                  fun _ => (nil, nil)
+              | SOp x op _ _ =>
+                  fun _ =>
+                    (*copied from spilling.
+                      I should do a leak_list for ops (or just make every op leak two words)
+                      so I don't have to deal with this nonsense*)
+                    let skip :=
+                      match op with
+                      | Syntax.bopname.divu
+                      | Syntax.bopname.remu =>
+                          match kH with
+                          | leak_word x1 :: leak_word x2 :: k' => [leak_word x1; leak_word x2]
+                          | _ => nil
+                          end
+                      | Syntax.bopname.slu
+                      | Syntax.bopname.sru
+                      | Syntax.bopname.srs =>
+                          match kH with
+                          | leak_word x2 :: kH' => [leak_word x2]
+                          | _ => nil
+                          end
+                      | _ => nil
+                      end
+                    in
+                    if (existsb (eqb x) u) then
+                      (skip, skip)
+                    else
+                      (skip, nil)
+              | SSet _ _ => fun _ => (nil, nil)
+              | SIf _ thn els =>
+                  fun _ =>
+                    match kH as x return kH = x -> _ with
+                    | leak_bool b :: kH' =>
+                        fun _ =>
+                          let '(skip, kL) := dtransform_stmt_trace (kH', if b then thn else els, u) _ in
+                          (leak_bool b :: skip, leak_bool b :: kL)
+                    | _ => fun _ => (nil, nil)
+                    end eq_refl
+              | SLoop s1 c s2 =>
+                  fun _ =>
+                    let live_before := live (SLoop s1 c s2) u in
+                    let (skip1, kL1) := dtransform_stmt_trace (kH, s1, (list_union String.eqb
+                                                                          (live s2 live_before)
+                                                                          (list_union eqb (accessed_vars_bcond c) u))) _ in
+                    Let_In_pf_nd (List.skipn (length skip1) kH)
+                      (fun kH' _ =>
+                         match kH' as x return kH' = x -> _ with
+                         | leak_bool true :: kH'' =>
+                             fun _ =>
+                               let '(skip2, kL2) := dtransform_stmt_trace (kH'', s2, live_before) _ in
+                               let kH''' := List.skipn (length skip2) kH'' in
+                               let (skip3, kL3) := dtransform_stmt_trace (kH''', s, u) _ in
+                               (skip1 ++ [leak_bool true] ++ skip2 ++ skip3, kL1 ++ [leak_bool true] ++ kL2 ++ kL3)
+                         | leak_bool false :: kH'' =>
+                             fun _ => (skip1 ++ [leak_bool false], kL1 ++ [leak_bool false])
+                         | _ => fun _ => (nil, nil)
+                         end eq_refl)
+              | SSeq s1 s2 =>
+                  fun _ =>
+                    let '(skip1, kL1) := dtransform_stmt_trace (kH, s1, live s2 u) _ in
+                    let kH' := List.skipn (length skip1) kH in
+                    let '(skip2, kL2) := dtransform_stmt_trace (kH', s2, u) _ in
+                    (skip1 ++ skip2, kL1 ++ kL2)
+              | SSkip => fun _ => (nil, nil)
+              end eq_refl
+        end eq_refl).
+    Proof.
+      all: cbv [lt_tuple project_tuple].
+      all: subst.
+      all: repeat match goal with
+             | t := List.skipn ?n ?k |- _ =>
+                      let H := fresh "H" in
+                      assert (H := List.skipn_length n k); subst t end.
+      all: try (right; constructor; constructor).
+      all: try (left; simpl; blia).
+    - assert (H' := skipn_length (length skip1) kH).
+      rewrite e3 in *. simpl in *. left. blia.
+    - assert (H' := skipn_length (length skip1) kH).
+      rewrite e3 in *. simpl in *. left. blia.
+    - destruct (length (List.skipn (length skip1) kH) =? length kH)%nat eqn:E.
+      + apply Nat.eqb_eq in E. rewrite E. right. constructor. constructor.
+      + apply Nat.eqb_neq in E. left. blia.
+    Defined.
+
+    Definition dtransform_stmt_trace e :=
+      my_Fix _ _ lt_tuple_wf _ (dtransform_stmt_trace_body e).
+
+    Lemma fix_step e tup : dtransform_stmt_trace e tup = dtransform_stmt_trace_body e tup (fun y _ => dtransform_stmt_trace e y).
+    Proof.
+      cbv [dtransform_stmt_trace].
+      apply (@my_Fix_eq _ _ lt_tuple_wf _ (dtransform_stmt_trace_body e) eq eq).
+      { intros. clear tup. subst. rename x2 into x.
+        assert (H : forall y p1 p2, f1 y p1 = f2 y p2) by auto. clear H0.
+        assert (H': forall y p, f1 y p = f2 y p) by auto.
+        cbv [dtransform_stmt_trace_body]. cbv beta.
+        destruct x as [ [k s] u].
+        (*cbv [Equiv] in H. destruct H as [H1 H2]. injection H1. intros. subst. clear H1.*)
+        Tactics.destruct_one_match. all: try reflexivity.
+        { apply H. }
+        { Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
+          rewrite H'. reflexivity. }
+        { Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
+          erewrite H in E. rewrite E in E0. inversion E0. subst.
+          apply Let_In_pf_nd_ext. intros. Tactics.destruct_one_match; try reflexivity.
+          Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
+          repeat Tactics.destruct_one_match; try reflexivity.
+          all: (erewrite H in E1; rewrite E1 in E3; inversion E3; subst) ||
+                 (erewrite H in E1; rewrite E1 in E2; inversion E2; subst).
+          erewrite H in E2. rewrite E2 in E4. inversion E4. subst. reflexivity. }
+        { repeat Tactics.destruct_one_match.
+          all: (erewrite H in E; rewrite E in E1; inversion E1; subst) ||
+                 (erewrite H in E; rewrite E in E0; inversion E0; subst; reflexivity). 
+          erewrite H in E0. rewrite E0 in E2.
+          inversion E2. subst. reflexivity. }
+        { Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
+          Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match.
+          Tactics.destruct_one_match. erewrite H. reflexivity. } }
+      { reflexivity. }
+    Qed.
 
   Definition dce_function: (list string *
                               list string *
