@@ -112,7 +112,9 @@ Section WithArguments1.
         rewrite ListSet.of_list_removeb
     end.
 
-  Ltac mcsolve := eexists; split; [|split; cycle 1; [eauto|FlatImp.scost_hammer]]; try assumption.
+  (*Ltac mcsolve := eexists; split; [|split; [eauto|FlatImp.scost_hammer]]; try assumption.*)
+  Ltac solve_compile_post :=
+    do 5 eexists; ssplit; [eauto | | scost_hammer | align_trace | align_trace | intros; rewrite dfix_step; repeat (rewrite rev_app_distr || simpl); try reflexivity ].
 
   Lemma dce_correct_aux :
     forall eH eL,
@@ -143,13 +145,8 @@ Section WithArguments1.
         eexists.
         split.
         * eapply H5.
-        * intros.
-          unfold compile_post.
-          do 3 eexists. exists l'. Print mcsolve. (*why cycle 1? i want to deal with the metrics stuff first.*) mcsolve.
-          -- agree_on_solve. repeat listset_to_set. subset_union_solve.
-          -- split; [eauto|]. split; [align_trace|]. split; [align_trace|].
-             intros. rewrite fix_step. reflexivity.
-          -- Print mcsolve. scost_hammer.
+        * intros. solve_compile_post.
+          agree_on_solve. repeat listset_to_set. subset_union_solve.
     - intros.
       eapply @exec.call; try solve [ eassumption ].
       + unfold dce_functions, dce_function  in *.
@@ -163,34 +160,31 @@ Section WithArguments1.
         eapply agree_on_refl.
       + intros.
         unfold compile_post in *.
-        fwd. eapply H4 in H6p2. fwd.
+        fwd. eapply H4 in H6p0. fwd.
         let Heq := fresh in
-        pose proof H6p2p1 as Heq;
-        eapply map.putmany_of_list_zip_sameLength,  map.sameLength_putmany_of_list in H6p2p1. fwd.
+        pose proof H6p0p1 as Heq;
+        eapply map.putmany_of_list_zip_sameLength,  map.sameLength_putmany_of_list in H6p0p1. fwd.
         exists retvs. eexists. repeat split.
         * erewrite agree_on_getmany.
-          -- eapply H6p2p0.
+          -- eapply H6p0p0.
           -- listset_to_set. agree_on_solve.
-        * eapply H6p2p1.
-        * eexists. mcsolve.
-          agree_on_solve.
-          repeat listset_to_set.
-          subset_union_solve.
+        * eapply H6p0p1.
+        * solve_compile_post.
+          -- agree_on_solve. repeat listset_to_set. subset_union_solve.
+          -- rewrite H0. rewrite H6p5. reflexivity.
     - intros.
       eapply agree_on_find in H3; fwd.
       destr (existsb (eqb x) used_after); fwd.
       + eapply @exec.load.
         * rewrite <- H3p1. eassumption.
         * eauto.
-        * unfold compile_post.
-          exists (map.put l x v); mcsolve.
-          repeat listset_to_set.
-          agree_on_solve.
+        * solve_compile_post.
+          -- repeat listset_to_set. agree_on_solve.
+          -- rewrite E. reflexivity.
       + eapply @exec.skip.
-        * unfold compile_post.
-          exists (map.put l x v); mcsolve.
-          repeat listset_to_set.
-          agree_on_solve.
+        * solve_compile_post.
+          -- repeat listset_to_set. agree_on_solve.
+          -- rewrite E. reflexivity.
     - intros. repeat listset_to_set.
       eapply agree_on_union in H4; fwd.
       all: try solve [ eauto using String.eqb_spec ].
@@ -200,24 +194,26 @@ Section WithArguments1.
       + erewrite <- H4p0; eauto.
         unfold elem_of; destr (a =? v)%string; [ eapply in_eq | eapply in_cons, in_eq ].
       + eassumption.
-      + unfold compile_post. exists l; mcsolve.
+      + solve_compile_post. assumption.
     - intros.
       eapply agree_on_find in H4; fwd.
       destr (existsb (eqb x) used_after); fwd.
       + eapply @exec.inlinetable; eauto.
         * rewrite <- H4p1. eassumption.
-        * unfold compile_post; eexists; mcsolve.
-          repeat listset_to_set; agree_on_solve.
+        * solve_compile_post.
+          -- repeat listset_to_set; agree_on_solve.
+          -- rewrite E. reflexivity.
       + eapply @exec.skip; eauto.
-        unfold compile_post.
-        eexists; mcsolve.
-        repeat listset_to_set; agree_on_solve.
+        solve_compile_post.
+        -- repeat listset_to_set; agree_on_solve.
+        -- rewrite E. reflexivity.
     - intros.
-      repeat listset_to_set.
+      repeat listset_to_set. (*ack need to use different pick_sp on low level*)
       eapply @exec.stackalloc.
       * eassumption.
-      * intros. eapply H2 with (used_after := used_after) (lL :=  (map.put lL x a)) in H4.
-        2: eapply H5.
+      * intros.
+        eapply H2 with (used_after := used_after) (lL :=  (map.put lL x a)) in H5; subst a.
+        2: eapply H4.
         2: { agree_on_solve. }
         eapply @exec.weaken.
         -- eapply H4.
