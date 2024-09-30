@@ -1,3 +1,5 @@
+Require Import bedrock2.LeakageSemantics.
+Require Import bedrock2.LeakageProgramLogic. (*just for align_trace tactic, probbaly should move it to leakageSemantics...*)
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.Syntax.
@@ -18,13 +20,14 @@ Local Notation exec := (exec PreSpill isRegStr).
 
 Section WithArguments1.
   Context {width: Z}.
-  Context {BW: Bitwidth.Bitwidth width }.
-  Context {word : word width } { word_ok : word.ok word }.
-  Context {env: map.map string (list var * list var * stmt var) } { env_ok : map.ok env }.
-  Context {mem: map.map word (Init.Byte.byte : Type) } {mem_ok : map.ok mem } .
-  Context {locals: map.map string word } {locals_ok : map.ok locals }.
-  Context {ext_spec : Semantics.ExtSpec } {ext_spec_ok: Semantics.ext_spec.ok ext_spec } .
-
+  Context {BW: Bitwidth.Bitwidth width}.
+  Context {word : word width} {word_ok : word.ok word}.
+  Context {env: map.map string (list var * list var * stmt var)} {env_ok : map.ok env}.
+  Context {mem: map.map word (Init.Byte.byte : Type) } {mem_ok : map.ok mem} .
+  Context {locals: map.map string word} {locals_ok: map.ok locals}.
+  Context {ext_spec: LeakageSemantics.ExtSpec} {ext_spec_ok: LeakageSemantics.ext_spec.ok ext_spec}.
+  Context {pick_sp: LeakageSemantics.PickSp}.
+  
   Lemma agree_on_put_existsb_false:
     forall used_after x (l: locals) lL,
       map.agree_on (diff (of_list used_after) (singleton_set x)) l lL
@@ -114,11 +117,11 @@ Section WithArguments1.
   Lemma dce_correct_aux :
     forall eH eL,
       dce_functions eH = Success eL ->
-      forall sH t m mcH lH postH,
-        exec eH sH t m lH mcH postH ->
-        forall used_after lL mcL,
+      forall sH kH t m mcH lH postH,
+        exec eH sH kH t m lH mcH postH ->
+        forall used_after kL lL mcL,
           map.agree_on (of_list (live sH used_after)) lH lL ->
-          exec eL (dce sH used_after) t m lL mcL (compile_post mcH mcL used_after postH).
+          exec eL (dce sH used_after) kL t m lL mcL (compile_post eH sH kH kL mcH mcL used_after postH).
   Proof.
     induction 2;
       match goal with
@@ -142,9 +145,11 @@ Section WithArguments1.
         * eapply H5.
         * intros.
           unfold compile_post.
-          exists l'. mcsolve.
-          agree_on_solve. repeat listset_to_set.
-          subset_union_solve.
+          do 3 eexists. exists l'. Print mcsolve. (*why cycle 1? i want to deal with the metrics stuff first.*) mcsolve.
+          -- agree_on_solve. repeat listset_to_set. subset_union_solve.
+          -- split; [eauto|]. split; [align_trace|]. split; [align_trace|].
+             intros. rewrite fix_step. reflexivity.
+          -- Print mcsolve. scost_hammer.
     - intros.
       eapply @exec.call; try solve [ eassumption ].
       + unfold dce_functions, dce_function  in *.
