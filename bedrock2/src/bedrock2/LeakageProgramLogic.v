@@ -1,14 +1,28 @@
 From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
 Require Import coqutil.Map.Interface.
 Require coqutil.Datatypes.ListSet.
-Require Import bedrock2.Syntax.
-Require Import bedrock2.WeakestPrecondition.
-Require Import bedrock2.WeakestPreconditionProperties.
-Require Import bedrock2.Loops.
+Require Import bedrock2.Syntax bedrock2.LeakageSemantics.
+Require Import bedrock2.LeakageWeakestPrecondition.
+Require Import bedrock2.LeakageWeakestPreconditionProperties.
+Require Import bedrock2.LeakageLoops.
 Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
 
 Definition spec_of (procname:String.string) := Semantics.env -> Prop.
 Existing Class spec_of.
+
+(* not sure where to put these lemmas *)
+Lemma align_trace_cons {T} x xs cont t (H : xs = List.app cont t) : @List.cons T x xs = List.app (cons x cont) t.
+Proof. intros. cbn. congruence. Qed.
+Lemma align_trace_app {T} x xs cont t (H : xs = List.app cont t) : @List.app T x xs = List.app (List.app x cont) t.
+Proof. intros. cbn. subst. rewrite List.app_assoc; trivial. Qed.
+
+Ltac align_trace :=
+    repeat match goal with
+      | t := cons _ _ |- _ => subst t
+      end;
+    repeat (eapply align_trace_app
+            || eapply align_trace_cons
+            || exact (eq_refl (List.app nil _))).
 
 Module Import Coercions.
   Import Map.Interface Word.Interface BinInt.
@@ -155,7 +169,7 @@ Ltac straightline_cleanup :=
     destruct H
   end.
 
-Import WeakestPrecondition.
+Import LeakageWeakestPrecondition.
 Import coqutil.Map.Interface.
 
 Ltac straightline_stackalloc :=
@@ -243,21 +257,41 @@ Ltac fwd_uniq := repeat fwd_uniq_step.
 Ltac straightline :=
   match goal with
   | _ => straightline_cleanup
-  | |- program_logic_goal_for ?f _ =>
+  | |- Basics.impl _ _ => cbv [Basics.impl] (*why does swap break without this?*)
+  (*| |- program_logic_goal_for ?f _ =>
+      enter f; intros;
+      repeat
+        match goal with
+        | H:?P ?functions |- _ =>
+            match type of functions with
+            | list (String.string * Syntax.func) =>
+                let f := fresh "f" in destruct H as [f H]
+            end
+        end;
+      match goal with
+      | |- call _ _ _ _ _ _ _ => idtac
+      | _ => eexists
+      end; intros; unfold1_call_goal; cbv beta match delta [call_body];
+      lazymatch goal with
+      | |- if ?test then ?T else _ => replace test with true by reflexivity; change T
+      end;
+      cbv beta match delta [func]*)
+  (*old thing
+    | |- program_logic_goal_for ?f _ =>
     enter f; intros;
     match goal with
     | H: map.get ?functions ?fname = Some _ |- _ =>
         eapply start_func; [exact H | clear H]
     end;
-    cbv match beta delta [WeakestPrecondition.func]
-  | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
+    cbv match beta delta [LeakageWeakestPrecondition.func]*)
+  | |- LeakageWeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ _ ?post =>
     unfold1_cmd_goal; cbv beta match delta [cmd_body];
     let __ := match s with String.String _ _ => idtac | String.EmptyString => idtac end in
     ident_of_constr_string_cps s ltac:(fun x =>
       ensure_free x;
       (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
       letexists _ as x; split; [solve [repeat straightline]|])
-  | |- cmd _ ?c _ _ _ ?post =>
+  | |- cmd _ ?c _ _ _ _ ?post =>
     let c := eval hnf in c in
     lazymatch c with
     | cmd.while _ _ => fail
@@ -267,18 +301,20 @@ Ltac straightline :=
     end
   | |- @list_map _ _ (get _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
   | |- @list_map _ _ (expr _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @list_map' _ _ _ (expr _ _) _ _ _ => unfold1_list_map'_goal; cbv beta match delta [list_map'_body]
   | |- @list_map _ _ _ nil _ => cbv beta match fix delta [list_map list_map_body]
-  | |- expr _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
-  | |- dexpr _ _ _ _ => cbv beta delta [dexpr]
-  | |- dexprs _ _ _ _ => cbv beta delta [dexprs]
+  | |- @list_map' _ _ _ _ _ nil _ => cbv beta match fix delta [list_map' list_map'_body]
+  | |- expr _ _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
+  | |- dexpr _ _ _ _ _ _ => cbv beta delta [dexpr]
+  | |- dexprs _ _ _ _ _ _ => cbv beta delta [dexprs]
   | |- literal _ _ => cbv beta delta [literal]
   | |- @get ?w ?W ?L ?l ?x ?P =>
       let get' := eval cbv [get] in @get in
       change (get' w W L l x P); cbv beta
   | |- load _ _ _ _ => cbv beta delta [load]
-  | |- @Loops.enforce ?width ?word ?locals ?names ?values ?map =>
+  | |- @LeakageLoops.enforce ?width ?word ?locals ?names ?values ?map =>
     let values := eval cbv in values in
-    change (@Loops.enforce width word locals names values map);
+    change (@LeakageLoops.enforce width word locals names values map);
     exact (conj (eq_refl values) eq_refl)
   | |- @eq (@coqutil.Map.Interface.map.rep String.string Interface.word.rep _) _ _ =>
     eapply SortedList.eq_value; exact eq_refl
@@ -319,15 +355,33 @@ Ltac straightline :=
   | |- exists l', Interface.map.putmany_of_list_zip ?ks ?vs ?l = Some l' /\ _ =>
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
   | _ => fwd_uniq_step
-  | |- exists x, ?P /\ ?Q =>
+  | |- exists x, ?P /\ ?Q => (*unsure whether still need this, or just case below*)
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
-  | |- exists x, Markers.split (?P /\ ?Q) =>
+  | |- exists x y, ?P /\ ?Q => idtac "33'";
+    let x := fresh x in let y := fresh y in
+             refine (let x := _ in let y := _ in
+             ex_intro (fun x => exists y, P /\ Q) x
+             (ex_intro (fun y => P /\ Q) y _));
+             split; [solve [repeat straightline] |  ]
+  | |- exists x, Markers.split (?P /\ ?Q) => (*unsure whether still need this, or just case below*)
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
-  | |- Markers.unique (exists x, Markers.split (?P /\ ?Q)) =>
+  | |- exists x y, Markers.split (?P /\ ?Q) =>
+    let x := fresh x in let y := fresh y in
+             refine (let x := _ in let y := _ in
+             ex_intro (fun x => exists y, P /\ Q) x
+             (ex_intro (fun y => P /\ Q) y _));
+             split; [solve [repeat straightline] |  ]
+  | |- Markers.unique (exists x, Markers.split (?P /\ ?Q)) => (*unsure whether we still need this, or just need case below*)
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
+  | |- Markers.unique (exists x y, Markers.split (?P /\ ?Q)) => idtac "35'";
+    let x := fresh x in let y := fresh y in
+             refine (let x := _ in let y := _ in
+             ex_intro (fun x => exists y, P /\ Q) x
+             (ex_intro (fun y => P /\ Q) y _));
+             split; [solve [repeat straightline] |  ]
   | |- Markers.unique (Markers.left ?G) =>
     change G;
     unshelve (idtac; repeat match goal with
@@ -352,17 +406,28 @@ Ltac straightline :=
 (* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
 Ltac straightline_call :=
   lazymatch goal with
-  | |- WeakestPrecondition.call ?functions ?callee _ _ _ _ =>
+  | |- LeakageWeakestPrecondition.call ?functions ?callee _ _ _ _ _ =>
     let callee_spec := lazymatch constr:(_:spec_of callee) with ?s => s end in
     let Hcall := lazymatch goal with H: callee_spec functions |- _ => H end in
-    eapply WeakestPreconditionProperties.Proper_call; cycle -1;
+    eapply LeakageWeakestPreconditionProperties.Proper_call; cycle -1;
       [ eapply Hcall | try eabstract (solve [Morphisms.solve_proper]) .. ];
       [ .. | intros ? ? ? ?]
   end.
 
+Ltac straightline_ct_call :=
+  lazymatch goal with
+  | |- call ?functions ?callee _ _ _ _ _ =>
+      let Hcall := multimatch goal with
+                   | H: context [ call functions callee _ _ _ _ _ ] |- _ => H
+                   end in
+      eapply LeakageWeakestPreconditionProperties.Proper_call; cycle -1;
+        [ eapply Hcall | try eabstract solve [ Morphisms.solve_proper ].. ];
+        [ .. | intros ? ? ? ? ]
+  end.
+
 Ltac current_trace_mem_locals :=
   lazymatch goal with
-  | |- WeakestPrecondition.cmd _  _ ?t ?m ?l _ => constr:((t, m, l))
+  | |- LeakageWeakestPrecondition.cmd _ _ _ ?t ?m ?l _ => constr:((t, m, l))
   end.
 
 Ltac seprewrite Hrw :=
@@ -378,9 +443,9 @@ Ltac seprewrite_by Hrw tac :=
 
 Ltac show_program :=
   lazymatch goal with
-  | |- @cmd ?width ?BW ?word ?mem ?locals ?ext_spec ?E ?c ?F ?G ?H ?I =>
+  | |- @cmd ?width ?BW ?word ?mem ?locals ?ext_spec ?pick_sp ?E ?c ?F ?G ?H ?I =>
     let c' := eval cbv in c in
-    change (@cmd width BW word mem locals ext_spec E (fst (c, c')) F G H I)
+    change (@cmd width BW word mem locals ext_spec pick_sp E (fst (c, c')) F G H I)
   end.
 
 Ltac subst_words :=
