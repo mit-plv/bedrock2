@@ -658,11 +658,11 @@ Section WithArguments1.
       + apply Nat.eqb_eq in E. rewrite E. right. constructor. constructor.
       + apply Nat.eqb_neq in E. left. blia.
     Defined.
-    Check Fix.
+
     Definition dtransform_stmt_trace e :=
       Fix lt_tuple_wf _ (dtransform_stmt_trace_body e).
 
-    Lemma fix_step e tup : dtransform_stmt_trace e tup = dtransform_stmt_trace_body e tup (fun y _ => dtransform_stmt_trace e y).
+    Lemma dfix_step e tup : dtransform_stmt_trace e tup = dtransform_stmt_trace_body e tup (fun y _ => dtransform_stmt_trace e y).
     Proof.
       cbv [dtransform_stmt_trace].
       apply (@Fix_eq' _ _ lt_tuple_wf _ (dtransform_stmt_trace_body e)).
@@ -716,9 +716,9 @@ Section WithArguments1.
     :=
     (fun k' t' m' lL' mcL' =>
        exists kH' kH'' kL'' lH' mcH',
-         map.agree_on (PropSet.of_list used_after) lH' lL'
+         postH kH' t' m' lH' mcH'
+         /\ map.agree_on (PropSet.of_list used_after) lH' lL'
          /\ metricsLeq (mcL' - mcL) (mcH' - mcH)
-         /\ postH kH' t' m' lH' mcH'
          /\ k' = kL'' ++ kL
          /\ kH' = kH'' ++ kH
          /\ forall kH''', dtransform_stmt_trace e (rev kH'' ++ kH''', s, used_after) = (rev kH'', rev kL'')).
