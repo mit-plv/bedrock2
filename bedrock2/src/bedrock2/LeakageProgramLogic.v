@@ -258,32 +258,17 @@ Ltac straightline :=
   match goal with
   | _ => straightline_cleanup
   | |- Basics.impl _ _ => cbv [Basics.impl] (*why does swap break without this?*)
-  (*| |- program_logic_goal_for ?f _ =>
+  | |- program_logic_goal_for ?f _ =>
       enter f; intros;
-      repeat
-        match goal with
-        | H:?P ?functions |- _ =>
-            match type of functions with
-            | list (String.string * Syntax.func) =>
-                let f := fresh "f" in destruct H as [f H]
-            end
-        end;
       match goal with
-      | |- call _ _ _ _ _ _ _ => idtac
-      | _ => eexists
-      end; intros; unfold1_call_goal; cbv beta match delta [call_body];
-      lazymatch goal with
-      | |- if ?test then ?T else _ => replace test with true by reflexivity; change T
+      | |- LeakageWeakestPrecondition.call _ _ _ _ _ _ _ => idtac
+      | |- exists _, _ => eexists
+      end; intros;
+      match goal with
+      | H: map.get ?functions ?fname = Some _ |- _ =>
+          eapply start_func; [exact H | clear H]
       end;
-      cbv beta match delta [func]*)
-  (*old thing
-    | |- program_logic_goal_for ?f _ =>
-    enter f; intros;
-    match goal with
-    | H: map.get ?functions ?fname = Some _ |- _ =>
-        eapply start_func; [exact H | clear H]
-    end;
-    cbv match beta delta [LeakageWeakestPrecondition.func]*)
+      cbv match beta delta [LeakageWeakestPrecondition.func]
   | |- LeakageWeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ _ ?post =>
     unfold1_cmd_goal; cbv beta match delta [cmd_body];
     let __ := match s with String.String _ _ => idtac | String.EmptyString => idtac end in
@@ -358,7 +343,7 @@ Ltac straightline :=
   | |- exists x, ?P /\ ?Q => (*unsure whether still need this, or just case below*)
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
-  | |- exists x y, ?P /\ ?Q => idtac "33'";
+  | |- exists x y, ?P /\ ?Q =>
     let x := fresh x in let y := fresh y in
              refine (let x := _ in let y := _ in
              ex_intro (fun x => exists y, P /\ Q) x
@@ -376,7 +361,7 @@ Ltac straightline :=
   | |- Markers.unique (exists x, Markers.split (?P /\ ?Q)) => (*unsure whether we still need this, or just need case below*)
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
-  | |- Markers.unique (exists x y, Markers.split (?P /\ ?Q)) => idtac "35'";
+  | |- Markers.unique (exists x y, Markers.split (?P /\ ?Q)) =>
     let x := fresh x in let y := fresh y in
              refine (let x := _ in let y := _ in
              ex_intro (fun x => exists y, P /\ Q) x

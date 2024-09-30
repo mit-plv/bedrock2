@@ -45,7 +45,7 @@ Section semantics.
       | expr.op op e1 e2 =>
           '(v1, k', mc') <- eval_expr e1 k mc;
           '(v2, k'', mc'') <- eval_expr e2 k' mc';
-          Some (interp_binop op v1 v2, leak_binop op v1 v2 k'', cost_op isRegStr UNK UNK UNK mc'')
+          Some (interp_binop op v1 v2, leak_binop op v1 v2 ++ k'', cost_op isRegStr UNK UNK UNK mc'')
       | expr.ite c e1 e2 =>
           '(vc, k', mc') <- eval_expr c k mc;
           let b := word.eqb vc (word.of_Z 0) in
