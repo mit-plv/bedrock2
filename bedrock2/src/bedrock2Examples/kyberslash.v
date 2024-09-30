@@ -50,7 +50,7 @@ Section WithWord.
   Context {pick_sp: PickSp}.
   Context (width_big: 4 <= width). (*to avoid division by zero*)
   Context (KYBER_N KYBER_Q KYBER_INDCPA_MSGBYTES : Z).
-  (* ^is this how to do global constants in bedrock2? *) Print expr.expr.
+  (* ^is this how to do global constants in bedrock2? *)
   
   Definition poly_tomsg :=
     func! (msg, a_coeffs) {
@@ -130,7 +130,7 @@ Section WithWord.
     
     Lemma poly_tomsg_ok : program_logic_goal_for_function! poly_tomsg.
     Proof.
-      repeat straightline. Check @LeakageLoops.tailrec.
+      repeat straightline.
       refine ((LeakageLoops.tailrec
                  (* types of ghost variables*) (let c := HList.polymorphic_list.cons in c _ (c _ HList.polymorphic_list.nil))
                  (* program variables *) ("i" :: "a_coeffs" :: "msg" :: nil))%string
@@ -171,7 +171,7 @@ Section WithWord.
         { repeat straightline. eexists. split.
           { repeat straightline. subst localsmap. cbv [reconstruct].
             cbn [HList.tuple.of_list]. cbv [map.putmany_of_tuple]. simpl.
-            Search (map.get (map.put _)). Search map.get. rewrite map.get_put_same.
+            rewrite map.get_put_same.
             reflexivity. (* why will straightline not do that for me??
                             it would earlier, but then I changed some context variables. *) }
           repeat straightline. }
@@ -197,20 +197,15 @@ Section WithWord.
           rewrite word.unsigned_ltu in E. apply Z.ltb_lt in E.
           assert (nsmall: (0 <= Z.to_nat (word.unsigned x1) < Datatypes.length x)%nat) by ZnWords.
           assert (Ex1: x1 = @word.of_Z _ word (@word.unsigned _ word (word.of_Z 1) * Z.of_nat (Z.to_nat (word.unsigned x1)))).
-          { Search (Z.of_nat (Z.to_nat _)). rewrite Z2Nat.id.
+          { rewrite Z2Nat.id.
             2: { assert (Hnonneg := word.unsigned_range x1 ). blia. }
-            Search (word.unsigned _ * word.unsigned _). Search word.unsigned.
-            apply word.unsigned_inj. Search (word.unsigned (word.of_Z _)).
-            repeat rewrite word.unsigned_of_Z. cbv [word.wrap].
-            Search ((_ mod _ * _) mod _).
+            apply word.unsigned_inj. repeat rewrite word.unsigned_of_Z. cbv [word.wrap].
             rewrite Z.mul_mod_idemp_l.
-            2: { Search (_ ^ _ <> 0). apply word.modulus_nonzero. }
+            2: { apply word.modulus_nonzero. }
             assert (Hx1 := word.unsigned_range x1).
-            Search (?a mod ?b = ?a). rewrite Z.mod_small; blia. }
+            rewrite Z.mod_small; blia. }
           eapply Scalars.store_one_of_sep.
-          { Check (array_address_inbounds ptsto (word.of_Z 1) x x3 (word.add x3 x1)). Search Init.Byte.byte.
-            Check @array_index_nat_inbounds.
-            seprewrite_in (@array_index_nat_inbounds _ _ _ _ _ _ _ ptsto (word.of_Z 1) Byte.x00 x x3 (Z.to_nat (word.unsigned x1))) H3. Search x.
+          { seprewrite_in (@array_index_nat_inbounds _ _ _ _ _ _ _ ptsto (word.of_Z 1) Byte.x00 x x3 (Z.to_nat (word.unsigned x1))) H3.
             { ZnWords. }
             
             rewrite <- Ex1 in H3.
@@ -252,11 +247,10 @@ Section WithWord.
               repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec, ?map.get_empty; cbn -[String.eqb]).
               repeat (destruct String.eqb; trivial). } }
           { exact (Z.lt_wf _). }
-          { Check array_index_nat_inbounds. Search (Lift1Prop.iff1 (sep _ _) (sep _ _)).
-            seprewrite_in (symmetry! @array_cons) H5.
+          { seprewrite_in (symmetry! @array_cons) H5.
             seprewrite_in @sep_comm H5.
             remember (Z.to_nat (word.unsigned x1)) as n eqn:En.
-            Check array_append.
+            
             rewrite Ex1 in H5.
             replace (Z.of_nat n) with (Z.of_nat (List.length (List.firstn n x))) in H5.
             2: { rewrite List.firstn_length. blia. }
@@ -272,20 +266,19 @@ Section WithWord.
             { repeat straightline. eexists. split.
               { subst localsmap. cbv [reconstruct].
                 cbn [HList.tuple.of_list]. cbv [map.putmany_of_tuple]. simpl.
-                Search (map.get (map.put _)). Search map.get. rewrite map.get_put_same.
-                reflexivity. }
+                rewrite map.get_put_same. reflexivity. }
               repeat straightline. }
             split.
             { repeat straightline. eexists. eexists. split.
               { repeat straightline. eexists. split.
                 { subst localsmap. cbv [reconstruct].
                   cbn [HList.tuple.of_list]. cbv [map.putmany_of_tuple]. simpl.
-                  Search (map.get (map.put _)). Search map.get. rewrite map.get_put_diff by congruence.
+                  rewrite map.get_put_diff by congruence.
                   rewrite map.get_put_diff by congruence. rewrite map.get_put_same. reflexivity. }
                 repeat straightline. eexists. split.
                 { subst localsmap. cbv [reconstruct].
                   cbn [HList.tuple.of_list]. cbv [map.putmany_of_tuple]. simpl.
-                  Search (map.get (map.put _)). Search map.get. rewrite map.get_put_diff by congruence.
+                  rewrite map.get_put_diff by congruence.
                   rewrite map.get_put_same. reflexivity. }
                 repeat straightline. eexists. split.
                 { subst localsmap. cbv [reconstruct].
@@ -296,52 +289,49 @@ Section WithWord.
                 2: { rewrite word.unsigned_of_Z_0 in H10. exfalso. auto. }
                 rewrite word.unsigned_ltu in Ex6. apply Z.ltb_lt in Ex6.
                 eexists. split.
-                { eapply load_two_of_sep. Search load. repeat straightline.
+                { eapply load_two_of_sep. repeat straightline.
                   remember (word.add (word.mul v3 x1) x6) as n eqn:En.
                   seprewrite_in (@array_index_nat_inbounds _ _ _ _ _ _ _ scalar16 (word.of_Z 2) (word.of_Z 0) x5 x8 (Z.to_nat (word.unsigned n))) H11.
                   2: { repeat straightline. use_sep_assumption. cancel.
                        cancel_seps_at_indices 1%nat 0%nat.
-                       { f_equal. f_equal. subst v0 n. Search (Z.of_nat (Z.to_nat _)).
-                         rewrite Z2Nat.id.
-                         2: { Search word.unsigned.
-                              assert (Hnonneg:= word.unsigned_range (word.add (word.mul v3 x1) x6)).
+                       { f_equal. f_equal. subst v0 n. rewrite Z2Nat.id.
+                         2: { assert (Hnonneg:= word.unsigned_range (word.add (word.mul v3 x1) x6)).
                               blia. }
                          ZnWords. (*interesting, why did this not work before Z2Nat.id?*) }
                        ecancel_done. }
                   (*ZnWords hangs here.*)
-                  subst. subst v3. subst v0. Search (Z.to_nat _ < Z.to_nat _)%nat.
+                  subst. subst v3. subst v0.
                   assert (Hnonneg := word.unsigned_range (word.add (word.mul (word.of_Z 8) x1) x6)).
                   enough ((word.unsigned (word.add (word.mul (word.of_Z 8) x1) x6)) < KYBER_N).
-                  { Search KYBER_N. subst KYBER_N. Search a_coeffs_vals. blia. }
-                  Search word.divu. Search word.unsigned (word.add _ _).
+                  { subst KYBER_N. blia. }
                   assert (0 < word.unsigned (word:=word) (word.of_Z 8)).
-                  { rewrite word.unsigned_of_Z. cbv [word.wrap]. Search (_ mod _).
-                    rewrite Z.mod_small; try split; try blia. Search (_ ^ _ <= _ ^ _).
+                  { rewrite word.unsigned_of_Z. cbv [word.wrap].
+                    rewrite Z.mod_small; try split; try blia.
                     assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(blia) ltac:(blia)).
-                    blia. } Search word.divu.
+                    blia. }
                   assert (0 < 2 ^ width).
-                  { Search (0 < _ ^ _). apply Z.pow_pos_nonneg; blia. }
+                  { apply Z.pow_pos_nonneg; blia. }
                   rewrite word.unsigned_add, word.unsigned_mul, word.unsigned_divu in * by blia.
                   rewrite word.unsigned_of_Z in E. cbv [word.wrap] in *.
-                  Search ((_ mod _ / _) mod _). Search ((_ mod _ + _) mod _).
-                  rewrite Z.add_mod_idemp_l by blia. rewrite word.unsigned_of_Z in *. Search word.divu.
+                 
+                  rewrite Z.add_mod_idemp_l by blia. rewrite word.unsigned_of_Z in *.
                   assert (word.unsigned x1 < KYBER_N mod 2 ^ width / word.wrap 8).
                   { eapply Z.lt_le_trans. 1: eassumption.
-                    Search (_ mod _ <= _). apply Z.mod_le; try blia. Search word.divu.
-                    Search (0 <= _ / _). apply Z_div_nonneg_nonneg; try blia.
-                    Search (0 <= _ mod _). apply Z_mod_nonneg_nonneg; blia. }
+                    apply Z.mod_le; try blia.
+                    apply Z_div_nonneg_nonneg; try blia.
+                    apply Z_mod_nonneg_nonneg; blia. }
                   enough ((word.wrap 8 * word.unsigned x1 + word.unsigned x6) < KYBER_N).
                   { eapply Z.le_lt_trans. 2: eassumption. apply Z.mod_le; try blia.
                     assert (Hx6 := word.unsigned_range x6). assert (Hx1 := word.unsigned_range x1).
                     blia. }
                   assert (word.unsigned x1 < KYBER_N / word.wrap 8).
-                  { eapply Z.lt_le_trans. 1: eassumption. Search (_ / _ <= _ / _)%Z.
+                  { eapply Z.lt_le_trans. 1: eassumption.
                     apply Z.div_le_mono; try blia. apply Z.mod_le; blia. }
                   enough (word.wrap 8 * (word.unsigned x1 + 1) <= KYBER_N).
                   { blia. }
                   assert (word.unsigned x1 + 1 <= KYBER_N / word.wrap 8) by blia.
-                  Search (_ * _ <= _ * _). apply Zmult_le_compat_l with (p := word.wrap 8) in H16; try blia.
-                  eapply Z.le_trans. 1: eassumption. Search (_ * (_ / _) <= _).
+                  apply Zmult_le_compat_l with (p := word.wrap 8) in H16; try blia.
+                  eapply Z.le_trans. 1: eassumption.
                   apply Z.mul_div_le. blia. }
                 eauto. }
               repeat straightline. eexists. eexists. split.
@@ -426,8 +416,8 @@ Section WithWord.
                   reflexivity. }
                 repeat straightline. }
               repeat straightline.
-              do 4 eexists. Print enforce. Print gather. split.
-              { Print enforce. repeat straightline. Print LeakageLoops.enforce. cbv [LeakageLoops.enforce]; cbn.
+              do 4 eexists. split.
+              { repeat straightline. cbv [LeakageLoops.enforce]; cbn.
                 subst l6 l5 l4 l3 l2 l1 l0 l localsmap.
                 repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec; cbn). split.
                 { exact eq_refl. }
@@ -438,7 +428,7 @@ Section WithWord.
               remember (Byte.byte.of_Z (word.unsigned (word.or _ _))) as something.
               seprewrite_in @sep_comm H12.
               remember (Z.to_nat (word.unsigned x1)) as n eqn:En.
-              Check array_append.
+              
               rewrite Ex1 in H12.
               replace (Z.of_nat n) with (Z.of_nat (List.length (List.firstn n x4))) in H12.
               2: { rewrite List.firstn_length. blia. }
@@ -472,7 +462,7 @@ Section WithWord.
               subst v0. replace (Z.to_nat (8 mod 2 ^ width - word.unsigned x6)) with
                 (S (Z.to_nat (8 - word.unsigned (word.add x6 (word.of_Z 1))))).
               { cbn [get_inner_leakage].
-                rewrite H22. repeat rewrite app_assoc. Search (_ :: _ ++ _)%list.
+                rewrite H22. repeat rewrite app_assoc.
                 assert (app_one_cons : forall A (a : A) l, (a :: l = (cons a nil) ++ l)%list).
                 { reflexivity. }
                 clear H22.
@@ -548,7 +538,7 @@ Section WithWord.
             rewrite H17. clear H17.
             assert (app_one_cons : forall A (a : A) l, (a :: l = (cons a nil) ++ l)%list).
             { reflexivity. }
-            simpl. Print align_trace. Check align_trace_app.
+            simpl. 
             repeat (rewrite List.app_assoc || rewrite (app_one_cons _ _ (_ ++ k0)%list) || rewrite (app_one_cons _ _ k0)).
             f_equal. repeat rewrite <- List.app_assoc. f_equal.
             2: { instantiate (1 := fun _ => _). cbv beta. simpl. reflexivity. }
