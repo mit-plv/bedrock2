@@ -665,7 +665,7 @@ Section WithArguments1.
     Lemma fix_step e tup : dtransform_stmt_trace e tup = dtransform_stmt_trace_body e tup (fun y _ => dtransform_stmt_trace e y).
     Proof.
       cbv [dtransform_stmt_trace].
-      apply (@Fix_eq _ _ lt_tuple_wf _ (dtransform_stmt_trace_body e)).
+      apply (@Fix_eq' _ _ lt_tuple_wf _ (dtransform_stmt_trace_body e)).
       { intros. clear tup. rename f into f1. rename g into f2.
         cbv [dtransform_stmt_trace_body]. cbv beta.
         destruct x as [ [k s] u].
@@ -674,8 +674,7 @@ Section WithArguments1.
         { apply H. }
         { Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
           repeat (Tactics.destruct_one_match; try reflexivity).
-          rewrite H in E. rewrite E in E0. (* stuck:( *)
-          rewrite H'. reflexivity. }
+          erewrite H in E. rewrite E in E0. inversion E0. subst. reflexivity. }
         { Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
           erewrite H in E. rewrite E in E0. inversion E0. subst.
           apply Let_In_pf_nd_ext. intros. Tactics.destruct_one_match; try reflexivity.
@@ -692,7 +691,6 @@ Section WithArguments1.
         { Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
           Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match.
           Tactics.destruct_one_match. erewrite H. reflexivity. } }
-      { reflexivity. }
     Qed.
 
   Definition dce_function: (list string *
