@@ -658,23 +658,23 @@ Section WithArguments1.
       + apply Nat.eqb_eq in E. rewrite E. right. constructor. constructor.
       + apply Nat.eqb_neq in E. left. blia.
     Defined.
-
+    Check Fix.
     Definition dtransform_stmt_trace e :=
-      my_Fix _ _ lt_tuple_wf _ (dtransform_stmt_trace_body e).
+      Fix lt_tuple_wf _ (dtransform_stmt_trace_body e).
 
     Lemma fix_step e tup : dtransform_stmt_trace e tup = dtransform_stmt_trace_body e tup (fun y _ => dtransform_stmt_trace e y).
     Proof.
       cbv [dtransform_stmt_trace].
-      apply (@my_Fix_eq _ _ lt_tuple_wf _ (dtransform_stmt_trace_body e) eq eq).
-      { intros. clear tup. subst. rename x2 into x.
-        assert (H : forall y p1 p2, f1 y p1 = f2 y p2) by auto. clear H0.
-        assert (H': forall y p, f1 y p = f2 y p) by auto.
+      apply (@Fix_eq _ _ lt_tuple_wf _ (dtransform_stmt_trace_body e)).
+      { intros. clear tup. rename f into f1. rename g into f2.
         cbv [dtransform_stmt_trace_body]. cbv beta.
         destruct x as [ [k s] u].
         (*cbv [Equiv] in H. destruct H as [H1 H2]. injection H1. intros. subst. clear H1.*)
         Tactics.destruct_one_match. all: try reflexivity.
         { apply H. }
         { Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
+          repeat (Tactics.destruct_one_match; try reflexivity).
+          rewrite H in E. rewrite E in E0. (* stuck:( *)
           rewrite H'. reflexivity. }
         { Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
           erewrite H in E. rewrite E in E0. inversion E0. subst.
