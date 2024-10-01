@@ -293,19 +293,22 @@ Section WithArguments1.
            reflexivity.
         -- unfold compile_post. intros. fwd. solve_compile_post.
            rewrite H2p6. reflexivity.
-    - intros.
+    - admit. (*intros.
       cbn - [live].
       rename IHexec into IH1.
       rename H6 into IH12.
       rename H4 into IH2.
       cbn - [live] in IH12.
-      eapply @exec.loop with (mid2 := compile_post mc mcL (live (SLoop body1 cond body2) used_after) mid2).
+      eapply exec.loop_cps. Check exec.loop_cps. Check IH1.
+      eapply exec.weaken.
       { eapply IH1.
-        eapply agree_on_subset.
-        - let Heq := fresh in
-          specialize (live_while body1 cond body2 used_after) as Heq; cbn zeta in Heq.
-          eapply H4.
-        - eapply H7.
+        - eapply agree_on_subset.
+          + let Heq := fresh in
+            specialize (live_while body1 cond body2 used_after) as Heq; cbn zeta in Heq.
+            eapply H4.
+          + eapply H7.
+        - intros. rewrite H8. rewrite dfix_step. cbn [dtransform_stmt_trace_body].
+          simpl.
       }
       { intros.
         unfold compile_post in *.
@@ -359,10 +362,15 @@ Section WithArguments1.
         - eapply H4.
         - cbv beta. intros * (?&?&?&?&?).
           eexists. mcsolve.
-      }
+      }*)
     - intros.
       eapply @exec.seq.
-      + eapply IHexec. eassumption.
+      + eapply IHexec; [eassumption|].
+        intros. rewrite H4. rewrite dfix_step. simpl.
+        (*this would work either with continuation or with nondeterministic
+          stackalloc.  only fails with both (1) no continuation and (2)
+          deterministic stackalloc...*)
+        rewrite 
       + unfold compile_post. intros. fwd.
         eapply @exec.weaken.
         * eapply H2.
