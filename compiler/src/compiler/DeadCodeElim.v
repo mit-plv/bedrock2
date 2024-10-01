@@ -121,6 +121,7 @@ Section WithArguments1.
   Lemma associate_left {A : Type} (x : A) l1 l2 :
     l1 ++ x :: l2 = (l1 ++ [x]) ++ l2.
   Proof. rewrite <- app_assoc. reflexivity. Qed.
+  Definition sndfst {A B C : Type} (x : A * B * C):= snd (fst x).
                                                              
   Lemma dce_correct_aux :
     forall eH eL,
@@ -129,7 +130,7 @@ Section WithArguments1.
         exec pick_spH eH sH kH t m lH mcH postH ->
         forall pick_spL used_after kL lL mcL,
           map.agree_on (of_list (live sH used_after)) lH lL ->
-          (forall k, pick_spH (k ++ kH) = default (word.of_Z 0) (snd (dtransform_stmt_trace eH (rev k, sH, used_after)))) ->
+          (forall k, pick_spH (k ++ kH) = pick_spL (rev kL ++ snd (fst (dtransform_stmt_trace eH (rev k, sH, used_after))))) ->
           exec (fun k => pick_spL (rev k)) eL (dce sH used_after) kL t m lL mcL (compile_post eH sH kH kL mcH mcL used_after postH).
   Proof.
     induction 2;
@@ -167,7 +168,8 @@ Section WithArguments1.
         -- eapply agree_on_refl.
         -- intros. rewrite associate_left. rewrite H6. rewrite dfix_step.
            simpl. rewrite rev_app_distr. simpl. rewrite H0.
-           repeat Tactics.destruct_one_match; reflexivity.
+           repeat Tactics.destruct_one_match. simpl.
+           rewrite <- app_assoc. reflexivity.
       + intros.
         unfold compile_post in *.
         fwd. eapply H4 in H7p0. fwd.
@@ -221,17 +223,20 @@ Section WithArguments1.
       repeat listset_to_set.
       eapply @exec.stackalloc.
       * eassumption.
-      * intros. specialize (H4 nil). rewrite dfix_step in H4. simpl in H4. simpl in H4. rewrite 
+      * intros. assert (H4' := H4 nil). rewrite dfix_step in H4'. simpl in H4'.
+        rewrite app_nil_r in H4'. rewrite H4' in H2.
         eapply H2 with (used_after := used_after) (lL :=  (map.put lL x a)) in H5; subst a.
-        2: eapply H4.
-        2: { agree_on_solve. }
-        eapply @exec.weaken.
-        -- eapply H4.
-        --  unfold compile_post. intros. fwd. exists mSmall'. exists mStack'. split.
-            ++ eassumption.
-            ++ split.
-               ** eassumption.
-               ** eexists; mcsolve; eauto.
+        2: eapply H6.
+        -- eapply exec.weaken. 1: eapply H5. intros.
+           unfold compile_post in H7. fwd. eexists. eexists.
+           split; [eassumption|]. split; [eassumption|].
+           solve_compile_post.
+           ++ assumption.
+           ++ rewrite H7p5. reflexivity.
+        -- agree_on_solve.
+        -- intros. rewrite associate_left. rewrite H4. rewrite dfix_step. simpl.
+           rewrite rev_app_distr. simpl. repeat Tactics.destruct_one_match.
+           repeat rewrite <- app_assoc. reflexivity.
     - intros. destr (existsb (eqb x) used_after).
       + eapply @exec.lit.
         unfold compile_post.
