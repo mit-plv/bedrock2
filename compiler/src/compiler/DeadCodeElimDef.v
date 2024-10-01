@@ -686,13 +686,15 @@ Section WithArguments1.
           repeat (Tactics.destruct_one_match; try reflexivity).
           erewrite H in E. rewrite E in E0. inversion E0. subst. reflexivity. }
         { Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
-          erewrite H in E. rewrite E in E0. inversion E0. subst.
+          erewrite H in E. rewrite E. Tactics.destruct_one_match; try reflexivity.
           apply Let_In_pf_nd_ext. intros. Tactics.destruct_one_match; try reflexivity.
           Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
           repeat Tactics.destruct_one_match; try reflexivity.
-          all: (erewrite H in E1; rewrite E1 in E3; inversion E3; subst) ||
-                 (erewrite H in E1; rewrite E1 in E2; inversion E2; subst).
-          erewrite H in E2. rewrite E2 in E4. inversion E4. subst. reflexivity. }
+          { erewrite H in E0. rewrite E0 in E1. inversion E1; subst. reflexivity. }
+          { erewrite H in E0. rewrite E0 in E1. inversion E1; subst. }
+          { erewrite H in E0. rewrite E0 in E2. inversion E2; subst. }
+          { erewrite H in E0. rewrite E0 in E2. inversion E2; subst.
+            erewrite H in E1. rewrite E1 in E3. inversion E3. subst. reflexivity. } }
         { repeat Tactics.destruct_one_match.
           all: (erewrite H in E; rewrite E in E1; inversion E1; subst) ||
                  (erewrite H in E; rewrite E in E0; inversion E0; subst; reflexivity). 
@@ -731,7 +733,7 @@ Section WithArguments1.
          /\ metricsLeq (mcL' - mcL) (mcH' - mcH)
          /\ k' = kL'' ++ kL
          /\ kH' = kH'' ++ kH
-         /\ forall kH''', dtransform_stmt_trace e (rev kH'' ++ kH''', s, used_after) = (rev kH'', rev kL'')).
+         /\ forall kH''', dtransform_stmt_trace e (rev kH'' ++ kH''', s, used_after) = (rev kH'', rev kL'', None)).
 
   Lemma agree_on_eval_bcond:
     forall cond (m1 m2: locals),
