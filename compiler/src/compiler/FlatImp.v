@@ -234,7 +234,6 @@ Section FlatImp1.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
   Context {mem: map.map word byte} {locals: map.map varname word}
           {env: map.map String.string (list varname * list varname * stmt varname)}.
-  Context {ext_spec: ExtSpec}.
 
   Section WithEnv.
     Variable (e: env).
@@ -402,7 +401,7 @@ Module exec.
             let a := pick_sp k in
             anybytes a n mStack ->
             map.split mCombined mSmall mStack ->
-            exec body k t mCombined (map.put l x a) mc
+            exec body (leak_unit :: k) t mCombined (map.put l x a) mc
              (fun k' t' mCombined' l' mc' =>
               exists mSmall' mStack',
                 anybytes a n mStack' /\

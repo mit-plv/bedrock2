@@ -516,7 +516,12 @@ Section WithArguments1.
   Proof.
     cbv [lt_tuple]. apply wf_inverse_image. apply lt_tuple'_wf.
   Defined.
-  
+
+  (*Because high-level pick_sp is always the result of applying low-level pick_sp to
+    low-level trace, this function doesn't need to return a triple
+    (high-level-trace-to-skip, low-level-trace-so-far, high-level-pick-sp-output),
+    like the FlatToRiscv function does.  It suffices to return the first two elts
+    of the tuple.*)
   Definition dtransform_stmt_trace_body
     (e: env)
     (tup : leakage * stmt var * list var)
@@ -573,7 +578,11 @@ Section WithArguments1.
                     | _ => (nil, nil, None)
                     end
               | SStackalloc x n body =>
-                  fun _ => dtransform_stmt_trace (kH, body, u) _
+                  fun _ =>
+                    match kH with
+                    | leak_unit :: kH' =>
+                        dtransform_stmt_trace (kH', body, u) _
+                    | _ => (nil, nil, Some (pick_spL
               | SLit x _ =>
                   fun _ => (nil, nil, None)
               | SOp x op _ _ =>

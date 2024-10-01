@@ -16,7 +16,7 @@ Require Import bedrock2.MetricCosts.
 (*  below only for of_list_list_diff *)
 Require Import compiler.DeadCodeElimDef.
 
-Local Notation exec := (exec PreSpill isRegStr).
+Local Notation exec pick_sp := (exec (pick_sp := pick_sp) PreSpill isRegStr).
 
 Section WithArguments1.
   Context {width: Z}.
@@ -26,7 +26,6 @@ Section WithArguments1.
   Context {mem: map.map word (Init.Byte.byte : Type) } {mem_ok : map.ok mem} .
   Context {locals: map.map string word} {locals_ok: map.ok locals}.
   Context {ext_spec: LeakageSemantics.ExtSpec} {ext_spec_ok: LeakageSemantics.ext_spec.ok ext_spec}.
-  Context {pick_sp: LeakageSemantics.PickSp}.
   
   Lemma agree_on_put_existsb_false:
     forall used_after x (l: locals) lL,
@@ -116,14 +115,22 @@ Section WithArguments1.
   Ltac solve_compile_post :=
     do 5 eexists; ssplit; [eauto | | scost_hammer | align_trace | align_trace | intros; rewrite dfix_step; repeat (rewrite rev_app_distr || simpl); try reflexivity ].
 
+  Check @app. Check (app (A := nat)). Print exec. Search (option _ -> _).
+  Definition default {X : Type} (d : X) (o : option X) :=
+    match o with | Some x => x | None => d end.
+  Lemma associate_left {A : Type} (x : A) l1 l2 :
+    l1 ++ x :: l2 = (l1 ++ [x]) ++ l2.
+  Proof. rewrite <- app_assoc. reflexivity. Qed.
+                                                             
   Lemma dce_correct_aux :
     forall eH eL,
       dce_functions eH = Success eL ->
-      forall sH kH t m mcH lH postH,
-        exec eH sH kH t m lH mcH postH ->
-        forall used_after kL lL mcL,
+      forall pick_spH sH kH t m mcH lH postH,
+        exec pick_spH eH sH kH t m lH mcH postH ->
+        forall pick_spL used_after kL lL mcL,
           map.agree_on (of_list (live sH used_after)) lH lL ->
-          exec eL (dce sH used_after) kL t m lL mcL (compile_post eH sH kH kL mcH mcL used_after postH).
+          (forall k, pick_spH (k ++ kH) = default (word.of_Z 0) (snd (dtransform_stmt_trace eH (rev k, sH, used_after)))) ->
+          exec (fun k => pick_spL (rev k)) eL (dce sH used_after) kL t m lL mcL (compile_post eH sH kH kL mcH mcL used_after postH).
   Proof.
     induction 2;
       match goal with
@@ -136,15 +143,15 @@ Section WithArguments1.
         * eapply H1.
         * repeat listset_to_set. agree_on_solve.
       + intros.
-        eapply H3 in H5.
+        eapply H3 in H6.
         fwd.
         let Heq := fresh in
-        pose proof H5p0 as Heq;
+        pose proof H6p0 as Heq;
         eapply map.putmany_of_list_zip_sameLength, map.sameLength_putmany_of_list in Heq.
         fwd.
         eexists.
         split.
-        * eapply H5.
+        * eapply H6.
         * intros. solve_compile_post.
           agree_on_solve. repeat listset_to_set. subset_union_solve.
     - intros.
@@ -157,21 +164,24 @@ Section WithArguments1.
         * eapply H1.
         * listset_to_set. agree_on_solve.
       + eapply IHexec.
-        eapply agree_on_refl.
+        -- eapply agree_on_refl.
+        -- intros. rewrite associate_left. rewrite H6. rewrite dfix_step.
+           simpl. rewrite rev_app_distr. simpl. rewrite H0.
+           repeat Tactics.destruct_one_match; reflexivity.
       + intros.
         unfold compile_post in *.
-        fwd. eapply H4 in H6p0. fwd.
+        fwd. eapply H4 in H7p0. fwd.
         let Heq := fresh in
-        pose proof H6p0p1 as Heq;
-        eapply map.putmany_of_list_zip_sameLength,  map.sameLength_putmany_of_list in H6p0p1. fwd.
+        pose proof H7p0p1 as Heq;
+        eapply map.putmany_of_list_zip_sameLength,  map.sameLength_putmany_of_list in H7p0p1. fwd.
         exists retvs. eexists. repeat split.
         * erewrite agree_on_getmany.
-          -- eapply H6p0p0.
+          -- eapply H7p0p0.
           -- listset_to_set. agree_on_solve.
-        * eapply H6p0p1.
+        * eapply H7p0p1.
         * solve_compile_post.
           -- agree_on_solve. repeat listset_to_set. subset_union_solve.
-          -- rewrite H0. rewrite H6p5. reflexivity.
+          -- rewrite H0. rewrite H7p5. reflexivity.
     - intros.
       eapply agree_on_find in H3; fwd.
       destr (existsb (eqb x) used_after); fwd.
@@ -208,10 +218,10 @@ Section WithArguments1.
         -- repeat listset_to_set; agree_on_solve.
         -- rewrite E. reflexivity.
     - intros.
-      repeat listset_to_set. (*ack need to use different pick_sp on low level*)
+      repeat listset_to_set.
       eapply @exec.stackalloc.
       * eassumption.
-      * intros.
+      * intros. specialize (H4 nil). rewrite dfix_step in H4. simpl in H4. simpl in H4. rewrite 
         eapply H2 with (used_after := used_after) (lL :=  (map.put lL x a)) in H5; subst a.
         2: eapply H4.
         2: { agree_on_solve. }
