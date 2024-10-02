@@ -23,10 +23,6 @@ make
 make install
 cd ../..
 
-cd deps/coq-record-update/
-git clean -dfx
-cd ../..
-
 cd deps/coqutil/
 git clean -dfx
 cd ../..
