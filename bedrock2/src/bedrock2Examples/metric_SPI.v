@@ -72,7 +72,8 @@ Section WithParameters.
     MetricWeakestPrecondition.call functions "spi_write" t m [b] mc (fun T M RETS MC =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists err, RETS = [err] /\ Logic.or
         (((word.unsigned err <> 0) /\ lightbulb_spec.spi_write_full _ ^* ioh /\ Z.of_nat (length ioh) = patience))
-        (word.unsigned err = 0 /\ lightbulb_spec.spi_write word (byte.of_Z (word.unsigned b)) ioh /\ (MC - mc <= mkMetricLog 321 222 351 204 + Z.of_nat (length ioh) * mkMetricLog 157 109 169 102 + mkMetricLog 27 5 30 0)%metricsH)).
+        (word.unsigned err = 0 /\ lightbulb_spec.spi_write word (byte.of_Z (word.unsigned b)) ioh) /\
+        (MC - mc <= mkMetricLog 321 222 351 204 + Z.of_nat (length ioh) * mkMetricLog 157 109 169 102 + mkMetricLog 27 5 30 0)%metricsH).
 
   Global Instance spec_of_spi_read : spec_of "spi_read" := fun functions => forall t m mc,
     MetricWeakestPrecondition.call functions "spi_read" t m [] mc (fun T M RETS MC =>
@@ -186,6 +187,7 @@ Section WithParameters.
         constructor; [|constructor].
         right; eauto. }
       eexists. split; trivial.
+      split; [|metrics].
       { left; repeat split; eauto using nonzero_because_high_bit_set.
         { (* copied from above -- trace element for "fifo full" *)
           eapply kleene_app; eauto.
@@ -215,12 +217,12 @@ Section WithParameters.
         { right; [|constructor].
           right; eexists _, _; repeat split. } } }
     eexists; split; trivial.
+    split; [|metrics].
     right.
     subst busy.
     split.
     { f_equal. rewrite Properties.word.unsigned_xor_nowrap; rewrite Z.lxor_nilpotent; reflexivity. }
     cbv [lightbulb_spec.spi_write].
-    split; [|metrics].
     eexists _, _; split; eauto; []; split; eauto.
     eexists (cons _ nil), (cons _ nil); split; cbn [app]; eauto.
     split; repeat econstructor.
