@@ -506,9 +506,9 @@ Section WithArguments1.
   Require Import compiler.CustomFix.
   Require Import bedrock2.LeakageSemantics.
   Require Import Coq.Init.Wf Wellfounded.
-  Definition tuple : Type := leakage * stmt var * list var.
+  Definition tuple : Type := leakage * stmt var * list var * (leakage (*skip*) -> leakage (*low-level trace so far*) -> leakage (*everything*)).
   Definition project_tuple (tup : tuple) :=
-    let '(kH, s, u) := tup in (length kH, s).
+    let '(kH, s, u, f) := tup in (length kH, s).
   Definition lt_tuple (x y : tuple) :=
     lt_tuple' (project_tuple x) (project_tuple y).
   
@@ -534,22 +534,24 @@ Section WithArguments1.
     harder to understand for no good reason.
 
     I guess the best option is the 'error'/short_circuit boolean.
+
+    Nope, I changed my mind.  CPS is good.
    *)
   Definition dtransform_stmt_trace_body
     (e: env)
-    (tup : leakage * stmt var * list var)
-    (dtransform_stmt_trace : forall othertup, lt_tuple othertup tup -> leakage * leakage * bool)
-    : leakage * leakage * bool. (*(skipH, kL, short_circuit) *)
+    (tup : leakage * stmt var * list var * (leakage -> leakage -> leakage))
+    (dtransform_stmt_trace : forall othertup, lt_tuple othertup tup -> leakage)
+    : leakage.
     refine (
         match tup as x return tup = x -> _ with
-        | (kH, s, u) =>
+        | (kH, s, u, f) =>
             fun _ =>
               match s as x return s = x -> _ with
               | SInteract _ _ _ =>
                   fun _ =>
                     match kH with
-                    | leak_list l :: kH' => ([leak_list l], [leak_list l], false)
-                    | _ => (nil, nil, false)
+                    | leak_list l :: kH' => f [leak_list l] [leak_list l]
+                    | _ => nil
                     end
               | SCall _ fname _ =>
                   fun _ =>
@@ -558,49 +560,47 @@ Section WithArguments1.
                         fun _ =>
                           match map.get e fname with
                           | Some (params, rets, fbody) =>
-                              let '(skip, kL, sallocval) := dtransform_stmt_trace (kH', fbody, rets) _ in
-                              (leak_unit :: skip, leak_unit :: kL, sallocval)
-                          | None => (nil, nil, false)
+                              dtransform_stmt_trace (kH', fbody, rets,
+                                fun skip kL => f (leak_unit :: skip) (leak_unit :: kL)) _
+                          | None => nil
                           end
-                    | _ => fun _ => (nil, nil, false)
+                    | _ => fun _ => nil
                     end eq_refl
               | SLoad _ x _ _ =>
                   fun _ =>
                     match kH with
                     | leak_word addr :: kH' =>
                         if (existsb (eqb x) u) then
-                          ([leak_word addr], [leak_word addr], false)
+                          f [leak_word addr] [leak_word addr]
                         else
-                          ([leak_word addr], nil, false)
-                    | _ => (nil, nil, false)
+                          f [leak_word addr] nil
+                    | _ => nil
                     end
               | SStore _ _ _ _ =>
                   fun _ =>
                     match kH with
-                    | leak_word addr :: kH' => ([leak_word addr], [leak_word addr], false)
-                    | _ => (nil, nil, false)
+                    | leak_word addr :: kH' => f [leak_word addr] [leak_word addr]
+                    | _ => nil
                     end
               | SInlinetable _ x _ _ =>
                   fun _ =>
                     match kH with
                     | leak_word i :: kH' =>
                         if (existsb (eqb x) u) then
-                          ([leak_word i], [leak_word i], false)
+                          f [leak_word i] [leak_word i]
                         else
-                          ([leak_word i], nil, false)
-                    | _ => (nil, nil, false)
+                          f [leak_word i] nil
+                    | _ => nil
                     end
               | SStackalloc x n body =>
                   fun _ =>
                     match kH as x return kH = x -> _ with
                     | leak_unit :: kH' =>
-                        fun _ =>
-                          let '(skip, kL, sc) := dtransform_stmt_trace (kH', body, u) _ in
-                          (leak_unit :: skip, leak_unit :: kL, sc)
-                    | _ => fun _ => (nil, nil, true)
+                        fun _ => dtransform_stmt_trace (kH', body, u,
+                                  fun skip kL => f (leak_unit :: skip) (leak_unit :: kL)) _
+                    | _ => fun _ => nil (*we don't call the continuation here.  wow, that was so much easier than carrying around the 'error' flag*)
                     end eq_refl
-              | SLit x _ =>
-                  fun _ => (nil, nil, false)
+              | SLit x _ => fun _ => f nil nil
               | SOp x op _ _ =>
                   fun _ =>
                     (*copied from spilling.
@@ -625,58 +625,49 @@ Section WithArguments1.
                       end
                     in
                     if (existsb (eqb x) u) then
-                      (skip, skip, false)
+                      f skip skip
                     else
-                      (skip, nil, false)
-              | SSet _ _ => fun _ => (nil, nil, false)
+                      f skip nil
+              | SSet _ _ => fun _ => f nil nil
               | SIf _ thn els =>
                   fun _ =>
                     match kH as x return kH = x -> _ with
                     | leak_bool b :: kH' =>
-                        fun _ =>
-                          let '(skip, kL, sallocval) := dtransform_stmt_trace (kH', if b then thn else els, u) _ in
-                          (leak_bool b :: skip, leak_bool b :: kL, sallocval)
-                    | _ => fun _ => (nil, nil, false)
+                        fun _ => dtransform_stmt_trace (kH', if b then thn else els, u,
+                                  fun skip kL => f (leak_bool b :: skip) (leak_bool  b :: kL)) _
+                    | _ => fun _ => nil
                     end eq_refl
               | SLoop s1 c s2 =>
                   fun _ =>
                     let live_before := live (SLoop s1 c s2) u in
-                    match dtransform_stmt_trace (kH, s1, (list_union String.eqb
+                    dtransform_stmt_trace (kH, s1, (list_union String.eqb
                                                             (live s2 live_before)
-                                                            (list_union eqb (accessed_vars_bcond c) u))) _
-                    with
-                    | (skip1, kL1, false) =>                                                    
-                        Let_In_pf_nd (List.skipn (length skip1) kH)
-                          (fun kH' _ =>
-                             match kH' as x return kH' = x -> _ with
-                             | leak_bool true :: kH'' =>
-                                 fun _ =>
-                                   match dtransform_stmt_trace (kH'', s2, live_before) _ with
-                                   | (skip2, kL2, false) =>
-                                       let kH''' := List.skipn (length skip2) kH'' in
-                                       let '(skip3, kL3, sallocval) := dtransform_stmt_trace (kH''', s, u) _ in
-                                       (skip1 ++ [leak_bool true] ++ skip2 ++ skip3, kL1 ++ [leak_bool true] ++ kL2 ++ kL3, sallocval)
-                                   | (_, _, true) => (nil, nil, true)
-                                   end
-                             | leak_bool false :: kH'' =>
-                                 fun _ => (skip1 ++ [leak_bool false], kL1 ++ [leak_bool false], false)
-                             | _ => fun _ => (nil, nil, false)
-                             end eq_refl)
-                    | (_, _, true) => (nil, nil, true)
-                    end
+                                                            (list_union eqb (accessed_vars_bcond c) u)),
+                        fun skip1 kL1 =>
+                          Let_In_pf_nd (List.skipn (length skip1) kH)
+                            (fun kH' _ =>
+                               match kH' as x return kH' = x -> _ with
+                               | leak_bool true :: kH'' =>
+                                   fun _ => dtransform_stmt_trace (kH'', s2, live_before,
+                                             fun skip2 kL2 =>
+                                               let kH''' := List.skipn (length skip2) kH'' in
+                                               dtransform_stmt_trace (kH''', s, u,
+                                                   fun skip3 kL3 =>
+                                                     f (skip1 ++ [leak_bool true] ++ skip2 ++ skip3) (kL1 ++ [leak_bool true] ++ kL2 ++ kL3)) _) _
+                               | leak_bool false :: kH'' =>
+                                   fun _ => f (skip1 ++ [leak_bool false]) (kL1 ++ [leak_bool false])
+                               | _ => fun _ => nil
+                               end eq_refl)) _
               | SSeq s1 s2 =>
-                  fun _ =>
-                    match dtransform_stmt_trace (kH, s1, live s2 u) _ with
-                    | (skip1, kL1, false) =>
-                        let kH' := List.skipn (length skip1) kH in
-                        let '(skip2, kL2, sallocval) := dtransform_stmt_trace (kH', s2, u) _ in
-                        (skip1 ++ skip2, kL1 ++ kL2, sallocval)
-                    | (_, _, true) => (nil, nil, true)
-                    end
-              | SSkip => fun _ => (nil, nil, false)
+                  fun _ => dtransform_stmt_trace (kH, s1, live s2 u,
+                            fun skip1 kL1 =>
+                              let kH' := List.skipn (length skip1) kH in
+                              dtransform_stmt_trace (kH', s2, u, fun skip2 kL2 => f (skip1 ++ skip2) (kL1 ++ kL2)) _) _
+              | SSkip => fun _ => f nil nil
               end eq_refl
         end eq_refl).
     Proof.
+      Unshelve.
       all: cbv [lt_tuple project_tuple].
       all: subst.
       all: repeat match goal with
