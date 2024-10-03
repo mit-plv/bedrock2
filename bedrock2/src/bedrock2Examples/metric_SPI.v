@@ -67,20 +67,28 @@ Section WithParameters.
   Definition only_mmio_satisfying P t :=
     exists mmios, mmio_trace_abstraction_relation mmios t /\ P mmios.
 
+  Definition mc_spi_write_const := mkMetricLog 348 227 381 204.
+  Definition mc_spi_read_const := mkMetricLog 199 116 217 103.
+  Definition mc_spi_xchg_const := mkMetricLog 410 402 414 401.
+  Definition mc_spi_mul := mkMetricLog 157 109 169 102.
+  Ltac mc_spi_write_unf := unfold mc_spi_write_const, mc_spi_mul in *.
+  Ltac mc_spi_read_unf := unfold mc_spi_read_const, mc_spi_mul in *.
+  Ltac mc_spi_xchg_unf := unfold mc_spi_xchg_const in *.
+
   Global Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall t m b mc,
     word.unsigned b < 2 ^ 8 ->
     MetricWeakestPrecondition.call functions "spi_write" t m [b] mc (fun T M RETS MC =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists err, RETS = [err] /\ Logic.or
         (((word.unsigned err <> 0) /\ lightbulb_spec.spi_write_full _ ^* ioh /\ Z.of_nat (length ioh) = patience))
         (word.unsigned err = 0 /\ lightbulb_spec.spi_write word (byte.of_Z (word.unsigned b)) ioh) /\
-        (MC - mc <= mkMetricLog 321 222 351 204 + Z.of_nat (length ioh) * mkMetricLog 157 109 169 102 + mkMetricLog 27 5 30 0)%metricsH).
+        (MC - mc <= mc_spi_write_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH).
 
   Global Instance spec_of_spi_read : spec_of "spi_read" := fun functions => forall t m mc,
     MetricWeakestPrecondition.call functions "spi_read" t m [] mc (fun T M RETS MC =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b: byte) (err : word), RETS = [word.of_Z (byte.unsigned b); err] /\ Logic.or
         (word.unsigned err <> 0 /\ lightbulb_spec.spi_read_empty _ ^* ioh /\ Z.of_nat (length ioh) = patience)
         (word.unsigned err = 0 /\ lightbulb_spec.spi_read word b ioh) /\
-        (MC - mc <= mkMetricLog 160 109 174 103 + Z.of_nat (length ioh) * mkMetricLog 157 109 169 102 + mkMetricLog 39 7 43 0)%metricsH).
+        (MC - mc <= mc_spi_read_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH).
 
   Lemma nonzero_because_high_bit_set (x : word) (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
     : word.unsigned x <> 0.
@@ -118,7 +126,7 @@ Section WithParameters.
        exists th, mmio_trace_abstraction_relation th tl /\
        lightbulb_spec.spi_write_full _ ^* th /\
        Z.of_nat (length th) + word.unsigned I = patience /\
-       (MC - mc <= Z.of_nat (length th) * mkMetricLog 157 109 169 102 + mkMetricLog 27 5 30 0)%metricsH
+       (MC - mc <= Z.of_nat (length th) * mc_spi_mul + mkMetricLog 27 5 30 0)%metricsH
        )) _ _ _ _ _);
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
            HList.hlist.foralls HList.tuple.foralls
@@ -180,7 +188,7 @@ Section WithParameters.
           refine (kleene_step _ _ nil _ (kleene_empty _)).
           repeat econstructor.
           ZnWords. }
-        split; [|metrics].
+        split; [|mc_spi_write_unf; metrics].
         { ZnWordsL. } }
         { ZnWords. } }
     { (* SUBCASE loop condition was false (exit loop because of timeout *)
@@ -193,7 +201,7 @@ Section WithParameters.
         constructor; [|constructor].
         right; eauto. }
       eexists. split; trivial.
-      split; [|metrics].
+      split; [|mc_spi_write_unf; metrics].
       { left; repeat split; eauto using nonzero_because_high_bit_set.
         { (* copied from above -- trace element for "fifo full" *)
           eapply kleene_app; eauto.
@@ -223,7 +231,7 @@ Section WithParameters.
         { right; [|constructor].
           right; eexists _, _; repeat split. } } }
     eexists; split; trivial.
-    split; [|metrics].
+    split; [|mc_spi_write_unf; metrics].
     right.
     subst busy.
     split.
@@ -311,7 +319,7 @@ Section WithParameters.
         { econstructor; try eassumption; right; eauto. }
         eexists (byte.of_Z (word.unsigned x)), _; split.
         { f_equal. eassumption. }
-        split; [|metrics].
+        split; [|mc_spi_read_unf; metrics].
         left; repeat split; eauto using nonzero_because_high_bit_set.
         { refine (kleene_app _ (cons _ nil) _ x3 _); eauto.
           refine (kleene_step _ (cons _ nil) nil _ (kleene_empty _)).
@@ -373,7 +381,7 @@ Section WithParameters.
           pose proof Z.mod_pos_bound (word.unsigned v0) (2^8) eq_refl.
           clear. Z.div_mod_to_equations. blia. }
         (* tag:symex *)
-        { split; [|metrics].
+        { split; [|mc_spi_read_unf; metrics].
           right; split.
           { subst_words. rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent; exact eq_refl. }
           eexists x3, (cons _ nil); split; cbn [app]; eauto.
@@ -402,10 +410,14 @@ Section WithParameters.
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b_in:byte) (err : word), RETS = [word.of_Z (byte.unsigned b_in); err] /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\ lightbulb_spec.spi_xchg word (byte.of_Z (word.unsigned b_out)) b_in ioh) /\
-        (MC - mc <= mkMetricLog 321 222 351 204 + Z.of_nat (length ioh) * mkMetricLog 157 109 169 102 + mkMetricLog 27 5 30 0 + mkMetricLog 609 518 631 504)%metricsH).
+        (MC - mc <= mc_spi_write_const + mc_spi_read_const + mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH).
 
   Lemma spi_xchg_ok : program_logic_goal_for_function! spi_xchg.
   Proof.
+    (* avoid using information about read/write consts anywhere to ensure correct dependencies *)
+    assert (EmptyMetricLog <= mc_spi_read_const)%metricsH by (unfold EmptyMetricLog, mc_spi_read_const; solve_MetricLog).
+    assert (EmptyMetricLog <= mc_spi_write_const)%metricsH by (unfold EmptyMetricLog, mc_spi_write_const; solve_MetricLog).
+
     repeat (
     match goal with
     | |- ?F ?a ?b ?c =>
@@ -436,12 +448,12 @@ Section WithParameters.
       rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by blia;
       change (Z.ones 8 mod 2 ^ 32) with (Z.ones 8));
       rewrite ?Z.mod_small; rewrite ?Z.mod_small; trivial; blia. }
-      split; [|metrics].
+      split; [|mc_spi_xchg_unf; metrics].
       left; split; eauto.
       eexists nil, x0; repeat split; cbv [any choice lightbulb_spec.spi_timeout]; eauto.
       rewrite app_nil_r; trivial. }
 
-      { destruct H11; intuition eauto.
+      { destruct H13; intuition eauto.
         { eexists. split.
           { subst a0. subst a.
             rewrite List.app_assoc; trivial. }
@@ -449,7 +461,7 @@ Section WithParameters.
             { eapply Forall2_app; eauto. }
             eexists _, _; split.
             { subst v; trivial. }
-            split; [|rewrite app_length; metrics].
+            split; [|rewrite app_length; mc_spi_xchg_unf; metrics].
             left; split; eauto.
             eapply concat_app; cbv [any choice lightbulb_spec.spi_timeout]; eauto. }
             eexists.
@@ -462,7 +474,7 @@ Section WithParameters.
             { eapply Forall2_app; eauto. }
             eexists _, _; split.
             { subst v. eauto. }
-            split; [|rewrite app_length; metrics].
+            split; [|rewrite app_length; mc_spi_xchg_unf; metrics].
             right. split; eauto.
             cbv [lightbulb_spec.spi_xchg].
 
