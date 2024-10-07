@@ -15,6 +15,8 @@ Require Import coqutil.Tactics.fwd.
 Require Import Coq.Logic.PropExtensionality.
 Require Import Coq.Logic.FunctionalExtensionality.
 
+Require Import compiler.CustomFix.
+
 Section WithArguments1.
   Context {width: Z}.
   Context {BW: Bitwidth.Bitwidth width }.
@@ -537,7 +539,7 @@ Section WithArguments1.
 
     Nope, I changed my mind.  CPS is good.
    *)
-  Definition dtransform_stmt_trace_body
+  Definition stmt_leakage_body
     (e: env)
     (tup : leakage * stmt var * list var * (leakage -> leakage -> leakage))
     (dtransform_stmt_trace : forall othertup, lt_tuple othertup tup -> leakage)
@@ -685,42 +687,28 @@ Section WithArguments1.
       + apply Nat.eqb_neq in E. left. blia.
     Defined.
 
-    Definition dtransform_stmt_trace e :=
-      Fix lt_tuple_wf _ (dtransform_stmt_trace_body e).
+    Definition stmt_leakage e :=
+      Fix lt_tuple_wf _ (stmt_leakage_body e).
 
-    Lemma dfix_step e tup : dtransform_stmt_trace e tup = dtransform_stmt_trace_body e tup (fun y _ => dtransform_stmt_trace e y).
+    Definition Equiv (x1 x2 : tuple) : Prop :=
+      let '(k1, s1, u1, f1) := x1 in
+      let '(k2, s2, u2, f2) := x2 in
+      k1 = k2 /\ s1 = s2 /\ u1 = u2 /\ (forall y1 y2, f1 y1 y2 = f2 y1 y2).
+
+    Lemma Equiv_refl x : Equiv x x.
+    Proof. unfold Equiv. repeat Tactics.destruct_one_match. auto. Qed.
+
+    Lemma dfix_step e tup : stmt_leakage e tup = stmt_leakage_body e tup (fun y _ => stmt_leakage e y).
     Proof.
-      cbv [dtransform_stmt_trace].
-      apply (@Fix_eq' _ _ lt_tuple_wf _ (dtransform_stmt_trace_body e)).
-      { intros. clear tup. rename f into f1. rename g into f2.
-        cbv [dtransform_stmt_trace_body]. cbv beta.
-        destruct x as [ [k s] u].
-        (*cbv [Equiv] in H. destruct H as [H1 H2]. injection H1. intros. subst. clear H1.*)
-        Tactics.destruct_one_match. all: try reflexivity.
-        { Tactics.destruct_one_match; try reflexivity.
-          Tactics.destruct_one_match; try reflexivity.
-          repeat Tactics.destruct_one_match. erewrite H in E. rewrite E in E0.
-          inversion E0. subst. reflexivity. }
-        { Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
-          repeat (Tactics.destruct_one_match; try reflexivity).
-          erewrite H in E. rewrite E in E0. inversion E0. subst. reflexivity. }
-        { Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
-          erewrite H in E. rewrite E. Tactics.destruct_one_match; try reflexivity.
-          apply Let_In_pf_nd_ext. intros. Tactics.destruct_one_match; try reflexivity.
-          Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
-          repeat Tactics.destruct_one_match; try reflexivity.
-          { erewrite H in E0. rewrite E0 in E1. inversion E1; subst. }
-          { erewrite H in E0. rewrite E0 in E2. inversion E2; subst. }
-          { erewrite H in E0. rewrite E0 in E2. inversion E2; subst.
-            erewrite H in E1. rewrite E1 in E3. inversion E3; subst. reflexivity. } }
-        { repeat Tactics.destruct_one_match.
-          all: (erewrite H in E; rewrite E in E1; inversion E1; subst) ||
-                 (erewrite H in E; rewrite E in E0; inversion E0; subst; reflexivity). 
-          erewrite H in E0. rewrite E0 in E2.
-          inversion E2. subst. reflexivity. }
-        { Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match; try reflexivity.
-          Tactics.destruct_one_match; try reflexivity. Tactics.destruct_one_match.
-          Tactics.destruct_one_match. erewrite H. reflexivity. } }
+      cbv [stmt_leakage].
+      apply (@Fix_eq'_nondep _ _ lt_tuple_wf _ (stmt_leakage_body e) Equiv eq).
+      2: { apply Equiv_refl. }
+      intros. clear tup. cbv [stmt_leakage_body]. cbv beta.
+      destruct x1 as [[[k1 s1] u1] c1]. destruct x2 as [[[k2 s2] u2] c2].
+      cbv [Equiv] in H. fwd. subst. rename Hp3 into H. repeat rewrite H.
+      repeat (Tactics.destruct_one_match || rewrite H || apply H0 || cbv [Equiv] || intuition auto).
+      apply Let_In_pf_nd_ext.
+      repeat (Tactics.destruct_one_match || rewrite H || apply H0 || cbv [Equiv] || intuition auto).
     Qed.
 
   Definition dce_function: (list string *
@@ -751,7 +739,7 @@ Section WithArguments1.
          /\ metricsLeq (mcL' - mcL) (mcH' - mcH)
          /\ k' = kL'' ++ kL
          /\ kH' = kH'' ++ kH
-         /\ forall kH''', dtransform_stmt_trace e (rev kH'' ++ kH''', s, used_after) = (rev kH'', rev kL'', false)).
+         /\ forall kH''' f, stmt_leakage e (rev kH'' ++ kH''', s, used_after, f) = f (rev kH'') (rev kL'')).
 
   Lemma agree_on_eval_bcond:
     forall cond (m1 m2: locals),
