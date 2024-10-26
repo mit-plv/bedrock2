@@ -118,12 +118,9 @@ Section WithArguments1.
   (*TODO: this thing doesn't fail properly, it hangs instead, getting stuck in align_trace.  need some way to make align_trace stop when everything is evars*)
   Ltac solve_compile_post := solve_compile_post' align_trace.
   
-  Definition default {X : Type} (d : X) (o : option X) :=
-    match o with | Some x => x | None => d end.
   Lemma associate_left {A : Type} (x : A) l1 l2 :
     l1 ++ x :: l2 = (l1 ++ [x]) ++ l2.
   Proof. rewrite <- app_assoc. reflexivity. Qed.
-  Definition sndfst {A B C : Type} (x : A * B * C):= snd (fst x).
                                                              
   Lemma dce_correct_aux :
     forall eH eL pick_spL,
