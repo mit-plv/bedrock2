@@ -8,6 +8,35 @@ Require Export bedrock2.Memory.
 Require Import bedrock2.Semantics.
 Require Import Coq.Lists.List.
 
+(*list lemmas and tactics that are useful for proving equality of leakage traces*)
+Lemma align_trace_cons {T} x xs cont t (H : xs = List.app cont t) : @List.cons T x xs = List.app (cons x cont) t.
+Proof. intros. cbn. congruence. Qed.
+
+Lemma align_trace_app {T} x xs cont t (H : xs = List.app cont t) : @List.app T x xs = List.app (List.app x cont) t.
+Proof. intros. cbn. subst. rewrite List.app_assoc; trivial. Qed.
+
+Lemma align_trace_nil {A : Type} (l : list A) : l = nil ++ l. Proof. reflexivity. Qed.
+
+Ltac align_trace_bad :=
+  repeat match goal with
+    | t:=_ :: _:_ |- _ => subst t
+    end;
+  repeat eapply align_trace_app || eapply align_trace_cons || eapply align_trace_nil || reflexivity.
+
+Goal exists (x y z : list nat), x ++ y = z. do 3 eexists. Fail Timeout 1 align_trace_bad. Abort.
+
+Ltac align_trace :=
+  repeat match goal with
+    | t:=_ :: _:_ |- _ => subst t
+    end;
+  repeat exact eq_refl || eapply align_trace_app || eapply align_trace_cons || eapply align_trace_nil.
+
+Goal exists (x y z : list nat), x ++ y = z. do 3 eexists. align_trace. Abort.
+
+Lemma associate_one_left {A : Type} (x : A) l1 l2 :
+  l1 ++ x :: l2 = (l1 ++ (x :: nil)) ++ l2.
+Proof. rewrite <- app_assoc. reflexivity. Qed.
+
 Inductive leakage_event {width: Z}{BW: Bitwidth width}{word: word.word width} : Type :=
 | leak_unit
 | leak_bool (b : bool)
