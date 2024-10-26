@@ -10,20 +10,6 @@ Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
 Definition spec_of (procname:String.string) := Semantics.env -> Prop.
 Existing Class spec_of.
 
-(* not sure where to put these lemmas *)
-Lemma align_trace_cons {T} x xs cont t (H : xs = List.app cont t) : @List.cons T x xs = List.app (cons x cont) t.
-Proof. intros. cbn. congruence. Qed.
-Lemma align_trace_app {T} x xs cont t (H : xs = List.app cont t) : @List.app T x xs = List.app (List.app x cont) t.
-Proof. intros. cbn. subst. rewrite List.app_assoc; trivial. Qed.
-
-Ltac align_trace :=
-    repeat match goal with
-      | t := cons _ _ |- _ => subst t
-      end;
-    repeat (eapply align_trace_app
-            || eapply align_trace_cons
-            || exact (eq_refl (List.app nil _))).
-
 Module Import Coercions.
   Import Map.Interface Word.Interface BinInt.
   Coercion Z.of_nat : nat >-> Z.

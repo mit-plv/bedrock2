@@ -1,5 +1,4 @@
 Require Import bedrock2.LeakageSemantics.
-Require Import bedrock2.LeakageProgramLogic. (*just for align_trace tactic, probbaly should move it to leakageSemantics...*)
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.Syntax.
@@ -111,16 +110,13 @@ Section WithArguments1.
         rewrite ListSet.of_list_removeb
     end.
 
-  Ltac solve_compile_post' align_trace' :=
-    do 5 eexists; ssplit; [eauto | repeat listset_to_set; agree_on_solve | scost_hammer | align_trace' | align_trace' | intros; rewrite dfix_step; repeat (match goal with
-             | |- context[rev (?a ++ ?b)] => rewrite (rev_app_distr a b)
-                                                                                                                                                           end || cbn [List.app List.rev]); cbv beta; try reflexivity ].
-  (*TODO: this thing doesn't fail properly, it hangs instead, getting stuck in align_trace.  need some way to make align_trace stop when everything is evars*)
-  Ltac solve_compile_post := solve_compile_post' align_trace.
-  
-  Lemma associate_left {A : Type} (x : A) l1 l2 :
-    l1 ++ x :: l2 = (l1 ++ [x]) ++ l2.
-  Proof. rewrite <- app_assoc. reflexivity. Qed.
+  Ltac solve_compile_post :=
+    do 5 eexists; ssplit;
+    [eauto | repeat listset_to_set; agree_on_solve | scost_hammer | align_trace | align_trace |
+      intros; rewrite dfix_step;
+      repeat (match goal with
+              | |- context[rev (?a ++ ?b)] => rewrite (rev_app_distr a b)
+              end || cbn [List.app List.rev]); cbv beta; try reflexivity ].
                                                              
   Lemma dce_correct_aux :
     forall eH eL pick_spL,
@@ -165,7 +161,7 @@ Section WithArguments1.
         * listset_to_set. agree_on_solve.
       + eapply IHexec.
         -- eapply agree_on_refl.
-        -- intros. rewrite associate_left. rewrite H6. rewrite dfix_step.
+        -- intros. rewrite associate_one_left. rewrite H6. rewrite dfix_step.
            simpl. rewrite rev_app_distr. simpl. rewrite H0.
            rewrite <- app_assoc. reflexivity. 
       + intros.
@@ -223,7 +219,7 @@ Section WithArguments1.
            split; [eassumption|]. split; [eassumption|].
            solve_compile_post. simpl. rewrite H7p5. reflexivity.
         -- agree_on_solve.
-        -- intros. rewrite associate_left. rewrite H4. rewrite dfix_step. simpl.
+        -- intros. rewrite associate_one_left. rewrite H4. rewrite dfix_step. simpl.
            rewrite rev_app_distr. simpl. repeat Tactics.destruct_one_match.
            repeat rewrite <- app_assoc. reflexivity.
     - intros. destr (existsb (eqb x) used_after).
@@ -274,7 +270,7 @@ Section WithArguments1.
       + erewrite agree_on_eval_bcond; [ eassumption | ].
         pose agree_on_comm; eauto.
       + eapply @exec.weaken.
-        -- eapply IHexec; eauto. intros. rewrite associate_left. rewrite H3.
+        -- eapply IHexec; eauto. intros. rewrite associate_one_left. rewrite H3.
            rewrite dfix_step. rewrite rev_app_distr. simpl.
            repeat Tactics.destruct_one_match. rewrite <- app_assoc. reflexivity.
         -- unfold compile_post. intros. fwd. solve_compile_post.
@@ -287,7 +283,7 @@ Section WithArguments1.
       + erewrite agree_on_eval_bcond; [ eassumption | ].
         pose agree_on_comm; eauto.
       + eapply @exec.weaken.
-        -- eapply IHexec; eauto. intros. rewrite associate_left. rewrite H3.
+        -- eapply IHexec; eauto. intros. rewrite associate_one_left. rewrite H3.
            rewrite dfix_step. rewrite rev_app_distr. simpl.
            repeat rewrite <- app_assoc. repeat Tactics.destruct_one_match.
            reflexivity.
@@ -333,7 +329,7 @@ Section WithArguments1.
           - repeat listset_to_set.
             eapply agree_on_subset; [ | eapply H4p1 ].
             subset_union_solve.
-          - intros. rewrite associate_left. rewrite app_assoc. rewrite H8.
+          - intros. rewrite associate_one_left. rewrite app_assoc. rewrite H8.
             repeat (rewrite rev_app_distr || cbn [rev List.app] || rewrite <- app_assoc).
             rewrite dfix_step. cbn [stmt_leakage_body]. rewrite H4p5.
             cbv [CustomFix.Let_In_pf_nd]. rewrite List.skipn_app_r by reflexivity.
@@ -342,7 +338,7 @@ Section WithArguments1.
         cbv beta. intros. fwd.
         eapply exec.weaken.
         { eapply IH12; [eassumption|eassumption|].
-          intros. rewrite associate_left. repeat rewrite app_assoc. rewrite H8.
+          intros. rewrite associate_one_left. repeat rewrite app_assoc. rewrite H8.
           repeat (rewrite rev_app_distr || cbn [rev List.app] || rewrite <- app_assoc).
           f_equal. f_equal. rewrite dfix_step. cbn [stmt_leakage_body]. rewrite H4p5.
           cbv [CustomFix.Let_In_pf_nd]. rewrite List.skipn_app_r by reflexivity.
