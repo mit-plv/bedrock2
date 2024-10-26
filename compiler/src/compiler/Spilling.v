@@ -1,12 +1,15 @@
 Require Import compiler.util.Common.
+Require Import bedrock2.LeakageSemantics.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import compiler.FlatImp.
+Require Import Coq.Init.Wf Wellfounded.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.Logic.PropExtensionality.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import riscv.Utility.Utility.
 Require Import coqutil.Map.MapEauto.
 Require Import coqutil.Tactics.Simp.
+Require Import compiler.CustomFix.
 Require Import compiler.Registers.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SpillingMapGoals.
@@ -59,10 +62,22 @@ Section Spilling.
     | None => SSkip
     end.
 
+  Definition leak_load_iarg_reg(fpval: word) (r: Z): leakage :=
+    match stack_loc r with
+    | Some o => [leak_word (word.add fpval (word.of_Z o))]
+    | None => nil
+    end.
+
   Definition save_ires_reg(r: Z): stmt :=
     match stack_loc r with
     | Some o => SStore Syntax.access_size.word fp (spill_tmp 1) o
     | None => SSkip
+    end.
+
+  Definition leak_save_ires_reg(fpval: word) (r: Z) : leakage :=
+    match stack_loc r with
+    | Some o => [leak_word (word.add fpval (word.of_Z o))]
+    | None => nil
     end.
 
   Notation "s1 ;; s2" := (SSeq s1 s2) (right associativity, at level 60).
@@ -74,10 +89,22 @@ Section Spilling.
     | None => SSet reg var
     end.
 
+  Definition leak_set_reg_to_var(fpval: word) (var: Z) : leakage :=
+    match stack_loc var with
+    | Some o => [leak_word (word.add fpval (word.of_Z o))]
+    | None => nil
+    end.
+
   Fixpoint set_reg_range_to_vars(range_start: Z)(srcs: list Z): stmt :=
     match srcs with
     | nil => SSkip
     | x :: xs => set_reg_range_to_vars (range_start+1) xs;; set_reg_to_var range_start x
+    end.
+  
+  Fixpoint leak_set_reg_range_to_vars(fpval: word)(srcs: list Z) : leakage :=
+    match srcs with
+    | nil => nil
+    | x :: xs => leak_set_reg_range_to_vars fpval xs ++ leak_set_reg_to_var fpval x
     end.
 
   (* var might be >=32, reg must be < 32 *)
@@ -85,6 +112,12 @@ Section Spilling.
     match stack_loc var with
     | Some o => SStore Syntax.access_size.word fp reg o
     | None => SSet var reg
+    end.
+
+  Definition leak_set_var_to_reg(fpval: word) (var: Z) : leakage :=
+    match stack_loc var with
+    | Some o => [leak_word (word.add fpval (word.of_Z o))]
+    | None => nil
     end.
 
   Fixpoint set_vars_to_reg_range(dests: list Z)(range_start: Z): stmt :=
@@ -100,10 +133,22 @@ Section Spilling.
                    (do_first;; set_var_to_reg x range_start) xs (range_start+1)
     end.
 
+  Fixpoint leak_set_vars_to_reg_range(fpval: word) (dests: list Z) : leakage :=
+    match dests with
+    | nil => nil
+    | x :: xs => leak_set_var_to_reg fpval x ++ leak_set_vars_to_reg_range fpval xs
+    end.
+
   Definition prepare_bcond(c: bcond Z): stmt :=
     match c with
     | CondBinary _ x y => load_iarg_reg 1 x;; load_iarg_reg 2 y
     | CondNez x => load_iarg_reg 1 x
+    end.
+
+  Definition leak_prepare_bcond(fpval: word) (c: bcond Z) : leakage :=
+    match c with
+    | CondBinary _ x y => leak_load_iarg_reg fpval x ++ (leak_load_iarg_reg fpval y)
+    | CondNez x => leak_load_iarg_reg fpval x
     end.
 
   Definition spill_bcond(c: bcond Z): bcond Z :=
@@ -111,6 +156,8 @@ Section Spilling.
     | CondBinary op x y => CondBinary op (iarg_reg 1 x) (iarg_reg 2 y)
     | CondNez x => CondNez (iarg_reg 1 x)
     end.
+
+  Definition leak_spill_bcond : leakage := nil.
 
   Fixpoint spill_stmt(s: stmt): stmt :=
     match s with
@@ -160,6 +207,237 @@ Section Spilling.
                 (List.firstn (length argvars) (reg_class.all reg_class.arg));;
       set_vars_to_reg_range resvars a0
     end.
+
+  Definition tuple : Type := stmt * leakage * leakage * word * (leakage -> leakage -> leakage * word).
+
+  Definition project_tuple (tup : tuple) : nat * stmt :=
+    let '(s, k, sk_so_far, fpval, f) := tup in (length k, s).
+  Definition lt_tuple (x y : tuple) :=
+    lt_tuple' (project_tuple x) (project_tuple y).    
+
+  Lemma lt_tuple_wf : well_founded lt_tuple.
+  Proof.
+    cbv [lt_tuple]. apply wf_inverse_image. apply lt_tuple'_wf.
+  Defined.
+
+  Definition stmt_leakage_body
+    {env: map.map String.string (list Z * list Z * stmt)}
+    (e: env)
+    (pick_sp : leakage -> word)
+    (tup : stmt * leakage * leakage * word * (leakage (*skip*) -> leakage (*sk_so_far*) -> leakage * word))
+    (stmt_leakage : forall othertup, lt_tuple othertup tup -> leakage * word)
+    : leakage * word.
+    refine (
+        match tup as x return tup = x -> _ with
+        | (s, k, sk_so_far, fpval, f) =>
+            fun _ =>
+              match s as x return s = x -> _ with
+              | SLoad sz x y o =>
+                  fun _ =>
+                    match k with
+                    | leak_word addr :: k' =>
+                        f [leak_word addr] (sk_so_far ++ leak_load_iarg_reg fpval y ++ [leak_word addr] ++ leak_save_ires_reg fpval x)
+                    | _ => (nil, word.of_Z 0)
+                    end
+              | SStore sz x y o =>
+                  fun _ =>
+                    match k with
+                    | leak_word addr :: k' =>
+                        f [leak_word addr] (sk_so_far ++ leak_load_iarg_reg fpval x ++ leak_load_iarg_reg fpval y ++ [leak_word addr])
+                    | _ => (nil, word.of_Z 0)
+                    end
+              | SInlinetable _ x _ i =>
+                  fun _ =>
+                    match k with
+                    | leak_word i' :: k' =>
+                        f [leak_word i'] (sk_so_far ++ leak_load_iarg_reg fpval i ++ [leak_word i'] ++ leak_save_ires_reg fpval x)
+                    | _ => (nil, word.of_Z 0)
+                    end
+              | SStackalloc x z body =>
+                  fun _ =>
+                    match k as x return k = x -> _ with
+                    | _ :: k' =>
+                        fun _ =>
+                          stmt_leakage (body, k', sk_so_far ++ leak_unit :: leak_save_ires_reg fpval x, fpval, fun skip => f (leak_unit :: skip)) _
+                    | nil =>
+                        fun _ =>
+                          (nil, pick_sp (rev sk_so_far))
+                    end eq_refl
+              | SLit x _ =>
+                  fun _ =>
+                    f [] (sk_so_far ++ leak_save_ires_reg fpval x)
+              | SOp x op y oz =>
+                  fun _ =>
+                    let newt_a' :=
+                      match op with
+                      | Syntax.bopname.divu
+                      | Syntax.bopname.remu =>
+                          match k with
+                          | leak_word x1 :: leak_word x2 :: k' => Some ([leak_word x1; leak_word x2], k')
+                          | _ => None
+                          end
+                      | Syntax.bopname.slu
+                      | Syntax.bopname.sru
+                      | Syntax.bopname.srs =>
+                          match k with
+                          | leak_word x2 :: k' => Some ([leak_word x2], k')
+                          | _ => None
+                          end
+                      | _ => Some ([], k)
+                      end
+                    in
+                    match newt_a' with
+                    | Some (newt, a') =>
+                        f newt
+                          (sk_so_far ++
+                             leak_load_iarg_reg fpval y ++
+                             match oz with 
+                             | Var z => leak_load_iarg_reg fpval z
+                             | Const _ => []
+                             end
+                             ++ newt
+                             ++ leak_save_ires_reg fpval x)
+                    | None => (nil, word.of_Z 0)
+                    end
+              | SSet x y =>
+                  fun _ =>
+                    f [] (sk_so_far ++ leak_load_iarg_reg fpval y ++ leak_save_ires_reg fpval x)
+              | SIf c thn els =>
+                  fun _ =>
+                    match k as x return k = x -> _ with
+                    | leak_bool b :: k' =>
+                        fun _ =>
+                          stmt_leakage (if b then thn else els,
+                              k',
+                              sk_so_far ++ leak_prepare_bcond fpval c ++ leak_spill_bcond ++ [leak_bool b],
+                              fpval,
+                              (fun skip => f (leak_bool b :: skip))) _
+                    | _ => fun _ => (nil, word.of_Z 0)
+                    end eq_refl
+              | SLoop s1 c s2 =>
+                  fun _ =>
+                    stmt_leakage (s1, k, sk_so_far, fpval,
+                        (fun skip sk_so_far' =>
+                           Let_In_pf_nd (List.skipn (length skip) k)
+                             (fun k' _ =>
+                                match k' as x return k' = x -> _ with
+                                | leak_bool true :: k'' =>
+                                    fun _ =>
+                                      stmt_leakage (s2, k'', sk_so_far' ++ leak_prepare_bcond fpval c ++ leak_spill_bcond ++ [leak_bool true], fpval, 
+                                          (fun skip' sk_so_far'' =>
+                                             let k''' := List.skipn (length skip') k'' in
+                                             stmt_leakage (s, k''', sk_so_far'', fpval,
+                                                 (fun skip'' => f (skip ++ leak_bool true :: skip' ++ skip''))) _)) _
+                                | leak_bool false :: k'' =>
+                                    fun _ =>
+                                      f (skip ++ [leak_bool false]) (sk_so_far' ++ leak_prepare_bcond fpval c ++ leak_spill_bcond ++ [leak_bool false])
+                                | _ => fun _ => (nil, word.of_Z 0)
+                                end eq_refl))) _
+              | SSeq s1 s2 =>
+                  fun _ =>
+                    stmt_leakage (s1, k, sk_so_far, fpval,
+                        (fun skip sk_so_far' =>
+                           let k' := List.skipn (length skip) k in
+                           stmt_leakage (s2, k', sk_so_far', fpval, (fun skip' => f (skip ++ skip'))) _)) _
+              | SSkip => fun _ => f [] sk_so_far
+              | SCall resvars fname argvars =>
+                  fun _ =>
+                    match k as x return k = x -> _ with
+                    | leak_unit :: k' =>
+                        fun _ =>
+                          match @map.get _ _ env e fname with
+                          | Some (params, rets, fbody) =>
+                              let sk_before_salloc := sk_so_far ++ leak_set_reg_range_to_vars fpval argvars ++ [leak_unit] in
+                              let fpval' := pick_sp (rev sk_before_salloc) in
+                              stmt_leakage (fbody,
+                                  k',
+                                  sk_before_salloc ++ leak_unit :: leak_set_vars_to_reg_range fpval' params,
+                                  fpval',
+                                  (fun skip sk_so_far' =>
+                                     let k'' := List.skipn (length skip) k' in
+                                       f (leak_unit :: skip) (sk_so_far' ++ leak_set_reg_range_to_vars fpval' rets ++ leak_set_vars_to_reg_range fpval resvars))) _
+                          | None => (nil, word.of_Z 0)
+                          end
+                    | _ => fun _ => (nil, word.of_Z 0)
+                    end eq_refl
+              | SInteract resvars _ argvars =>
+                  fun _ =>
+                    match k with
+                    | leak_list l :: k' =>
+                          f [leak_list l] (sk_so_far ++ leak_set_reg_range_to_vars fpval argvars ++ [leak_list l] ++ leak_set_vars_to_reg_range fpval resvars)
+                    | _ => (nil, word.of_Z 0)
+                    end
+              end eq_refl
+        end%nat eq_refl).
+  Proof.
+    Unshelve.
+      all: intros.
+      all: cbv [lt_tuple project_tuple].
+      all: subst.
+      all: repeat match goal with
+             | t := List.skipn ?n ?k |- _ =>
+                      let H := fresh "H" in
+                      assert (H := List.skipn_length n k); subst t end.
+      all: try (right; constructor; constructor).
+      all: try (left; constructor; constructor).
+    - assert (H0 := skipn_length (length skip) k). left.
+      rewrite H. assert (H1:= @f_equal _ _ (@length _) _ _ e3).
+      simpl in H1. blia.
+    - assert (H := skipn_length (length skip) k). left.
+      assert (H1 := @f_equal _ _ (@length _) _ _ e3). simpl in H1. blia.
+    - destruct (length (List.skipn (length skip) k) =? length k)%nat eqn:E.
+      + apply Nat.eqb_eq in E. rewrite E. right. constructor. constructor.
+      + apply Nat.eqb_neq in E. left. blia.
+  Defined.
+
+  Definition stmt_leakage
+    {env: map.map String.string (list Z * list Z * stmt)} e pick_sp
+    := Fix lt_tuple_wf _ (stmt_leakage_body e pick_sp).
+
+  Definition Equiv (x y : tuple) :=
+    let '(x1, x2, x3, x4, fx) := x in
+    let '(y1, y2, y3, y4, fy) := y in
+    (x1, x2, x3, x4) = (y1, y2, y3, y4) /\
+      forall k sk,
+        fx k sk = fy k sk.
+
+  Lemma stmt_leakage_body_ext {env: map.map String.string (list Z * list Z * stmt)} e pick_sp :
+    forall (x1 x2 : tuple)
+           (f1 : forall y : tuple, lt_tuple y x1 -> leakage * word)
+           (f2 : forall y : tuple, lt_tuple y x2 -> leakage * word),
+      Equiv x1 x2 ->
+      (forall (y1 y2 : tuple) (p1 : lt_tuple y1 x1) (p2 : lt_tuple y2 x2),
+          Equiv y1 y2 -> f1 y1 p1 = f2 y2 p2) ->
+      stmt_leakage_body e pick_sp x1 f1 =
+        stmt_leakage_body e pick_sp x2 f2.
+  Proof.
+    intros. cbv [stmt_leakage_body]. cbv beta.
+    destruct x1 as [ [ [ [s_1 k_1] sk_so_far_1] fpval_1] f_1].
+    destruct x2 as [ [ [ [s_2 k_2] sk_so_far_2] fpval_2] f_2].
+    cbv [Equiv] in H. destruct H as [H1 H2]. injection H1. intros. subst. clear H1.
+    repeat (Tactics.destruct_one_match || rewrite H || apply H0 || cbv [Equiv] || intuition auto || match goal with | |- _ :: _ = _ :: _ => f_equal end || intuition auto(*why does putting this here make this work*)).
+      apply Let_In_pf_nd_ext.
+      repeat (Tactics.destruct_one_match || rewrite H || apply H0 || cbv [Equiv] || intuition auto || match goal with | |- _ :: _ = _ :: _ => f_equal end || intuition auto).
+  Qed.
+
+  Lemma sfix_step {env: map.map String.string (list Z * list Z * stmt)} e pick_sp tup :
+    stmt_leakage e pick_sp tup = stmt_leakage_body e pick_sp tup (fun y _ => stmt_leakage e pick_sp y).
+  Proof.
+    cbv [stmt_leakage].
+    apply (@Fix_eq'_nondep _ _ lt_tuple_wf _ (stmt_leakage_body e pick_sp) Equiv eq).
+    { apply stmt_leakage_body_ext. }
+    { cbv [Equiv]. destruct tup as [ [ [x1 x2] x3] fx]. intuition. }
+  Qed.
+
+  Lemma stmt_leakage_ext {env: map.map String.string (list Z * list Z * stmt)} e pick_sp x1 x2 :
+    Equiv x1 x2 ->
+    stmt_leakage e pick_sp x1 = stmt_leakage e pick_sp x2.
+  Proof.
+    revert x2. induction (lt_tuple_wf x1). intros. do 2 rewrite sfix_step.
+    apply stmt_leakage_body_ext.
+    - assumption.
+    - intros. apply H0; assumption.
+  Qed.
 
   Definition max_var_bcond(c: bcond Z): Z :=
     match c with
@@ -277,6 +555,15 @@ Section Spilling.
       else
         error:("Spilling got input program with invalid var names (please report as a bug)").
 
+  Definition fun_leakage {env : map.map string (list Z * list Z * stmt)} (e : env) (pick_sp : leakage -> word) (f : list Z * list Z * stmt) (k : leakage) (sk_so_far : leakage) : leakage * word :=
+    let '(argnames, resnames, body) := f in
+    let fpval := pick_sp (rev sk_so_far) in
+    stmt_leakage e pick_sp (body,
+        k,
+        sk_so_far ++ leak_unit :: leak_set_vars_to_reg_range fpval argnames,
+        fpval,
+        (fun skip sk_so_far' => (sk_so_far' ++ leak_set_reg_range_to_vars fpval resnames, word.of_Z 0))).
+
   Lemma firstn_min_absorb_length_r{A: Type}: forall (l: list A) n,
       List.firstn (Nat.min n (length l)) l = List.firstn n l.
   Proof.
@@ -311,7 +598,7 @@ Section Spilling.
   Context {locals: map.map Z word}.
   Context {localsOk: map.ok locals}.
   Context {env: map.map String.string (list Z * list Z * stmt)} {env_ok: map.ok env}.
-  Context {ext_spec: Semantics.ExtSpec}.
+  Context {ext_spec: LeakageSemantics.ExtSpec}.
 
   Definition spill_functions: env -> result env :=
     map.try_map_values spill_fun.
@@ -406,7 +693,7 @@ Section Spilling.
            nth_error stackwords (Z.to_nat (r - 32)) = Some v) /\
         length stackwords = Z.to_nat (maxvar - 31).
 
-  Implicit Types post : Semantics.trace -> mem -> locals -> MetricLog -> Prop.
+  Implicit Types post : leakage -> Semantics.trace -> mem -> locals -> MetricLog -> Prop.
 
   Lemma put_arg_reg: forall l r v fpval lRegs,
       (eq lRegs * arg_regs * ptsto fp fpval)%sep l ->
@@ -454,18 +741,19 @@ Section Spilling.
     unfold spill_tmp. eapply put_arg_reg; eassumption.
   Qed.
 
-  Lemma load_iarg_reg_correct(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc2 fpval post frame maxvar v,
+  Lemma load_iarg_reg_correct {pick_sp: PickSp} (i: Z): forall r e2 k2 t1 t2 m1 m2 l1 l2 mc2 fpval post frame maxvar v,
       i = 1 \/ i = 2 ->
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < r <= maxvar /\ (r < a0 \/ a7 < r) ->
       map.get l1 r = Some v ->
-      (related maxvar frame fpval t1 m1 l1 t2 m2 (map.put l2 (iarg_reg i r) v) ->
-       post t2 m2 (map.put l2 (iarg_reg i r) v)
-       (if isRegZ r then mc2 else (mkMetricLog 1 0 2 0 + mc2)%metricsH)) ->
-      execpost e2 (load_iarg_reg i r) t2 m2 l2 mc2 post.
+      (let k2' := rev (leak_load_iarg_reg fpval r) ++ k2 in
+       let mc2' := if isRegZ r then mc2 else (mkMetricLog 1 0 2 0 + mc2)%metricsH in
+       related maxvar frame fpval t1 m1 l1 t2 m2 (map.put l2 (iarg_reg i r) v) ->
+       post k2' t2 m2 (map.put l2 (iarg_reg i r) v) mc2') ->
+      execpost e2 (load_iarg_reg i r) k2 t2 m2 l2 mc2 post.
   Proof.
     intros.
-    unfold load_iarg_reg, stack_loc, iarg_reg, related in *. fwd.
+    unfold leak_load_iarg_reg, load_iarg_reg, stack_loc, iarg_reg, related in *. fwd.
     assert (isRegZ (9 + i) = true) by (unfold isRegZ; blia).
     assert (isRegZ fp = true) by (unfold isRegZ; (assert (fp = 5) by auto); blia).
     destr (32 <=? r).
@@ -505,7 +793,7 @@ Section Spilling.
              | |- _ => eassumption || reflexivity
              end.
   Qed.
-
+  
   (* Lemma load_iarg_reg_correct'(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 post frame maxvar v fpval, *)
   (*     i = 1 \/ i = 2 -> *)
   (*     related maxvar frame fpval t1 m1 l1 t2 m2 l2 -> *)
