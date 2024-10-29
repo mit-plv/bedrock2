@@ -47,6 +47,7 @@ Require Import compiler.MetricsToRiscv.
 Require Export compiler.regs_initialized.
 Require Import bedrock2.MetricCosts.
 Require Import bedrock2.LeakageSemantics.
+Require Import riscv.Spec.LeakageOfInstr.
 
 Require Import coqutil.Word.Interface.
 Local Hint Mode Word.Interface.word - : typeclass_instances.

@@ -30,7 +30,6 @@ Require Import compiler.ForeverSafe.
 Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
 Require Import coqutil.Tactics.Simp.
-Require Import bedrock2.LeakageSemantics.
 Import Utility.
 
 Section EventLoop.
