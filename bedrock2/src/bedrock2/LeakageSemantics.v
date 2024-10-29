@@ -134,7 +134,7 @@ Section semantics.
       | expr.ite c e1 e2 =>
           '(vc, k') <- eval_expr c k;
           let b := word.eqb vc (word.of_Z 0) in
-          eval_expr (if b then e2 else e1) (leak_bool b :: k')
+          eval_expr (if b then e2 else e1) (leak_bool (negb b) :: k')
       end.
 
     Fixpoint eval_call_args (arges : list expr) (k : leakage) :=

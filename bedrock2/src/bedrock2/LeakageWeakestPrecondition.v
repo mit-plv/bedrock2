@@ -39,7 +39,7 @@ Section WeakestPrecondition.
       | expr.ite c e1 e2 =>
         rec k c (fun k' b =>
         let b := word.eqb b (word.of_Z 0) in
-        rec (leak_bool b :: k') (if b then e2 else e1) post)
+        rec (leak_bool (negb b) :: k') (if b then e2 else e1) post)
     end.
     Fixpoint expr k e := expr_body expr k e.
   End WithMemAndLocals.

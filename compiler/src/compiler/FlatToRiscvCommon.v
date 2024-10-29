@@ -46,6 +46,7 @@ Require Import compiler.DivisibleBy4.
 Require Import compiler.MetricsToRiscv.
 Require Export compiler.regs_initialized.
 Require Import bedrock2.MetricCosts.
+Require Import bedrock2.LeakageSemantics.
 
 Require Import coqutil.Word.Interface.
 Local Hint Mode Word.Interface.word - : typeclass_instances.
@@ -79,6 +80,7 @@ Section WithParameters.
 
   Context {pos_map: map.map String.string Z}.
   Context (compile_ext_call: pos_map -> Z -> Z -> stmt Z -> list Instruction).
+  Context (leak_ext_call: pos_map -> Z -> Z -> stmt Z -> list word -> list LeakageEvent).
   Context {word_ok: word.ok word}.
   Context {mem: map.map word byte}.
   Context {env: map.map String.string (list Z * list Z * stmt Z)}.
