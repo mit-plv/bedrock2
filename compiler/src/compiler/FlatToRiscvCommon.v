@@ -31,6 +31,7 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.FlatImpConstraints.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
+Require Import bedrock2.LeakageSemantics.
 Require Import compiler.SeparationLogic.
 Require Import bedrock2.Scalars.
 Require Import coqutil.Tactics.Simp.
@@ -46,7 +47,6 @@ Require Import compiler.DivisibleBy4.
 Require Import compiler.MetricsToRiscv.
 Require Export compiler.regs_initialized.
 Require Import bedrock2.MetricCosts.
-Require Import bedrock2.LeakageSemantics.
 Require Import riscv.Spec.LeakageOfInstr.
 
 Require Import coqutil.Word.Interface.
@@ -87,9 +87,9 @@ Section WithParameters.
   Context {env: map.map String.string (list Z * list Z * stmt Z)}.
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
-  Context {RVM: RiscvProgram M word}.
+  Context {RVM: RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
-  Context {ext_spec: Semantics.ExtSpec}.
+  Context {ext_spec: LeakageSemantics.ExtSpec}.
 
   Definition runsTo{BWM: bitwidth_iset width iset}: (* BWM is unused, but makes iset inferrable *)
     MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
@@ -214,7 +214,7 @@ Section WithParameters.
     clear -BW.
     intros. unfold framelength.
     pose proof (stackalloc_words_nonneg body).
-    assert (bytes_per_word = 4 \/ bytes_per_word = 8). {
+    assert (SeparationLogic.bytes_per_word = 4 \/ bytes_per_word = 8). {
       unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
     }
     Z.div_mod_to_equations.
@@ -292,7 +292,7 @@ Section WithParameters.
       exists pos, map.get finfo f = Some pos /\ pos mod 4 = 0.
 
   Local Notation stmt := (stmt Z).
-  Local Notation exec := (exec PostSpill isRegZ). 
+  Local Notation exec pick_sp := (exec (pick_sp := pick_sp) PostSpill isRegZ). 
   
   (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
      we enter a new function body, to make sure functions cannot call themselves, while
@@ -301,9 +301,9 @@ Section WithParameters.
   Definition compiles_FlatToRiscv_correctly{BWM: bitwidth_iset width iset}
     (f: pos_map -> Z -> Z -> stmt -> list Instruction)
     (s: stmt): Prop :=
-    forall e_impl_full initialTrace initialMH initialRegsH initialMetricsH postH,
-    exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
-    forall g e_impl e_pos program_base insts xframe (initialL: MetricRiscvMachine) pos,
+    forall e_impl_full pick_sp1 initialK initialTrace initialMH initialRegsH initialMetricsH postH,
+    exec pick_sp1 e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
+    forall g e_impl e_pos program_base insts xframe (initialL: MetricRiscvMachine) pos cont,
     map.extends e_impl_full e_impl ->
     good_e_impl e_impl e_pos ->
     fits_stack g.(rem_framewords) g.(rem_stackwords) e_impl s ->
@@ -317,6 +317,7 @@ Section WithParameters.
                    program iset (word.add program_base (word.of_Z pos)) insts *
                    functions program_base e_pos e_impl)%sep ->
     goodMachine initialTrace initialMH initialRegsH g initialL ->
+    (*continue here*)
     runsTo initialL (fun finalL => exists finalTrace finalMH finalRegsH finalMetricsH,
          postH finalTrace finalMH finalRegsH finalMetricsH /\
          finalL.(getPc) = word.add initialL.(getPc)
