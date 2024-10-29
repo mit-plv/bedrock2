@@ -49,7 +49,7 @@ Section semantics.
       | expr.ite c e1 e2 =>
           '(vc, k', mc') <- eval_expr c k mc;
           let b := word.eqb vc (word.of_Z 0) in
-          eval_expr (if b then e2 else e1) (leak_bool b :: k')
+          eval_expr (if b then e2 else e1) (leak_bool (negb b) :: k')
                     (cost_if isRegStr UNK (Some UNK) mc')
       end.
 
