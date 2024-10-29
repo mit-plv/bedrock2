@@ -1,6 +1,6 @@
 [submodule "deps/riscv-coq"]
 	path = deps/riscv-coq
-	url = https://github.com/mit-plv/riscv-coq.git
+	url = https://github.com/OwenConoly/riscv-coq.git
 [submodule "deps/coqutil"]
 	path = deps/coqutil
 	url = https://github.com/mit-plv/coqutil.git
