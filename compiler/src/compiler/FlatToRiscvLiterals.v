@@ -88,7 +88,7 @@ Section FlatToRiscvLiterals.
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
              (withMetrics (updateMetricsForLiteral v initialL.(getMetrics))
-             (withLeakageEvents (Some (rev (leakage_events (initialL.(getPc)) 0 insts (leak_lit iset v)))) initialL)))))
+             (withLeakageEvents (Some (rev (leakage_events initialL.(getPc) insts (leak_lit iset v)))) initialL)))))
              post ->
       runsTo initialL post.
   Proof.
@@ -146,7 +146,6 @@ Section FlatToRiscvLiterals.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
       + simpl. repeat Tactics.destruct_one_match || reflexivity.
-        repeat f_equal. solve_word_eq word_ok.
     - unfold compile_lit_64bit, leak_lit_64bit, compile_lit_32bit, compile_lit_32bit in *.
       remember (signExtend 12 (signExtend 32 (bitSlice v 32 64))) as mid.
       remember (signExtend 32 (signExtend 32 (bitSlice v 32 64))) as hi.
@@ -192,7 +191,6 @@ Section FlatToRiscvLiterals.
       + solve_word_eq word_ok.
       + repeat Tactics.destruct_one_match || reflexivity.
         (*^this is kind of absurd; I should be able to rewrite somethign to get rid of it*)
-        repeat solve_word_eq word_ok || f_equal.
   Qed.
 
   Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R Rexec,
@@ -208,7 +206,7 @@ Section FlatToRiscvLiterals.
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
                 (withMetrics (updateMetricsForLiteral v initialL.(getMetrics))
-                   (withLeakageEvents (Some (rev (leakage_events (initialL.(getPc)) 0 insts (leak_lit iset v)))) initialL)))))
+                   (withLeakageEvents (Some (rev (leakage_events (initialL.(getPc)) insts (leak_lit iset v)))) initialL)))))
              post ->
       runsTo initialL post.
   Proof. (* by case distinction on literal size and symbolic execution through the instructions
