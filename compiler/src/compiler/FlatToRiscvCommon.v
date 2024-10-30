@@ -1,5 +1,6 @@
 Require Import riscv.Utility.Monads. Require Import riscv.Utility.MonadNotations.
 Require Import coqutil.Macros.unique.
+Require Import bedrock2.LeakageSemantics.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
@@ -31,7 +32,6 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.FlatImpConstraints.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
-Require Import bedrock2.LeakageSemantics.
 Require Import compiler.SeparationLogic.
 Require Import bedrock2.Scalars.
 Require Import coqutil.Tactics.Simp.
@@ -291,18 +291,18 @@ Section WithParameters.
       let '(argnames, retnames, fbody) := fun_impl in
       exists pos, map.get finfo f = Some pos /\ pos mod 4 = 0.
 
-  Local Notation stmt := (stmt Z).
-  Local Notation exec pick_sp := (exec (pick_sp := pick_sp) PostSpill isRegZ). 
+  Local Notation stmt := (stmt Z). Check exec.
+  Local Notation exec pick_sp := (exec (pick_sp := pick_sp) PostSpill isRegZ).
   
   (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
      we enter a new function body, to make sure functions cannot call themselves, while
      [e_impl] and [e_pos] remain the same throughout because that's mandated by
-     [FlatImp.exec] and [compile_stmt], respectively *)
+     [FlatImp.exec] and [compile_stmt], respectively *) Check stmt_leakage.
   Definition compiles_FlatToRiscv_correctly{BWM: bitwidth_iset width iset}
     (f: pos_map -> Z -> Z -> stmt -> list Instruction)
     (s: stmt): Prop :=
     forall e_impl_full pick_sp1 initialK initialTrace initialMH initialRegsH initialMetricsH postH,
-    exec pick_sp1 e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
+    exec pick_sp1 e_impl_full s initialK initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
     forall g e_impl e_pos program_base insts xframe (initialL: MetricRiscvMachine) pos cont,
     map.extends e_impl_full e_impl ->
     good_e_impl e_impl e_pos ->
@@ -317,9 +317,10 @@ Section WithParameters.
                    program iset (word.add program_base (word.of_Z pos)) insts *
                    functions program_base e_pos e_impl)%sep ->
     goodMachine initialTrace initialMH initialRegsH g initialL ->
-    (*continue here*)
-    runsTo initialL (fun finalL => exists finalTrace finalMH finalRegsH finalMetricsH,
-         postH finalTrace finalMH finalRegsH finalMetricsH /\
+    (forall k, pick_sp1 (rev k ++ initialK) = snd (stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
+                                                    (s, k, rev (match initialL.(getTrace) with Some x => x | _ => nil end), pos, g.(p_sp), bytes_per_word * rem_framewords g, cont))) ->
+    runsTo initialL (fun finalL => exists finalK finalTrace finalMH finalRegsH finalMetricsH,
+         postH finalK finalTrace finalMH finalRegsH finalMetricsH /\
          finalL.(getPc) = word.add initialL.(getPc)
                                    (word.of_Z (4 * Z.of_nat (List.length insts))) /\
          map.only_differ initialL.(getRegs)
@@ -327,7 +328,13 @@ Section WithParameters.
                  finalL.(getRegs) /\
          (finalL.(getMetrics) - initialL.(getMetrics) <=
           lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
-         goodMachine finalTrace finalMH finalRegsH g finalL).
+           goodMachine finalTrace finalMH finalRegsH g finalL /\
+           exists kH'',
+             finalK = kH'' ++ initialK /\
+               forall k cont,
+                 stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
+                   (s, rev kH'' ++ k, rev (match initialL.(getTrace) with Some x => x | _ => nil end), pos, g.(p_sp), bytes_per_word * rem_framewords g, cont) =
+                   cont (rev kH'') (rev (match finalL.(getTrace) with Some x => x | _ => nil end))).
 
 End WithParameters.
 
@@ -355,15 +362,16 @@ Ltac simpl_bools :=
 Section FlatToRiscv1.
   Context {iset: InstructionSet}.
   Context {fun_info: map.map String.string Z}.
-  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).
+  Context (leak_ext_call: fun_info -> Z -> Z -> stmt Z -> list word -> list LeakageEvent).
   Context {word_ok: word.ok word}.
   Context {locals: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {env: map.map String.string (list Z * list Z * stmt Z)}.
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
-  Context {RVM: RiscvProgram M word}.
+  Context {RVM: RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {ext_spec: Semantics.ExtSpec}.
   Context {word_riscv_ok: word.riscv_ok word}.
@@ -455,7 +463,25 @@ Section FlatToRiscv1.
         Memory.load, Memory.load_Z in *;
         simp; simulate''; simpl; simpl_word_exprs word_ok; destruct initialL;
           try eassumption].
- Qed.
+  Qed.
+
+  Lemma go_leak_load: forall sz (x a ofs: Z) (addr: word) (initialL: RiscvMachineL) post (f : option LeakageEvent -> M unit),
+      valid_register a ->
+      map.get initialL.(getRegs) a = Some addr ->
+      mcomp_sat (f (Some (executeInstr (compile_load iset sz x a ofs) (leak_load iset sz addr)))) initialL post ->
+      mcomp_sat (Bind (leakage_of_instr Machine.getRegister (compile_load iset sz x a ofs)) f) initialL post.
+  Proof.
+    unfold leakage_of_instr, leakage_of_instr_I, leak_load, compile_load, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite bitwidth_matches.
+    destruct width_cases as [E | E];
+      (* note: "rewrite E" does not work because "width" also appears in the type of "word",
+         but we don't need to rewrite in the type of word, only in the type of the tuple,
+         which works if we do it before intro'ing it *)
+      (destruct (width =? 32));
+      intros; destruct sz;
+      simulate'';
+      eassumption.
+  Qed.
 
   Arguments invalidateWrittenXAddrs: simpl never.
 
@@ -487,6 +513,24 @@ Section FlatToRiscv1.
         unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
         Memory.store, Memory.store_Z in *;
         simp; simulate''; simpl; simpl_word_exprs word_ok; try eassumption.
+  Qed.
+
+  Lemma go_leak_store: forall sz (x a ofs: Z) (addr: word) (initialL: RiscvMachineL) post f,
+    valid_register a ->
+    map.get initialL.(getRegs) a = Some addr ->
+    mcomp_sat (f (Some (executeInstr (compile_store iset sz a x ofs) (leak_store iset sz addr)))) initialL post ->
+    mcomp_sat (Bind (leakage_of_instr Machine.getRegister (compile_store iset sz a x ofs)) f) initialL post.
+  Proof.
+    unfold leakage_of_instr, leakage_of_instr_I, leak_store, compile_store, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite bitwidth_matches.
+    destruct width_cases as [E | E];
+      (* note: "rewrite E" does not work because "width" also appears in the type of "word",
+         but we don't need to rewrite in the type of word, only in the type of the tuple,
+         which works if we do it before intro'ing it *)
+      (destruct (width =? 32));
+      intros; destruct sz;
+      simulate'';
+      eassumption.
   Qed.
 
   Lemma run_compile_load: forall sz: Syntax.access_size,
@@ -541,6 +585,7 @@ Section FlatToRiscv1.
             getPc finalL = getNextPc initialL /\
             getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
             getMetrics finalL = addMetricInstructions 1 (addMetricLoads 2 (getMetrics initialL)) /\
+            getTrace finalL = option_map (cons (executeInstr (compile_load iset Syntax.access_size.word rd rs ofs) (leak_load iset Syntax.access_size.word base))) (option_map (cons (fetchInstr initialL.(getPc))) initialL.(getTrace)) /\
             valid_machine finalL).
   Proof using word_ok mem_ok PR BWM.
     intros.
@@ -549,12 +594,15 @@ Section FlatToRiscv1.
     - eapply (run_compile_load Syntax.access_size.word); cycle -3; try eassumption.
       instantiate (2:=ltac:(destruct pf)); destruct pf; eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
-      etransitivity. 1: eassumption.
-      unfold id.
-      rewrite LittleEndian.combine_of_list, LittleEndianList.le_combine_split.
-      replace (BinInt.Z.of_nat (Memory.bytes_per Syntax.access_size.word) * 8) with width.
-      + rewrite word.wrap_unsigned. rewrite word.of_Z_unsigned. reflexivity.
-      + clear -BW. destruct width_cases as [E | E]; rewrite E; reflexivity.
+      + etransitivity. 1: eassumption.
+        unfold id.
+        rewrite LittleEndian.combine_of_list, LittleEndianList.le_combine_split.
+        replace (BinInt.Z.of_nat (Memory.bytes_per Syntax.access_size.word) * 8) with width. 
+        * rewrite word.wrap_unsigned. rewrite word.of_Z_unsigned. reflexivity.
+        * clear -BW. destruct width_cases as [E | E]; rewrite E; reflexivity.
+      + rewrite H8p7. cbv [final_trace concrete_leakage_of_instr compile_load leak_load].
+        destruct (getTrace initialL); [|repeat Tactics.destruct_one_match || reflexivity].
+        destruct (bitwidth iset =? 32); simpl; rewrite Z.eqb_refl; reflexivity.
     - eapply LittleEndianList.length_le_split.
   Qed.
 
@@ -582,6 +630,7 @@ Section FlatToRiscv1.
            getPc finalL = getNextPc initialL /\
            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
            getMetrics finalL = addMetricInstructions 1 (addMetricStores 1 (addMetricLoads 1 (getMetrics initialL))) /\
+           getTrace finalL = option_map (cons (executeInstr (compile_store iset Syntax.access_size.word rs1 rs2 ofs) (leak_store iset Syntax.access_size.word base))) (option_map (cons (fetchInstr initialL.(getPc))) initialL.(getTrace)) /\  
            valid_machine finalL).
   Proof using word_ok mem_ok PR BWM.
     intros.
@@ -590,10 +639,14 @@ Section FlatToRiscv1.
     - eapply (run_compile_store Syntax.access_size.word); cycle -3; try eassumption.
       instantiate (2:=ltac:(destruct pf)); destruct pf; eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
-      unfold scalar, truncated_word, truncated_scalar, littleendian, ptsto_bytes in *.
-      rewrite HList.tuple.to_list_of_list.
-      rewrite LittleEndian.to_list_split in *.
-      eassumption.
+      + unfold scalar, truncated_word, truncated_scalar, littleendian, ptsto_bytes in *.
+        rewrite HList.tuple.to_list_of_list.
+        rewrite LittleEndian.to_list_split in *.
+        eassumption.
+      + rewrite H9p7.
+        cbv [final_trace concrete_leakage_of_instr compile_store leak_store].
+        destruct (getTrace initialL); [|repeat Tactics.destruct_one_match || reflexivity].
+        destruct (bitwidth iset =? 32); simpl; rewrite Z.eqb_refl; reflexivity.
     - eapply LittleEndianList.length_le_split.
   Qed.
 
@@ -925,8 +978,12 @@ Ltac simulate'_step :=
   (* lemmas introduced only in this file: *)
   | |- mcomp_sat (Monads.Bind (Execute.execute (compile_load _ _ _ _ _)) _) _ _ =>
        eapply go_load; [ sidecondition.. | idtac ]
+  | |- mcomp_sat (Monads.Bind (leakage_of_instr _ (compile_load _ _ _ _ _)) _) _ _ =>
+       eapply go_leak_load; [ sidecondition.. | idtac ]                 
   | |- mcomp_sat (Monads.Bind (Execute.execute (compile_store _ _ _ _ _)) _) _ _ =>
        eapply go_store; [ sidecondition.. | idtac ]
+  | |- mcomp_sat (Monads.Bind (leakage_of_instr _ (compile_store _ _ _ _ _)) _) _ _ =>
+       eapply go_leak_store; [ sidecondition.. | idtac ]
   (* simulate_step from GoFlatToRiscv: *)
   | |- _ => simulate_step
   | |- _ => simpl_modu4_0
