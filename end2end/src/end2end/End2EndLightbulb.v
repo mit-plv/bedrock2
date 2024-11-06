@@ -16,7 +16,7 @@ Require Import end2end.Bedrock2SemanticsForKami. (* TODO why is the ok instance 
 Require        riscv.Utility.InstructionNotations.
 Require        bedrock2.Hexdump.
 Require Import coqutil.Map.Z_keyed_SortedListMap.
-Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
+Set Default Proof Mode "Classic".
 
 Open Scope Z_scope.
 Open Scope string_scope.

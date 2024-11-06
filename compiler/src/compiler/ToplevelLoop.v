@@ -146,7 +146,8 @@ Section Pipeline1.
       map.get (map.of_list positions) "init"%string = Some init_fun_pos /\
       map.get (map.of_list positions) "loop"%string = Some loop_fun_pos /\
       exists mH,
-        isReady spec mach.(getLog) mH /\ goodTrace spec mach.(getLog) /\
+        isReady spec mach.(getLog) mH /\
+        goodObservables spec mach.(getLog) (MetricsToRiscv.raiseMetrics ((if done then RiscvEventLoop.eventLoopJumpMetrics else id) mach.(getMetrics))) /\
         mach.(getPc) = word.add loop_pos (word.of_Z (if done then 4 else 0)) /\
         machine_ok functions_pos ml.(stack_start) ml.(stack_pastend) functions_instrs mH R
                    (program iset init_sp_pos (init_sp_insts ++
@@ -297,7 +298,7 @@ Section Pipeline1.
                                   compile_ext_call_length_ignores_positions as P.
       unfold runsTo in P.
       specialize P with (argvals := [])
-                        (post := fun t' m' retvals mc' => isReady spec t' m' /\ goodTrace spec t')
+                        (post := fun t' m' retvals mc' => isReady spec t' m' /\ goodObservables spec t' mc')
                         (fname := "init"%string).
       edestruct P as (init_rel_pos & G & P'); clear P; cycle -1.
       1: eapply P' with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R).
@@ -311,7 +312,7 @@ Section Pipeline1.
           replace (datamem_start spec) with (heap_start ml) by congruence.
           replace (datamem_pastend spec) with (heap_pastend ml) by congruence.
           exact HMem.
-        - cbv beta. intros * _ HP. exists []. split. 1: reflexivity. exact HP.
+        - cbv beta. intros * HP. exists []. split. 1: reflexivity. exact HP.
       }
       11: { unfold compile. rewrite_match. reflexivity. }
       all: try eassumption.
@@ -394,6 +395,16 @@ Section Pipeline1.
              | |- _ => reflexivity
              end.
       + unfold compile. rewrite_match. reflexivity.
+      + clear H0p4.
+        clear H0p7.
+        move H0p1p2 at bottom.
+        eapply le_sub_mono_proj_l2r in H0p1p0; move H0p1p0 at bottom.
+        (*
+      H0p1p2 : goodObservables spec final_log mcH'
+      H0p1p0 : (MetricsToRiscv.raiseMetrics final_metrics <= mcH')%metricsH
+      ========================= (1 / 1)
+      goodObservables spec final_log (MetricsToRiscv.raiseMetrics final_metrics)
+         *) admit.
       + destruct_RiscvMachine final. subst.
         subst loop_pos init_pos.
         solve_word_eq word_ok.
@@ -409,8 +420,7 @@ Section Pipeline1.
         * eapply iff1ToEq.
           unfold init_sp_insts, init_insts, loop_insts, backjump_insts.
           wwcancel.
-    Unshelve. exact MetricLogging.EmptyMetricLog.
-  Qed.
+  Admitted.
 
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
       ll_inv st -> GoFlatToRiscv.mcomp_sat (run1 iset) st ll_inv.
@@ -506,19 +516,19 @@ Section Pipeline1.
         unfold runsTo in P.
         specialize P with (argvals := [])
                           (fname := "loop"%string)
-                          (post := fun t' m' retvals mc' => isReady spec t' m' /\ goodTrace spec t').
-        edestruct P as (loop_rel_pos & G & P'); clear P; cycle -1.
-        1: eapply P' with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R)
-                          (ret_addr := word.add loop_pos (word.of_Z 4)).
-        12: {
+                          (post := fun t' m' retvals mc' => isReady spec t' m' /\ goodObservables spec t' (eventLoopJumpMetrics mc')).
+        edestruct P as (loop_rel_pos & G & P'); clear P; cycle -2.
+        2: eapply P' with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R)
+                          (ret_addr := word.add loop_pos (word.of_Z 4)); cycle 1.
+        all: try eassumption.
+        all: simpl_MetricRiscvMachine_get_set.
+        {
           move loop_body_correct at bottom.
           do 4 eexists. split. 1: eassumption. split. 1: reflexivity.
           eapply ExprImp.weaken_exec.
-          - eapply loop_body_correct; eauto.
-          - cbv beta. intros * _ HP. exists []. split. 1: reflexivity. exact HP.
+          - eapply loop_body_correct; split; eauto. (* spill cost for "calling" loop body *) admit.
+          - cbv beta. intros * HP. exists []. split. 1: reflexivity. exact HP.
         }
-        all: try eassumption.
-        all: simpl_MetricRiscvMachine_get_set.
         { apply stack_length_divisible. }
         { replace loop_rel_pos with loop_fun_pos by congruence.
           solve_word_eq word_ok. }
@@ -586,17 +596,27 @@ Section Pipeline1.
                | |- _ => eassumption
                | |- _ => reflexivity
                end.
+        * move Hp5p2 at bottom. eapply le_sub_mono_proj_l2r in Hp5p2.
+          move Hp5p10 at bottom.
+          (*
+Hp5p2 : (MetricsToRiscv.raiseMetrics final_metrics <= mcH')%metricsH
+Hp5p10 : goodObservables spec final_log (eventLoopJumpMetrics mcH')
+========================= (1 / 1)
+goodObservables spec final_log
+  (MetricsToRiscv.raiseMetrics
+     (RiscvEventLoop.eventLoopJumpMetrics final_metrics))
+           *) admit.
         * wcancel_assumption.
         * eapply rearrange_footpr_subset. 1: eassumption.
           wwcancel.
-    Unshelve. exact MetricLogging.EmptyMetricLog.
-  Qed.
+  Admitted.
 
   Lemma ll_inv_implies_prefix_of_good: forall st,
-      ll_inv st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog)).
+      ll_inv st -> exists suff mc, spec.(goodObservables) (suff ++ st.(getLog)) (MetricsToRiscv.raiseMetrics mc).
   Proof.
     unfold ll_inv, runsToGood_Invariant. intros. fwd.
-    eapply extend_runsTo_to_good_trace. 2,3: eassumption.
+    eapply extend_runsTo_to_good_trace with (good_observables:=fun t mc => spec.(goodObservables) t (MetricsToRiscv.raiseMetrics mc)).
+    2,3: eassumption.
     simpl. unfold ll_good, hl_inv, FlatToRiscvCommon.goodMachine.
     intros. fwd. eassumption.
   Qed.

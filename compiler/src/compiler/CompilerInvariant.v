@@ -198,7 +198,7 @@ Section Pipeline1.
     (forall st, ll_inv compile_ext_call ml spec st ->
                 GoFlatToRiscv.mcomp_sat (run1 iset) st (ll_inv compile_ext_call ml spec)) /\
     (forall st, ll_inv compile_ext_call ml spec st ->
-                exists suff, spec.(goodTrace) (suff ++ st.(getLog))).
+                exists suff mc, spec.(goodObservables) (suff ++ st.(getLog)) (MetricsToRiscv.raiseMetrics mc)).
   Proof.
     ssplit; intros.
     - eapply (establish_ll_inv _ compile_ext_call_correct compile_ext_call_length_ignores_positions).
@@ -233,17 +233,18 @@ Section Pipeline1.
     - eapply ll_inv_implies_prefix_of_good. eassumption.
   Qed.
 
-  Definition good_trace(st: MetricRiscvMachine): Prop := spec.(goodTrace) st.(getLog).
+  Definition good_observables(st: MetricRiscvMachine): Prop :=
+    spec.(goodObservables) st.(getLog) (MetricsToRiscv.raiseMetrics st.(getMetrics)).
   Definition always: (MetricRiscvMachine -> Prop) -> MetricRiscvMachine -> Prop :=
     always (GoFlatToRiscv.mcomp_sat (run1 iset)).
   Definition eventually: (MetricRiscvMachine -> Prop) -> MetricRiscvMachine -> Prop :=
     eventually (GoFlatToRiscv.mcomp_sat (run1 iset)).
 
-  Lemma always_eventually_good_trace: forall initial,
+  Lemma always_eventually_observables: forall initial,
       initial_conditions initial ->
-      always (eventually good_trace) initial.
+      always (eventually good_observables) initial.
   Proof.
-    intros * IC. unfold always, eventually, good_trace.
+    intros * IC. unfold always, eventually, good_observables.
     apply mk_always with (invariant := ll_inv compile_ext_call ml spec).
     - apply (proj1 compiler_invariant_proofs _ IC).
     - apply (proj1 (proj2 compiler_invariant_proofs)).

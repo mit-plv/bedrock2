@@ -69,7 +69,7 @@ Section WithParameters.
 
   Definition mc_spi_write_const := mkMetricLog 348 227 381 204.
   Definition mc_spi_read_const := mkMetricLog 199 116 217 103.
-  Definition mc_spi_xchg_const := mkMetricLog 410 402 414 401.
+  Definition mc_spi_xchg_const := (mc_spi_write_const + mc_spi_read_const + mkMetricLog 410 402 414 401)%metricsH.
   Definition mc_spi_mul := mkMetricLog 157 109 169 102.
   Ltac mc_spi_write_unf := unfold mc_spi_write_const, mc_spi_mul in *.
   Ltac mc_spi_read_unf := unfold mc_spi_read_const, mc_spi_mul in *.
@@ -410,7 +410,7 @@ Section WithParameters.
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b_in:byte) (err : word), RETS = [word.of_Z (byte.unsigned b_in); err] /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\ lightbulb_spec.spi_xchg word (byte.of_Z (word.unsigned b_out)) b_in ioh) /\
-        (MC - mc <= mc_spi_write_const + mc_spi_read_const + mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH).
+        (MC - mc <= mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH).
 
   Lemma spi_xchg_ok : program_logic_goal_for_function! spi_xchg.
   Proof.

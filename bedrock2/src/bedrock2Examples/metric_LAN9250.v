@@ -1,4 +1,5 @@
 Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry.
+Require Import bedrock2.MetricLogging bedrock2.MetricCosts.
 Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import bedrock2Examples.metric_SPI.
 
@@ -143,7 +144,8 @@ Section WithParameters.
       exists iol, T = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
-        (word.unsigned err = 0 /\ lightbulb_spec.lan9250_fastread4 _ a ret ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.lan9250_fastread4 _ a ret ioh /\
+        (MC - mc <= 24 * mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH)).
 
   Global Instance spec_of_lan9250_writeword : MetricProgramLogic.spec_of "lan9250_writeword" := fun functions =>
     forall t m a mc v,
@@ -155,7 +157,8 @@ Section WithParameters.
       exists iol, T = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
-        (word.unsigned err = 0 /\ lightbulb_spec.lan9250_write4 _ a v ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.lan9250_write4 _ a v ioh /\
+        (MC - mc <= 21 * mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH)).
 
   Global Instance spec_of_lan9250_mac_write : MetricProgramLogic.spec_of "lan9250_mac_write" := fun functions =>
     forall t m a mc v,
@@ -167,7 +170,8 @@ Section WithParameters.
       exists iol, T = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
-        (word.unsigned err = 0 /\  lan9250_mac_write_trace _ a v ioh )).
+        (word.unsigned err = 0 /\  lan9250_mac_write_trace _ a v ioh /\
+        (MC - mc <= 4*21 * mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH)).
 
   Global Instance spec_of_lan9250_wait_for_boot : MetricProgramLogic.spec_of "lan9250_wait_for_boot" := fun functions =>
     forall t m mc,
@@ -236,6 +240,20 @@ Section WithParameters.
         (left + right); eexists _, _; split; exact eq_refl
     end.
 
+  Ltac metrics' :=
+    repeat match goal with | H := _ : MetricLog |- _ => subst H end;
+    cost_unfold;
+    repeat match goal with
+    | H: context [?x] |- _ => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
+      progress cbv beta delta [x] in *
+    | |- context [?x] => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
+      progress cbv beta delta [x] in *
+    end;
+    cbn -[Z.add Z.mul Z.of_nat] in *;
+    rewrite ?length_app, ?List.length_cons, List.length_nil in *;
+    flatten_MetricLog; repeat unfold_MetricLog; repeat simpl_MetricLog; try blia.
+  Ltac metrics := solve [metrics'].
+
   Local Ltac slv := solve [ trivial | eauto 2 using TracePredicate.any_app_more | assumption | blia | trace_alignment | mmio_trace_abstraction ].
 
   Ltac t :=
@@ -297,6 +315,152 @@ Section WithParameters.
   Qed.
 
   Local Hint Mode map.map - - : typeclass_instances. (* COQBUG https://github.com/coq/coq/issues/14707 *)
+
+  Lemma lan9250_readword_ok : program_logic_goal_for_function! lan9250_readword.
+  Proof.
+    Time repeat straightline.
+
+    repeat match goal with
+      | H :  _ /\ _ \/ ?Y /\ _, G : not ?X |- _ =>
+          constr_eq X Y; let Z := fresh in destruct H as [|[Z ?]]; [|case (G Z)]
+      | H :  not ?Y /\ _ \/ _ /\ _, G : ?X |- _ =>
+          constr_eq X Y; let Z := fresh in destruct H as [[Z ?]|]; [case (Z G)|]
+      | _ => progress cbv [MMIOREAD MMIOWRITE]
+      | _ => progress cbv [SPI_CSMODE_ADDR]
+      | |- _ /\ _ => split
+      | |- context G[string_dec ?x ?x] =>
+          let e := eval cbv in (string_dec x x) in
+          let goal := context G [e] in
+          change goal
+      | |- context G[string_dec ?x ?y] =>
+          unshelve erewrite (_ : string_dec x y = right _); [ | exact eq_refl | ]
+      | _ => straightline_cleanup
+      | |- MetricWeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ _ => eapply MetricWeakestPreconditionProperties.interact_nomem
+      | |- ext_spec _ _ _ _ _ =>
+    letexists; split; [exact eq_refl|]; split; [split; trivial|]
+      | |- ext_spec _ _ _ _ _ =>
+    letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|]
+
+      | H: ?x = 0 |-  _ => rewrite H
+      | |- ?F ?a ?b ?c =>
+          match F with MetricWeakestPrecondition.get => idtac end;
+          let f := (eval cbv beta delta [MetricWeakestPrecondition.get] in F) in
+          change (f a b c); cbv beta
+      | _ => straightline
+      | _ => straightline_call
+      | _ => split_if
+    end.
+    all: try (eexists _, _; split; trivial).
+    all: try (exact eq_refl).
+    all: auto.
+    1,2,3,4,16,17,18,19:
+      repeat match goal with x := _ |- _ => subst x end;
+      cbv [isMMIOAddr SPI_CSMODE_ADDR];
+      rewrite !word.unsigned_of_Z; cbv [word.wrap];
+      trivial; cbv -[Z.le Z.lt]; blia.
+
+    all : try (
+      repeat match goal with x := _ ++ _ |- _ => subst x end;
+      eexists; split;
+      [ repeat match goal with
+        |- context G [cons ?a ?b] =>
+          assert_fails (idtac; match b with nil => idtac end);
+          let goal := context G [(app (cons a nil) b)] in
+          change goal
+        end;
+      rewrite !app_assoc;
+      repeat eapply (fun A => f_equal2 (@List.app A)); eauto |]).
+
+    all : try (
+      eexists; split; [
+      repeat (eassumption || eapply Forall2_app || eapply Forall2_nil || eapply Forall2_cons) |]).
+    all : try ((left + right); eexists _, _; split; exact eq_refl).
+
+
+    all : try (left; split; [eassumption|]).
+    all : repeat rewrite <-app_assoc.
+
+    all : eauto using TracePredicate.any_app_more.
+    { rewrite ?word.unsigned_of_Z; exact eq_refl. }
+    { rewrite Properties.word.unsigned_sru_nowrap; cycle 1.
+      { rewrite word.unsigned_of_Z; exact eq_refl. }
+      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
+      rewrite Z.shiftr_div_pow2 by blia.
+      clear -H8.
+      change 0x400 with (4*256) in *.
+      Z.div_mod_to_equations. blia. }
+    { rewrite Properties.word.unsigned_and_nowrap.
+      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
+      change 255 with (Z.ones 8).
+      rewrite Z.land_ones;
+      Z.div_mod_to_equations; blia. }
+
+    right.
+    eexists; eauto.
+    split.
+    2:metrics'.
+    eexists _, _,  _, _, _, _.
+
+    cbv [
+    lightbulb_spec.lan9250_fastread4
+    lightbulb_spec.spi_begin
+    lightbulb_spec.spi_xchg_mute
+    lightbulb_spec.spi_xchg_dummy
+    lightbulb_spec.spi_xchg_deaf
+    lightbulb_spec.spi_end
+    one
+    existsl
+    ].
+
+    cbv [concat].
+    repeat match goal with
+      | |- _ /\ _ => eexists
+      | |- exists _, _ => eexists
+      | |- ?e = _ => is_evar e; exact eq_refl
+      | |- _ = ?e => is_evar e; exact eq_refl
+    end.
+
+    1 : rewrite <-app_assoc.
+    1 : cbv [SPI_CSMODE_HOLD] ; rewrite word.unsigned_of_Z; exact eq_refl.
+    all : rewrite word.unsigned_of_Z in H12; try eassumption.
+    1,2:
+      repeat match goal with
+      | _ => rewrite word.of_Z_unsigned
+      | _ => rewrite Byte.byte.unsigned_of_Z
+      | _ => cbv [Byte.byte.wrap]; rewrite Z.mod_small
+      | _ => solve [trivial]
+      end.
+    { rewrite Properties.word.unsigned_sru_nowrap by (rewrite word.unsigned_of_Z; exact eq_refl).
+      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
+      rewrite Z.shiftr_div_pow2 by blia.
+      generalize dependent a; clear; intros.
+      change 0x400 with (4*256) in *.
+      Z.div_mod_to_equations. blia. }
+    { rewrite Properties.word.unsigned_and_nowrap.
+      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
+      change 255 with (Z.ones 8); rewrite Z.land_ones by blia.
+      Z.div_mod_to_equations. blia. }
+    repeat match goal with x := _ |- _ => subst x end.
+    cbv [LittleEndianList.le_combine].
+
+    repeat rewrite ?Properties.word.unsigned_or_nowrap, <-?Z.lor_assoc by (rewrite ?word.unsigned_of_Z; exact eq_refl).
+    change (Z.shiftl 0 8) with 0 in *; rewrite Z.lor_0_r.
+    rewrite !Z.shiftl_lor, !Z.shiftl_shiftl in * by blia.
+    repeat f_equal.
+
+    (* little-endian word conversion, automatable (bitwise Z and word) *)
+    all : try rewrite word.unsigned_slu by (rewrite ?word.unsigned_of_Z; exact eq_refl).
+    all : rewrite ?word.unsigned_of_Z.
+    all : cbv [word.wrap].
+    all : repeat match goal with |- context G [?a mod ?b] => let goal := context G [a] in change goal end.
+    all : repeat match goal with |- context[Byte.byte.unsigned ?x] => is_var x; replace (Byte.byte.unsigned x) with (Byte.byte.wrap (Byte.byte.unsigned x)) by eapply Byte.byte.wrap_unsigned; set (Byte.byte.unsigned x) as X; clearbody X end.
+    all : change (8+8) with 16.
+    all : change (8+16) with 24.
+    all : cbv [Byte.byte.wrap].
+    all : clear.
+    all : rewrite ?Z.shiftl_mul_pow2 by blia.
+    all : try (Z.div_mod_to_equations; blia).
+  Qed.
 
   Lemma lan9250_writeword_ok : program_logic_goal_for_function! lan9250_writeword.
   Proof.
@@ -390,6 +554,7 @@ Section WithParameters.
     t.
     t.
     t.
+    t.
     letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
@@ -410,6 +575,8 @@ Section WithParameters.
       split; [|exact eq_refl]; clear.
       cbv -[Z.le Z.lt]. blia. }
     repeat t.
+
+    2: metrics.
 
     do 6 letexists.
     cbv [spi_begin spi_xchg_deaf spi_end one].
@@ -452,7 +619,7 @@ Section WithParameters.
     all : repeat match goal with |- context G[word.wrap ?x] => let g := context G [x] in change g end.
     all : change 255 with (Z.ones 8).
     all : rewrite ?Z.shiftr_div_pow2, ?Z.land_ones by blia.
-    3,4,5: clear -H7 H36; Z.div_mod_to_equations; blia.
+    all: try (Z.div_mod_to_equations; blia).
     { subst addr.
       cbv [SPI_CSMODE_HOLD].
       erewrite word.unsigned_of_Z.
@@ -502,6 +669,7 @@ Section WithParameters.
     all : repeat t.
 
     intuition idtac; repeat t.
+    2: metrics.
 
     eexists.
     rewrite app_nil_r.
@@ -531,7 +699,7 @@ Section WithParameters.
     { subst i; repeat t.
       exists O; cbn; split; trivial.
       rewrite word.unsigned_of_Z. exact eq_refl. }
-    { exfalso. subst i. rewrite word.unsigned_of_Z in H0; inversion H0. }
+    { exfalso. subst i. ZnWords. }
     { straightline_call.
       { rewrite word.unsigned_of_Z.
         repeat match goal with
@@ -552,15 +720,14 @@ Section WithParameters.
       }
       repeat straightline.
       split_if; repeat t.
-      { exfalso. eapply H9. subst i. rewrite word.unsigned_xor.
-        rewrite Z.lxor_nilpotent. exact eq_refl. }
+      { exfalso. subst i. rewrite word.unsigned_xor, Z.lxor_nilpotent in *. ZnWords. }
       { right.
         split; trivial.
         cbv [lan9250_wait_for_boot_trace].
         rewrite app_nil_r.
         eapply concat_app; eauto using kleene_multiple.
         destruct (word.eqb_spec x5 (word.of_Z 2271560481)); subst.
-        2: { subst v0. rewrite word.unsigned_of_Z in H3; case (H3 eq_refl). }
+        2: exfalso; ZnWords.
         eassumption. }
       { eexists. split.
         1: split; [exact eq_refl|].
@@ -577,188 +744,24 @@ Section WithParameters.
         split.
         { eapply multiple_expand_right, concat_app; eauto.
           destruct (word.eqb_spec x5 (word.of_Z 2271560481)); subst.
-          { subst v0. rewrite word.unsigned_of_Z in H3. inversion H3. }
+          { exfalso; ZnWords. }
           eexists. split; eauto.
-          intro X.
-          eapply H10.
-          eapply word.unsigned_inj; rewrite word.unsigned_of_Z.
-          setoid_rewrite X.
-          exact eq_refl. }
-        rewrite <-H6.
-        rewrite Znat.Nat2Z.inj_succ.
-        subst i.
-        rewrite word.unsigned_sub, word.unsigned_of_Z.
-        pose proof word.unsigned_range x0.
-        change (word.wrap 1) with 1.
-        cbv [word.wrap]; rewrite Z.mod_small; try blia. }
+          ZnWords. }
+        ZnWords. }
       { left. right.
         split. { intro X. subst err. rewrite word.unsigned_of_Z in X. inversion X. }
         rewrite app_nil_r.
         cbv [lan9250_boot_timeout].
         rewrite <-H6.
         replace (word.unsigned x0) with 1; cycle 1.
-        { subst i.
-          pose proof word.unsigned_range x0.
-          rewrite word.unsigned_sub, word.unsigned_of_Z in H9.
-          change (word.wrap 1) with 1 in H9.
-          cbv [word.wrap] in H9; rewrite Z.mod_small in H9; try blia. }
+        { subst i. ZnWords. }
         rewrite Z.add_1_r.
         rewrite Znat.Z2Nat.inj_succ by (clear; blia).
         rewrite Znat.Nat2Z.id.
 
         eapply multiple_expand_right, concat_app; eauto.
         eexists; split; eauto.
-        destruct (word.eqb_spec x5 (word.of_Z 2271560481)); subst.
-        { subst v0. rewrite word.unsigned_of_Z in H3. inversion H3. }
-        intro X.
-        eapply H10.
-        eapply word.unsigned_inj; rewrite word.unsigned_of_Z.
-        setoid_rewrite X.
-        exact eq_refl. } }
-  Qed.
-
-  Lemma lan9250_readword_ok : program_logic_goal_for_function! lan9250_readword.
-  Proof.
-    Time repeat straightline.
-
-    repeat match goal with
-      | H :  _ /\ _ \/ ?Y /\ _, G : not ?X |- _ =>
-          constr_eq X Y; let Z := fresh in destruct H as [|[Z ?]]; [|case (G Z)]
-      | H :  not ?Y /\ _ \/ _ /\ _, G : ?X |- _ =>
-          constr_eq X Y; let Z := fresh in destruct H as [[Z ?]|]; [case (Z G)|]
-      | _ => progress cbv [MMIOREAD MMIOWRITE]
-      | _ => progress cbv [SPI_CSMODE_ADDR]
-      | |- _ /\ _ => split
-      | |- context G[string_dec ?x ?x] =>
-          let e := eval cbv in (string_dec x x) in
-          let goal := context G [e] in
-          change goal
-      | |- context G[string_dec ?x ?y] =>
-          unshelve erewrite (_ : string_dec x y = right _); [ | exact eq_refl | ]
-      | _ => straightline_cleanup
-      | |- MetricWeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ _ => eapply MetricWeakestPreconditionProperties.interact_nomem
-      | |- ext_spec _ _ _ _ _ =>
-    letexists; split; [exact eq_refl|]; split; [split; trivial|]
-      | |- ext_spec _ _ _ _ _ =>
-    letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|]
-
-      | H: ?x = 0 |-  _ => rewrite H
-      | |- ?F ?a ?b ?c =>
-          match F with MetricWeakestPrecondition.get => idtac end;
-          let f := (eval cbv beta delta [MetricWeakestPrecondition.get] in F) in
-          change (f a b c); cbv beta
-      | _ => straightline
-      | _ => straightline_call
-      | _ => split_if
-    end.
-    all: try (eexists _, _; split; trivial).
-    all: try (exact eq_refl).
-    all: auto.
-    1,2,3,4,16,17,18,19:
-      repeat match goal with x := _ |- _ => subst x end;
-      cbv [isMMIOAddr SPI_CSMODE_ADDR];
-      rewrite !word.unsigned_of_Z; cbv [word.wrap];
-      trivial; cbv -[Z.le Z.lt]; blia.
-
-    all : try (
-      repeat match goal with x := _ ++ _ |- _ => subst x end;
-      eexists; split;
-      [ repeat match goal with
-        |- context G [cons ?a ?b] =>
-          assert_fails (idtac; match b with nil => idtac end);
-          let goal := context G [(app (cons a nil) b)] in
-          change goal
-        end;
-      rewrite !app_assoc;
-      repeat eapply (fun A => f_equal2 (@List.app A)); eauto |]).
-
-    all : try (
-      eexists; split; [
-      repeat (eassumption || eapply Forall2_app || eapply Forall2_nil || eapply Forall2_cons) |]).
-    all : try ((left + right); eexists _, _; split; exact eq_refl).
-
-
-    all : try (left; split; [eassumption|]).
-    all : repeat rewrite <-app_assoc.
-
-    all : eauto using TracePredicate.any_app_more.
-    { rewrite ?word.unsigned_of_Z; exact eq_refl. }
-    { rewrite Properties.word.unsigned_sru_nowrap; cycle 1.
-      { rewrite word.unsigned_of_Z; exact eq_refl. }
-      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
-      rewrite Z.shiftr_div_pow2 by blia.
-      clear -H8.
-      change 0x400 with (4*256) in *.
-      Z.div_mod_to_equations. blia. }
-    { rewrite Properties.word.unsigned_and_nowrap.
-      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
-      change 255 with (Z.ones 8).
-      rewrite Z.land_ones;
-      Z.div_mod_to_equations; blia. }
-
-    right.
-    eexists; eauto.
-    eexists _, _,  _, _, _, _.
-
-    cbv [
-    lightbulb_spec.lan9250_fastread4
-    lightbulb_spec.spi_begin
-    lightbulb_spec.spi_xchg_mute
-    lightbulb_spec.spi_xchg_dummy
-    lightbulb_spec.spi_xchg_deaf
-    lightbulb_spec.spi_end
-    one
-    existsl
-    ].
-
-    cbv [concat].
-    repeat match goal with
-      | |- _ /\ _ => eexists
-      | |- exists _, _ => eexists
-      | |- ?e = _ => is_evar e; exact eq_refl
-      | |- _ = ?e => is_evar e; exact eq_refl
-    end.
-
-    1 : rewrite <-app_assoc.
-    1 : cbv [SPI_CSMODE_HOLD] ; rewrite word.unsigned_of_Z; exact eq_refl.
-    all : rewrite word.unsigned_of_Z in H12; try eassumption.
-    1,2:
-      repeat match goal with
-      | _ => rewrite word.of_Z_unsigned
-      | _ => rewrite Byte.byte.unsigned_of_Z
-      | _ => cbv [Byte.byte.wrap]; rewrite Z.mod_small
-      | _ => solve [trivial]
-      end.
-    { rewrite Properties.word.unsigned_sru_nowrap by (rewrite word.unsigned_of_Z; exact eq_refl).
-      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
-      rewrite Z.shiftr_div_pow2 by blia.
-      generalize dependent a; clear; intros.
-      change 0x400 with (4*256) in *.
-      Z.div_mod_to_equations. blia. }
-    { rewrite Properties.word.unsigned_and_nowrap.
-      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
-      change 255 with (Z.ones 8); rewrite Z.land_ones by blia.
-      Z.div_mod_to_equations. blia. }
-    repeat match goal with x := _ |- _ => subst x end.
-    cbv [LittleEndianList.le_combine].
-
-    repeat rewrite ?Properties.word.unsigned_or_nowrap, <-?Z.lor_assoc by (rewrite ?word.unsigned_of_Z; exact eq_refl).
-    change (Z.shiftl 0 8) with 0 in *; rewrite Z.lor_0_r.
-    rewrite !Z.shiftl_lor, !Z.shiftl_shiftl in * by blia.
-    repeat f_equal.
-
-    (* little-endian word conversion, automatable (bitwise Z and word) *)
-    all : try rewrite word.unsigned_slu by (rewrite ?word.unsigned_of_Z; exact eq_refl).
-    all : rewrite ?word.unsigned_of_Z.
-    all : cbv [word.wrap].
-    all : repeat match goal with |- context G [?a mod ?b] => let goal := context G [a] in change goal end.
-    all : repeat match goal with |- context[Byte.byte.unsigned ?x] => is_var x; replace (Byte.byte.unsigned x) with (Byte.byte.wrap (Byte.byte.unsigned x)) by eapply Byte.byte.wrap_unsigned; set (Byte.byte.unsigned x) as X; clearbody X end.
-    all : change (8+8) with 16.
-    all : change (8+16) with 24.
-    all : cbv [Byte.byte.wrap].
-    all : clear.
-    all : rewrite ?Z.shiftl_mul_pow2 by blia.
-    all : try (Z.div_mod_to_equations; blia).
+        destruct (word.eqb_spec x5 (word.of_Z 2271560481)); ZnWords. } }
   Qed.
 
   Import MetricWeakestPrecondition SeparationLogic Array Scalars MetricProgramLogic.Coercions.
