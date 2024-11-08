@@ -83,7 +83,7 @@ Definition lan9250_wait_for_boot := func! () ~> err {
   err = ($0);
   byteorder = ($0);
   i = ($lightbulb_spec.patience); while (i) { i = (i - $1);
-          unpack! byteorder, err = lan9250_readword($0x64);
+    unpack! byteorder, err = lan9250_readword($0x64);
     if err { i = (i^i) }
     else if (byteorder == $0x87654321) { i = (i^i) }
     else { err = ($-1) }
@@ -93,7 +93,7 @@ Definition lan9250_wait_for_boot := func! () ~> err {
 Definition lan9250_init := func! () ~> err {
     unpack! err = lan9250_wait_for_boot();
     require !err;
-          unpack! hw_cfg, err = lan9250_readword($lightbulb_spec.HW_CFG);
+    unpack! hw_cfg, err = lan9250_readword($lightbulb_spec.HW_CFG);
     require !err;
     hw_cfg = (hw_cfg | coq:(Z.shiftl 1 20)); (* mustbeone *)
     hw_cfg = (hw_cfg & coq:(Z.lnot (Z.shiftl 1 21))); (* mustbezero *)
@@ -101,9 +101,9 @@ Definition lan9250_init := func! () ~> err {
     require !err;
 
     (* 20: full duplex; 18: promiscuous; 2, 3: TXEN/RXEN *)
-        unpack! err = lan9250_mac_write($1, coq:(Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2)))));
+    unpack! err = lan9250_mac_write($1, coq:(Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2)))));
     require !err;
-          unpack! err = lan9250_writeword($0x070, coq:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
+    unpack! err = lan9250_writeword($0x070, coq:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
   }.
 
 Local Definition TX_DATA_FIFO := 32.
@@ -250,7 +250,7 @@ Section WithParameters.
       progress cbv beta delta [x] in *
     end;
     cbn -[Z.add Z.mul Z.of_nat] in *;
-    rewrite ?length_app, ?List.length_cons, List.length_nil in *;
+    rewrite ?length_app, ?List.length_cons, ?List.length_nil in *;
     flatten_MetricLog; repeat unfold_MetricLog; repeat simpl_MetricLog; try blia.
   Ltac metrics := solve [metrics'].
 
@@ -776,7 +776,9 @@ Section WithParameters.
       exists iol, T = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ spi_timeout) ioh)
-        (word.unsigned err = 0 /\ lan9250_send bs ioh) }.
+        (word.unsigned err = 0 /\ lan9250_send bs ioh /\
+        (MC - mc <= ((2+l) * 50 + 40) * mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul))%metricsH
+    }.
 
   Import symmetry autoforward.
 
@@ -824,7 +826,8 @@ Section WithParameters.
          M = m /\ exists iol, T = iol ++ t /\
         exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned ERR <> 0 /\ (any +++ spi_timeout) ioh)
-        (word.unsigned ERR = 0 /\ lightbulb_spec.lan9250_writepacket _ bs ioh)
+        (word.unsigned ERR = 0 /\ lightbulb_spec.lan9250_writepacket _ bs ioh /\
+        (MC - mc <= (l+1) * 50 * mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH)
          )
       ) _ (Z.lt_wf 0) _ _ _ _ _ _);
     (* TODO wrap this into a tactic with the previous refine? *)
@@ -839,26 +842,26 @@ Section WithParameters.
     { repeat straightline; eauto. }
     { repeat straightline.
       2: {
-        eapply word.if_zero in H16.
-        rewrite word.unsigned_ltu in H16.
-        autoforward with typeclass_instances in H16.
+        eapply word.if_zero in H18.
+        rewrite word.unsigned_ltu in H18.
+        autoforward with typeclass_instances in H18.
         destruct x5; cbn [List.length] in *; [|exfalso; ZnWords].
-        Tactics.ssplit; trivial. repeat t. }
+        Tactics.ssplit; trivial. repeat t; metrics. }
       subst br.
       rename l into l0.
       rename x8 into l.
-      rewrite word.unsigned_ltu in H16.
+      rewrite word.unsigned_ltu in H18.
       destr.destr Z.ltb.
-      2: { contradiction H16. rewrite word.unsigned_of_Z_0; trivial. }
-      pose proof word.unsigned_range l as Hl. rewrite H13 in Hl.
-      eapply (f_equal word.of_Z) in H13. rewrite word.of_Z_unsigned in H13.
+      2: { contradiction H18. rewrite word.unsigned_of_Z_0; trivial. }
+      pose proof word.unsigned_range l as Hl. rewrite H15 in Hl.
+      eapply (f_equal word.of_Z) in H15. rewrite word.of_Z_unsigned in H15.
       rewrite word.unsigned_of_Z in E; cbv [word.wrap] in E; rewrite Z.mod_small in E by blia.
       subst l.
       rename bs into bs0.
       rename x5 into bs.
-      rewrite <-(firstn_skipn 4 bs) in H15.
-      seprewrite_in @array_append H15.
-      seprewrite_in @scalar32_of_bytes H15.
+      rewrite <-(firstn_skipn 4 bs) in H17.
+      seprewrite_in @array_append H17.
+      seprewrite_in @scalar32_of_bytes H17.
       { autoforward with typeclass_instances in E.
         rewrite firstn_length. ZnWords. }
 
@@ -866,14 +869,14 @@ Section WithParameters.
       straightline_call; repeat straightline.
       { ZnWords. }
 
-      seprewrite_in (symmetry! @scalar32_of_bytes) H15.
+      seprewrite_in (symmetry! @scalar32_of_bytes) H17.
       { autoforward with typeclass_instances in E.
         rewrite firstn_length. ZnWords. }
 
       rename x5 into err.
       eexists; eexists; split; repeat straightline; intuition idtac.
-      { seprewrite_in (symmetry! @array_append) H15.
-        rewrite (firstn_skipn 4 bs) in H15.
+      { seprewrite_in (symmetry! @array_append) H17.
+        rewrite (firstn_skipn 4 bs) in H17.
         repeat straightline.
         left; repeat t.
         subst l br.
@@ -884,26 +887,25 @@ Section WithParameters.
       right; repeat straightline.
       subst l p.
       Set Printing Coercions.
-      rewrite word.unsigned_of_Z_1, Z.mul_1_l, firstn_length, min_l in H15 by ZnWords.
-      progress change (Z.of_nat 4) with 4%Z in H15.
+      rewrite word.unsigned_of_Z_1, Z.mul_1_l, firstn_length, min_l in H17 by ZnWords.
+      progress change (Z.of_nat 4) with 4%Z in H17.
       eexists _, _, _; split; intuition eauto.
       3: ecancel_assumption.
       1: rewrite skipn_length; ZnWords.
       1 : ZnWords.
       split; repeat t; [ ZnWords .. |].
       intuition idtac; repeat t.
+      2:{ metrics'; intuition idtac; metrics'.
       do 4 (destruct bs as [|?b bs]; cbn [List.length] in *; try (exfalso; ZnWords));
         cbn [List.skipn lan9250_writepacket] in *; rewrite app_nil_r.
       eauto using concat_app. }
 
     repeat t; intuition eauto; repeat t.
+    2: metrics'.
     rewrite app_nil_r. eapply concat_app; eauto. eapply concat_app; eauto.
     Import Tactics.eplace.
     all : match goal with |- ?f ?x _ => eplace x with _ ; try eassumption end.
     all : f_equal; ZnWords.
-
-    Unshelve.
-    all : constructor.
   Qed.
 
   Require Import Utf8.
