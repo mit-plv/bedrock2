@@ -2146,7 +2146,7 @@ Section Proofs.
         | H: iff1 allx ?RHS |- _ =>
           match RHS with
           | context[compile_stmt _ _ _ ?POS _ body1] =>
-            eapply IH1 with (g := {| allx := allx |}) (pos := POS)
+            eapply IH1 with (g := {| allx := allx |}) (pos := POS) (cont := fun _ => _)
           end
         end.
         all: after_IH.
@@ -2156,7 +2156,7 @@ Section Proofs.
         intros. rewrite H18. rewrite fix_step. simpl. reflexivity.
       + simpl in *. simpl. intros. destruct_RiscvMachine middle.
         match goal with
-        | H: exists _ _ _ _, _ |- _ => destruct H as [ tH' [ mH' [ lH' [ mcH' H ] ] ] ]
+        | H: exists _ _ _ _ _, _ |- _ => destruct H as [ kH' [ tH' [ mH' [ lH' [ mcH' H ] ] ] ] ]
         end.
         fwd.
         destruct (eval_bcond lH' cond) as [condB|] eqn: E.
@@ -2179,13 +2179,20 @@ Section Proofs.
             | H: iff1 allx ?RHS |- _ =>
               match RHS with
               | context[compile_stmt _ _ _ ?POS _ body2] =>
-                eapply IH2 with (g := {| allx := allx |}) (pos := POS)
+                eapply IH2 with (g := {| allx := allx |}) (pos := POS) (cont := fun _ => _)
               end
             end.
             all: after_IH.
             1: eassumption.
             all: try safe_sidecond.
-            all: try safe_sidecond. }
+            all: try safe_sidecond.
+            1: reflexivity.
+            intros. repeat rewrite associate_one_left, app_assoc. rewrite H18.
+            rewrite fix_step. simpl. simpl_rev. Search body1. rewrite H3p4p2.
+            rewrite List.skipn_app_r by reflexivity. cbn [CustomFix.Let_In_pf_nd].
+            simpl_rev. repeat rewrite <- app_assoc.
+            cbn [leakage_events_rel leakage_events].
+            repeat solve_word_eq word_ok || f_equal. reflexivity. }
           simpl in *. intros. destruct_RiscvMachine middle. fwd.
           (* jump back to beginning of loop: *)
           eapply runsToStep.
@@ -2194,14 +2201,34 @@ Section Proofs.
           intros. destruct_RiscvMachine mid. fwd.
           eapply runsTo_trans. {
             (* 3rd application of IH: run the whole loop again *)
-            eapply IH12 with (g := {| allx := allx |}) (pos := pos).
+            eapply IH12 with (g := {| allx := allx |}) (pos := pos) (cont := fun _ => _).
             1: eassumption.
             all: after_IH.
             all: try safe_sidecond.
             all: try safe_sidecond.
-          }
+            1: reflexivity.
+            intros. rewrite associate_one_left, 2 app_assoc. rewrite H18.
+            rewrite fix_step. simpl. simpl_rev. Search body1. rewrite H3p4p2.
+            rewrite List.skipn_app_r by reflexivity. cbn [CustomFix.Let_In_pf_nd].
+            simpl_rev. repeat rewrite <- app_assoc.
+            cbn [leakage_events_rel leakage_events].
+            eassert (rev finalKL ++ _ = _) as ->. 2: rewrite H3p12p2.
+            { repeat rewrite <- app_assoc. simpl. repeat solve_word_eq word_ok || f_equal. }
+            rewrite List.skipn_app_r by reflexivity.
+            repeat solve_word_eq word_ok || reflexivity || f_equal. }
           (* at end of loop, just prove that computed post satisfies required post *)
-          simpl. intros. destruct_RiscvMachine middle. fwd. run1done. finishcost.
+          simpl. intros. destruct_RiscvMachine middle. fwd. run1done. 1: finishcost.
+          intros. rewrite H3p4p2. rewrite List.skipn_app_r by reflexivity.
+          cbn [CustomFix.Let_In_pf_nd].
+          simpl_rev. repeat rewrite <- app_assoc.
+            cbn [leakage_events_rel leakage_events].
+            eassert (rev finalKL ++ _ = _) as ->. 2: rewrite H3p12p2.
+            { repeat rewrite <- app_assoc. simpl. repeat solve_word_eq word_ok || f_equal. }
+            rewrite List.skipn_app_r by reflexivity.
+            repeat solve_word_eq word_ok || reflexivity || f_equal.
+            eassert (rev finalKL0 ++ _ = _) as ->. 2: rewrite H3p22p2.
+            { repeat rewrite <- app_assoc. simpl. repeat solve_word_eq word_ok || f_equal. }
+            reflexivity.
 
         * (* false: done, jump over body2 *)
           eapply runsToStep. {
@@ -2210,7 +2237,9 @@ Section Proofs.
               try safe_sidecond.
           }
           simpl_MetricRiscvMachine_get_set.
-          intros. destruct_RiscvMachine mid. fwd. run1done. finishcost.
+          intros. destruct_RiscvMachine mid. fwd. run1done. 1: finishcost.
+          Search body1. rewrite H3p4p2. rewrite List.skipn_app_r by reflexivity.
+          cbn [CustomFix.Let_In_pf_nd]. repeat solve_word_eq word_ok || f_equal.
 
     - idtac "Case compile_stmt_correct/SSeq".
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]
@@ -2218,10 +2247,12 @@ Section Proofs.
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s2); runsTo]
          do (fun H => rename H into IH2).
       eapply runsTo_trans.
-      + eapply IH1 with (g := {| allx := allx; |}) (pos := pos).
+      + eapply IH1 with (g := {| allx := allx; |}) (pos := pos) (cont := fun _ => _).
         all: after_IH.
         all: try safe_sidecond.
         all: try safe_sidecond.
+        1: reflexivity.
+        intros. rewrite H14. rewrite fix_step. reflexivity.
       + simpl. intros. destruct_RiscvMachine middle. fwd.
         eapply runsTo_trans.
         * match goal with
@@ -2235,7 +2266,13 @@ Section Proofs.
           1: eassumption.
           all: try safe_sidecond.
           all: try safe_sidecond.
+          1: reflexivity.
+          intros. rewrite app_assoc. rewrite H14. rewrite fix_step. simpl.
+          Search s1. simpl_rev. rewrite H1p4p2. rewrite List.skipn_app_r by reflexivity.
+          reflexivity.
         * simpl. intros. destruct_RiscvMachine middle. fwd. run1done.
+          rewrite H1p4p2. rewrite List.skipn_app_r by reflexivity.
+          Search s2. rewrite H1p12p2. reflexivity.
 
     - idtac "Case compile_stmt_correct/SSkip".
       run1done.

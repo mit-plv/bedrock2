@@ -682,7 +682,7 @@ Section FlatToRiscv1.
                                          let k''' := List.skipn (length skip') k'' in
                                          stmt_leakage (s,
                                              k''',
-                                             rk_so_far'' ++ leakage_events_rel (mypos + (body1Length + 1 + body2Length) * 1) [[Jal Register0 (- (body1Length + 1 + body2Length) * 4)]] [ leak_Jal ],
+                                             rk_so_far'' ++ leakage_events_rel (mypos + (body1Length + 1 + body2Length) * 4) [[Jal Register0 (- (body1Length + 1 + body2Length) * 4)]] [ leak_Jal ],
                                              mypos, sp_val, stackoffset,
                                              fun skip'' => f (skip ++ leak_bool true :: skip' ++ skip'')) _) _
                              | leak_bool false :: k'' =>
