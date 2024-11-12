@@ -96,6 +96,8 @@ Section WithParameters.
   Import TracePredicate. Import TracePredicateNotations.
   Import Word.Properties.
   Import lightbulb_spec.
+  Import bedrock2.MetricLogging bedrock2.MetricCosts.
+  Import MetricProgramLogic.Coercions.
 
   Instance spec_of_recvEthernet : spec_of "recvEthernet" := fun functions =>
     forall p_addr (buf:list byte) R m t mc,
@@ -108,7 +110,9 @@ Section WithParameters.
           (word.unsigned err = 0 /\
             exists recv buf, (bytes p_addr recv * bytes (word.add p_addr bytes_written) buf * R) m' /\ lan9250_recv _ recv ioh /\
             word.unsigned bytes_written + Z.of_nat (length buf) = 1520%Z /\
-            Z.of_nat (length recv) = word.unsigned bytes_written)
+            Z.of_nat (length recv) = word.unsigned bytes_written /\
+            ((mc' - mc <= (55+7*bytes_written)*mc_spi_xchg_const + (length ioh)*mc_spi_mul))%metricsH
+          )
           (word.unsigned err <> 0 /\ exists buf, (array scalar8 (word.of_Z 1) p_addr buf * R) m' /\ length buf = 1520%nat /\ (
              word.unsigned err = 1 /\ lan9250_recv_no_packet _ ioh \/
              word.unsigned err = 2 /\ lan9250_recv_packet_too_long _ ioh \/
@@ -116,6 +120,7 @@ Section WithParameters.
             ))
         ).
 
+  Definition lightbulb_handle_cost := mkMetricLog 552 274 639 203.
   Instance spec_of_lightbulb : spec_of "lightbulb_handle" := fun functions =>
     forall p_addr (buf:list byte) (len:word) R m t mc,
       (array scalar8 (word.of_Z 1) p_addr buf * R) m ->
@@ -124,8 +129,10 @@ Section WithParameters.
         (fun t' m' rets mc' => exists v, rets = [v] /\ m' = m /\
         exists iol, t' = iol ++ t /\
         exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
-          (exists cmd, lightbulb_packet_rep _ cmd buf /\ gpio_set _ 23 cmd ioh /\ word.unsigned v = 0)
-          (not (exists cmd, lightbulb_packet_rep _ cmd buf) /\ ioh = nil /\ word.unsigned v <> 0)
+        (exists cmd, lightbulb_packet_rep _ cmd buf /\ gpio_set _ 23 cmd ioh /\ word.unsigned v = 0 /\
+          (mc' <= lightbulb_handle_cost + mc)%metricsH)
+          (not (exists cmd, lightbulb_packet_rep _ cmd buf) /\ ioh = nil /\ word.unsigned v <> 0 /\
+          (mc' <= addMetricInstructions 226 (addMetricStores 46 (addMetricLoads 283 (addMetricJumps 3 mc))))%metricsH)
         ).
 
   Instance spec_of_lightbulb_loop : spec_of "lightbulb_loop" := fun functions =>
@@ -138,8 +145,12 @@ Section WithParameters.
         Z.of_nat (length buf) = 1520) /\
         exists iol, t' = iol ++ t /\
         exists ioh, mmio_trace_abstraction_relation ioh iol /\ (
-          (exists packet cmd, (lan9250_recv _ packet +++ gpio_set _ 23 cmd) ioh /\ lightbulb_packet_rep _ cmd packet /\ word.unsigned v = 0) \/
-          (exists packet, (lan9250_recv _ packet) ioh /\ not (exists cmd, lightbulb_packet_rep _ cmd packet) /\ word.unsigned v = 0) \/
+          (exists packet cmd, (lan9250_recv _ packet +++ gpio_set _ 23 cmd) ioh /\ lightbulb_packet_rep _ cmd packet /\ word.unsigned v = 0 /\
+          ((mc' - mc <= (60+7*length packet)*mc_spi_xchg_const + lightbulb_handle_cost + (length ioh)*mc_spi_mul))%metricsH
+          ) \/
+          (exists packet, (lan9250_recv _ packet) ioh /\ not (exists cmd, lightbulb_packet_rep _ cmd packet) /\ word.unsigned v = 0 /\
+          ((mc' - mc <= (60+7*length packet)*mc_spi_xchg_const + lightbulb_handle_cost + (length ioh)*mc_spi_mul))%metricsH
+          ) \/
           (lan9250_recv_no_packet _ ioh /\ word.unsigned v = 0) \/
           (lan9250_recv_packet_too_long _ ioh /\ word.unsigned v <> 0) \/
           ((TracePredicate.any +++ (spi_timeout word)) ioh /\ word.unsigned v <> 0)
@@ -182,6 +193,19 @@ Section WithParameters.
           | cmd.cond _ _ _ => letexists; letexists; split; [solve[repeat straightline]|split]
           end
     end.
+
+  Local Ltac metrics' :=
+    repeat match goal with | H := _ : MetricLog |- _ => subst H end;
+    cost_unfold;
+    repeat match goal with
+    | H: context [?x] |- _ => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
+      progress cbv beta delta [x] in *
+    | |- context [?x] => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
+      progress cbv beta delta [x] in *
+    end;
+    cbn -[Z.add Z.mul Z.of_nat] in *;
+    rewrite ?List.length_app, ?List.length_cons, ?List.length_nil, ?List.length_firstn, ?LittleEndianList.length_le_split in *;
+    flatten_MetricLog; repeat unfold_MetricLog; repeat simpl_MetricLog; try blia.
 
   Local Hint Mode map.map - - : typeclass_instances. (* COQBUG https://github.com/coq/coq/issues/14707 *)
 
@@ -228,7 +252,7 @@ Section WithParameters.
   Lemma lightbulb_loop_ok : program_logic_goal_for_function! lightbulb_loop.
   Proof.
     repeat (match goal with H : or _ _ |- _ => destruct H; intuition idtac end
-          || straightline || straightline_call || split_if || ecancel_assumption || eauto || blia).
+          || straightline || straightline_call || split_if || ecancel_assumption || eauto || blia); cycle 2.
     all : split; [shelve|].
     all : eexists; split.
     all: repeat (eapply align_trace_cons || exact (eq_sym (List.app_nil_l _)) || eapply align_trace_app).
@@ -238,6 +262,8 @@ Section WithParameters.
     { subst v. rewrite word.unsigned_xor_nowrap, H10, word.unsigned_of_Z in H4. case (H4 eq_refl). }
     { subst v. rewrite word.unsigned_xor_nowrap, H9, word.unsigned_of_Z in H4. inversion H4. }
     { subst v. rewrite word.unsigned_xor_nowrap, H9, word.unsigned_of_Z in H4. inversion H4. }
+    { left; eauto. eexists _, _; intuition eauto using concat_app; metrics'. }
+    { right; left; eauto. eexists _; intuition eauto using concat_app; metrics'. }
 
     Unshelve.
     all : eexists; split; [ eauto | ].
@@ -282,6 +308,7 @@ Section WithParameters.
       eexists nil; split; cbv [mmio_trace_abstraction_relation]; eauto using List.Forall2_nil.
       right; repeat split; eauto.
       { intros (?&?&?). ZnWords.ZnWords. }
+      2,3,4,5: solve [metrics'].
       intros HX; rewrite ?word.unsigned_of_Z in HX; inversion HX. }
 
     seplog_use_array_load1 H 12.
@@ -337,6 +364,7 @@ Section WithParameters.
       all : try eassumption.
       1: blia.
       2: eapply word.unsigned_of_Z.
+      2,3,4,5: solve [intuition metrics'].
       cbv [gpio_set one existsl concat].
       eexists _, ([_]), ([_]); repeat split; repeat f_equal.
       eapply word.unsigned_inj.
@@ -352,7 +380,7 @@ Section WithParameters.
       clear; Z.div_mod_to_equations; blia. }
 
     (* parse failures *)
-    all : right; repeat split; eauto.
+    all : right; repeat split; eauto; try solve [metrics'].
     2,4: rewrite word.unsigned_of_Z; intro X; inversion X.
     all : intros (?&?&?&?&?).
     { rewrite word.unsigned_of_Z in H6; contradiction. }
@@ -392,7 +420,9 @@ Section WithParameters.
          exists RECV, (bytes (word.add buf i) RECV * R) M /\
          List.length RECV = List.length scratch /\
          exists iol, T = iol ++ t /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\
-         (word.unsigned ERR = 0 /\ lan9250_readpacket _ RECV ioh \/
+         (word.unsigned ERR = 0 /\ lan9250_readpacket _ RECV ioh /\
+           ((MC - mc <= (5+7*length RECV)*mc_spi_xchg_const + (length ioh)*mc_spi_mul))%metricsH
+          \/
           word.unsigned ERR = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout _) ioh ) )
       )
       _ _ _ _ _ _ _ _);
@@ -502,6 +532,7 @@ Section WithParameters.
           { eapply List.Forall2_app; eauto.  }
           rewrite HList.tuple.to_list_of_list.
           destruct H29; [left|right]; repeat (straightline || split || eauto using TracePredicate.any_app_more).
+          2,3,4,5: intuition metrics'.
           eapply TracePredicate.concat_app; eauto.
           unshelve erewrite (_ : LittleEndianList.le_combine _ = word.unsigned x10); rewrite ?word.of_Z_unsigned; try solve [intuition idtac].
           {
@@ -512,6 +543,7 @@ Section WithParameters.
       { eexists; split; eauto. split; eauto. exists nil; split; eauto.
         eexists; split; [constructor|].
         left. split; eauto.
+        split. 2:intuition metrics'.
         enough (Hlen : length x7 = 0%nat) by (destruct x7; try solve[inversion Hlen]; exact eq_refl).
         PreOmega.zify.
         rewrite H13.
@@ -537,7 +569,7 @@ Section WithParameters.
         cbn [List.firstn array] in *.
         replace (word.unsigned (word.of_Z 1521)) with 1521 in *
           by (rewrite word.unsigned_of_Z; exact eq_refl).
-        eexists _, _; repeat split.
+        eexists _, _; Tactics.ssplit.
         { cbn [seps] in *. SeparationLogic.ecancel_assumption. }
         { generalize dependent x2. generalize dependent x6. intros.
           destruct H5; repeat straightline; try contradiction.
@@ -552,9 +584,9 @@ Section WithParameters.
           transitivity (word.unsigned num_bytes); [ZnWords|exact eq_refl]. } }
         { pose proof word.unsigned_range num_bytes.
           rewrite List.length_skipn. blia. }
-        rewrite H11, List.length_firstn_inbounds, ?Znat.Z2Nat.id; cbn [List.skipn].
-        all: try ZnWords.
-        }
+        { rewrite H11, List.length_firstn_inbounds, ?Znat.Z2Nat.id; cbn [List.skipn].
+          all: try ZnWords. }
+        { intuition metrics'; ZnWords. } }
       { repeat match goal with H : _ |- _ => rewrite H; intro HX; solve[inversion HX] end. }
       { progress trans_ltu;
         progress replace (word.unsigned (word.of_Z 1521)) with 1521 in * by
@@ -610,21 +642,21 @@ Section WithParameters.
 
   Import metric_SPI.
 
-  Definition function_impls := map.of_list
+  Definition funcs :=
     &[,lightbulb_init; lan9250_init; lan9250_wait_for_boot; lan9250_mac_write;
     lightbulb_loop; lightbulb_handle; recvEthernet;  lan9250_writeword; lan9250_readword;
     spi_xchg; spi_write; spi_read].
 
   Local Ltac specapply s := eapply s; [reflexivity|..].
 
-  Lemma link_lightbulb_loop : spec_of_lightbulb_loop function_impls.
+  Lemma link_lightbulb_loop : spec_of_lightbulb_loop (map.of_list funcs).
   Proof.
     specapply lightbulb_loop_ok;
     (specapply recvEthernet_ok || specapply lightbulb_handle_ok);
         specapply lan9250_readword_ok; specapply spi_xchg_ok;
         (specapply spi_write_ok || specapply spi_read_ok).
   Qed.
-  Lemma link_lightbulb_init : spec_of_lightbulb_init function_impls.
+  Lemma link_lightbulb_init : spec_of_lightbulb_init (map.of_list funcs).
   Proof.
     specapply lightbulb_init_ok; specapply lan9250_init_ok;
     try (specapply lan9250_wait_for_boot_ok || specapply lan9250_mac_write_ok);

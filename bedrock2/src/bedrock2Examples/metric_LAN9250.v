@@ -777,7 +777,7 @@ Section WithParameters.
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ spi_timeout) ioh)
         (word.unsigned err = 0 /\ lan9250_send bs ioh /\
-        (MC - mc <= ((2+l) * 50 + 40) * mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul))%metricsH
+        (MC - mc <= (50+6*l)* mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul))%metricsH
     }.
 
   Import symmetry autoforward.
@@ -827,7 +827,7 @@ Section WithParameters.
         exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned ERR <> 0 /\ (any +++ spi_timeout) ioh)
         (word.unsigned ERR = 0 /\ lightbulb_spec.lan9250_writepacket _ bs ioh /\
-        (MC - mc <= (l+1) * 50 * mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH)
+        (MC - mc <= (1+6*l) * mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH)
          )
       ) _ (Z.lt_wf 0) _ _ _ _ _ _);
     (* TODO wrap this into a tactic with the previous refine? *)
@@ -895,7 +895,7 @@ Section WithParameters.
       1 : ZnWords.
       split; repeat t; [ ZnWords .. |].
       intuition idtac; repeat t.
-      2:{ metrics'; intuition idtac; metrics'.
+      2: solve [metrics'; try ZnWords].
       do 4 (destruct bs as [|?b bs]; cbn [List.length] in *; try (exfalso; ZnWords));
         cbn [List.skipn lan9250_writepacket] in *; rewrite app_nil_r.
       eauto using concat_app. }
@@ -916,7 +916,9 @@ Section WithParameters.
     fnspec! "lan9250_tx" p l / bs ~> err,
     { requires t m mc := m =*> bytes p bs ∧ l = length bs :> Z ∧ l mod 4 = 0 :> Z;
       ensures T M MC := M = m ∧ ∃ t', T = t' ++ t ∧ only_mmio_satisfying (fun h =>
-       (0 <> err ∧ (any+++spi_timeout) h) ∨ (0 = err ∧ lan9250_send bs h)) t' }.
+       ((0 <> err ∧ (any+++spi_timeout) h) ∨ (0 = err ∧ lan9250_send bs h ∧ 
+       MC - mc <= (50+6*l)*mc_spi_xchg_const + (length h)*mc_spi_mul))%metricsH) t' 
+    }.
 
   Lemma lan9250_tx_ok' : program_logic_goal_for_function! lan9250_tx.
   Proof.
@@ -932,6 +934,6 @@ Section WithParameters.
            | H : _ /\ _ |- _ =>  case H as []
            end; subst.
     repeat ((eexists; eauto; []) || (split; eauto; [])).
-    case H10 as []; [left|right]; split; intuition try congruence.
+    intuition congruence.
   Qed.
 End WithParameters.

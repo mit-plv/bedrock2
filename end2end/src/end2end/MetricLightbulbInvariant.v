@@ -54,8 +54,25 @@ Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 Lemma ml_ok : MemoryLayout.MemoryLayoutOk ml. Proof. split; cbv; trivial; inversion 1. Qed.
 
 Definition init := func! { lightbulb_init() } .
-Definition loop := func! { unpack! _err = lightbulb_loop() } .
-Definition funcs := &[,init; loop] ++ map.tuples function_impls.
+Definition loop := func! { unpack! _err = lightbulb_loop($buffer_addr) } .
+Definition funcs := &[,init; loop] ++ metric_lightbulb.funcs.
+Import metric_LAN9250 metric_SPI.
+Local Ltac specapply s := eapply s; [reflexivity|..].
+Lemma link_lightbulb_loop : spec_of_lightbulb_loop (map.of_list funcs).
+Proof.
+  specapply lightbulb_loop_ok;
+  (specapply recvEthernet_ok || specapply lightbulb_handle_ok);
+      specapply lan9250_readword_ok; specapply spi_xchg_ok;
+      (specapply spi_write_ok || specapply spi_read_ok).
+Qed.
+Lemma link_lightbulb_init : spec_of_lightbulb_init (map.of_list funcs).
+Proof.
+  specapply lightbulb_init_ok; specapply lan9250_init_ok;
+  try (specapply lan9250_wait_for_boot_ok || specapply lan9250_mac_write_ok);
+  (specapply lan9250_readword_ok || specapply lan9250_writeword_ok);
+      specapply spi_xchg_ok;
+      (specapply spi_write_ok || specapply spi_read_ok).
+Qed.
 
 Derive lightbulb_compiler_result SuchThat
   (ToplevelLoop.compile_prog (string_keyed_map:=@SortedListString.map) MMIO.compile_ext_call ml funcs
@@ -81,10 +98,18 @@ Proof. vm_cast_no_check (eq_refl true). Qed.
 Require Import compiler.CompilerInvariant.
 Require Import compiler.NaiveRiscvWordProperties.
 Import TracePredicate TracePredicateNotations metric_SPI lightbulb_spec.
+Import bedrock2.MetricLogging bedrock2.MetricCosts MetricProgramLogic.Coercions.
+
+Definition lightbulb_loop_cost io_wait : MetricLog :=
+  ((60+7*1520)*mc_spi_xchg_const + lightbulb_handle_cost + io_wait*mc_spi_mul).
+
+Definition goodHlTrace n : list _ -> Prop :=
+  BootSeq _ +++
+  multiple (EX b, Recv _ b +++ LightbulbCmd _ b|||RecvInvalid _|||PollNone _) n.
 
 Definition goodObservables iol (mc : MetricLogging.MetricLog) :=
-  exists ioh, metric_SPI.mmio_trace_abstraction_relation ioh iol /\
-                               goodHlTrace _ ioh.
+  exists n ioh, metric_SPI.mmio_trace_abstraction_relation ioh iol /\
+  goodHlTrace n ioh /\ (mc <= n*lightbulb_loop_cost (length ioh))%metricsH.
 
 Definition lightbulb_spec : ProgramSpec := {|
   datamem_start := MemoryLayout.heap_start ml;
@@ -96,18 +121,17 @@ Definition lightbulb_spec : ProgramSpec := {|
 |}.
 
 Import ToplevelLoop GoFlatToRiscv regs_initialized LowerPipeline.
-Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 Import bedrock2.Map.Separation. Local Open Scope sep_scope.
 Require Import bedrock2.ReversedListNotations.
 Local Notation run_one_riscv_instr := (mcomp_sat (run1 Decode.RV32IM)).
 Local Notation RiscvMachine := MetricRiscvMachine.
 Local Notation run1 := (mcomp_sat (run1 Decode.RV32IM)).
 Implicit Types mach : RiscvMachine.
-Local Coercion word.unsigned : word.rep >-> Z.
 
 Definition initial_conditions mach :=
   code_start ml = mach.(getPc) /\
   [] = mach.(getLog) /\
+  EmptyMetricLog = mach.(getMetrics) /\
   mach.(getNextPc) = word.add mach.(getPc) (word.of_Z 4) /\
   regs_initialized (getRegs mach) /\
   (forall a : word32, code_start ml <= a < code_pastend ml -> In a (getXAddrs mach)) /\
@@ -134,23 +158,44 @@ Proof.
   1,3: exact eq_refl.
   1,2: cbv [hl_inv init loop]; cbn [fst snd]; intros; eapply MetricWeakestPreconditionProperties.sound_cmd.
   all : repeat MetricProgramLogic.straightline.
+  { eapply MetricSemantics.weaken_call; [eapply link_lightbulb_init|cbv beta]. admit. }
+  { cbv [isReady lightbulb_spec ExprImpEventLoopSpec.goodObservables goodObservables] in *.
+    destruct H6 as (?&?&?&?).
+    eapply MetricSemantics.weaken_call; [eapply link_lightbulb_loop|cbv beta]; eauto.
+    intros.
+    Simp.simp.
+    repeat MetricProgramLogic.straightline.
+    split; eauto.
+    unfold existsl, Recv, LightbulbCmd in *.
+    destruct H10p1p1p1; Simp.simp; (eexists (S n), _; Tactics.ssplit;
+      [eapply Forall2_app; eauto|..]).
+    all: try (progress unfold goodHlTrace;
+    (*
+    { unfold "+++" in H7p2|-*. left. left. Simp.simp.
+      unfold Recv. eexists _, _, _; Tactics.ssplit; eauto. }
+    destruct H7; Simp.simp.
+    { left. right. left. left. eauto. }
+    destruct H7; Simp.simp.
+    { right. unfold PollNone. eauto. }
+    destruct H7; Simp.simp.
+    { left. right. left. right. eauto. }
+    left. right. right. eauto. }
+     *) admit).
+    { rewrite Nat2Z.inj_succ, <-Z.add_1_l.
+  Local Ltac metrics' :=
+    repeat match goal with | H := _ : MetricLog |- _ => subst H end;
+    cost_unfold;
+    repeat match goal with
+    | H: context [?x] |- _ => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
+      progress cbv beta delta [x] in *
+    | |- context [?x] => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
+      progress cbv beta delta [x] in *
+    end;
+    cbn -[Z.add Z.mul Z.of_nat] in *;
+    rewrite ?List.length_app, ?List.length_cons, ?List.length_nil, ?List.length_firstn, ?LittleEndianList.length_le_split in *;
+    flatten_MetricLog; repeat unfold_MetricLog; repeat simpl_MetricLog; try blia.
+    metrics'.
 
-  (*
-MetricWeakestPrecondition.cmd (map.of_list funcs)
-  (snd init) [] m0 map.empty mc0
-  (fun (t : trace) (m : SortedListWord.map word32 Init.Byte.byte)
-     (_ : SortedListString.map word32) (mc : MetricLogging.MetricLog) =>
-   isReady lightbulb_spec t m /\ goodObservables lightbulb_spec t mc)
-
-========================= (2 / 2)
-
-MetricWeakestPrecondition.cmd (map.of_list funcs)
-  (snd loop) t m l mc
-  (fun (t0 : trace) (m0 : SortedListWord.map word32 Init.Byte.byte)
-     (_ : SortedListString.map word32) (mc0 : MetricLogging.MetricLog) =>
-   isReady lightbulb_spec t0 m0 /\
-   goodObservables lightbulb_spec t0 (eventLoopJumpMetrics mc0))
-   *)
 Admitted.
 
 Import OmniSmallstepCombinators.
