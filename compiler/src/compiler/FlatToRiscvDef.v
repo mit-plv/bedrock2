@@ -588,21 +588,21 @@ Section FlatToRiscv1.
                   fun _ =>
                     match k with
                     | leak_word addr :: k' =>
-                        f [leak_word addr] (rk_so_far ++ leakage_events' [leak_load sz addr])
+                        f [leak_word addr] (rk_so_far ++ leakage_events' [leak_load sz (word.sub addr (word.of_Z o) (*this is silly to add it and then subtract it off again.... the alternative is to have Flattening trace transformation function not be the identity, though*))])
                     | _ => (nil, word.of_Z 0)
                     end
               | SStore sz x y o =>
                   fun _ =>
                     match k with
                     | leak_word addr :: k' =>
-                        f [leak_word addr] (rk_so_far ++ leakage_events' [leak_store sz addr])
+                        f [leak_word addr] (rk_so_far ++ leakage_events' [leak_store sz (word.sub addr (word.of_Z o))])
                     | _ => (nil, word.of_Z 0)
                     end
               | SInlinetable sz x t i =>
                   fun _ =>
                     match k with
                     | leak_word i' :: k' =>
-                        f [leak_word i'] (rk_so_far ++ leakage_events' [leak_Jal; leak_Add; leak_load sz (word.add (word.add (word.add program_base (word.of_Z mypos)) (word.of_Z 4)) i')])
+                        f [leak_word i'] (rk_so_far ++ leakage_events_rel mypos [[ Jal x (4 + Z.of_nat (length (compile_byte_list t)) * 4)]] [leak_Jal] ++ leakage_events_rel (mypos + (4 + Z.of_nat (length (compile_byte_list t)) * 4)) [[Add x x i; compile_load sz x x 0 ]] [leak_Add; leak_load sz (word.add (word.add (word.add program_base (word.of_Z mypos)) (word.of_Z 4)) i')])
                     | _ => (nil, word.of_Z 0)
                     end
               | SStackalloc x n body =>

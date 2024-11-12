@@ -233,10 +233,14 @@ Section Proofs.
     (* `exists stack_trash frame_trash, ...` from goodMachine *)
     | |- exists _ _, _ = _ /\ _ = _ /\ (_ * _)%sep _ =>
       eexists _, _; (split; [|split]); [..|wcancel_assumption]; blia
+    | |- exists _ _, _ => do 2 eexists; split; [align_trace|]; split; [reflexivity|]; intros;
+                   rewrite fix_step; simpl; repeat rewrite <- app_assoc; simpl;
+                   cbn [leakage_events_rel leakage_events];
+                   try solve [repeat solve_word_eq word_ok || f_equal]
     | |- _ => solve [ solve_valid_machine word_ok ]
     | H:subset (footpr _) _
       |- subset (footpr _) _ => eapply rearrange_footpr_subset; [ exact H | solve [ wwcancel ] ]
-    | |- _ => solve [ rewrite ?of_list_list_union in *; eauto 8 with map_hints ]
+    | |- _ => solve [ rewrite ?of_list_list_union in *; eauto 8 with map_hints ]          
     | |- _ => idtac
   end.
 
@@ -1772,13 +1776,12 @@ Section Proofs.
       }
       inline_iff1.
       run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
-
-
+      
     - idtac "Case compile_stmt_correct/SStore".
       inline_iff1.
       simpl_MetricRiscvMachine_get_set.
       unfold Memory.store, Memory.store_Z in *.
-      change Memory.store_bytes with (Platform.Memory.store_bytes(word:=word)) in *.
+      change store_bytes with (Platform.Memory.store_bytes(word:=word)) in H1.
       match goal with
       | H: Platform.Memory.store_bytes _ _ _ _ = _ |- _ =>
         unshelve epose proof (store_bytes_frame H _) as P; cycle 2
@@ -1876,13 +1879,17 @@ Section Proofs.
         Z.to_euclidean_division_equations. blia.
       }
 
+      assert (sp_val :pick_sp1 k = p_sp + !(bytes_per_word * #(Datatypes.length remaining_frame))).
+      { specialize (H14 nil). simpl in H14. rewrite H14.
+        rewrite fix_step. simpl. simpl_addrs. reflexivity. }
+      rewrite sp_val in *. clear sp_val.
+
       eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
       + eapply IHexec with (g := {| p_sp := p_sp;
                                     rem_framewords := Z.of_nat (List.length remaining_frame); |})
                            (program_base := program_base)
                            (e_impl := e_impl)
                            (pos := (pos + 4)%Z)
-                           (a := p_sp + !bytes_per_word * !#(Datatypes.length remaining_frame))
                            (mStack := mStack)
                            (mCombined := map.putmany mSmall mStack);
           simpl_MetricRiscvMachine_get_set;
@@ -1890,16 +1897,20 @@ Section Proofs.
           rewrite ?@length_save_regs, ?@length_load_regs in *;
           simpl_word_exprs word_ok;
           ssplit;
-          cycle -5.
+          cycle -6.
         { reflexivity. }
         { eassumption. }
         { exists stack_trash, remaining_frame. ssplit. 1,2: reflexivity.
           wcancel_assumption. }
         { reflexivity. }
         { assumption. }
+        { intros. Search pick_sp1. rewrite associate_one_left. rewrite H14.
+          Fail Timeout 1 simpl_rev. (*why*)
+          rewrite fix_step. simpl. rewrite rev_app_distr. simpl. reflexivity. }
         { match goal with
           | |- ?G => let t := type of Ab in replace G with t; [exact Ab|f_equal]
           end.
+          1: solve_word_eq word_ok.
           rewrite @coqutil.Datatypes.List.length_flat_map with (n := Z.to_nat bytes_per_word).
           - simpl_addrs. rewrite !Z2Nat.id by blia. rewrite <- BPW. rewrite <- Z_div_exact_2; blia.
           - clear. intros. eapply LittleEndianList.length_le_split.
@@ -1917,6 +1928,7 @@ Section Proofs.
         { safe_sidecond. }
         { safe_sidecond. }
         { safe_sidecond. }
+        { reflexivity. }
         { etransitivity. 1: eassumption. wwcancel. }
         { match goal with
           | |- map.extends (map.put _ ?k ?v1) (map.put _ ?k ?v2) => replace v1 with v2
