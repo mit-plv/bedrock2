@@ -49,6 +49,10 @@ Require Import compiler.FitsStack.
 Require Import compiler.Pipeline.
 Require Import compiler.LowerPipeline.
 Require Import compiler.ExprImpEventLoopSpec.
+Require Import coqutil.Semantics.OmniSmallstepCombinators.
+Lemma runsTo_is_eventually[State: Type](step: State -> (State -> Prop) -> Prop):
+  forall initial P, runsToNonDet.runsTo step initial P <-> eventually step P initial.
+Proof. intros. split; induction 1; try (econstructor; solve [eauto]). Qed.
 
 Global Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
@@ -96,11 +100,17 @@ Section Pipeline1.
   Context (ml: MemoryLayout)
           (mlOk: MemoryLayoutOk ml).
 
+
+  Definition run1 st post := (mcomp_sat (run1 iset) st (fun _ => post)).
+  Notation always := (always run1).
+  Notation eventually := (eventually run1).
+  Notation successively := (successively run1).
+
   Let init_sp := word.unsigned ml.(stack_pastend).
 
   Local Notation source_env := (list (string * (list string * list string * Syntax.cmd))).
 
-  (* All riscv machine code, layed out from low to high addresses: *)
+  
   (* 1) Initialize stack pointer *)
   Let init_sp_insts := FlatToRiscvDef.compile_lit iset RegisterNames.sp init_sp.
   Let init_sp_pos := ml.(code_start).
@@ -117,7 +127,8 @@ Section Pipeline1.
   (* 5) Code of the compiled functions *)
   Let functions_pos := word.add backjump_pos (word.of_Z 4).
 
-  Definition compile_prog(prog: source_env): result (list Instruction * list (string * Z) * Z) :=
+  Context (prog : source_env).
+  Definition compile_prog: result (list Instruction * list (string * Z) * Z) :=
     '(functions_insts, positions, required_stack_space) <- compile compile_ext_call prog;;
     'init_fun_pos <- match map.get (map.of_list positions) "init" with
                      | Some p => Success p
@@ -132,23 +143,51 @@ Section Pipeline1.
     let positions := List.map (fun '(name, p) => (name, (adjust p))) positions in
     Success (to_prepend ++ functions_insts, positions, required_stack_space).
 
-  Context (spec: ProgramSpec).
+  Context
+  (datamem_start: word)
+  (datamem_pastend: word)
+  (loop_trace : Semantics.trace -> Prop)
+  (loop_cost : MetricLog)
+  (* state invariant which holds at the beginning (and end) of each loop iteration *)
+  (isReady: Semantics.trace -> mem -> Prop).
 
+  Definition eventLoopJumpMetrics mc := addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 mc)).
+
+  Local Set Warnings "-cannot-define-projection".
+
+  Let init_f := "init"%string.
+  Let loop_f := "loop"%string.
+  Record ProgramSatisfiesSpec
+         : Prop :=
+  {
+    funs_valid: valid_src_funs prog = true;
+    init_code: Syntax.cmd.cmd;
+    get_init_code: map.get (map.of_list prog : Semantics.env) init_f = Some (nil, nil, init_code);
+    init_code_correct: forall m0 mc0,
+        mem_available datamem_start datamem_pastend m0 ->
+        MetricSemantics.exec (map.of_list prog) init_code nil m0 map.empty mc0 (fun t m l mc => isReady t m);
+    loop_body: Syntax.cmd.cmd;
+    get_loop_body: map.get (map.of_list prog : Semantics.env) loop_f = Some (nil, nil, loop_body);
+    loop_body_correct: forall t m l mc,
+        isReady t m ->
+        MetricSemantics.exec (map.of_list prog) loop_body t m l mc (fun t m l mc' => isReady t m /\ loop_trace t /\ metricsLeq (loop_cost) (MetricsToRiscv.lowerMetrics (MetricLogging.metricsSub mc' mc)));
+  }.
+
+  Context (HP:ProgramSatisfiesSpec).
   (* Holds each time before executing the loop body *)
-  Definition ll_good(done: bool)(mach: MetricRiscvMachine): Prop :=
-    exists (prog: source_env)
-           (functions_instrs: list Instruction) (positions: list (string * Z))
+  Definition ll_good(mach: MetricRiscvMachine): Prop :=
+    exists (functions_instrs: list Instruction) (positions: list (string * Z))
            (required_stack_space: Z)
            (init_fun_pos loop_fun_pos: Z) (R: mem -> Prop),
       compile compile_ext_call prog = Success (functions_instrs, positions, required_stack_space) /\
       required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
-      ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
+      True /\
       map.get (map.of_list positions) "init"%string = Some init_fun_pos /\
       map.get (map.of_list positions) "loop"%string = Some loop_fun_pos /\
       exists mH,
-        isReady spec mach.(getLog) mH /\
-        goodObservables spec mach.(getLog) (MetricsToRiscv.raiseMetrics ((if done then RiscvEventLoop.eventLoopJumpMetrics else id) mach.(getMetrics))) /\
-        mach.(getPc) = word.add loop_pos (word.of_Z (if done then 4 else 0)) /\
+        isReady mach.(getLog) mH /\
+        True /\
+        mach.(getPc) = loop_pos /\
         machine_ok functions_pos ml.(stack_start) ml.(stack_pastend) functions_instrs mH R
                    (program iset init_sp_pos (init_sp_insts ++
                                               init_insts init_fun_pos ++
@@ -156,20 +195,20 @@ Section Pipeline1.
                                               backjump_insts))
                    mach.
 
-  Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_good iset.
-
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
+  Context (_dm : (datamem_start) = ml.(heap_start)).
+  Context (_dme : (datamem_pastend) = ml.(heap_pastend)). 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
-    exists (srcprog: source_env)
+    exists
            (instrs: list Instruction) positions (required_stack_space: Z) (R: mem -> Prop),
-      ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
-      spec.(datamem_start) = ml.(heap_start) /\
-      spec.(datamem_pastend) = ml.(heap_pastend) /\
-      compile_prog srcprog = Success (instrs, positions, required_stack_space) /\
+      True /\
+      True /\
+      True /\
+      compile_prog = Success (instrs, positions, required_stack_space) /\
       required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       word.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
         word.unsigned ml.(code_pastend) /\
@@ -224,13 +263,18 @@ Section Pipeline1.
 
   Local Arguments map.get : simpl never.
 
-  Lemma establish_ll_inv: forall (initial: MetricRiscvMachine),
+  Lemma always_eventually_observables: forall initial,
       initial_conditions initial ->
-      ll_inv initial.
+      eventually (successively (fun s s' =>
+        eventually ll_good s' /\
+        metricsLeq (metricsSub s.(getMetrics) s'.(getMetrics)) loop_cost
+      )) initial.
   Proof.
-    unfold initial_conditions.
-    intros. fwd.
-    unfold ll_inv, runsToGood_Invariant. split; [|assumption].
+    intros * IC.
+    eapply eventually_trans. { instantiate (1:=ll_good).
+    unfold initial_conditions in *.
+    fwd.
+    eapply runsTo_is_eventually.
     destruct_RiscvMachine initial.
     match goal with
     | H: context[ProgramSatisfiesSpec] |- _ => rename H into sat
@@ -238,7 +282,7 @@ Section Pipeline1.
     pose proof sat.
     destruct sat.
     match goal with
-    | H: compile_prog srcprog = Success _ |- _ =>
+    | H: compile_prog = Success _ |- _ =>
         pose proof H as CP; unfold compile_prog, compile in H
     end.
     remember instrs as instrs0.
@@ -298,7 +342,7 @@ Section Pipeline1.
                                   compile_ext_call_length_ignores_positions as P.
       unfold runsTo in P.
       specialize P with (argvals := [])
-                        (post := fun t' m' retvals mc' => isReady spec t' m' /\ goodObservables spec t' mc')
+                        (post := fun t' m' retvals mc' => isReady t' m')
                         (fname := "init"%string).
       edestruct P as (init_rel_pos & G & P'); clear P; cycle -1.
       1: eapply P' with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R).
@@ -309,10 +353,10 @@ Section Pipeline1.
         do 4 eexists. split. 1: eassumption. split. 1: reflexivity.
         eapply ExprImp.weaken_exec.
         - refine (init_code_correct _ _ _).
-          replace (datamem_start spec) with (heap_start ml) by congruence.
-          replace (datamem_pastend spec) with (heap_pastend ml) by congruence.
+          replace (datamem_start) with (heap_start ml) by congruence.
+          replace (datamem_pastend) with (heap_pastend ml) by congruence.
           exact HMem.
-        - cbv beta. intros * HP. exists []. split. 1: reflexivity. exact HP.
+        - cbv beta. intros * HP. exists []. split. 1: reflexivity. trivial.
       }
       11: { unfold compile. rewrite_match. reflexivity. }
       all: try eassumption.
@@ -395,16 +439,6 @@ Section Pipeline1.
              | |- _ => reflexivity
              end.
       + unfold compile. rewrite_match. reflexivity.
-      + clear H0p4.
-        clear H0p7.
-        move H0p1p2 at bottom.
-        eapply le_sub_mono_proj_l2r in H0p1p0; move H0p1p0 at bottom.
-        (*
-      H0p1p2 : goodObservables spec final_log mcH'
-      H0p1p0 : (MetricsToRiscv.raiseMetrics final_metrics <= mcH')%metricsH
-      ========================= (1 / 1)
-      goodObservables spec final_log (MetricsToRiscv.raiseMetrics final_metrics)
-         *) admit.
       + destruct_RiscvMachine final. subst.
         subst loop_pos init_pos.
         solve_word_eq word_ok.
@@ -420,66 +454,20 @@ Section Pipeline1.
         * eapply iff1ToEq.
           unfold init_sp_insts, init_insts, loop_insts, backjump_insts.
           wwcancel.
-  Admitted.
-
-  Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
-      ll_inv st -> GoFlatToRiscv.mcomp_sat (run1 iset) st ll_inv.
-  Proof.
-    intros st. unfold ll_inv.
-    eapply runsToGood_is_Invariant with (jump := - 4) (pc_start := loop_pos)
-                                        (pc_end := word.add loop_pos (word.of_Z 4)).
-    - intro D.
-      apply (f_equal word.unsigned) in D.
-      rewrite word.unsigned_add in D.
-      rewrite word.unsigned_of_Z in D.
-      unfold word.wrap in D.
-      rewrite (Z.mod_small 4) in D; cycle 1. {
-        simpl. pose proof four_fits. blia.
-      }
-      rewrite Z.mod_eq in D by apply pow2width_nonzero.
-      let ww := lazymatch type of D with context [(2 ^ ?ww)] => ww end in set (w := ww) in *.
-      progress replace w with (w - 2 + 2) in D at 3 by blia.
-      rewrite Z.pow_add_r in D by (subst w; destruct width_cases as [E | E]; simpl in *; blia).
-      change (2 ^ 2) with 4 in D.
-      match type of D with
-      | ?x = ?x + 4 - ?A * 4 * ?B => assert (A * B = 1) as C by blia
-      end.
-      apply Z.eq_mul_1 in C.
-      destruct C as [C | C];
-        subst w; destruct width_cases as [E | E]; simpl in *; rewrite E in C; cbv in C; discriminate C.
-    - intros.
-      unfold ll_good, machine_ok in *.
-      fwd.
-      etransitivity. 1: eassumption.
-      destruct done; solve_word_eq word_ok.
-    - (* Show that ll_ready (almost) ignores pc, nextPc, and metrics *)
-      intros.
-      unfold ll_good, machine_ok in *.
-      fwd.
-      destr_RiscvMachine state.
-      repeat match goal with
-             | |- exists _, _  => eexists
-             | |- _ /\ _ => split
-             | |- _ => progress cbv beta iota
-             | |- _ => eassumption
-             | |- _ => reflexivity
-             end.
-      + cbn. solve_word_eq word_ok.
-      + cbn. destruct mlOk. subst. simpl in *. subst loop_pos init_pos. solve_divisibleBy4.
-    - unfold ll_good, machine_ok.
-      intros. fwd. assumption.
-    - cbv. intuition discriminate.
-    - solve_word_eq word_ok.
-    - unfold ll_good, machine_ok.
-      intros. fwd. split.
-      + eexists. subst loop_pos init_sp_pos init_sp_insts init_pos backjump_pos backjump_insts.
-        wcancel_assumption.
-      + eapply shrink_footpr_subset. 1: eassumption.
-        subst loop_pos init_sp_pos init_sp_insts init_pos backjump_pos backjump_insts.
-        wwcancel.
+  } {
+    clear dependent initial.
+    intros initial; intros.
+    eapply eventually_done, mk_successively with (invariant:=ll_good); trivial.
+    clear dependent initial.
+    intros initial; intros.
+    eapply eventually_weaken with (P:=fun s' => (ll_good s' /\
+      (getMetrics initial - getMetrics s' <= loop_cost)%metricsL)).
+  2:solve[intuition eauto using eventually_done].
+    eapply runsTo_is_eventually.
     - intros. destruct_RiscvMachine initial. unfold ll_good, machine_ok in H. cbn in *. fwd.
       (* call loop function (execute the Jal that jumps there) *)
-      eapply runsToStep. {
+      eapply runsToStep.
+       {
         eapply RunInstruction.run_Jal; cbn.
         3: reflexivity.
         3: eassumption.
@@ -496,27 +484,23 @@ Section Pipeline1.
         { assumption. }
       }
       cbn.
-      intros. destruct_RiscvMachine mid. fwd.
+      intros mid; intros. destruct_RiscvMachine mid. fwd.
       (* use compiler correctness for loop body *)
       unfold ll_good in *. fwd.
       match goal with
-      | H: ProgramSatisfiesSpec _ _ _ _ |- _ => pose proof H as sat; destruct H
+      | H: ProgramSatisfiesSpec |- _ => pose proof H as sat; destruct H
       end.
       unfold hl_inv in loop_body_correct.
       specialize loop_body_correct with (l := map.empty).
-      lazymatch goal with
-      | H: context[@word.add ?w ?wo ?x (word.of_Z 0)] |- _ =>
-        replace (@word.add w wo x (word.of_Z 0)) with x in H
-      end.
-      2: solve_word_eq word_ok.
       subst.
+      eapply runsTo_trans_cps. {
       eapply runsTo_weaken.
       + pose proof compiler_correct compile_ext_call compile_ext_call_correct
                                     compile_ext_call_length_ignores_positions as P.
         unfold runsTo in P.
         specialize P with (argvals := [])
                           (fname := "loop"%string)
-                          (post := fun t' m' retvals mc' => isReady spec t' m' /\ goodObservables spec t' (eventLoopJumpMetrics mc')).
+                          (post := fun t' m' retvals mc' => isReady t' m' /\ True).
         edestruct P as (loop_rel_pos & G & P'); clear P; cycle -2.
         2: eapply P' with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R)
                           (ret_addr := word.add loop_pos (word.of_Z 4)); cycle 1.
@@ -526,23 +510,19 @@ Section Pipeline1.
           move loop_body_correct at bottom.
           do 4 eexists. split. 1: eassumption. split. 1: reflexivity.
           eapply ExprImp.weaken_exec.
-          - eapply loop_body_correct; split; eauto. (* spill cost for "calling" loop body *) admit.
-          - cbv beta. intros * HP. exists []. split. 1: reflexivity. exact HP.
+          - eapply loop_body_correct ; eauto.
+          - cbv beta. intros. exists []. split. 1: reflexivity. intuition eauto.
         }
         { apply stack_length_divisible. }
         { replace loop_rel_pos with loop_fun_pos by congruence.
           solve_word_eq word_ok. }
-        { cbn. rewrite map.get_put_same. f_equal. solve_word_eq word_ok. }
+        { cbn. rewrite map.get_put_same. trivial. }
         { subst loop_pos init_pos. destruct mlOk. solve_divisibleBy4. }
         { reflexivity. }
         { reflexivity. }
         { reflexivity. }
-        unfold loop_pos, init_pos.
         unfold machine_ok.
         unfold_RiscvMachine_get_set.
-        repeat match goal with
-               | x := _ |- _ => subst x
-               end.
         repeat match goal with
                | |- exists _, _  => eexists
                | |- _ /\ _ => split
@@ -550,10 +530,13 @@ Section Pipeline1.
                | |- _ => eassumption
                | |- _ => reflexivity
                end.
-        * wcancel_assumption.
-        * eapply rearrange_footpr_subset. 1: eassumption.
+        * repeat match goal with x := _ |- _ => subst x end.
+          wcancel_assumption.
+        * repeat match goal with x := _ |- _ => subst x end.
+          eapply rearrange_footpr_subset. 1: eassumption.
           wwcancel.
-        * match goal with
+        * repeat match goal with x := _ |- _ => subst x end.
+          match goal with
           | H: map.get _ "loop"%string = Some _ |- _ => rename H into GetPos
           end.
           unfold compile, composed_compile, compose_phases, riscvPhase in *. fwd.
@@ -561,7 +544,7 @@ Section Pipeline1.
                  | H: _ |- _ => rewrite map.of_list_tuples in H; move H at bottom
                  end.
           apply_in_hyps (fun_pos_div4 (iset := iset)).
-          remember (word.add
+          progress remember (
                (word.add
                   (word.add (code_start ml)
                      (word.of_Z
@@ -570,55 +553,58 @@ Section Pipeline1.
                            (Datatypes.length
                               (FlatToRiscvDef.compile_lit iset RegisterNames.sp
                                  (word.unsigned (stack_pastend ml)))))))
-                  (word.of_Z 4)) (word.of_Z 0)) as X.
+                  (word.of_Z 4))) as X.
           solve_divisibleBy4.
         * eapply regs_initialized_put. eassumption.
         * rewrite map.get_put_diff by (cbv; discriminate). assumption.
-        * match goal with
-          | H: valid_machine {| getMetrics := ?M |} |- valid_machine {| getMetrics := ?M |} =>
-            eqexact.eqexact H; f_equal; f_equal
-          end.
-          { f_equal. solve_word_eq word_ok. }
-          { solve_word_eq word_ok. }
-          { solve_word_eq word_ok. }
       + cbv beta.
         intros.
         destruct_RiscvMachine final.
-        repeat match goal with
-               | x := _ |- _ => subst x
-               end.
         unfold machine_ok in *. simpl_MetricRiscvMachine_get_set. fwd.
         simpl_MetricRiscvMachine_get_set.
-        repeat match goal with
-               | |- exists _, _  => eexists
-               | |- _ /\ _ => split
-               | |- _ => progress cbv beta iota
-               | |- _ => eassumption
-               | |- _ => reflexivity
-               end.
-        * move Hp5p2 at bottom. eapply le_sub_mono_proj_l2r in Hp5p2.
-          move Hp5p10 at bottom.
-          (*
-Hp5p2 : (MetricsToRiscv.raiseMetrics final_metrics <= mcH')%metricsH
-Hp5p10 : goodObservables spec final_log (eventLoopJumpMetrics mcH')
-========================= (1 / 1)
-goodObservables spec final_log
-  (MetricsToRiscv.raiseMetrics
-     (RiscvEventLoop.eventLoopJumpMetrics final_metrics))
-           *) admit.
-        * wcancel_assumption.
-        * eapply rearrange_footpr_subset. 1: eassumption.
-          wwcancel.
-  Admitted.
+  (*
+        move Hp5p2 at bottom. eapply le_sub_mono_proj_l2r in Hp5p2.
+        move Hp5p10 at bottom.
+   *)
+        
+        eapply runsToStep. {
+          eapply RunInstruction.run_Jal0 with (jimm20:=-4); simpl_MetricRiscvMachine_get_set; trivial; try reflexivity.
 
-  Lemma ll_inv_implies_prefix_of_good: forall st,
-      ll_inv st -> exists suff mc, spec.(goodObservables) (suff ++ st.(getLog)) (MetricsToRiscv.raiseMetrics mc).
-  Proof.
-    unfold ll_inv, runsToGood_Invariant. intros. fwd.
-    eapply extend_runsTo_to_good_trace with (good_observables:=fun t mc => spec.(goodObservables) t (MetricsToRiscv.raiseMetrics mc)).
-    2,3: eassumption.
-    simpl. unfold ll_good, hl_inv, FlatToRiscvCommon.goodMachine.
-    intros. fwd. eassumption.
+          { eapply rearrange_footpr_subset. 1: eassumption.
+            subst loop_pos init_sp_pos init_sp_insts init_pos backjump_pos backjump_insts.
+            set (Datatypes.length _).
+            wwcancel. }
+          { subst loop_pos init_sp_pos init_sp_insts init_pos backjump_pos backjump_insts.
+            use_sep_assumption.
+            set (Datatypes.length _).
+            wwcancel. } }
+
+      simpl. intros. Simp.simp.
+      destruct_RiscvMachine mid.
+      subst.
+      apply runsToDone.
+      ssplit; try assumption; cbn;
+      repeat match goal with
+             |- context [ {| getPc := ?pc |} ] => progress ring_simplify pc
+             | |- exists _, _  => eexists
+             | |- _ /\ _ => split
+             | |- _ => progress cbv beta iota
+             | |- _ => eassumption
+             | |- _ => reflexivity
+             end.
+      { subst loop_pos init_sp_pos init_sp_insts init_pos backjump_pos backjump_insts functions_pos.
+        wcancel_assumption. }
+      { subst loop_pos init_sp_pos init_sp_insts init_pos backjump_pos backjump_insts functions_pos.
+        eapply rearrange_footpr_subset. 1: eassumption.
+        wwcancel. }
+      { match goal with
+        | H: valid_machine ?m1 |- valid_machine ?m2 => replace m2 with m1; [exact H|]
+        end.
+        f_equal. f_equal; solve_word_eq word_ok. }
+      { 
+        Unshelve.
+
+        admit. }
+      }
   Qed.
-
 End Pipeline1.
