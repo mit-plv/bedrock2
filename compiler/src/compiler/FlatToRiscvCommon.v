@@ -301,9 +301,9 @@ Section WithParameters.
   Definition compiles_FlatToRiscv_correctly{BWM: bitwidth_iset width iset}
     (f: pos_map -> Z -> Z -> stmt -> list Instruction)
     (s: stmt): Prop :=
-    forall e_impl_full pick_sp1 initialK initialKL initialTrace initialMH initialRegsH initialMetricsH postH,
+    forall e_impl_full pick_sp1 initialK initialTrace initialMH initialRegsH initialMetricsH postH,
     exec pick_sp1 e_impl_full s initialK initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
-    forall g e_impl e_pos program_base insts xframe (initialL: MetricRiscvMachine) pos cont,
+    forall g e_impl e_pos program_base insts xframe (initialL: MetricRiscvMachine) pos initialKL cont,
     map.extends e_impl_full e_impl ->
     good_e_impl e_impl e_pos ->
     fits_stack g.(rem_framewords) g.(rem_stackwords) e_impl s ->
@@ -318,8 +318,8 @@ Section WithParameters.
                    program iset (word.add program_base (word.of_Z pos)) insts *
                    functions program_base e_pos e_impl)%sep ->
     goodMachine initialTrace initialMH initialRegsH g initialL ->
-    (forall k, pick_sp1 (rev k ++ initialK) = snd (stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
-                                                    (s, k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont))) ->
+    (forall k, pick_sp1 (k ++ initialK) = snd (stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
+                                                    (s, rev k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont))) ->
     runsTo initialL (fun finalL => exists finalK finalTrace finalMH finalRegsH finalMetricsH,
          postH finalK finalTrace finalMH finalRegsH finalMetricsH /\
          finalL.(getPc) = word.add initialL.(getPc)
@@ -328,14 +328,15 @@ Section WithParameters.
                  (union (of_list (modVars_as_list Z.eqb s)) (singleton_set RegisterNames.ra))
                  finalL.(getRegs) /\
          (finalL.(getMetrics) - initialL.(getMetrics) <=
-          lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
-           goodMachine finalTrace finalMH finalRegsH g finalL /\
-           exists kH'',
-             finalK = kH'' ++ initialK /\
-               forall k cont,
-                 stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
-                   (s, rev kH'' ++ k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont) =
-                   cont (rev kH'') (rev (match finalL.(getTrace) with Some x => x | _ => nil end))).
+            lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
+           (exists kH'' finalKL,
+               finalK = kH'' ++ initialK /\
+                 finalL.(getTrace) = Some finalKL /\
+                 forall k cont,
+                   stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
+                     (s, rev kH'' ++ k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont) =
+                     cont (rev kH'') (rev finalKL)) /\
+           goodMachine finalTrace finalMH finalRegsH g finalL).
 
 End WithParameters.
 

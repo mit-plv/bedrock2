@@ -706,7 +706,7 @@ Section FlatToRiscv1.
                         fun _ =>
                           match map.get e_env fname, map.get e fname with
                           | Some (params, rets, fbody), Some fpos =>
-                              let '(beforeBodyInstrs, beforeBodyLeakage, afterBodyInstrs, afterBodyLeakage, mypos', after_fun_pos, sp_val', stackoffset') := fun_leakage_helper fpos sp_val (word.add program_base (word.of_Z (mypos + 4))) rets fbody in
+                              let '(beforeBodyInstrs, beforeBodyLeakage, afterBodyInstrs, afterBodyLeakage, mypos', after_fun_pos, sp_val', stackoffset') := fun_leakage_helper fpos sp_val (word.add (word.add program_base (word.of_Z mypos)) (word.of_Z 4)) rets fbody in
                               stmt_leakage (fbody,
                                   k',
                                   rk_so_far ++ leakage_events_rel mypos [[ Jal ra (fpos - mypos) ]] [leak_Jal] ++ leakage_events_rel fpos beforeBodyInstrs beforeBodyLeakage,
