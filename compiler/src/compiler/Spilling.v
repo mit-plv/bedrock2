@@ -1630,8 +1630,6 @@ Section Spilling.
      Moreover, this lemma will also be used in the pipeline, where phases
      are composed based on the semantics of function calls. *)
 
-  Ltac simpl_rev := repeat (rewrite rev_app_distr in * || rewrite rev_involutive in * || cbn [rev List.app] in * ).
-
   Lemma spill_fun_correct_aux: forall pick_sp2 e1 e2 argnames1 retnames1 body1 argnames2 retnames2 body2,
       spill_fun (argnames1, retnames1, body1) = Success (argnames2, retnames2, body2) ->
       spilling_correct_for e1 e2 body1 ->

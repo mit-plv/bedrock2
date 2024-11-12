@@ -37,6 +37,14 @@ Lemma associate_one_left {A : Type} (x : A) l1 l2 :
   l1 ++ x :: l2 = (l1 ++ (x :: nil)) ++ l2.
 Proof. rewrite <- app_assoc. reflexivity. Qed.
 
+Ltac simpl_rev := repeat (match goal with
+                          | |- context[rev (?a ++ ?b)] => rewrite (rev_app_distr a b)
+                          end
+                          || match goal with
+                            | H: context[rev (?a ++ ?b)] |- _ => rewrite (rev_app_distr a b) in H
+                            end
+                          || rewrite rev_involutive in * || cbn [List.app List.rev] in * ).
+
 Inductive leakage_event {width: Z}{BW: Bitwidth width}{word: word.word width} : Type :=
 | leak_unit
 | leak_bool (b : bool)
