@@ -319,7 +319,7 @@ Section WithParameters.
                    functions program_base e_pos e_impl)%sep ->
     goodMachine initialTrace initialMH initialRegsH g initialL ->
     (forall k, pick_sp1 (k ++ initialK) = snd (stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
-                                                    (s, rev k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont))) ->
+                                                    (s, rev k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont k))) ->
     runsTo initialL (fun finalL => exists finalK finalTrace finalMH finalRegsH finalMetricsH,
          postH finalK finalTrace finalMH finalRegsH finalMetricsH /\
          finalL.(getPc) = word.add initialL.(getPc)

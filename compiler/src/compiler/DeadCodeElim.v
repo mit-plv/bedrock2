@@ -113,10 +113,7 @@ Section WithArguments1.
   Ltac solve_compile_post :=
     do 5 eexists; ssplit;
     [eauto | repeat listset_to_set; agree_on_solve | scost_hammer | align_trace | align_trace |
-      intros; rewrite dfix_step;
-      repeat (match goal with
-              | |- context[rev (?a ++ ?b)] => rewrite (rev_app_distr a b)
-              end || cbn [List.app List.rev]); cbv beta; try reflexivity ].
+      intros; rewrite dfix_step; simpl_rev; cbv beta; try reflexivity ].
                                                              
   Lemma dce_correct_aux :
     forall eH eL pick_spL,
