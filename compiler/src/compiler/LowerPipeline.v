@@ -1,8 +1,10 @@
+Require Import bedrock2.LeakageSemantics.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.MapEauto.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.fwd.
+Require Import riscv.Spec.LeakageOfInstr.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Platform.RiscvMachine.
@@ -132,6 +134,8 @@ Section LowerPipeline.
   Context {word: word.word width} {word_ok: word.ok word}.
   Context {locals: map.map Z word} {locals_ok: map.ok locals}.
   Context {mem: map.map word byte} {mem_ok: map.ok mem}.
+  (*Context (leak_ext_call: pos_map -> Z -> Z -> stmt Z -> list word -> list LeakageEvent).*)
+
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -353,11 +357,12 @@ Section LowerPipeline.
 
   Context {M: Type -> Type}.
   Context {MM: Monads.Monad M}.
-  Context {RVM: Machine.RiscvProgram M word}.
+  Context {RVM: Machine.RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
-  Context {ext_spec: Semantics.ExtSpec}.
+  Context {ext_spec: LeakageSemantics.ExtSpec}.
   Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
+  Context (leak_ext_call: pos_map -> Z -> Z -> stmt Z -> list word -> list LeakageEvent).
 
   Definition machine_ok{BWM: bitwidth_iset width iset}
              (p_functions: word)(stack_start stack_pastend: word)
@@ -384,17 +389,19 @@ Section LowerPipeline.
     = Some vals.
 
   Hypothesis compile_ext_call_correct: forall resvars extcall argvars,
-      compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
+      compiles_FlatToRiscv_correctly compile_ext_call leak_ext_call compile_ext_call
                                      (FlatImp.SInteract resvars extcall argvars).
 
-  Definition riscv_call(p: list Instruction * pos_map * Z)
-             (f_name: string)(t: Semantics.trace)(mH: mem)(argvals: list word)(mc: MetricLog)
-             (post: Semantics.trace -> mem -> list word -> MetricLog -> Prop): Prop :=
+  Definition riscv_call(p: list Instruction * pos_map * Z)(s: word(*p_funcs*) * word (*stack_pastend*) * word (*ret_addr*))
+             (f_name: string)(kL: list LeakageEvent)(t: Semantics.trace)(mH: mem)(argvals: list word)(mc: MetricLog)
+             (post: list LeakageEvent -> Semantics.trace -> mem -> list word -> MetricLog -> Prop): Prop :=
     let '(instrs, finfo, req_stack_size) := p in
+    let '(p_funcs, stack_pastend, ret_addr) := s in
     exists f_rel_pos,
       map.get finfo f_name = Some f_rel_pos /\
-      forall p_funcs stack_start stack_pastend ret_addr Rdata Rexec (initial: MetricRiscvMachine),
+      forall stack_start Rdata Rexec (initial: MetricRiscvMachine),
         map.get initial.(getRegs) RegisterNames.ra = Some ret_addr ->
+        initial.(getTrace) = Some kL ->
         initial.(getLog) = t ->
         raiseMetrics (cost_compile_spec initial.(getMetrics)) = mc ->
         word.unsigned ret_addr mod 4 = 0 ->
@@ -403,11 +410,12 @@ Section LowerPipeline.
         word.unsigned (word.sub stack_pastend stack_start) mod bytes_per_word = 0 ->
         initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
         machine_ok p_funcs stack_start stack_pastend instrs mH Rdata Rexec initial ->
-        runsTo initial (fun final => exists mH' retvals,
+        runsTo initial (fun final => exists kL' mH' retvals,
           arg_regs_contain final.(getRegs) retvals /\
-          post final.(getLog) mH' retvals (raiseMetrics final.(getMetrics)) /\
+          post kL' final.(getLog) mH' retvals (raiseMetrics final.(getMetrics)) /\
           map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
           final.(getPc) = ret_addr /\
+          final.(getTrace) = Some kL' /\
           machine_ok p_funcs stack_start stack_pastend instrs mH' Rdata Rexec final).
 
   Definition same_finfo_and_length:
@@ -479,23 +487,39 @@ Section LowerPipeline.
     cbv beta iota zeta in H.
     exact H.
   Qed.
+  Print fun_leakage. Check riscvPhase. 
 
   Lemma flat_to_riscv_correct: forall p1 p2,
      map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
       riscvPhase p1 = Success p2 ->
-      forall fname t m argvals mcH post,
-      (exists argnames retnames fbody l,
-          map.get p1 fname = Some (argnames, retnames, fbody) /\
-          map.of_list_zip argnames argvals = Some l /\
-          FlatImp.exec PostSpill isRegZ p1 fbody t m l mcH (fun t' m' l' mc' =>
-                         exists retvals, map.getmany_of_list l' retnames = Some retvals /\
-                                         post t' m' retvals mc')) ->
+      forall fname kH kL t m argvals mcH post argnames retnames fbody l,
+      forall (p_funcs stack_pastend ret_addr : word),
+        let '(instrs, finfo, req_stack_size) := p2 in
+        let f_rel_pos :=
+          match map.get finfo fname with
+          | Some f_rel_pos => f_rel_pos
+          | None => 0
+          end in
+        (map.get p1 fname = Some (argnames, retnames, fbody) /\
+           map.of_list_zip argnames argvals = Some l /\
+           FlatImp.exec (pick_sp := fun k => snd (fun_leakage iset compile_ext_call leak_ext_call finfo p1 p_funcs
+                                                 (skipn (length kH) (rev k)) (rev kL) f_rel_pos stack_pastend ret_addr retnames fbody (fun _ rk => (rk, word.of_Z 0))))
+             PostSpill isRegZ p1 fbody kH t m l mcH
+             (fun kH' t' m' l' mc' =>
+                exists retvals, map.getmany_of_list l' retnames = Some retvals /\
+                             post kH' t' m' retvals mc')) ->
       forall mcL,
-      riscv_call p2 fname t m argvals mcL (fun t m a mcL' =>
-        exists mcH', metricsLeq (mcL' - mcL) (mcH' - mcH) /\ post t m a mcH').
+        riscv_call p2 (p_funcs, stack_pastend, ret_addr) fname kL t m argvals mcL
+          (fun kL' t m a mcL' =>
+             exists mcH' kH' kH'',
+               metricsLeq (mcL' - mcL) (mcH' - mcH) /\
+                 kH' = kH'' ++ kH /\
+                 fst (fun_leakage iset compile_ext_call leak_ext_call finfo p1 p_funcs
+                        (rev kH'') (rev kL) f_rel_pos stack_pastend ret_addr retnames fbody (fun _ rk => (rk, word.of_Z 0))) = rev kL' /\
+                 post kH' t m a mcH').
   Proof.
     unfold riscv_call.
-    intros. destruct p2 as ((finstrs & finfo) & req_stack_size).
+    intros p1 p2. destruct p2 as ((finstrs & finfo) & req_stack_size). intros.
     match goal with
     | H: riscvPhase _ = _ |- _ => pose proof H as RP; unfold riscvPhase in H
     end.
@@ -504,7 +528,7 @@ Section LowerPipeline.
     rewrite E0 in P.
     specialize P with (1 := H1p0). cbn in P.
     pose proof (compile_funs_finfo_idemp _ _ _ E0) as Q. subst r. fwd.
-    eexists. split. 1: eassumption.
+    eexists. split. 1: reflexivity.
     intros.
     assert (word.unsigned p_funcs mod 4 = 0). {
       unfold machine_ok in *. fwd.
@@ -530,9 +554,9 @@ Section LowerPipeline.
           (pos := pos2)
           (program_base := p_funcs)
           (l := l)
-          (post := fun t' m' l' mc' =>
+          (post := fun kH' t' m' l' mc' =>
                      (exists retvals,
-                         map.getmany_of_list l' retnames = Some retvals /\ post t' m' retvals mc')).
+                         map.getmany_of_list l' retnames = Some retvals /\ post kH' t' m' retvals mc')).
       eapply Q with
           (g := {| rem_stackwords :=
                      word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
@@ -559,6 +583,8 @@ Section LowerPipeline.
         { eassumption. }
         { eassumption. }
         { eassumption. }
+        { eassumption. }
+        { intros. rewrite <- H18. forget (k ++ kH) as kk. reflexivity. }
       + cbv beta. intros. fwd.
         rewrite <- Vp1.
         assert (HLR: Datatypes.length retnames = Datatypes.length retvals). {
@@ -603,6 +629,7 @@ Section LowerPipeline.
       + eassumption.
       + assumption.
       + unfold machine_ok in *. fwd. assumption.
+      + Search (getTrace initial). rewrite H1. reflexivity.
       + simpl_g_get. reflexivity.
       + unfold machine_ok in *. subst. fwd.
         unfold goodMachine; simpl_g_get. ssplit.
@@ -674,11 +701,14 @@ Section LowerPipeline.
           apply Hlength_stack_trash_words. }
         { reflexivity. }
         { assumption. }
+      + simpl. intros. simpl_rev.
+        rewrite List.skipn_app_r by (rewrite length_rev; reflexivity).
+        reflexivity.        
     - cbv beta. unfold goodMachine. simpl_g_get. unfold machine_ok in *. intros. fwd.
       assert (0 < bytes_per_word). { (* TODO: deduplicate *)
         unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
       }
-      eexists _, _. ssplit.
+      eexists _, _, _. ssplit.
       + eapply map.getmany_of_list_extends. 1: eassumption.
         match goal with
         | H: map.getmany_of_list finalRegsH _ = Some _ |-
@@ -691,13 +721,11 @@ Section LowerPipeline.
         symmetry.
         eapply map.getmany_of_list_length.
         exact GM.
-      + eexists. split; [|eassumption].
-        subst.
-        apply raise_metrics_ineq in H10p3.
-        unfold_MetricLog.
-        cbn in H10p3.
-        cbn.
-        solve_MetricLog.
+      + do 3 eexists. ssplit. 4: eassumption.
+        * subst. apply raise_metrics_ineq in H11p3.
+          unfold_MetricLog. cbn in H11p3. cbn. solve_MetricLog.
+        * align_trace.
+        * rewrite rev_involutive. reflexivity.
       + eapply only_differ_subset. 1: eassumption.
         rewrite ListSet.of_list_list_union.
         rewrite ?singleton_set_eq_of_list.
@@ -720,6 +748,9 @@ Section LowerPipeline.
         * unfold reg_class.get. subst k. cbn. exact I.
         * contradiction.
       + reflexivity.
+      + rewrite H11p4p1.
+        specialize (H11p4p2 nil). rewrite app_nil_r in H11p4p2. rewrite H11p4p2.
+        simpl. rewrite rev_involutive. reflexivity.
       + cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).
         exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x))) stack_trash).
