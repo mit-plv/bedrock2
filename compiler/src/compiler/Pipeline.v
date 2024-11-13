@@ -279,7 +279,7 @@ Section WithWordAndMem.
       refine ({|
                  Program := string_keyed_map (list string * list string * FlatImp.stmt string);
                  Valid := map.forall_values ParamsNoDup;
-                 Call := locals_based_call_spec (fun pick_sp => FlatImp.exec (pick_sp := pick_sp) PreSpill isRegStr);
+                 Call := locals_based_call_spec (fun pick_sp e => @FlatImp.exec _ _ _ _ _ _ _  _ PreSpill isRegStr e pick_sp);
                |}).
       1: exact tt. intros.
       cbv [locals_based_call_spec] in *. fwd. do 4 eexists. intuition eauto.
@@ -304,7 +304,7 @@ Section WithWordAndMem.
       refine ({|
                  Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
                  Valid := map.forall_values ParamsNoDup;
-                 Call := locals_based_call_spec (fun pick_sp => FlatImp.exec (pick_sp := pick_sp) PreSpill isRegZ);
+                 Call := locals_based_call_spec (fun pick_sp e => @FlatImp.exec _ _ _ _ _ _ _ _ PreSpill isRegZ e pick_sp);
                |}).
       1: exact tt. intros.
       cbv [locals_based_call_spec] in *. fwd. do 4 eexists. intuition eauto.
@@ -319,7 +319,7 @@ Section WithWordAndMem.
       refine ({|
                  Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
                  Valid := map.forall_values FlatToRiscvDef.valid_FlatImp_fun;
-                 Call := locals_based_call_spec_spilled (fun pick_sp => FlatImp.exec (pick_sp := pick_sp) PostSpill isRegZ);
+                 Call := locals_based_call_spec_spilled (fun e pick_sp => @FlatImp.exec _ _ _ _ _ _ _ _ PostSpill isRegZ pick_sp e);
                |}).
       1: exact tt. intros.
       cbv [locals_based_call_spec_spilled] in *. fwd. do 4 eexists. intuition eauto.
@@ -461,7 +461,9 @@ Section WithWordAndMem.
         simpl in H0. assumption.
       }
 
-      unfold locals_based_call_spec. intros. fwd.
+      unfold locals_based_call_spec. intros.
+      exists (fun pick_spL kH kL k => pick_spL ((rev (skipn (length kH) (rev k)) ++ kL))).
+      exists (fun k => k). intros. fwd.
       pose proof H0 as GI.
       unfold  useimmediate_functions in GI.
       eapply map.try_map_values_fw in GI. 2: eassumption.
@@ -470,8 +472,16 @@ Section WithWordAndMem.
       intros.
       eapply exec.weaken.
       - eapply useImmediate_correct_aux; eauto.
-      - simpl. destruct 1 as (?&?&?&?&?).
-        repeat (eexists; split; try eassumption).
+        eapply FlatImp.exec.exec_ext. 
+          1: eapply FlatImp.exec.exec_to_other_trace.
+          1: eassumption.
+          intros. simpl. simpl_rev. rewrite List.skipn_app_r.
+          2: rewrite length_rev; reflexivity.
+          simpl_rev. rewrite List.skipn_app_r.
+          2: rewrite length_rev; reflexivity.
+          rewrite rev_involutive. reflexivity.
+      - simpl. intros. fwd. eexists. intuition eauto.
+        do 3 eexists. intuition eauto.
         unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
@@ -500,7 +510,13 @@ Section WithWordAndMem.
         simpl in H0. assumption.
       }
 
-      unfold locals_based_call_spec. intros. fwd.
+      unfold locals_based_call_spec. intros.
+      exists (fun pick_spL kH kL k => let '(argnames, retnames, fbody) :=
+                                match (map.get p1 fname) with Some finfo => finfo | None => (nil, nil, SSkip) end in
+                              fun kk => let k := rev (skipn (length kH) (rev kk)) in
+                                     pick_spL (rev kL ++ stmt_leakage eH (rev k, sH, used_
+                                  
+      eexists. eexists. intros. fwd.
       pose proof H0 as GI.
       unfold dce_functions in GI.
       eapply map.try_map_values_fw in GI. 2: eassumption.
@@ -508,8 +524,23 @@ Section WithWordAndMem.
       eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption.
       intros.
       eapply @exec.weaken.
-      - eapply dce_correct_aux; eauto.
-        eapply MapEauto.agree_on_refl. 
+      - eapply exec.exec_ext. 1: eapply dce_correct_aux; eauto.
+        { eapply MapEauto.agree_on_refl. }
+        2: { intros. simpl. instantiate (1 := fun x => pick_spL (rev x)).
+             simpl. rewrite rev_involutive. reflexivity. }
+        intros. remember (k ++ kH) as kk eqn:Hkk.
+        replace k with (rev (skipn (length kH) (rev (k ++ kH)))).
+        { forget (k ++ kH) as kk0. subst.
+          set (finfo :=
+                 match (map.get p1 fname) with | Some finfo => finfo | None => (nil, nil, SSkip) end).
+          replace fbody with (snd finfo). 1: replace argnames with (fst (fst finfo)).
+          1: replace retnames with (snd (fst finfo)).
+          { 
+          instantiate (2 := fun _ _ _ _ => _). simpl. reflexivity.
+        1: reflexivity.
+        1: forget (k ++ kH) as kk. 1: instantiate (2 := fun _ _ _ _ => _). 1: reflexivity.
+        insta
+        intros. simpl. instantiate (2 := fun _ _ _ _ => _). simpl. reflexivity.
       - unfold compile_post. intros. fwd.
         exists retvals.
         split.

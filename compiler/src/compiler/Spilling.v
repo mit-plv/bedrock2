@@ -24,8 +24,8 @@ Open Scope Z_scope.
 Section Spilling.
 
   Notation stmt := (stmt Z).
-  Notation execpre pick_sp := (exec (pick_sp := pick_sp) PreSpill isRegZ).
-  Notation execpost pick_sp := (exec (pick_sp := pick_sp) PostSpill isRegZ).
+  Notation execpre pick_sp e := (@exec _ _ _ _ _ _ _ _ PreSpill isRegZ e pick_sp).
+  Notation execpost pick_sp e := (@exec _ _ _ _ _ _ _ _ PostSpill isRegZ e pick_sp).
 
   Definition zero := 0.
   Definition ra := 1.
