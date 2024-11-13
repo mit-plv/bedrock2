@@ -476,9 +476,8 @@ Section Proofs.
       destruct cond; [destruct op | ];
         simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); rewrite option_map_option_map'; intuition.
   Qed.
-
-
-  Local Notation exec pick_sp := (exec (pick_sp := pick_sp) PostSpill isRegZ).
+  
+  Local Notation exec e pick_sp := (@exec _ _ _ _ _ _ _ _ PostSpill isRegZ pick_sp e).
 
   Definition cost_compile_spec mc :=
     Platform.MetricLogging.addMetricInstructions 95

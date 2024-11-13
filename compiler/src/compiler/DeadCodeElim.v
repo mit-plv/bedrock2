@@ -15,7 +15,7 @@ Require Import bedrock2.MetricCosts.
 (*  below only for of_list_list_diff *)
 Require Import compiler.DeadCodeElimDef.
 
-Local Notation exec pick_sp := (exec (pick_sp := pick_sp) PreSpill isRegStr).
+Local Notation exec e pick_sp := (@exec _ _ _ _ _ _ _ _ PreSpill isRegStr pick_sp e).
 
 Section WithArguments1.
   Context {width: Z}.

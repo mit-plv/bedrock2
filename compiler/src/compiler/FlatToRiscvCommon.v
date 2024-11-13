@@ -291,8 +291,8 @@ Section WithParameters.
       let '(argnames, retnames, fbody) := fun_impl in
       exists pos, map.get finfo f = Some pos /\ pos mod 4 = 0.
 
-  Local Notation stmt := (stmt Z). Check exec.
-  Local Notation exec pick_sp := (exec (pick_sp := pick_sp) PostSpill isRegZ).
+  Local Notation stmt := (stmt Z). Check @exec.
+  Local Notation exec pick_sp e := (@exec _ _ _ _ _ _ _ _ PostSpill isRegZ e pick_sp).
   
   (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
      we enter a new function body, to make sure functions cannot call themselves, while
