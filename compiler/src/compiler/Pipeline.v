@@ -1,4 +1,5 @@
 Require Export Coq.Lists.List.
+Require Import bedrock2.LeakageWeakestPrecondition.
 Require Import bedrock2.LeakageSemantics.
 Require Import Coq.ZArith.ZArith.
 Export ListNotations.
@@ -55,7 +56,7 @@ Require Import PropExtensionality.
 Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Require Import compiler.LowerPipeline.
-(*Require Import bedrock2.MetricLeakageWeakestPrecondition.*)
+(*TODO: should use MLWP*)
 Require Import compiler.UseImmediateDef.
 Require Import compiler.UseImmediate.
 Require Import compiler.DeadCodeElimDef.
@@ -870,8 +871,9 @@ Section WithWordAndMem.
     (* combines the above theorem with WeakestPrecondition soundness,
        and makes `map.get (map.of_list finfo) fname` a hyp rather than conclusion because
        in concrete instantiations, users need to lookup that position themselves anyways *)
-    (* can't use this, because I haven't written MLWP yet :( *)
-    (*Lemma compiler_correct_wp: forall
+    (* currently this refers to LWP.call ... of course MLWP.call would be ideal,
+       but unfortunately I have not written MLWP yet.*)
+    Lemma compiler_correct_wp: forall
         (* input of compilation: *)
         (fs: list (string * (list string * list string * cmd)))
         (* output of compilation: *)
@@ -883,14 +885,13 @@ Section WithWordAndMem.
         forall kH kL,
         exists f pick_sp, forall
         (* high-level initial state & post on final state: *)
-        (t: trace) (mH: mem) (argvals: list word) (mc: MetricLog) (post: leakage -> trace -> mem -> list word -> MetricLog -> Prop)
+        (t: trace) (mH: mem) (argvals: list word) (mc: MetricLog) (post: leakage -> trace -> mem -> list word -> Prop)
         (* ghost vars that help describe the low-level machine: *)
         (stack_lo : word) (Rdata Rexec: mem -> Prop)
         (* low-level machine on which we're going to run the compiled program: *)
         (initial: MetricRiscvMachine),
         NoDup (map fst fs) ->
-        MetricLeakageWeakestPrecondition.call (pick_sp := pick_sp) (map.of_list fs) fname t mH argvals
-          (cost_spill_spec mc) post ->
+        LeakageWeakestPrecondition.call (pick_sp := pick_sp) (map.of_list fs) fname kH t mH argvals post ->
         forall mcL,
         map.get (map.of_list finfo) fname = Some f_rel_pos ->
         req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
@@ -908,22 +909,27 @@ Section WithWordAndMem.
                 arg_regs_contain (getRegs final) retvals /\
                 (exists mcH' : MetricLog,
                   ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mc)%metricsH /\
-                    post (kH'' ++ kH) (getLog final) mH' retvals mcH') /\
+                    post (kH'' ++ kH) (getLog final) mH' retvals) /\
                   final.(getTrace) = Some (f kH'') /\
                   map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
                   final.(getPc) = ret_addr /\
                 machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final).
     Proof.
       intros.
-      let H := hyp MetricWeakestPrecondition.call in rename H into WP.
-      edestruct compiler_correct with (fname := fname) (argvals := argvals) (post := post) as (f_rel_pos' & G & C);
-        try eassumption.
-      2: { eapply C; clear C; try assumption; try congruence; try eassumption. }
-      intros.
-      unfold MetricSemantics.call in WP. fwd.
-      do 5 eexists. 1: eassumption. split. 1: eassumption.
-      intros. assumption.
-    Qed.*)
+      destruct (compiler_correct fs instrs finfo req_stack_size fname p_funcs stack_hi ret_addr H H0 kH kL) as
+        [f [pick_sp compiler_correct'] ].
+      exists f, pick_sp. intros.
+      let H := hyp (LeakageWeakestPrecondition.call (pick_sp := pick_sp)) in rename H into WP.
+      edestruct compiler_correct' as (f_rel_pos' & G & C).
+      { unfold LeakageSemantics.call in WP. fwd.
+        do 5 eexists. 1: eassumption. split. 1: eassumption.
+        intros. eapply MetricLeakageSemantics.exec.weaken.
+        { eapply MetricLeakageSemantics.to_leakage_exec.
+          eapply WPp1p1. }
+        instantiate (1:= fun k t m l mc => post k t m l).
+        cbv beta. intros. fwd. eauto. }
+      apply C; clear C; try assumption; try congruence.
+    Qed.
 
   End WithMoreParams.
 End WithWordAndMem.
