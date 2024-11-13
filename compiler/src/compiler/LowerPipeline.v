@@ -362,7 +362,7 @@ Section LowerPipeline.
   Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
   Context {ext_spec: LeakageSemantics.ExtSpec}.
   Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
-  Context (leak_ext_call: pos_map -> Z -> Z -> stmt Z -> list word -> list LeakageEvent).
+  Context (leak_ext_call: word -> pos_map -> Z -> Z -> stmt Z -> list word -> list LeakageEvent).
 
   Definition machine_ok{BWM: bitwidth_iset width iset}
              (p_functions: word)(stack_start stack_pastend: word)

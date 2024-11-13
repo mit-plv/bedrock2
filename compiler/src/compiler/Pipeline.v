@@ -167,7 +167,7 @@ Section WithWordAndMem.
     Context {BWM: bitwidth_iset width iset}.
     Context (compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z ->
                                 list Instruction).
-    Context (leak_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z ->
+    Context (leak_ext_call : word -> string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z ->
                              list word -> list LeakageEvent).
     Context (compile_ext_call_correct: forall resvars extcall argvars,
                 compiles_FlatToRiscv_correctly compile_ext_call leak_ext_call compile_ext_call
