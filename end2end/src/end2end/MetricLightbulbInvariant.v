@@ -245,6 +245,39 @@ all :
 Unshelve. all : try exact tt.
 Qed.
 
+Import OmniSmallstepCombinators.
+Check metric_lightbulb_correct.
+
+(*
+metric_lightbulb_correct
+     : forall (initial : MetricRiscvMachine)
+         (R : map word32 Init.Byte.byte -> Prop),
+       valid_machine initial ->
+       getLog initial = [] ->
+       regs_initialized.regs_initialized (getRegs initial) ->
+       getNextPc initial = word.add (getPc initial) (word.of_Z 4) ->
+       getPc initial = code_start ml ->
+       (program RV32IM (code_start ml) (fst (fst out)) * R *
+        LowerPipeline.mem_available (heap_start ml) (heap_pastend ml) *
+        LowerPipeline.mem_available (stack_start ml) (stack_pastend ml))%sep
+         (getMem initial) ->
+       subset (footpr (program RV32IM (code_start ml) (fst (fst out))))
+         (of_list (getXAddrs initial)) ->
+       (forall m0 : map (Naive.word (2 ^ Nat.log2 32)) Init.Byte.byte,
+        LowerPipeline.mem_available (heap_start ml) (heap_pastend ml) m0 ->
+        exists
+          (buf : list Init.Byte.byte) (R0 : map
+                                              (Naive.word (2 ^ Nat.log2 32))
+                                              Init.Byte.byte -> Prop),
+          (array ptsto (word.of_Z 1) (word.of_Z buffer_addr) buf * R0)%sep m0 /\
+          Datatypes.length buf = 1520) ->
+       eventually ToplevelLoop.run1
+         (successively ToplevelLoop.run1
+            (fun s s' : MetricRiscvMachine =>
+             loop_progress (getLog s) (getLog s')
+               (getMetrics s' - getMetrics s))) initial
+ *)
+
 Print Assumptions metric_lightbulb_correct.
 (*
 Axioms:
