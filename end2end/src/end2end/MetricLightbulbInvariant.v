@@ -20,12 +20,12 @@ Require Import compiler.FlatToRiscvDef.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import compiler.SeparationLogic.
 Require Import compiler.ToplevelLoop.
-Require Import compiler.CompilerInvariant.
-Require Import compiler.ExprImpEventLoopSpec.
 Require Import Coq.Classes.Morphisms.
 Require Import coqutil.Macros.WithBaseName.
 Require Import bedrock2Examples.metric_lightbulb.
 Require Import bedrock2Examples.lightbulb_spec.
+From Coq Require Import Derive.
+From riscv Require Import bverify.
 From coqutil Require Import SortedListWord.
 From bedrock2 Require Import Syntax NotationsCustomEntry. Import Syntax.Coercions.
 From compiler Require Import Symbols.
@@ -33,6 +33,7 @@ Local Open Scope Z_scope.
 
 From coqutil Require Import Word.Naive.
 Require Import coqutil.Word.Bitwidth32.
+Require Import compiler.NaiveRiscvWordProperties.
 #[local] Existing Instance Naive.word.
 #[local] Existing Instance Naive.word32_ok.
 #[local] Existing Instance SortedListString.map.
@@ -53,9 +54,8 @@ Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 
 Lemma ml_ok : MemoryLayout.MemoryLayoutOk ml. Proof. split; cbv; trivial; inversion 1. Qed.
 
-Definition init := func! { lightbulb_init() } .
 Definition loop := func! { unpack! _err = lightbulb_loop($buffer_addr) } .
-Definition funcs := &[,init; loop] ++ metric_lightbulb.funcs.
+Definition funcs := &[,loop] ++ metric_lightbulb.funcs.
 Import metric_LAN9250 metric_SPI.
 Local Ltac specapply s := eapply s; [reflexivity|..].
 Lemma link_lightbulb_loop : spec_of_lightbulb_loop (map.of_list funcs).
@@ -74,51 +74,194 @@ Proof.
       (specapply spi_write_ok || specapply spi_read_ok).
 Qed.
 
-Derive lightbulb_compiler_result SuchThat
-  (ToplevelLoop.compile_prog (string_keyed_map:=@SortedListString.map) MMIO.compile_ext_call ml funcs
-  = Success lightbulb_compiler_result)
-  As lightbulb_compiler_result_ok.
+Derive out SuchThat (compile_prog compile_ext_call "lightbulb_init" "loop" ml funcs = Success (fst (fst out), snd (fst out), snd out)) As out_ok.
 Proof.
+  erewrite <-!surjective_pairing.
   match goal with x := _ |- _ => cbv delta [x]; clear x end.
   vm_compute.
-  match goal with |- @Success ?A ?x = Success ?e => is_evar e;
+  match goal with |- @Success ?A ?x = Success ?e =>
     exact (@eq_refl (result A) (@Success A x)) end.
 Qed. Optimize Heap.
 
-Definition lightbulb_stack_size := snd lightbulb_compiler_result.
-Definition lightbulb_finfo := snd (fst lightbulb_compiler_result).
-Definition lightbulb_insns := fst (fst lightbulb_compiler_result).
-Definition lightbulb_bytes := Pipeline.instrencode lightbulb_insns.
-Definition lightbulb_symbols : list byte := Symbols.symbols lightbulb_finfo.
-
-Lemma compiler_emitted_valid_instructions :
-  bverify.bvalidInstructions Decode.RV32IM lightbulb_insns = true.
-Proof. vm_cast_no_check (eq_refl true). Qed.
-
-Require Import compiler.CompilerInvariant.
-Require Import compiler.NaiveRiscvWordProperties.
 Import TracePredicate TracePredicateNotations metric_SPI lightbulb_spec.
 Import bedrock2.MetricLogging bedrock2.MetricCosts MetricProgramLogic.Coercions.
 
-Definition lightbulb_loop_cost io_wait : MetricLog :=
-  ((60+7*1520)*mc_spi_xchg_const + lightbulb_handle_cost + io_wait*mc_spi_mul).
+Definition loop_progress t t' dmc :=
+  exists dt, t' = dt ++ t /\
+  exists ioh, metric_SPI.mmio_trace_abstraction_relation ioh dt /\
+  let dmc := metricsSub (MetricsToRiscv.raiseMetrics dmc) (cost_call PreSpill (cost_lit (prefix "reg_") ""%string loop_overhead)) in
+  (* spec_of_lightbulb_loop postcondition without return value: *)
+  (exists packet cmd, (lan9250_recv _ packet +++ gpio_set _ 23 cmd) ioh /\ lightbulb_packet_rep _ cmd packet /\
+  ((dmc <= (60+7*length packet)*mc_spi_xchg_const + lightbulb_handle_cost + (length ioh)*mc_spi_mul))%metricsH
+  ) \/
+  (exists packet, (lan9250_recv _ packet) ioh /\ not (exists cmd, lightbulb_packet_rep _ cmd packet) /\
+  ((dmc  <= (60+7*length packet)*mc_spi_xchg_const + lightbulb_handle_cost + (length ioh)*mc_spi_mul))%metricsH
+  ) \/
+  (lan9250_recv_no_packet _ ioh) \/
+  (lan9250_recv_packet_too_long _ ioh) \/
+  ((TracePredicate.any +++ (spi_timeout _)) ioh).
 
-Definition goodHlTrace n : list _ -> Prop :=
-  BootSeq _ +++
-  multiple (EX b, Recv _ b +++ LightbulbCmd _ b|||RecvInvalid _|||PollNone _) n.
+Compute
+let length_packet := 1520%nat in
+metricsAdd (cost_call PreSpill (cost_lit (prefix "reg_") ""%string loop_overhead)) (((60+7*length_packet)*mc_spi_xchg_const + lightbulb_handle_cost + 0*mc_spi_mul)).
 
-Definition goodObservables iol (mc : MetricLogging.MetricLog) :=
-  exists n ioh, metric_SPI.mmio_trace_abstraction_relation ioh iol /\
-  goodHlTrace n ioh /\ (mc <= n*lightbulb_loop_cost (length ioh))%metricsH.
+(*
+= {|
+         instructions := 10240858;
+         stores := 7972170;
+         loads := 10829445;
+         jumps := 7576200
+       |}
+     : MetricLog
 
-Definition lightbulb_spec : ProgramSpec := {|
-  datamem_start := MemoryLayout.heap_start ml;
-  datamem_pastend := MemoryLayout.heap_pastend ml;
-  ExprImpEventLoopSpec.goodObservables := goodObservables;
-  isReady t m := exists buf R,
-    (Separation.sep (Array.array Scalars.scalar8 (word.of_Z 1) (word.of_Z buffer_addr) buf) R) m /\
-    Z.of_nat (Datatypes.length buf) = 1520;
-|}.
+     (* 10M instructions, less than 0.85ss at 12MHz or less 32ms at 320MHz (plus I/O wait) *)
+ *)
+
+Local Notation run1 := (ToplevelLoop.run1 (iset:=Decode.RV32I)).
+
+Derive _tt SuchThat (
+forall (initial : MetricRiscvMachine) R,
+valid_machine initial ->
+getLog initial = [] ->
+regs_initialized.regs_initialized (getRegs initial) ->
+getNextPc initial = word.add (getPc initial) (word.of_Z 4) ->
+getPc initial = code_start ml ->
+(program RV32IM (code_start ml) (fst (fst out)) * R *
+ LowerPipeline.mem_available (heap_start ml) (heap_pastend ml) *
+ LowerPipeline.mem_available (stack_start ml) (stack_pastend ml))%sep
+ (getMem initial) ->
+subset (footpr (program RV32IM (code_start ml) (fst (fst out))))
+(of_list (getXAddrs initial)) ->
+
+(* I believe this assumption could be removed *)
+(forall m0 : map (Naive.word (2 ^ Nat.log2 32)) Init.Byte.byte,
+LowerPipeline.mem_available (heap_start ml) (heap_pastend ml) m0 ->
+exists
+  (buf : list Init.Byte.byte) (R : map (Naive.word (2 ^ Nat.log2 32))
+                                     Init.Byte.byte -> Prop),
+  (array ptsto (word.of_Z 1) (word.of_Z buffer_addr) buf * R)%sep m0 /\
+  Datatypes.length buf = 1520 :> Z) ->
+
+_)
+As metric_lightbulb_correct.
+
+intros.
+unshelve refine (
+
+let bedrock2_invariant t m := exists buf R,
+  (Separation.sep (Array.array Scalars.scalar8 (word.of_Z 1) (word.of_Z buffer_addr) buf) R) m /\
+  Z.of_nat (Datatypes.length buf) = 1520 in
+
+successively_execute_bedrock2_loop
+(word_riscv_ok:=naive_word_riscv_ok (Nat.log2 32))
+compile_ext_call
+ltac:(eapply @compile_ext_call_correct; try exact _)
+ltac:(trivial)
+"lightbulb_init"
+"loop"
+ml
+funcs
+ml_ok
+loop_progress
+bedrock2_invariant
+_
+(snd lightbulb_init)
+_
+_
+(snd loop)
+_
+_
+_
+_
+_
+_
+_
+ltac:(unfold initial_conditions; Tactics.ssplit)
+)
+;
+shelve_unifiable.
+1:vm_compute; reflexivity.
+1:vm_compute; reflexivity.
+all : cycle 1.
+1:vm_compute; reflexivity.
+all : cycle 1.
+1:eassumption.
+1:eassumption.
+1:eassumption.
+1:eassumption.
+1:eassumption.
+all : cycle 1.
+all : cycle 1.
+all : cycle 1.
+all : cycle 1.
+1:exact out_ok.
+all : cycle -1.
+all : cycle -1.
+all : cycle -1.
+all : cycle -1.
+1:eassumption.
+1:eassumption.
+1:apply Z.lt_le_incl; vm_compute; reflexivity.
+1:apply Z.lt_le_incl; vm_compute; reflexivity.
+{
+  intros.
+  edestruct link_lightbulb_init as (?&?&?&D&?&E&X).
+  vm_compute in D; inversion D; subst; clear D.
+  apply map.of_list_zip_nil_values in E; case E as []; subst.
+  eapply MetricSemantics.exec.weaken; [exact X|].
+  cbv beta; intros * ?; intros (?&?&?&?&?&?&?&?&?); subst.
+  cbv [bedrock2_invariant].
+  match goal with H: LowerPipeline.mem_available _ _ _ |- _ => revert H end. generalize m0. eassumption. }
+{ cbv [bedrock2_invariant loop_progress].
+  intros; eapply MetricWeakestPreconditionProperties.sound_cmd.
+  repeat MetricProgramLogic.straightline.
+  { eapply MetricSemantics.weaken_call; [eapply link_lightbulb_loop|cbv beta]; try eassumption.
+    intros * (?&?&?&?&?&?&?&?).
+    repeat MetricProgramLogic.straightline; exists []; split; [exact eq_refl|].
+    split. { eexists _, _; split; eassumption. }
+    eexists; split; [exact eq_refl|].
+    eexists; split; [eassumption|].
+    intuition (Simp.simp; eauto).
+    1: left; exists packet, cmd; intuition eauto.
+    2: right; left; exists packet; intuition eauto.
+all : 
+    repeat (
+    repeat match goal with | H := _ : MetricLog |- _ => subst H end;
+    repeat match goal with
+    | H: context [?x] |- _ => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
+      progress cbv beta delta [x] in *
+    | |- context [?x] => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
+      progress cbv beta delta [x] in *
+    end;
+    cbn [Platform.MetricLogging.instructions Platform.MetricLogging.stores Platform.MetricLogging.loads Platform.MetricLogging.jumps] in *;
+          cbv [MetricsToRiscv.raiseMetrics MetricsToRiscv.lowerMetrics] in *;
+          cbv [Spilling.cost_spill_spec cost_call cost_lit loop_overhead ] in *;
+          change (isRegStr "") with false in *;
+          change (prefix ?x ?y) with false in *;
+           MetricLogging.unfold_MetricLog;  MetricLogging.simpl_MetricLog;
+                         unfold_MetricLog;                simpl_MetricLog);
+          intuition try blia. } }
+
+Unshelve. all : try exact tt.
+Qed.
+
+Print Assumptions metric_lightbulb_correct.
+(*
+Axioms:
+PropExtensionality.propositional_extensionality :
+  forall P Q : Prop, P <-> Q -> P = Q
+functional_extensionality_dep :
+  forall (A : Type) (B : A -> Type) (f g : forall x : A, B x),
+  (forall x : A, f x = g x) -> f = g
+*)
+
+
+(* OLD STUFF BELOW, may be useful for instantiating some assumptions
+
+
+
+
+Definition bedrock2_invariant 
 
 Import ToplevelLoop GoFlatToRiscv regs_initialized LowerPipeline.
 Import bedrock2.Map.Separation. Local Open Scope sep_scope.
@@ -209,4 +352,4 @@ Proof.
   { eapply @compile_ext_call_correct; try exact _. }
 Qed.
 
-Print Assumptions lightbulb_correct.
+*)
