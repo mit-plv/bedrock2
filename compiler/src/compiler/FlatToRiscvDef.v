@@ -408,7 +408,7 @@ Section FlatToRiscv1.
   Context {env: map.map String.string (list Z * list Z * stmt Z)}.
   Context {pos_map: map.map String.string Z}.
   Context (compile_ext_call: pos_map -> Z -> Z -> stmt Z -> list Instruction).
-  Context (leak_ext_call: pos_map -> Z (*sp_val*) -> Z (*stackoffset*) -> stmt Z -> list word (*source-level leakage*) -> list LeakageEvent).
+  Context (leak_ext_call: word(*program_base*) -> pos_map -> Z (*sp_val*) -> Z (*stackoffset*) -> stmt Z -> list word (*source-level leakage*) -> list LeakageEvent).
 
   Section WithEnv.
     Variable e: pos_map.
@@ -722,7 +722,7 @@ Section FlatToRiscv1.
                   fun _ =>
                     match k with
                     | leak_list l :: k' =>
-                        f [leak_list l] (rk_so_far ++ leak_ext_call e mypos stackoffset s l)
+                        f [leak_list l] (rk_so_far ++ leak_ext_call program_base e mypos stackoffset s l)
                     | _ => (nil, word.of_Z 0)
                     end
               end eq_refl
