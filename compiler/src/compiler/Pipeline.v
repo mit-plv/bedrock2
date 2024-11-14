@@ -885,14 +885,13 @@ Section WithWordAndMem.
         forall kH kL,
         exists f pick_sp, forall
         (* high-level initial state & post on final state: *)
-        (t: trace) (mH: mem) (argvals: list word) (mc: MetricLog) (post: leakage -> trace -> mem -> list word -> Prop)
+        (t: trace) (mH: mem) (argvals: list word) (post: leakage -> trace -> mem -> list word -> Prop)
         (* ghost vars that help describe the low-level machine: *)
         (stack_lo : word) (Rdata Rexec: mem -> Prop)
         (* low-level machine on which we're going to run the compiled program: *)
         (initial: MetricRiscvMachine),
         NoDup (map fst fs) ->
         LeakageWeakestPrecondition.call (pick_sp := pick_sp) (map.of_list fs) fname kH t mH argvals post ->
-        forall mcL,
         map.get (map.of_list finfo) fname = Some f_rel_pos ->
         req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
         word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
@@ -902,14 +901,11 @@ Section WithWordAndMem.
         arg_regs_contain initial.(getRegs) argvals ->
         initial.(getLog) = t ->
         initial.(getTrace) = Some kL ->
-        raiseMetrics (cost_compile_spec initial.(getMetrics)) = mcL ->
         machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
         runsTo initial (fun final : MetricRiscvMachine =>
               exists kH'' mH' retvals,
                 arg_regs_contain (getRegs final) retvals /\
-                (exists mcH' : MetricLog,
-                  ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mc)%metricsH /\
-                    post (kH'' ++ kH) (getLog final) mH' retvals) /\
+                (post (kH'' ++ kH) (getLog final) mH' retvals) /\
                   final.(getTrace) = Some (f kH'') /\
                   map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
                   final.(getPc) = ret_addr /\
@@ -928,7 +924,10 @@ Section WithWordAndMem.
           eapply WPp1p1. }
         instantiate (1:= fun k t m l mc => post k t m l).
         cbv beta. intros. fwd. eauto. }
-      apply C; clear C; try assumption; try congruence.
+      eapply runsToNonDet.runsTo_weaken. 1: apply C; clear C; try assumption; try congruence.
+      all: eauto.
+      cbv beta. intros. fwd. do 3 eexists. intuition eauto.
+      Unshelve. exact EmptyMetricLog.
     Qed.
 
   End WithMoreParams.

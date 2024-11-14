@@ -170,20 +170,24 @@ Qed.*)
   Check compiler_correct_wp.
 
   Print spec_of_memequal.
+  Require Import coqutil.Tactics.fwd.
 
   Lemma memequal_ct :
-    forall a_addr b_addr p_funcs stack_hi,
+    forall x y n p_funcs stack_hi ret_addr,
     exists finalTrace : list LeakageEvent,
-    forall R m a b stack_lo ret_addr
+    forall Rx Ry xs ys m stack_lo
       Rdata Rexec (initial : RiscvMachine),
-      Separation.sep (Separation.sep (Scalars.scalar a_addr a) (Scalars.scalar b_addr b)) R m ->
-      req_stack_size_memequal <= word.unsigned (word.sub stack_hi stack_lo) / SeparationLogic.bytes_per_word ->
+      Separation.sep (Array.array Separation.ptsto (word.of_Z 1) x xs) Rx m /\
+        Separation.sep (Array.array Separation.ptsto (word.of_Z 1) y ys) Ry m /\
+        Z.of_nat (Datatypes.length xs) = word.unsigned n /\
+        Z.of_nat (Datatypes.length ys) = word.unsigned n /\
+        req_stack_size_memequal <= word.unsigned (word.sub stack_hi stack_lo) / SeparationLogic.bytes_per_word ->
       word.unsigned (word.sub stack_hi stack_lo) mod SeparationLogic.bytes_per_word = 0 ->
       getPc initial = word.add p_funcs (word.of_Z f_rel_pos_memequal) ->
       initial.(getTrace) = Some [] ->
       map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
       word.unsigned ret_addr mod 4 = 0 ->
-      LowerPipeline.arg_regs_contain (getRegs initial) [a_addr; b_addr] ->
+      LowerPipeline.arg_regs_contain (getRegs initial) [x; y; n] ->
       LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_memequal m Rdata Rexec initial ->
       FlatToRiscvCommon.runsTo initial
         (fun final : RiscvMachine =>
@@ -192,40 +196,38 @@ Qed.*)
                  post (getLog final) mH' retvals /\
                  map.only_differ (getRegs initial) reg_class.caller_saved (getRegs final) /\
                  getPc final = ret_addr /\
+                 final.(getTrace) = Some finalTrace /\
                  LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_memequal mH' 
-                   Rdata Rexec final) /\
-             final.(getTrace) = Some finalTrace).
+                   Rdata Rexec final)).
   Proof.
-    assert (spec := @memequal_ok Words32Naive.word mem word_ok' mem_ok).
-    cbv [ProgramLogic.program_logic_goal_for] in spec.
-    specialize (spec nil). cbv [ct_spec_of_memequal] in spec. destruct spec as [f spec].
-    intros. Check @compiler_correct_wp.
-    edestruct (@compiler_correct_wp _ _ Words32Naive.word mem _ ext_spec _ _ _ ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct compile_ext_call_length fs_memequal instrs_memequal finfo_memequal req_stack_size_memequal fname_memequal 0 p_funcs stack_hi) as [f_ [pick_sp_ H] ].
+    assert (spec := @memequal_ok _ _ Words32Naive.word mem (SortedListString.map (@Naive.rep 32)) ext_spec).
+    intros.
+    edestruct (@compiler_correct_wp _ _ Words32Naive.word mem _ ext_spec _ _ _ ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct compile_ext_call_length fs_memequal instrs_memequal finfo_memequal req_stack_size_memequal fname_memequal p_funcs stack_hi ret_addr f_rel_pos_memequal) as [f_ [pick_sp_ H] ].
     { simpl. reflexivity. }
-    { vm_compute. reflexivity. }
-    exists (rev (f_ (rev (f a_addr b_addr)))). intros.
+    { vm_compute. reflexivity. } Search SortedListString.map.
+    specialize (spec pick_sp_ word_ok' ltac:(assumption) ltac:(apply SortedListString.ok) ext_spec_ok).
+    cbv [LeakageProgramLogic.program_logic_goal_for] in spec.
+    specialize (spec (map.of_list fs_memequal) eq_refl).
+    cbv [spec_of_memequal] in spec. destruct spec as [f spec].
+    eexists. (*exists (rev (f_ (rev (f a_addr b_addr)))).*) intros.
     cbv [FlatToRiscvCommon.runsTo].
     eapply runsToNonDet.runsTo_weaken.
-    1: eapply H with (post := (fun k_ t_ m_ r_ => k_ = f a_addr b_addr /\
-                                                 post t_ m_ r_)) (kH := nil).
+    1: eapply H with (post := (fun k_ t_ m_ r_ => k_ = _ /\
+                                                 post t_ m_ r_)).
     { simpl. repeat constructor. tauto. }
     2: { eapply map.get_of_list_In_NoDup.
          { vm_compute. repeat constructor; eauto. }
          { vm_compute. left. reflexivity. } }
-    all: try eassumption.
-    2,3: reflexivity.
-    2: { simpl. intros. destruct H8 as [k'' [mH' [retvals [kL'' [H9 [H10 [H11 [H12 [H13 [H14 [H15 H16] ] ] ] ] ] ] ] ] ] ].
-         destruct H10 as [H10_1 H10_2]. rewrite app_nil_r in H10_1. subst.
-         split; [eexists; eexists; eauto|].
-         rewrite H15. rewrite rev_involutive. assumption. }
-    { specialize (spec nil (getLog initial) m a_addr b_addr a b R H0). cbv [fs_memequal fname_memequal].
-      eapply WeakestPreconditionProperties.Proper_call.
-      2: eapply spec.
-      cbv [Morphisms.pointwise_relation Basics.impl]. intros.
-      destruct H8 as [ [k'' [H8 H9] ] [H10 [H11 H12] ] ]. subst.
-      split; [|reflexivity].
-      destruct H12 as [k''_ [H12_1 H12_2] ]. subst.
-      rewrite app_nil_r. reflexivity. }
+    all: try eassumption.   
+    2: { fwd. assumption. }
+
+    { subst. cbv [fname_memequal]. move spec at bottom.
+      specialize (spec x y n xs ys Rx Ry [] (initial.(getLog)) m ltac:(intuition eauto)).
+      eapply LeakageSemantics.weaken_call. 1: eapply spec.
+      cbv beta. intros. fwd. split; [|reflexivity]. reflexivity. }
+    { reflexivity. }
+    cbv beta. intros. fwd. do 2 eexists. intuition eauto.
+    rewrite app_nil_r in H8p1p0. subst. apply H8p2.
   Qed.
 
   Definition fs_swap := &[,swap].
@@ -247,7 +249,6 @@ Qed.*)
     end.
   Definition fname_swap := "swap".
   Definition f_rel_pos_swap := 0.
-  Definition post : list LogItem -> mem -> list Words32Naive.word -> Prop := fun _ _ _ => True.
 
   (*Print ct_spec_of_swap.
   Check (@compiler_correct_wp _ _ Words32Naive.word mem _ ext_spec _ _ _ ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct compile_ext_call_length fs_swap instrs_swap finfo_swap req_stack_size_swap fname_swap _ _ _ _).
