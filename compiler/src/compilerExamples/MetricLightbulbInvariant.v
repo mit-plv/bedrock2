@@ -235,6 +235,27 @@ End riscv.
 
 Import coqutil.Semantics.OmniSmallstepCombinators.
 
+Lemma eventually_weaken_step {State} f g P (s : State) :
+  eventually f P s ->  (forall t Q, f t Q -> g t Q) -> eventually g P s.
+Proof. induction 1; [econstructor 1 | econstructor 2]; eauto. Qed.
+
+Lemma always_weaken_step {State} f g P (s : State) :
+  always f P s ->  (forall t Q, f t Q -> g t Q) ->  always g P s.
+Proof. intros [] ?; eapply mk_always; intuition eauto. Qed.
+
+Lemma successively_weaken {State} step Q R (s : State) :
+  successively step Q s -> (forall x y, Q x y -> R x y) -> successively step R s.
+Proof.
+  intros; eapply always_weaken_step; eauto; cbv beta; intros.
+  eapply eventually_weaken; eauto; cbv beta.
+  intuition eauto.
+Qed.
+
+Lemma successively_weaken_step {State} f g R (s : State) :
+  successively f R s -> (forall t Q, f t Q -> g t Q) ->
+  successively g R s.
+Proof. intros; eapply always_weaken_step; eauto; cbv beta; eauto using eventually_weaken_step. Qed.
+
 Axiom TODO: False.
 
 Lemma metric_lightbulb_correct: forall (initial : MetricRiscvMachine) R,
@@ -317,8 +338,43 @@ all : cycle -1.
 {
   unfold loop_progress, handle_request_spec.
   intros.
-  (* needs weakening for successively and some more massaging *)
-  case TODO.
+  eapply successively_weaken; eauto; cbv beta.
+  repeat (intuition Simp.simp); eauto 9; [|].
+  all : eexists; split; eauto.
+  all : eexists; split; eauto.
+  1: left; exists packet, cmd; intuition eauto.
+  2: right; left; exists packet; intuition eauto.
+all :
+    (* metrics accounting *)
+    repeat (
+    repeat match goal with | H := _ : MetricLog |- _ => subst H end;
+    repeat match goal with | H := _ : RiscvMetrics |- _ => subst H end;
+    repeat match goal with
+    | H: context [?x] |- _ => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
+      progress cbv beta delta [x] in *
+    | |- context [?x] => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
+      progress cbv beta delta [x] in *
+    | H: context [?x] |- _ => is_const x; let t := type of x in constr_eq t constr:(RiscvMetrics);
+      progress cbv beta delta [x] in *
+    | |- context [?x] => is_const x; let t := type of x in constr_eq t constr:(RiscvMetrics);
+      progress cbv beta delta [x] in *
+    end;
+    cbn [Platform.MetricLogging.instructions Platform.MetricLogging.stores Platform.MetricLogging.loads Platform.MetricLogging.jumps] in *;
+    cbv [metricsAdd metricsMul] in *;
+    cbv [metricAdd] in *;
+          cbv [MetricsToRiscv.raiseMetrics MetricsToRiscv.lowerMetrics] in *;
+          cbv [Spilling.cost_spill_spec cost_call cost_lit loop_overhead ] in *;
+          change (isRegStr "") with false in *;
+          change (prefix ?x ?y) with false in *;
+           MetricLogging.unfold_MetricLog;  MetricLogging.simpl_MetricLog;
+                         unfold_MetricLog;                simpl_MetricLog);
+          intuition try blia.
+          {
+    set (Platform.MetricLogging.instructions (getMetrics x) -
+    Platform.MetricLogging.instructions (getMetrics y)) as goal in *.
+    set (Platform.MetricLogging.instructions (getMetrics y) -
+    Platform.MetricLogging.instructions (getMetrics x)) as goal' in H7 |- *.
+    1,2,3,4,5,6,7,8 : case TODO.
 }
 {
   intros.
