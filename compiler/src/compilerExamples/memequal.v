@@ -83,15 +83,36 @@ Local Existing Instance coqutil.Map.SortedListString.ok.
 Print compiler_correct_wp.
 Print ExtSpec.
 Section WithParameters.
-  Context {mem : map.map Words32Naive.word byte}.
-  Context {mem_ok : map.ok mem}.
-  Context {localsL : map.map Z Words32Naive.word}.
+  (*Context {mem : map.map Words32Naive.word byte}.
+  Context {mem_ok : map.ok mem}.*)
+
+  Search (map.map _ _).
+  
+  Print funpos_env.
+  Definition mem32 := SortedListWord.map Words32Naive.word byte.
+  Existing Instance mem32.
+  Search SortedListWord.map.
+  Definition mem32_ok : map.ok mem32 := SortedListWord.ok _ _.
+  Existing Instance mem32_ok.
+  Require Import coqutil.Map.SortedListZ.
+
+  Definition localsL32 := SortedListZ.map Words32Naive.word.
+  Existing Instance localsL32.
+  Definition localsL32_ok : map.ok localsL32 := SortedListZ.ok _.
+  Existing Instance localsL32_ok.
+
+  Definition localsH32 := SortedListString.map Words32Naive.word.
+  Existing Instance localsH32.
+  Definition localsH32_ok : map.ok localsH32 := SortedListString.ok _.
+  Existing Instance localsH32_ok.
+  
+  (*Context {localsL : map.map Z Words32Naive.word}.
   Context {localsL_ok : map.ok localsL}.
   Context {localsH : map.map string Words32Naive.word}.
   Context {localsH_ok : map.ok localsH}.
   Context {envL : map.map string (list Z * list Z * FlatImp.stmt Z)}.
   Context {envH : map.map string (list string * list string * cmd)}.
-  Context {envH_ok : map.ok envH}.
+  Context {envH_ok : map.ok envH}.*)
   (*Context {M : Type -> Type} {MM : Monad M}.*)
   (*Context {RVM: RiscvProgramWithLeakage}.
 Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
@@ -163,10 +184,10 @@ Qed.*)
     end.
   Definition fname_memequal := "memequal".
   Definition f_rel_pos_memequal := 0.
-  Definition post : list LogItem -> mem -> list Words32Naive.word -> Prop := fun _ _ _ => True.
+  Definition post : list LogItem -> mem32 -> list Words32Naive.word -> Prop := fun _ _ _ => True.
   
   Print spec_of_memequal.
-  Check (@compiler_correct_wp _ _ Words32Naive.word mem _ ext_spec _ _ _ ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct compile_ext_call_length fs_memequal instrs_memequal finfo_memequal req_stack_size_memequal fname_memequal _ _ _ _).
+  Check (@compiler_correct_wp _ _ Words32Naive.word mem32 _ ext_spec _ _ _ ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct compile_ext_call_length fs_memequal instrs_memequal finfo_memequal req_stack_size_memequal fname_memequal _ _ _ _).
   Check compiler_correct_wp.
 
   Print spec_of_memequal.
@@ -191,7 +212,7 @@ Qed.*)
       LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_memequal m Rdata Rexec initial ->
       FlatToRiscvCommon.runsTo initial
         (fun final : RiscvMachine =>
-           (exists (mH' : mem) (retvals : list Words32Naive.word),
+           (exists mH' (retvals : list Words32Naive.word),
                LowerPipeline.arg_regs_contain (getRegs final) retvals /\
                  post (getLog final) mH' retvals /\
                  map.only_differ (getRegs initial) reg_class.caller_saved (getRegs final) /\
@@ -200,12 +221,12 @@ Qed.*)
                  LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_memequal mH' 
                    Rdata Rexec final)).
   Proof.
-    assert (spec := @memequal_ok _ _ Words32Naive.word mem (SortedListString.map (@Naive.rep 32)) ext_spec).
+    assert (spec := @memequal_ok _ _ Words32Naive.word mem32 (SortedListString.map (@Naive.rep 32)) ext_spec).
     intros.
-    edestruct (@compiler_correct_wp _ _ Words32Naive.word mem _ ext_spec _ _ _ ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct compile_ext_call_length fs_memequal instrs_memequal finfo_memequal req_stack_size_memequal fname_memequal p_funcs stack_hi ret_addr f_rel_pos_memequal) as [f_ [pick_sp_ H] ].
+    edestruct (@compiler_correct_wp _ _ Words32Naive.word mem32 _ ext_spec _ _ _ ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct compile_ext_call_length fs_memequal instrs_memequal finfo_memequal req_stack_size_memequal fname_memequal p_funcs stack_hi ret_addr f_rel_pos_memequal) as [f_ [pick_sp_ H] ].
     { simpl. reflexivity. }
     { vm_compute. reflexivity. } Search SortedListString.map.
-    specialize (spec pick_sp_ word_ok' ltac:(assumption) ltac:(apply SortedListString.ok) ext_spec_ok).
+    specialize (spec pick_sp_ word_ok' _ ltac:(apply SortedListString.ok) ext_spec_ok).
     cbv [LeakageProgramLogic.program_logic_goal_for] in spec.
     specialize (spec (map.of_list fs_memequal) eq_refl).
     cbv [spec_of_memequal] in spec. destruct spec as [f spec].
@@ -229,6 +250,13 @@ Qed.*)
     cbv beta. intros. fwd. do 2 eexists. intuition eauto.
     rewrite app_nil_r in H8p1p0. subst. apply H8p2.
   Qed.
+  Print Assumptions memequal_ct.
+  (*
+    Axioms:
+    PropExtensionality.propositional_extensionality : forall P Q : Prop, P <-> Q -> P = Q
+    FunctionalExtensionality.functional_extensionality_dep :
+    forall (A : Type) (B : A -> Type) (f g : forall x : A, B x), (forall x : A, f x = g x) -> f = g
+   *)
 
   Definition fs_swap := &[,swap].
   Definition instrs_swap :=
