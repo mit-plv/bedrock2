@@ -207,18 +207,15 @@ Definition handle_request_spec(t t': trace)(mc mc': RiscvMetrics) :=
 
 End WithMetricsScope.
 
-Compute
-let length_packet := 1520%nat in
-bedrock2.MetricLogging.metricsAdd (cost_call PreSpill (cost_lit (prefix "reg_") ""%string loop_overhead)) (((60+7*length_packet)*bedrock2Examples.metric_SPI.mc_spi_xchg_const + bedrock2Examples.metric_lightbulb.lightbulb_handle_cost + 0*bedrock2Examples.metric_SPI.mc_spi_mul)).
-
+Compute (loop_cost 1520 0).
 (*
-= {|
-         instructions := 10240858;
-         stores := 7972170;
-         loads := 10829445;
-         jumps := 7576200
+     = {|
+         Platform.MetricLogging.instructions := 10240858;
+         Platform.MetricLogging.stores := 7972170;
+         Platform.MetricLogging.loads := 10829445;
+         Platform.MetricLogging.jumps := 7576200
        |}
-     : MetricLog
+     : RiscvMetrics
 
      (* 10M instructions, less than 0.85ss at 12MHz or less 32ms at 320MHz (plus I/O wait) *)
  *)
