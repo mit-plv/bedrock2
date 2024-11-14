@@ -41,8 +41,10 @@ Definition spi_xchg := func! (b) ~> (b, busy) {
     unpack! b, busy = spi_read()
   }.
 
-Require Import bedrock2.ProgramLogic.
-Require Import bedrock2.FE310CSemantics bedrock2.Semantics.
+Require Import bedrock2.MetricLogging bedrock2.MetricCosts.
+Require Import bedrock2.MetricProgramLogic.
+Require Import bedrock2.MetricWeakestPreconditionProperties.
+Require Import bedrock2.FE310CSemantics bedrock2.MetricSemantics.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import bedrock2.ZnWords.
@@ -65,18 +67,28 @@ Section WithParameters.
   Definition only_mmio_satisfying P t :=
     exists mmios, mmio_trace_abstraction_relation mmios t /\ P mmios.
 
-  Global Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall t m b,
+  Definition mc_spi_write_const := mkMetricLog 348 227 381 204.
+  Definition mc_spi_read_const := mkMetricLog 199 116 217 103.
+  Definition mc_spi_xchg_const := (mc_spi_write_const + mc_spi_read_const + mkMetricLog 410 402 414 401)%metricsH.
+  Definition mc_spi_mul := mkMetricLog 157 109 169 102.
+  Ltac mc_spi_write_unf := unfold mc_spi_write_const, mc_spi_mul in *.
+  Ltac mc_spi_read_unf := unfold mc_spi_read_const, mc_spi_mul in *.
+  Ltac mc_spi_xchg_unf := unfold mc_spi_xchg_const in *.
+
+  Global Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall t m b mc,
     word.unsigned b < 2 ^ 8 ->
-    WeakestPrecondition.call functions "spi_write" t m [b] (fun T M RETS =>
+    MetricWeakestPrecondition.call functions "spi_write" t m [b] mc (fun T M RETS MC =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists err, RETS = [err] /\ Logic.or
         (((word.unsigned err <> 0) /\ lightbulb_spec.spi_write_full _ ^* ioh /\ Z.of_nat (length ioh) = patience))
-        (word.unsigned err = 0 /\ lightbulb_spec.spi_write word (byte.of_Z (word.unsigned b)) ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.spi_write word (byte.of_Z (word.unsigned b)) ioh) /\
+        (MC - mc <= mc_spi_write_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH).
 
-  Global Instance spec_of_spi_read : spec_of "spi_read" := fun functions => forall t m,
-    WeakestPrecondition.call functions "spi_read" t m [] (fun T M RETS =>
+  Global Instance spec_of_spi_read : spec_of "spi_read" := fun functions => forall t m mc,
+    MetricWeakestPrecondition.call functions "spi_read" t m [] mc (fun T M RETS MC =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b: byte) (err : word), RETS = [word.of_Z (byte.unsigned b); err] /\ Logic.or
         (word.unsigned err <> 0 /\ lightbulb_spec.spi_read_empty _ ^* ioh /\ Z.of_nat (length ioh) = patience)
-        (word.unsigned err = 0 /\ lightbulb_spec.spi_read word b ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.spi_read word b ioh) /\
+        (MC - mc <= mc_spi_read_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH).
 
   Lemma nonzero_because_high_bit_set (x : word) (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
     : word.unsigned x <> 0.
@@ -87,21 +99,35 @@ Section WithParameters.
          morphism (Properties.word.ring_morph (word := word)),
          constants [Properties.word_cst]).
 
+  Ltac metrics :=
+    repeat match goal with | H := _ : MetricLog |- _ => subst H end;
+    cost_unfold;
+    cbn in *;
+    solve_MetricLog.
+
+  Ltac viewmetric :=
+    repeat match goal with | H := _ : MetricLog |- _ => subst H end;
+    cost_unfold;
+    cbn in *;
+    repeat rewrite metriclit in *;
+    cbn in *.
+
   Import coqutil.Tactics.letexists.
-  Import Loops.
+  Import MetricLoops.
   Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
   Proof.
     repeat straightline.
     rename H into Hb.
 
     (* WHY do theese parentheses matter? *)
-    refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
+    refine ((atleastonce ["b"; "busy"; "i"] (fun v T M MC B BUSY I =>
        b = B /\ v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        lightbulb_spec.spi_write_full _ ^* th /\
-       Z.of_nat (length th) + word.unsigned I = patience
-       )) _ _ _ _ _ _ _);
+       Z.of_nat (length th) + word.unsigned I = patience /\
+       (MC - mc <= Z.of_nat (length th) * mc_spi_mul + mkMetricLog 27 5 30 0)%metricsH
+       )) _ _ _ _ _);
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
            HList.hlist.foralls HList.tuple.foralls
            HList.hlist.existss HList.tuple.existss
@@ -112,22 +138,19 @@ Section WithParameters.
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
     { repeat straightline. }
     { eapply (Z.lt_wf 0). }
-    { eexists; split; repeat straightline.
+    { eexists; eexists; split; repeat straightline.
+      { split; trivial; split; trivial.
+        eexists; split.
+        { rewrite app_nil_l; trivial. }
+        eexists; split.
+        { constructor. }
+        split.
+        { constructor. }
+        split; [|metrics].
+        subst i. rewrite word.unsigned_of_Z. exact eq_refl. }
       exfalso. ZnWords. }
-    { repeat (split; trivial; []).
-      subst i. rewrite word.unsigned_of_Z.
-      split.
-      { discriminate. }
-      split; trivial.
-      eexists; split.
-      { rewrite app_nil_l; trivial. }
-      eexists; split.
-      { constructor. }
-      split.
-      { constructor. }
-      exact eq_refl. }
     repeat straightline.
-    eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
+    eapply MetricWeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; split; [exact eq_refl|]; split; [split; trivial|].
     {
       cbv [isMMIOAddr addr].
@@ -144,7 +167,7 @@ Section WithParameters.
          ThenCorrectness /\
          ElseCorrectness
     *)
-    letexists. split.
+    letexists. letexists. split.
     { repeat straightline. }
     split; intros.
     { (* CASE if-condition was true (word.unsigned v0 <> 0), i.e. NOP, loop exit depends on whether timeout *)
@@ -165,10 +188,11 @@ Section WithParameters.
           refine (kleene_step _ _ nil _ (kleene_empty _)).
           repeat econstructor.
           ZnWords. }
+        split; [|mc_spi_write_unf; metrics].
         { ZnWordsL. } }
         { ZnWords. } }
     { (* SUBCASE loop condition was false (exit loop because of timeout *)
-      letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
+      letexists; letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
       subst t0.
       eexists (_ ;++ cons _ nil); split.
       { rewrite <-app_assoc; cbn [app]; f_equal. }
@@ -177,6 +201,7 @@ Section WithParameters.
         constructor; [|constructor].
         right; eauto. }
       eexists. split; trivial.
+      split; [|mc_spi_write_unf; metrics].
       { left; repeat split; eauto using nonzero_because_high_bit_set.
         { (* copied from above -- trace element for "fifo full" *)
           eapply kleene_app; eauto.
@@ -189,10 +214,10 @@ Section WithParameters.
     repeat straightline.
     { subst i.
       rewrite Properties.word.unsigned_xor_nowrap in *; rewrite Z.lxor_nilpotent in *; contradiction. }
-    (* evaluate condition then split if *) letexists; split; [solve[repeat straightline]|split].
+    (* evaluate condition then split if *) letexists; letexists; split; [solve[repeat straightline]|split].
     1:contradiction.
     repeat straightline.
-    eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
+    eapply MetricWeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { cbv [isMMIOAddr]. ZnWords. }
     repeat straightline.
@@ -206,6 +231,7 @@ Section WithParameters.
         { right; [|constructor].
           right; eexists _, _; repeat split. } } }
     eexists; split; trivial.
+    split; [|mc_spi_write_unf; metrics].
     right.
     subst busy.
     split.
@@ -223,25 +249,26 @@ Section WithParameters.
 
   Local Ltac split_if :=
     lazymatch goal with
-      |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
+      |- MetricWeakestPrecondition.cmd _ ?c _ _ _ _ ?post =>
       let c := eval hnf in c in
           lazymatch c with
-          | cmd.cond _ _ _ => letexists; split; [solve[repeat straightline]|split]
+          | cmd.cond _ _ _ => letexists; letexists; split; [solve[repeat straightline]|split]
           end
     end.
 
   Lemma spi_read_ok : program_logic_goal_for_function! spi_read.
   Proof.
     repeat straightline.
-    refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
+    refine ((atleastonce ["b"; "busy"; "i"] (fun v T M MC B BUSY I =>
        v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        B = word.of_Z (byte.unsigned (byte.of_Z (word.unsigned B))) /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        lightbulb_spec.spi_read_empty _ ^* th /\
-       Z.of_nat (length th) + word.unsigned I = patience
+       Z.of_nat (length th) + word.unsigned I = patience /\
+       (MC - mc <= Z.of_nat (length th) * mkMetricLog 157 109 169 102 + mkMetricLog 39 7 43 0)%metricsH
             ))
-            _ _ _ _ _ _ _);
+            _ _ _ _ _);
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
            HList.hlist.foralls HList.tuple.foralls
            HList.hlist.existss HList.tuple.existss
@@ -251,24 +278,27 @@ Section WithParameters.
            HList.polymorphic_list.repeat HList.polymorphic_list.length
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *; repeat straightline.
     { exact (Z.lt_wf 0). }
-    { exfalso. ZnWords. }
-    { subst i. rewrite word.unsigned_of_Z.
-      split; [inversion 1|].
-      split; trivial.
+    { split; trivial; split; trivial.
       subst b; rewrite byte.unsigned_of_Z; cbv [byte.wrap];
         rewrite Z.mod_small; rewrite word.unsigned_of_Z.
       2: { cbv. split; congruence. }
       split; trivial.
       eexists nil; split; trivial.
-      eexists nil; split; try split; solve [constructor]. }
-    { eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
+      subst i; rewrite word.unsigned_of_Z.
+      eexists nil; split; try split; try solve [constructor].
+      split; [|metrics].
+      constructor.
+    }
+    { exfalso. ZnWords. }
+    { eapply MetricWeakestPreconditionProperties.interact_nomem; repeat straightline.
       letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { cbv [isMMIOAddr]. ZnWords. }
       repeat ((split; trivial; []) || straightline || split_if).
       {
-        letexists. split; split.
-        { subst v'; exact eq_refl. }
-        { split; trivial.
+        letexists. split.
+        { subst v'.
+          split; trivial.
+          split; trivial.
           split; trivial.
           split; trivial.
           eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
@@ -281,14 +311,15 @@ Section WithParameters.
             eexists; split.
             { exact eq_refl. }
             { ZnWords. } }
+          split; [|metrics].
           { ZnWordsL. } }
-          { ZnWords. }
           { ZnWords. } }
       { eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
         eexists. split.
         { econstructor; try eassumption; right; eauto. }
         eexists (byte.of_Z (word.unsigned x)), _; split.
         { f_equal. eassumption. }
+        split; [|mc_spi_read_unf; metrics].
         left; repeat split; eauto using nonzero_because_high_bit_set.
         { refine (kleene_app _ (cons _ nil) _ x3 _); eauto.
           refine (kleene_step _ (cons _ nil) nil _ (kleene_empty _)).
@@ -350,7 +381,8 @@ Section WithParameters.
           pose proof Z.mod_pos_bound (word.unsigned v0) (2^8) eq_refl.
           clear. Z.div_mod_to_equations. blia. }
         (* tag:symex *)
-        { right; split.
+        { split; [|mc_spi_read_unf; metrics].
+          right; split.
           { subst_words. rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent; exact eq_refl. }
           eexists x3, (cons _ nil); split; cbn [app]; eauto.
           split; eauto.
@@ -372,20 +404,25 @@ Section WithParameters.
           trivial. } } }
   Qed.
 
-  Global Instance spec_of_spi_xchg : spec_of "spi_xchg" := fun functions => forall t m b_out,
+  Global Instance spec_of_spi_xchg : spec_of "spi_xchg" := fun functions => forall t m b_out mc,
     word.unsigned b_out < 2 ^ 8 ->
-    WeakestPrecondition.call functions "spi_xchg" t m [b_out] (fun T M RETS =>
+    MetricWeakestPrecondition.call functions "spi_xchg" t m [b_out] mc (fun T M RETS MC =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b_in:byte) (err : word), RETS = [word.of_Z (byte.unsigned b_in); err] /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
-        (word.unsigned err = 0 /\ lightbulb_spec.spi_xchg word (byte.of_Z (word.unsigned b_out)) b_in ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.spi_xchg word (byte.of_Z (word.unsigned b_out)) b_in ioh) /\
+        (MC - mc <= mc_spi_xchg_const + Z.of_nat (length ioh) * mc_spi_mul)%metricsH).
 
   Lemma spi_xchg_ok : program_logic_goal_for_function! spi_xchg.
   Proof.
+    (* avoid using information about read/write consts anywhere to ensure correct dependencies *)
+    assert (EmptyMetricLog <= mc_spi_read_const)%metricsH by (unfold EmptyMetricLog, mc_spi_read_const; solve_MetricLog).
+    assert (EmptyMetricLog <= mc_spi_write_const)%metricsH by (unfold EmptyMetricLog, mc_spi_write_const; solve_MetricLog).
+
     repeat (
     match goal with
     | |- ?F ?a ?b ?c =>
-        match F with WeakestPrecondition.get => idtac end;
-        let f := (eval cbv beta delta [WeakestPrecondition.get] in F) in
+        match F with MetricWeakestPrecondition.get => idtac end;
+        let f := (eval cbv beta delta [MetricWeakestPrecondition.get] in F) in
         change (f a b c); cbv beta
       | H :  _ /\ _ \/ ?Y /\ _, G : not ?X |- _ =>
           constr_eq X Y; let Z := fresh in destruct H as [|[Z ?]]; [|case (G Z)]
@@ -411,11 +448,12 @@ Section WithParameters.
       rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by blia;
       change (Z.ones 8 mod 2 ^ 32) with (Z.ones 8));
       rewrite ?Z.mod_small; rewrite ?Z.mod_small; trivial; blia. }
+      split; [|mc_spi_xchg_unf; metrics].
       left; split; eauto.
       eexists nil, x0; repeat split; cbv [any choice lightbulb_spec.spi_timeout]; eauto.
       rewrite app_nil_r; trivial. }
 
-      { destruct H10; intuition eauto.
+      { destruct H13; intuition eauto.
         { eexists. split.
           { subst a0. subst a.
             rewrite List.app_assoc; trivial. }
@@ -423,6 +461,7 @@ Section WithParameters.
             { eapply Forall2_app; eauto. }
             eexists _, _; split.
             { subst v; trivial. }
+            split; [|rewrite app_length; mc_spi_xchg_unf; metrics].
             left; split; eauto.
             eapply concat_app; cbv [any choice lightbulb_spec.spi_timeout]; eauto. }
             eexists.
@@ -435,6 +474,7 @@ Section WithParameters.
             { eapply Forall2_app; eauto. }
             eexists _, _; split.
             { subst v. eauto. }
+            split; [|rewrite app_length; mc_spi_xchg_unf; metrics].
             right. split; eauto.
             cbv [lightbulb_spec.spi_xchg].
 

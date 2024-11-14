@@ -6,6 +6,7 @@ Require Import bedrock2.Semantics.
 Require Import compiler.SeparationLogic.
 Require Import compiler.LowerPipeline.
 Require Import compiler.Pipeline.
+Require Import bedrock2.MetricLogging.
 
 Section Params1.
   Context {width} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
@@ -19,15 +20,18 @@ Section Params1.
     datamem_pastend: word;
     (* trace invariant which holds at the beginning (and end) of each loop iteration,
        but might not hold in the middle of the loop because more needs to be appended *)
-    goodTrace: Semantics.trace -> Prop;
+    goodObservables : Semantics.trace -> MetricLog -> Prop;
     (* state invariant which holds at the beginning (and end) of each loop iteration *)
     isReady: Semantics.trace -> mem -> Prop;
   }.
 
   Definition hl_inv(spec: ProgramSpec)(t: Semantics.trace)(m: mem)
-             (l: locals)(mc: bedrock2.MetricLogging.MetricLog)
+             (l: locals)(mc: MetricLog)
     : Prop := (* Restriction: no locals can be shared between loop iterations *)
-    spec.(isReady) t m /\ spec.(goodTrace) t.
+    spec.(isReady) t m /\ spec.(goodObservables) t mc.
+
+
+  Definition eventLoopJumpMetrics mc := addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 mc)).
 
   Local Set Warnings "-cannot-define-projection".
 
@@ -45,7 +49,7 @@ Section Params1.
     get_loop_body: map.get (map.of_list e : env) loop_f = Some (nil, nil, loop_body);
     loop_body_correct: forall t m l mc,
         hl_inv spec t m l mc ->
-        MetricSemantics.exec (map.of_list e) loop_body t m l mc (hl_inv spec);
+        MetricSemantics.exec (map.of_list e) loop_body t m l mc (fun t m l mc => hl_inv spec t m l (eventLoopJumpMetrics mc));
   }.
 
 End Params1.

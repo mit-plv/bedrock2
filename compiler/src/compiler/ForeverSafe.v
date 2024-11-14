@@ -32,12 +32,12 @@ Section ForeverSafe.
   Variable iset: Decode.InstructionSet.
 
   Lemma extend_runsTo_to_good_trace:
-    forall (safe: RiscvMachineL -> Prop) (good_trace: trace -> Prop),
-      (forall st, safe st -> good_trace st.(getLog)) ->
+    forall (safe: RiscvMachineL -> Prop) (good_observables: trace -> MetricLog -> Prop),
+      (forall st, safe st -> good_observables st.(getLog) st.(getMetrics)) ->
       forall (st : RiscvMachineL),
         valid_machine st ->
         runsTo (mcomp_sat (run1 iset)) st safe ->
-        exists rest : trace, good_trace (rest ++ getLog st).
+        exists rest mc, good_observables (rest ++ getLog st) mc.
   Proof.
     intros ? ? safe2good st V R. induction R.
     - exists nil. rewrite List.app_nil_l. eauto.

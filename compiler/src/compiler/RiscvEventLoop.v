@@ -66,12 +66,14 @@ Section EventLoop.
   Hypothesis goodReadyState_checks_PC: forall done m,
       goodReadyState done m -> m.(getPc) = if done then pc_end else pc_start.
 
+  Definition eventLoopJumpMetrics mc := addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 mc)).
+
   Hypothesis goodReadyState_preserved_by_jump_back:
-    forall (state: RiscvMachineL) newMetrics,
+    forall (state: RiscvMachineL),
       goodReadyState true state ->
       let state' := (withPc pc_start
                     (withNextPc (word.add pc_start (word.of_Z 4))
-                    (withMetrics newMetrics state))) in
+                    (withMetrics (eventLoopJumpMetrics state.(getMetrics)) state))) in
       valid_machine state' ->
       goodReadyState false state'.
 

@@ -188,12 +188,12 @@ Section Connect.
      Only holds at the beginning/end of each loop iteration,
      will be transformed into "exists suffix, ..." form later *)
   Definition goodTraceE(t: list Event): Prop :=
-    exists bedrockTrace, traces_related t bedrockTrace /\ spec.(goodTrace) bedrockTrace.
+    exists bedrockTrace mc, traces_related t bedrockTrace /\ spec.(goodObservables) bedrockTrace mc.
 
-  Definition bedrock2Inv := (fun t m l => forall mc, hl_inv spec t m l mc).
+  Definition bedrock2Inv := (fun t m l => exists mc, hl_inv spec t m l mc).
 
-  Hypothesis goodTrace_implies_related_to_Events: forall (t: list LogItem),
-      spec.(goodTrace) t -> exists t': list Event, traces_related t' t.
+  Hypothesis goodTrace_implies_related_to_Events: forall t mc,
+      spec.(goodObservables) t mc -> exists t': list Event, traces_related t' t.
 
   Definition riscvMemInit_all_values: list byte :=
     List.map (get_kamiMemInit memInit) (seq 0 (Z.to_nat (2 ^ memSizeLg))).
@@ -364,12 +364,13 @@ Section Connect.
              end.
              eapply MetricSemantics.of_metrics_free.
              eapply WeakestPreconditionProperties.sound_cmd; eauto.
-          -- simpl. clear. intros. unfold bedrock2Inv in *. eauto.
+          -- cbv beta. clear. intros. unfold bedrock2Inv in *. eauto.
         * exact GetLoop.
         * intros. unfold bedrock2Inv in *.
           eapply ExprImp.weaken_exec.
           -- eapply MetricSemantics.of_metrics_free.
              eapply WeakestPreconditionProperties.sound_cmd; eauto.
+             eapply Preserve.
           -- simpl. clear. intros. eauto.
       + assumption.
       + assumption.

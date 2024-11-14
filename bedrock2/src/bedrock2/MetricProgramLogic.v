@@ -240,8 +240,8 @@ Ltac straightline :=
     let __ := match s with String.String _ _ => idtac | String.EmptyString => idtac end in
     ident_of_constr_string_cps s ltac:(fun x =>
       ensure_free x;
-      (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
-      letexists _ as x; split; [solve [repeat straightline]|])
+      (* NOTE: keep this consistent with the [exists _ _, _ /\ _] case far below *)
+      letexists _ as x; letexists; split; [solve [repeat straightline]|])
   | |- cmd _ ?c _ _ _ _ ?post =>
     let c := eval hnf in c in
     lazymatch c with
@@ -250,7 +250,7 @@ Ltac straightline :=
     | cmd.interact _ _ _ => fail
     | _ => unfold1_cmd_goal; cbv beta match delta [cmd_body]
     end
-  | |- @list_map _ _ (get _ _) _ _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @list_map _ _ (get _) _ _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
   | |- @list_map _ _ (expr _ _) _ _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
   | |- @list_map _ _ _ nil _ _ => cbv beta match fix delta [list_map list_map_body]
   | |- expr _ _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
@@ -310,15 +310,20 @@ Ltac straightline :=
                         split; [solve [repeat straightline]|]
   (* NOTE: metrics only case; maybe try to unify with non-metrics? *)
   | |- exists x y, ?P /\ ?Q =>
-    eexists; eexists; split; [solve [repeat straightline]|]
-    (* eexists instead of letexists ensures unification of (?a,?b) = (const,const)
-       does not unfold the const aggressively (e.g. word to Naive) *)
-  | |- exists x, Markers.split (?P /\ ?Q) =>
-    let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
-                        split; [solve [repeat straightline]|]
-  | |- Markers.unique (exists x, Markers.split (?P /\ ?Q)) =>
-    let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
-                        split; [solve [repeat straightline]|]
+    let x := fresh x in let y := fresh y in
+      refine (let x := _ in let y := _ in
+        ex_intro (fun x => exists y, P /\ Q) x (ex_intro (fun y => P /\ Q) y _));
+      split; [solve [repeat straightline]|]
+  | |- exists x y, Markers.split (?P /\ ?Q) =>
+    let x := fresh x in let y := fresh y in
+      refine (let x := _ in let y := _ in
+        ex_intro (fun x => exists y, P /\ Q) x (ex_intro (fun y => P /\ Q) y _));
+      split; [solve [repeat straightline]|]
+  | |- Markers.unique (exists x y, Markers.split (?P /\ ?Q)) =>
+    let x := fresh x in let y := fresh y in
+      refine (let x := _ in let y := _ in
+        ex_intro (fun x => exists y, P /\ Q) x (ex_intro (fun y => P /\ Q) y _));
+      split; [solve [repeat straightline]|]
   | |- Markers.unique (Markers.left ?G) =>
     change G;
     unshelve (idtac; repeat match goal with
@@ -343,12 +348,12 @@ Ltac straightline :=
 (* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
 Ltac straightline_call :=
   lazymatch goal with
-  | |- MetricWeakestPrecondition.call ?functions ?callee _ _ _ _ =>
+  | |- MetricWeakestPrecondition.call ?functions ?callee _ _ _ _ _ =>
     let callee_spec := lazymatch constr:(_:spec_of callee) with ?s => s end in
     let Hcall := lazymatch goal with H: callee_spec functions |- _ => H end in
     eapply MetricWeakestPreconditionProperties.Proper_call; cycle -1;
       [ eapply Hcall | try eabstract (solve [Morphisms.solve_proper]) .. ];
-      [ .. | intros ? ? ? ?]
+      [ .. | intros ? ? ? ? ?]
   end.
 
 Ltac current_trace_mem_locals :=
