@@ -250,7 +250,7 @@ Section WithParameters.
       progress cbv beta delta [x] in *
     end;
     cbn -[Z.add Z.mul Z.of_nat] in *;
-    rewrite ?length_app, ?List.length_cons, ?List.length_nil in *;
+    rewrite ?List.app_length, ?List.length_cons, ?List.length_nil in *;
     flatten_MetricLog; repeat unfold_MetricLog; repeat simpl_MetricLog; try blia.
   Ltac metrics := solve [metrics'].
 
@@ -916,8 +916,8 @@ Section WithParameters.
     fnspec! "lan9250_tx" p l / bs ~> err,
     { requires t m mc := m =*> bytes p bs ∧ l = length bs :> Z ∧ l mod 4 = 0 :> Z;
       ensures T M MC := M = m ∧ ∃ t', T = t' ++ t ∧ only_mmio_satisfying (fun h =>
-       ((0 <> err ∧ (any+++spi_timeout) h) ∨ (0 = err ∧ lan9250_send bs h ∧ 
-       MC - mc <= (50+6*l)*mc_spi_xchg_const + (length h)*mc_spi_mul))%metricsH) t' 
+       ((0 <> err ∧ (any+++spi_timeout) h) ∨ (0 = err ∧ lan9250_send bs h ∧
+       MC - mc <= (50+6*l)*mc_spi_xchg_const + (length h)*mc_spi_mul))%metricsH) t'
     }.
 
   Lemma lan9250_tx_ok' : program_logic_goal_for_function! lan9250_tx.

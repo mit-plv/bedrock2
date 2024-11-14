@@ -204,7 +204,7 @@ Section WithParameters.
       progress cbv beta delta [x] in *
     end;
     cbn -[Z.add Z.mul Z.of_nat] in *;
-    rewrite ?List.length_app, ?List.length_cons, ?List.length_nil, ?List.length_firstn, ?LittleEndianList.length_le_split in *;
+    rewrite ?List.app_length, ?List.length_cons, ?List.length_nil, ?List.firstn_length, ?LittleEndianList.length_le_split in *;
     flatten_MetricLog; repeat unfold_MetricLog; repeat simpl_MetricLog; try blia.
 
   Local Hint Mode map.map - - : typeclass_instances. (* COQBUG https://github.com/coq/coq/issues/14707 *)
