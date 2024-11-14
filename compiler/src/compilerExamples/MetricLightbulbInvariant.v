@@ -108,7 +108,7 @@ Definition loop_progress t t' dmc :=
 Notation RiscvMetrics := Platform.MetricLogging.MetricLog.
 
 Definition metricAdd(metric: RiscvMetrics -> Z) finalM initialM: Z :=
-  Z.sub (metric finalM) (metric initialM).
+  Z.add (metric finalM) (metric initialM).
 Definition metricsAdd := Platform.MetricLogging.metricsOp metricAdd.
 Infix "+" := metricsAdd : MetricL_scope.
 
@@ -131,6 +131,33 @@ Definition mc_spi_mul := riscv.Platform.MetricLogging.mkMetricLog 157 109 169 10
 Definition lightbulb_handle_cost :=
   riscv.Platform.MetricLogging.mkMetricLog 552 274 639 203.
 
+(* very silly duplication because riscv-coq and bedrock2 don't share any common metrics
+   library *)
+Ltac raise_metrics_const c :=
+  lazymatch c with
+  | mc_spi_write_const => bedrock2Examples.metric_SPI.mc_spi_write_const
+  | mc_spi_read_const => bedrock2Examples.metric_SPI.mc_spi_read_const
+  | mc_spi_xchg_const => bedrock2Examples.metric_SPI.mc_spi_xchg_const
+  | mc_spi_mul => bedrock2Examples.metric_SPI.mc_spi_mul
+  | lightbulb_handle_cost => bedrock2Examples.metric_lightbulb.lightbulb_handle_cost
+  end.
+
+Ltac raise_metrics_getter g :=
+  lazymatch g with
+  | riscv.Platform.MetricLogging.instructions => bedrock2.MetricLogging.instructions
+  | riscv.Platform.MetricLogging.stores => bedrock2.MetricLogging.stores
+  | riscv.Platform.MetricLogging.loads => bedrock2.MetricLogging.loads
+  | riscv.Platform.MetricLogging.jumps => bedrock2.MetricLogging.jumps
+  end.
+
+Ltac raise_step :=
+  match goal with
+  | |- context[?g ?c] =>
+      let g' := raise_metrics_getter g in
+      let c' := raise_metrics_const c in
+      change (g c) with (g' c')
+  end.
+
 (*
   let dmc := metricsSub (MetricsToRiscv.raiseMetrics dmc) (cost_call PreSpill (cost_lit (prefix "reg_") ""%string loop_overhead)) in
  *)
@@ -144,6 +171,15 @@ Arguments lan9250_recv_packet_too_long {word}.
 Arguments spi_timeout {word}.
 Arguments lan9250_recv_no_packet {word}.
 
+Definition loop_compilation_overhead :=
+  MetricsToRiscv.lowerMetrics
+    (cost_call PreSpill (cost_lit (prefix "reg_") ""%string loop_overhead)).
+
+Definition loop_cost(packet_length trace_length: Z): RiscvMetrics :=
+  (60 + 7 * packet_length) * mc_spi_xchg_const +
+  lightbulb_handle_cost + trace_length * mc_spi_mul +
+  loop_compilation_overhead.
+
 (*------desired code width for papers: max 88 columns---------------------------------*)
 
 Section WithMetricsScope. Open Scope metricsL.
@@ -155,18 +191,15 @@ Definition handle_request_spec(t t': trace)(mc mc': RiscvMetrics) :=
     (exists packet cmd,
         (lan9250_recv packet +++ gpio_set 23 cmd) ioh /\
         lightbulb_packet_rep cmd packet /\
-        ((mc-mc' <= (60+7*length packet)*mc_spi_xchg_const +
-                    lightbulb_handle_cost + (length ioh)*mc_spi_mul))) \/
+        (mc' - mc <= loop_cost (length packet) (length ioh))) \/
     (* Case 2: Received invalid packet: *)
     (exists packet,
         (lan9250_recv packet) ioh /\
         not (exists cmd, lightbulb_packet_rep cmd packet) /\
-        ((mc-mc' <= (60+7*length packet)*mc_spi_xchg_const +
-                    lightbulb_handle_cost + (length ioh)*mc_spi_mul))) \/
+        (mc' - mc <= loop_cost (length packet) (length ioh))) \/
     (* Case 3: Polled, but no new packet was available: *)
     (lan9250_recv_no_packet ioh /\
-        ((mc-mc' <= (60                )*mc_spi_xchg_const +
-                    lightbulb_handle_cost + (length ioh)*mc_spi_mul))) \/
+        (mc' - mc <= loop_cost 0 (length ioh))) \/
     (* Case 4: Received too long packet *)
     (lan9250_recv_packet_too_long ioh) \/
     (* Case 5: SPI protocol timeout *)
@@ -259,9 +292,9 @@ Lemma successively_weaken_step {State} f g R (s : State) :
   successively g R s.
 Proof. intros; eapply always_weaken_step; eauto; cbv beta; eauto using eventually_weaken_step. Qed.
 
-Axiom TODO: False.
+Require Import coqutil.Tactics.fwd.
 
-Lemma metric_lightbulb_correct: forall (initial : MetricRiscvMachine) R,
+Theorem metric_lightbulb_correct: forall (initial : MetricRiscvMachine) R,
     valid_machine initial ->
     getLog initial = [] ->
     regs_initialized.regs_initialized (getRegs initial) ->
@@ -341,29 +374,19 @@ all : cycle -1.
 {
   unfold loop_progress, handle_request_spec.
   intros.
-  eapply successively_weaken; eauto; cbv beta.
-  repeat (intuition Simp.simp); eauto 9; [| |].
-  all : eexists; split; eauto.
-  all : eexists; split; eauto.
-  1: left; exists packet, cmd; intuition eauto.
-  2: right; left; exists packet; intuition eauto.
-  3: right; right; left; intuition eauto.
-all :
-    (* metrics accounting *)
-    repeat (
-    repeat match goal with | H := _ : MetricLog |- _ => subst H end;
-    repeat match goal with | H := _ : RiscvMetrics |- _ => subst H end;
-    repeat match goal with
-    | H: context [?x] |- _ => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
-      progress cbv beta delta [x] in *
-    | |- context [?x] => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
-      progress cbv beta delta [x] in *
-    | H: context [?x] |- _ => is_const x; let t := type of x in constr_eq t constr:(RiscvMetrics);
-      progress cbv beta delta [x] in *
-    | |- context [?x] => is_const x; let t := type of x in constr_eq t constr:(RiscvMetrics);
-      progress cbv beta delta [x] in *
-    end;
-    cbn [Platform.MetricLogging.instructions Platform.MetricLogging.stores Platform.MetricLogging.loads Platform.MetricLogging.jumps] in *;
+  lazymatch goal with
+  | H: successively _ _ _ |- _ => rename H into HS
+  end.
+  eapply successively_weaken; [exact HS | clear HS].
+  cbv beta.
+  clear.
+  intros s s' H.
+  fwd.
+  eexists. split. 1: eauto.
+  eexists. split. 1: eauto.
+
+Ltac t :=
+cbn [Platform.MetricLogging.instructions Platform.MetricLogging.stores Platform.MetricLogging.loads Platform.MetricLogging.jumps] in *;
     cbv [metricsAdd metricsMul] in *;
     cbv [metricAdd] in *;
           cbv [MetricsToRiscv.raiseMetrics MetricsToRiscv.lowerMetrics] in *;
@@ -371,9 +394,30 @@ all :
           change (isRegStr "") with false in *;
           change (prefix ?x ?y) with false in *;
            MetricLogging.unfold_MetricLog;  MetricLogging.simpl_MetricLog;
-                         unfold_MetricLog;                simpl_MetricLog);
-          intuition try blia.
-    1,2,3,4,5,6,7,8,9,10,11,12 : case TODO.
+                         unfold_MetricLog;                simpl_MetricLog.
+
+  unfold loop_cost, loop_compilation_overhead.
+  destruct Hp1p1 as [Case1 | [Case2 | [Case3 | [Case4 | Case5] ] ] ]; fwd.
+  - left. do 2 eexists. do 2 (split; eauto).
+    clear -Case1p2. forget (getMetrics s') as mc'. forget (getMetrics s) as mc.
+    destruct mc'. destruct mc. t.
+    riscv.Platform.MetricLogging.simpl_MetricLog.
+    repeat raise_step.
+    Lia.lia.
+  - right. left. eexists. do 2 (split; eauto).
+    clear -Case2p2. forget (getMetrics s') as mc'. forget (getMetrics s) as mc.
+    destruct mc'. destruct mc. t.
+    riscv.Platform.MetricLogging.simpl_MetricLog.
+    repeat raise_step.
+    Lia.lia.
+  - right. right. left. split; eauto.
+    clear -Case3p1. forget (getMetrics s') as mc'. forget (getMetrics s) as mc.
+    destruct mc'. destruct mc. t.
+    riscv.Platform.MetricLogging.simpl_MetricLog.
+    repeat raise_step.
+    Lia.lia.
+  - right. right. right. left. assumption.
+  - do 4 right. assumption.
 }
 {
   intros.
@@ -448,124 +492,4 @@ PropExtensionality.propositional_extensionality :
 functional_extensionality_dep :
   forall (A : Type) (B : A -> Type) (f g : forall x : A, B x),
   (forall x : A, f x = g x) -> f = g
-TODO : False
-used in metric_lightbulb_correct to prove
- successively riscv.run1
-   (fun s s' : MetricRiscvMachine =>
-    exists dt : list Semantics.LogItem,
-      getLog s' = dt ++ getLog s /\
-      (exists ioh : list OP,
-         metric_SPI.mmio_trace_abstraction_relation ioh dt /\
-         ((exists (packet : list Init.Byte.byte) (cmd : bool),
-             (lan9250_recv packet +++ gpio_set 23 cmd) ioh /\
-             lightbulb_packet_rep cmd packet /\
-             (getMetrics s - getMetrics s' <=
-              (60 + 7 * Datatypes.length packet) * mc_spi_xchg_const +
-              lightbulb_handle_cost + Datatypes.length ioh * mc_spi_mul)%metricsL) \/
-          (exists packet : list Init.Byte.byte,
-             lan9250_recv packet ioh /\
-             ~ (exists cmd : bool, lightbulb_packet_rep cmd packet) /\
-             (getMetrics s - getMetrics s' <=
-              (60 + 7 * Datatypes.length packet) * mc_spi_xchg_const +
-              lightbulb_handle_cost + Datatypes.length ioh * mc_spi_mul)%metricsL) \/
-          lan9250_recv_no_packet ioh \/
-          lan9250_recv_packet_too_long ioh \/ (any +++ spi_timeout) ioh))) final
-*)
-(*------desired code width for papers: max 85 columns------------------------------*)
-(* OLD STUFF BELOW, may be useful for instantiating some assumptions
-
-
-
-
-Definition bedrock2_invariant
-
-Import ToplevelLoop GoFlatToRiscv regs_initialized LowerPipeline.
-Import bedrock2.Map.Separation. Local Open Scope sep_scope.
-Require Import bedrock2.ReversedListNotations.
-Local Notation run_one_riscv_instr := (mcomp_sat (run1 Decode.RV32IM)).
-Local Notation RiscvMachine := MetricRiscvMachine.
-Local Notation run1 := (mcomp_sat (run1 Decode.RV32IM)).
-Implicit Types mach : RiscvMachine.
-
-Definition initial_conditions mach :=
-  code_start ml = mach.(getPc) /\
-  [] = mach.(getLog) /\
-  EmptyMetricLog = mach.(getMetrics) /\
-  mach.(getNextPc) = word.add mach.(getPc) (word.of_Z 4) /\
-  regs_initialized (getRegs mach) /\
-  (forall a : word32, code_start ml <= a < code_pastend ml -> In a (getXAddrs mach)) /\
-  valid_machine mach /\
-  (imem (code_start ml) (code_pastend ml) lightbulb_insns ⋆
-   mem_available (heap_start ml) (heap_pastend ml) ⋆
-   mem_available (stack_start ml) (stack_pastend ml)) (getMem mach).
-
-Lemma initial_conditions_sufficient mach :
-  initial_conditions mach ->
-  CompilerInvariant.initial_conditions compile_ext_call ml lightbulb_spec mach.
-Proof.
-  intros (? & ? & ? & ? & ? & ? & ?).
-  econstructor.
-  eexists lightbulb_insns.
-  eexists lightbulb_finfo.
-  eexists lightbulb_stack_size.
-  rewrite lightbulb_compiler_result_ok; ssplit; trivial using compiler_emitted_valid_instructions; try congruence.
-  2,3:vm_compute; inversion 1.
-  1: econstructor (* ProgramSatisfiesSpec *).
-  1: vm_compute; reflexivity.
-  1: instantiate (1:=snd init).
-  3: instantiate (1:=snd loop).
-  1,3: exact eq_refl.
-  1,2: cbv [hl_inv init loop]; cbn [fst snd]; intros; eapply MetricWeakestPreconditionProperties.sound_cmd.
-  all : repeat MetricProgramLogic.straightline.
-  { eapply MetricSemantics.weaken_call; [eapply link_lightbulb_init|cbv beta]. admit. }
-  { cbv [isReady lightbulb_spec ExprImpEventLoopSpec.goodObservables goodObservables] in *.
-    destruct H6 as (?&?&?&?).
-    eapply MetricSemantics.weaken_call; [eapply link_lightbulb_loop|cbv beta]; eauto.
-    intros.
-    Simp.simp.
-    repeat MetricProgramLogic.straightline.
-    split; eauto.
-    unfold existsl, Recv, LightbulbCmd in *.
-    destruct H10p1p1p1; Simp.simp; (eexists (S n), _; Tactics.ssplit;
-      [eapply Forall2_app; eauto|..]).
-    all: try (progress unfold goodHlTrace;
-    (*
-    { unfold "+++" in H7p2|-*. left. left. Simp.simp.
-      unfold Recv. eexists _, _, _; Tactics.ssplit; eauto. }
-    destruct H7; Simp.simp.
-    { left. right. left. left. eauto. }
-    destruct H7; Simp.simp.
-    { right. unfold PollNone. eauto. }
-    destruct H7; Simp.simp.
-    { left. right. left. right. eauto. }
-    left. right. right. eauto. }
-     *) admit).
-    { rewrite Nat2Z.inj_succ, <-Z.add_1_l.
-  Local Ltac metrics' :=
-    repeat match goal with | H := _ : MetricLog |- _ => subst H end;
-    cost_unfold;
-    repeat match goal with
-    | H: context [?x] |- _ => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
-      progress cbv beta delta [x] in *
-    | |- context [?x] => is_const x; let t := type of x in constr_eq t constr:(MetricLog);
-      progress cbv beta delta [x] in *
-    end;
-    cbn -[Z.add Z.mul Z.of_nat] in *;
-    rewrite ?List.length_app, ?List.length_cons, ?List.length_nil, ?List.length_firstn, ?LittleEndianList.length_le_split in *;
-    flatten_MetricLog; repeat unfold_MetricLog; repeat simpl_MetricLog; try blia.
-    metrics'.
-
-Admitted.
-
-Import OmniSmallstepCombinators.
-
-Theorem lightbulb_correct : forall mach : MetricRiscvMachine, initial_conditions mach ->
-  always run1 (eventually run1 (fun mach' => goodObservables mach'.(getLog) (MetricsToRiscv.raiseMetrics mach'.(getMetrics)))) mach.
-Proof.
-  intros ? H%initial_conditions_sufficient; revert H.
-  unshelve rapply @always_eventually_observables; trivial using ml_ok, @Naive.word32_ok.
-  { eapply (naive_word_riscv_ok 5%nat). }
-  { eapply @compile_ext_call_correct; try exact _. }
-Qed.
-
 *)
