@@ -114,7 +114,9 @@ Section WithParameters.
             ((mc' - mc <= (55+7*bytes_written)*mc_spi_xchg_const + (length ioh)*mc_spi_mul))%metricsH
           )
           (word.unsigned err <> 0 /\ exists buf, (array scalar8 (word.of_Z 1) p_addr buf * R) m' /\ length buf = 1520%nat /\ (
-             word.unsigned err = 1 /\ lan9250_recv_no_packet _ ioh \/
+             word.unsigned err = 1 /\ lan9250_recv_no_packet _ ioh /\
+            ((mc' - mc <= (55                )*mc_spi_xchg_const + (length ioh)*mc_spi_mul))%metricsH
+             \/
              word.unsigned err = 2 /\ lan9250_recv_packet_too_long _ ioh \/
              word.unsigned err = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout word) ioh
             ))
@@ -151,7 +153,9 @@ Section WithParameters.
           (exists packet, (lan9250_recv _ packet) ioh /\ not (exists cmd, lightbulb_packet_rep _ cmd packet) /\ word.unsigned v = 0 /\
           ((mc' - mc <= (60+7*length packet)*mc_spi_xchg_const + lightbulb_handle_cost + (length ioh)*mc_spi_mul))%metricsH
           ) \/
-          (lan9250_recv_no_packet _ ioh /\ word.unsigned v = 0) \/
+          (lan9250_recv_no_packet _ ioh /\ word.unsigned v = 0 /\
+          ((mc' - mc <= (60                )*mc_spi_xchg_const + (length ioh)*mc_spi_mul))%metricsH
+          ) \/
           (lan9250_recv_packet_too_long _ ioh /\ word.unsigned v <> 0) \/
           ((TracePredicate.any +++ (spi_timeout word)) ioh /\ word.unsigned v <> 0)
         )).
@@ -260,6 +264,7 @@ Section WithParameters.
     all : try subst err; rewrite ?word.unsigned_of_Z.
     all : repeat (eapply List.Forall2_cons || eapply List.Forall2_nil || eapply List.Forall2_app || eauto 15 using concat_app).
     { subst v. rewrite word.unsigned_xor_nowrap, H10, word.unsigned_of_Z in H4. case (H4 eq_refl). }
+    { right; right; left; eauto. intuition eauto using concat_app; metrics'. }
     { subst v. rewrite word.unsigned_xor_nowrap, H9, word.unsigned_of_Z in H4. inversion H4. }
     { subst v. rewrite word.unsigned_xor_nowrap, H9, word.unsigned_of_Z in H4. inversion H4. }
     { left; eauto. eexists _, _; intuition eauto using concat_app; metrics'. }
@@ -637,7 +642,8 @@ Section WithParameters.
       subst v. rewrite word.unsigned_and_nowrap, word.unsigned_of_Z in H2. eapply H2. }
     { left.
       split; [exact eq_refl|].
-      eexists; split; intuition eauto. }
+      intuition idtac. { eexists. split; intuition eauto. }
+      metrics'. }
   Defined.
 
   Import metric_SPI.

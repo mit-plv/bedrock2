@@ -97,7 +97,8 @@ Definition loop_progress t t' dmc :=
   (exists packet, (lan9250_recv _ packet) ioh /\ not (exists cmd, lightbulb_packet_rep _ cmd packet) /\
   ((dmc  <= (60+7*length packet)*mc_spi_xchg_const + lightbulb_handle_cost + (length ioh)*mc_spi_mul))%metricsH
   ) \/
-  (lan9250_recv_no_packet _ ioh) \/
+  (lan9250_recv_no_packet _ ioh /\
+  ((dmc  <= (60                )*mc_spi_xchg_const + lightbulb_handle_cost + (length ioh)*mc_spi_mul))%metricsH) \/
   (lan9250_recv_packet_too_long _ ioh) \/
   ((TracePredicate.any +++ (spi_timeout _)) ioh).
 
@@ -163,7 +164,9 @@ Definition handle_request_spec(t t': trace)(mc mc': RiscvMetrics) :=
         ((mc-mc' <= (60+7*length packet)*mc_spi_xchg_const +
                     lightbulb_handle_cost + (length ioh)*mc_spi_mul))) \/
     (* Case 3: Polled, but no new packet was available: *)
-    (lan9250_recv_no_packet ioh) \/
+    (lan9250_recv_no_packet ioh /\
+        ((mc-mc' <= (60                )*mc_spi_xchg_const +
+                    lightbulb_handle_cost + (length ioh)*mc_spi_mul))) \/
     (* Case 4: Received too long packet *)
     (lan9250_recv_packet_too_long ioh) \/
     (* Case 5: SPI protocol timeout *)
@@ -339,11 +342,12 @@ all : cycle -1.
   unfold loop_progress, handle_request_spec.
   intros.
   eapply successively_weaken; eauto; cbv beta.
-  repeat (intuition Simp.simp); eauto 9; [|].
+  repeat (intuition Simp.simp); eauto 9; [| |].
   all : eexists; split; eauto.
   all : eexists; split; eauto.
   1: left; exists packet, cmd; intuition eauto.
   2: right; left; exists packet; intuition eauto.
+  3: right; right; left; intuition eauto.
 all :
     (* metrics accounting *)
     repeat (
@@ -369,12 +373,7 @@ all :
            MetricLogging.unfold_MetricLog;  MetricLogging.simpl_MetricLog;
                          unfold_MetricLog;                simpl_MetricLog);
           intuition try blia.
-          {
-    set (Platform.MetricLogging.instructions (getMetrics x) -
-    Platform.MetricLogging.instructions (getMetrics y)) as goal in *.
-    set (Platform.MetricLogging.instructions (getMetrics y) -
-    Platform.MetricLogging.instructions (getMetrics x)) as goal' in H7 |- *.
-    1,2,3,4,5,6,7,8 : case TODO.
+    1,2,3,4,5,6,7,8,9,10,11,12 : case TODO.
 }
 {
   intros.
