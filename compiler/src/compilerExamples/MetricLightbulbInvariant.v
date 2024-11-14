@@ -119,6 +119,25 @@ metricsAdd (cost_call PreSpill (cost_lit (prefix "reg_") ""%string loop_overhead
 
 Local Notation run1 := (ToplevelLoop.run1 (iset:=Decode.RV32I)).
 
+Lemma mem_available_to_seplog: forall m0,
+    LowerPipeline.mem_available (heap_start ml) (heap_pastend ml) m0 ->
+    exists buf R,
+      (array ptsto (word.of_Z 1) (word.of_Z buffer_addr) buf * R)%sep m0 /\
+      Datatypes.length buf = 1520 :> Z.
+Proof.
+  intros. unfold LowerPipeline.mem_available, ex1 in *.
+  destruct H as (buf & mp & mq & Sp & P & Q).
+  unfold emp in P. destruct P as (E & P). subst mp.
+  eapply map.split_empty_l in Sp. subst mq.
+  change (Z.of_nat (Datatypes.length buf) = 2048) in P.
+  unfold LowerPipeline.ptsto_bytes, buffer_addr in *.
+  (* Set Printing Coercions. *) rewrite word.of_Z_unsigned.
+  rewrite <- (List.firstn_skipn 1520 buf) in Q.
+  eapply array_append in Q.
+  do 2 eexists. split. 1: exact Q.
+  rewrite List.firstn_length. Lia.lia.
+Qed.
+
 Derive _tt SuchThat (
 forall (initial : MetricRiscvMachine) R,
 valid_machine initial ->
@@ -132,16 +151,6 @@ getPc initial = code_start ml ->
  (getMem initial) ->
 subset (footpr (program RV32IM (code_start ml) (fst (fst out))))
 (of_list (getXAddrs initial)) ->
-
-(* I believe this assumption could be removed *)
-(forall m0 : map (Naive.word (2 ^ Nat.log2 32)) Init.Byte.byte,
-LowerPipeline.mem_available (heap_start ml) (heap_pastend ml) m0 ->
-exists
-  (buf : list Init.Byte.byte) (R : map (Naive.word (2 ^ Nat.log2 32))
-                                     Init.Byte.byte -> Prop),
-  (array ptsto (word.of_Z 1) (word.of_Z buffer_addr) buf * R)%sep m0 /\
-  Datatypes.length buf = 1520 :> Z) ->
-
 _)
 As metric_lightbulb_correct.
 
@@ -224,7 +233,7 @@ all : cycle -1.
     intuition (Simp.simp; eauto).
     1: left; exists packet, cmd; intuition eauto.
     2: right; left; exists packet; intuition eauto.
-all : 
+all :
     repeat (
     repeat match goal with | H := _ : MetricLog |- _ => subst H end;
     repeat match goal with
@@ -242,7 +251,7 @@ all :
                          unfold_MetricLog;                simpl_MetricLog);
           intuition try blia. } }
 
-Unshelve. all : try exact tt.
+Unshelve. exact mem_available_to_seplog.
 Qed.
 
 Import OmniSmallstepCombinators.
@@ -263,14 +272,6 @@ metric_lightbulb_correct
          (getMem initial) ->
        subset (footpr (program RV32IM (code_start ml) (fst (fst out))))
          (of_list (getXAddrs initial)) ->
-       (forall m0 : map (Naive.word (2 ^ Nat.log2 32)) Init.Byte.byte,
-        LowerPipeline.mem_available (heap_start ml) (heap_pastend ml) m0 ->
-        exists
-          (buf : list Init.Byte.byte) (R0 : map
-                                              (Naive.word (2 ^ Nat.log2 32))
-                                              Init.Byte.byte -> Prop),
-          (array ptsto (word.of_Z 1) (word.of_Z buffer_addr) buf * R0)%sep m0 /\
-          Datatypes.length buf = 1520) ->
        eventually ToplevelLoop.run1
          (successively ToplevelLoop.run1
             (fun s s' : MetricRiscvMachine =>
@@ -294,7 +295,7 @@ functional_extensionality_dep :
 
 
 
-Definition bedrock2_invariant 
+Definition bedrock2_invariant
 
 Import ToplevelLoop GoFlatToRiscv regs_initialized LowerPipeline.
 Import bedrock2.Map.Separation. Local Open Scope sep_scope.
