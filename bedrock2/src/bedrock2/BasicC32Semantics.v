@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import bedrock2.Syntax bedrock2.Semantics.
+Require Import bedrock2.Syntax bedrock2.Semantics bedrock2.LeakageSemantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Import coqutil.Word.Interface coqutil.Map.SortedListWord.
 Require coqutil.Word.Naive.
@@ -10,25 +10,27 @@ Require Export coqutil.Word.Bitwidth32.
 #[global] Instance locals: Interface.map.map String.string word := SortedListString.map _.
 #[global] Instance env: Interface.map.map String.string (list String.string * list String.string * cmd) :=
   SortedListString.map _.
-#[global] Instance ext_spec: ExtSpec := fun _ _ _ _ _ => False.
+#[global] Instance ext_spec: LeakageSemantics.ExtSpec := fun _ _ _ _ _ => False.
 
 Arguments word: simpl never.
 Arguments mem: simpl never.
 Arguments locals: simpl never.
 Arguments env: simpl never.
 
-#[global] Instance weaken_ext_spec trace m0 act args :
+(*#[global] Instance weaken_ext_spec :
+  ext_spec.ok ext_spec.
   Morphisms.Proper
-    (Morphisms.respectful
+    ((Morphisms.respectful
        (Morphisms.pointwise_relation Interface.map.rep
-          (Morphisms.pointwise_relation (list word) Basics.impl))
-       Basics.impl) (ext_spec trace m0 act args).
+          (Morphisms.pointwise_relation _
+             (Morphisms.pointwise_relation _ Basics.impl)))
+       Basics.impl) Basics.impl) (ext_spec trace m0 act klist args).
 Proof.
   cbn in *.
   unfold Morphisms.Proper, Morphisms.respectful, Morphisms.pointwise_relation, Basics.impl.
   intros.
   assumption.
-Qed.
+Qed.*)
 
 #[global] Instance localsok: coqutil.Map.Interface.map.ok locals := SortedListString.ok _.
 #[global] Instance envok: coqutil.Map.Interface.map.ok env := SortedListString.ok _.
@@ -42,5 +44,8 @@ Add Ring wring : (Properties.word.ring_theory (word := word))
 #[global] Instance ext_spec_ok : ext_spec.ok ext_spec.
 Proof.
   constructor; intros; try contradiction.
-  apply weaken_ext_spec.
+  cbn in *.
+  unfold Morphisms.Proper, Morphisms.respectful, Morphisms.pointwise_relation, Basics.impl.
+  intros.
+  assumption.
 Qed.
