@@ -1,4 +1,4 @@
-Require Import Coq.Classes.Morphisms.
+From Coq Require Import Morphisms.
 
 Section Binary.
   Context {T: Type} (P Q: T -> Prop).

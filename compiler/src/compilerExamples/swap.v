@@ -1,4 +1,4 @@
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 Import ListNotations.
 Require bedrock2Examples.Demos.
 Require Import coqutil.Decidable.

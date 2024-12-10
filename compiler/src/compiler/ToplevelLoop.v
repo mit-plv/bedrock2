@@ -1,9 +1,9 @@
 Require Export Coq.Lists.List.
-Require Import Coq.ZArith.ZArith.
-Require Import Coq.Strings.String. Local Open Scope string_scope.
+From Coq Require Import ZArith.
+From Coq Require Import String. Local Open Scope string_scope.
 Export ListNotations.
 Require Export coqutil.Decidable.
-Require Import Coq.Program.Tactics.
+From Coq.Program Require Import Tactics.
 Require Import coqutil.Tactics.rewr.
 Require        compiler.ExprImp.
 Require Export compiler.FlattenExprDef.

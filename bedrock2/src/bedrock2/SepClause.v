@@ -1,4 +1,4 @@
-Require Export Coq.ZArith.ZArith.
+From Coq Require Export ZArith.
 Require Export coqutil.Byte.
 Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
 Require Export coqutil.Word.Interface coqutil.Word.Properties.

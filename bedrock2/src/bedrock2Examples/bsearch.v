@@ -1,4 +1,4 @@
-Require Import Coq.Strings.String Coq.ZArith.ZArith.
+From Coq Require Import String ZArith.
 Require Import coqutil.Z.Lia.
 From bedrock2 Require Import NotationsCustomEntry ProgramLogic Map.Separation Array Scalars Loops.
 

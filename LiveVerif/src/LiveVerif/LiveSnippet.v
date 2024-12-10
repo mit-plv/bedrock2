@@ -1,4 +1,4 @@
-Require Import Coq.Strings.String.
+From Coq Require Import String.
 Require Import bedrock2.Syntax.
 
 Inductive assignment_rhs :=

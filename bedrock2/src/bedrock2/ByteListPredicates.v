@@ -19,9 +19,9 @@
          + pointer_to (ethernet_header h) }>
 *)
 
-Require Import Coq.Logic.PropExtensionality.
-Require Import Coq.Logic.FunctionalExtensionality.
-Require Import Coq.Lists.List.
+From Coq Require Import PropExtensionality.
+From Coq Require Import FunctionalExtensionality.
+From Coq Require Import List.
 Require Import coqutil.Byte.
 
 Lemma bp_ext: forall (P Q: list byte -> Prop), (forall bs, P bs <-> Q bs) -> P = Q.
@@ -92,7 +92,7 @@ Proof.
   - rewrite IHPs. symmetry. apply bp_app_assoc.
 Qed.
 
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
 
 Section Array.
   Context [E: Type] (elem: E -> list byte -> Prop).

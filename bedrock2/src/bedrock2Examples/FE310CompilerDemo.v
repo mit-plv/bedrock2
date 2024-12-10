@@ -1,8 +1,8 @@
 From coqutil Require Import sanity.
 Local Unset Universe Minimization ToSet.
-Require Import Coq.Strings.String.
+From Coq Require Import String.
 Require Import coqutil.Z.Lia.
-Require Import Coq.ZArith.BinInt.
+From Coq Require Import BinInt.
 Require Import bedrock2.Syntax.
 
 Definition MMIOAction: Type := String.string.

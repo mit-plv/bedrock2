@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
 Require Import coqutil.Datatypes.List.
 
 (* RISC-V Calling Convention from

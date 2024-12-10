@@ -1,9 +1,9 @@
 (* ELF printer for a tiny subset of the spec at
    https://refspecs.linuxfoundation.org/elf/elf.pdf *)
 
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import Coq.Strings.String.
-Require Import Coq.Strings.Ascii.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
+From Coq Require Import String.
+From Coq Require Import Ascii.
 Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Word.LittleEndianList.

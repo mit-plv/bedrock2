@@ -1,8 +1,8 @@
 (*
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import compiler.ExprImp.
 Require Import compiler.util.Common.
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 Import ListNotations.
 Require Import compiler.util.Common.
 Require Import compiler.Pipeline.
@@ -11,8 +11,8 @@ Require Import riscv.Platform.MinimalLogging.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.
 Require Import compilerExamples.Fibonacci.
-Require Import Coq.Strings.String.
-Require Import Coq.Strings.Ascii.
+From Coq Require Import String.
+From Coq Require Import Ascii.
 Require Import compiler.NameGen.
 
 

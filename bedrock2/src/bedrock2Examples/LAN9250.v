@@ -118,7 +118,7 @@ Definition lan9250_tx := func! (p, l) ~> err {
 Require Import bedrock2.ProgramLogic.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Word.Interface.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import List. Import ListNotations.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require bedrock2Examples.lightbulb_spec.
 Require Import bedrock2.ZnWords.

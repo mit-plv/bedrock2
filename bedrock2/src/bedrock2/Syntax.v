@@ -1,6 +1,6 @@
 Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique.
-Require Coq.Strings.String.
-Require Import Coq.Numbers.BinNums.
+From Coq Require String.
+From Coq Require Import BinNums.
 
 Module Import bopname.
   Inductive bopname: Set := add | sub | mul | mulhuu | divu | remu | and | or | xor | sru | slu | srs | lts | ltu | eq.

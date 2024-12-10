@@ -1,6 +1,6 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 
 Module expr. Import Syntax.expr.
   Fixpoint vars (e : expr) : list String.string :=

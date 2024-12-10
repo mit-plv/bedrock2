@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Coq.Strings.String.
 Require Import coqutil.Map.Interface coqutil.Word.Interface.
 Require Import bedrock2.MetricLogging.

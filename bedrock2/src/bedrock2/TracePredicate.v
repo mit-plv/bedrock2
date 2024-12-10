@@ -1,4 +1,4 @@
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import List. Import ListNotations.
 Require Import bedrock2.ReversedListNotations.
 
 Section ListPred.

@@ -1,13 +1,13 @@
 (* Applying the order of sep clauses from an old hypothesis onto a new hypothesis: *)
 
-Require Export Coq.ZArith.ZArith. Open Scope Z_scope.
+From Coq Require Export ZArith. Open Scope Z_scope.
 Require Import coqutil.Z.Lia.
 Require Export coqutil.Byte.
 Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Datatypes.PropSet.
 Require Export coqutil.Datatypes.Inhabited.
 Require Import coqutil.Tactics.rewr coqutil.Tactics.rdelta.
-Require Import Coq.Program.Tactics.
+From Coq.Program Require Import Tactics.
 Require Export coqutil.Tactics.Tactics.
 Require Export coqutil.Tactics.autoforward.
 Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.

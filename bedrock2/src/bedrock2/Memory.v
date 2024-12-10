@@ -1,6 +1,6 @@
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
-Require Coq.Lists.List.
+From Coq Require List.
 Require Import coqutil.sanity.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.Datatypes.List.

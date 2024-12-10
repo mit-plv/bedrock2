@@ -1,5 +1,5 @@
-Require Export Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Export Coq.micromega.Lia.
+Require Export ZArith. Local Open Scope Z_scope.
+Require Export Lia.
 Require Export coqutil.Datatypes.Inhabited.
 Require Export coqutil.Tactics.Tactics.
 Require Export coqutil.Tactics.safe_auto.

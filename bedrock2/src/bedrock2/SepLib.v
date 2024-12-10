@@ -1,5 +1,5 @@
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import Coq.micromega.Lia.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
+From Coq Require Import Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Datatypes.ZList. Import ZList.List.ZIndexNotations.

@@ -103,9 +103,9 @@ P1 = fun m => all keys in m are < 3
 P2 = fun m => all keys in m are < 4
 proving any (R * P1) m is as easy as giving all of m to R and giving map.empty to P1
 *)
-Require Import Coq.Lists.List. Import ListNotations.
-Require Import Coq.ZArith.ZArith.
-Require Import Coq.Init.Byte.
+From Coq Require Import List. Import ListNotations.
+From Coq Require Import ZArith.
+From Coq.Init Require Import Byte.
 Require Import coqutil.Decidable.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.

@@ -43,7 +43,7 @@ Definition spi_xchg := func! (b) ~> (b, busy) {
 
 Require Import bedrock2.ProgramLogic.
 Require Import bedrock2.FE310CSemantics bedrock2.Semantics.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import List. Import ListNotations.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import bedrock2.ZnWords.
 

@@ -1,9 +1,9 @@
 Require Import coqutil.Macros.unique.
 Require Import coqutil.Decidable.
 Require Import compiler.FlatImp.
-Require Import Coq.Lists.List.
+From Coq Require Import List.
 Import ListNotations.
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import riscv.Spec.Machine.
 Require Import riscv.Spec.PseudoInstructions.
 Require Import riscv.Utility.InstructionCoercions.

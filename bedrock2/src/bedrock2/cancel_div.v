@@ -1,5 +1,5 @@
 Require Import coqutil.Ltac2Lib.Ltac2 coqutil.Ltac2Lib.Ring.
-Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+From Coq Require Import ZArith. Local Open Scope Z_scope.
 
 (* For the division canceler, we use statements of the form (a = d * a') instead of
    (a / d = a'), because the former also states that the remainder of the division is 0.

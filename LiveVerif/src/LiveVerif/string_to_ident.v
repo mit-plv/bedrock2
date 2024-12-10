@@ -1,5 +1,5 @@
-Require Import Coq.Strings.String.
-Require Import Coq.Strings.Ascii.
+From Coq Require Import String.
+From Coq Require Import Ascii.
 Require Import Ltac2.Ltac2.
 Require Ltac2.Option.
 

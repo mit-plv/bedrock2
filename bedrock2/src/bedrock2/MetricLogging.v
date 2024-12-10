@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.BinInt.
+From Coq Require Import BinInt.
 Require Import coqutil.Z.Lia.
 
 Section Riscv.

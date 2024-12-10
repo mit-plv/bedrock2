@@ -1,4 +1,5 @@
-Require Import Coq.ZArith.ZArith Coq.ZArith.BinIntDef Coq.ZArith.BinInt coqutil.Z.Lia.
+From Coq Require Import ZArith BinIntDef BinInt.
+Require Import coqutil.Z.Lia.
 Require Import coqutil.sanity coqutil.Tactics.forward coqutil.Word.Interface. Import word.
 Require Import Kami.Lib.Word.
 Require riscv.Utility.Utility.

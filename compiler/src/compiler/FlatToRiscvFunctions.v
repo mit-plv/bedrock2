@@ -1,8 +1,8 @@
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.rewr.
 Require Import coqutil.Datatypes.PropSet.
-Require Import Coq.Logic.FunctionalExtensionality.
-Require Import Coq.Logic.PropExtensionality.
+From Coq Require Import FunctionalExtensionality.
+From Coq Require Import PropExtensionality.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Platform.RiscvMachine.

@@ -1,5 +1,5 @@
 Require Import bedrock2.TracePredicate.
-Require Import Coq.ZArith.BinInt Coq.Strings.String.
+From Coq Require Import BinInt String.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Byte.

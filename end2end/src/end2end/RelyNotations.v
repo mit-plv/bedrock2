@@ -1,5 +1,5 @@
-Require Import Coq.Lists.List.
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import List.
+From Coq Require Import ZArith.
 Require Import coqutil.Word.Naive coqutil.Word.Interface.
 Require Import coqutil.Datatypes.List.
 Require Import bedrock2.ReversedListNotations.

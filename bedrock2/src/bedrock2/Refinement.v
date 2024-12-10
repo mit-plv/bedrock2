@@ -1,7 +1,7 @@
 (* These lemmas can be useful when proving a refinement and induction over the
    statement rather than over its exec derivation is preferred *)
 
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
 Require Import bedrock2.Syntax bedrock2.Semantics.

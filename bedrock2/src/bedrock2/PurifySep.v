@@ -1,4 +1,4 @@
-Require Import Coq.Logic.PropExtensionality Coq.Logic.FunctionalExtensionality.
+From Coq Require Import PropExtensionality FunctionalExtensionality.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.fwd.
 Require Import bedrock2.Lift1Prop.

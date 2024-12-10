@@ -1,6 +1,6 @@
 Require Export bedrock2.Map.Separation.
 
-Require Import Coq.Classes.Morphisms.
+From Coq Require Import Morphisms.
 Require Import bedrock2.Lift1Prop.
 Require Coq.Lists.List.
 Require Import coqutil.sanity coqutil.Decidable coqutil.Tactics.destr.
@@ -750,8 +750,8 @@ Ltac seprewrite_by Hrw tac :=
 
 (* a convenient way to turn iff1 into eq, so that it can be used with our own equality-based
    (rather than Morphism-based) rewriters. *)
-Require Import Coq.Logic.PropExtensionality.
-Require Import Coq.Logic.FunctionalExtensionality.
+From Coq Require Import PropExtensionality.
+From Coq Require Import FunctionalExtensionality.
 Lemma iff1ToEq{T: Type}{P Q: T -> Prop}(H: iff1 P Q): P = Q.
 Proof.
   unfold iff1 in *. extensionality x.

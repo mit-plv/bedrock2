@@ -1,6 +1,6 @@
-Require Import Coq.Bool.Bool.
-Require Import Coq.ZArith.ZArith.
-Require Import Coq.Lists.List. Import ListNotations.
+From Coq Require Import Bool.
+From Coq Require Import ZArith.
+From Coq Require Import List. Import ListNotations.
 Require Import bedrock2.MetricLogging.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.

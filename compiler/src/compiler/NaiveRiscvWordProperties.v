@@ -1,7 +1,7 @@
-Require Import Coq.ZArith.ZArith.
+From Coq Require Import ZArith.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Z.BitOps coqutil.Z.ZLib.
-Require Import Coq.micromega.Lia.
+From Coq Require Import Lia.
 Require Import coqutil.Tactics.destr.
 Require Import compiler.RiscvWordProperties.
 Require coqutil.Word.Naive.
