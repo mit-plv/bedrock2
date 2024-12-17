@@ -73,11 +73,6 @@ Section WithWordAndMem.
       Call(pick_sp: list Leakage -> word)(p: Program)(s: Settings)(funcname: string)
         (k: list Leakage)(t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
         (post: list Leakage -> trace -> mem -> list word -> MetricLog -> Prop): Prop;
-      WeakenCall: forall pick_sp p s funcname k t m argvals mc (post1: _ -> _ -> _ -> _ -> _ -> Prop),
-        Call pick_sp p s funcname k t m argvals mc post1 ->
-        forall post2 : _ -> _ -> _ -> _ -> _ -> Prop,
-        (forall k' t' m' retvals mc', post1 k' t' m' retvals mc' -> post2 k' t' m' retvals mc') ->
-        Call pick_sp p s funcname k t m argvals mc post2;
   }.
 
   Record phase_correct{L1 L2: Lang}
@@ -132,11 +127,15 @@ Section WithWordAndMem.
     specialize (C12 p1 a H E s1 L2.(SettingsInhabited) fname k1 nil pick_sp_mid).
     destruct C12 as [pick_sp1 [f12 C12] ]. 
     exists pick_sp1. exists (fun k3' => f23 (f12 k3')).
-    intros. eapply L3.(WeakenCall).
-    { eapply C23. eapply C12. apply H1. } 
-    simpl. intros. fwd. do 2 eexists. split; [eassumption|]. split.
-    { rewrite app_nil_r. reflexivity. }
-    eauto with metric_arith.
+    intros. (*eapply L3.(WeakenCall).
+    { eapply C23. eapply C12. apply H1. } *)
+    eapply C12 in H1. eapply C23 in H1.
+    eassert ((fun _ _ _ _ _ => exists _, _) = _) as ->. 2: exact H1.
+    post_ext. split; intros; fwd.
+    - do 2 eexists. split.
+      + do 2 eexists. rewrite app_nil_r. eauto.
+      + eauto with metric_arith.
+    - do 2 eexists. split; [eassumption|]. rewrite app_nil_r. eauto with metric_arith.
     Unshelve. all: exact EmptyMetricLog.
   Qed.
 
@@ -221,12 +220,13 @@ Section WithWordAndMem.
     Definition ParamsNoDup{Var: Type}: (list Var * list Var * FlatImp.stmt Var) -> Prop :=
       fun '(argnames, retnames, body) => NoDup argnames /\ NoDup retnames.
 
+    Check @MetricLeakageSemantics.exec.
+
     Definition SrcLang : Lang :=
       {|
         Program := Semantics.env (*why do we use 'string_keyed_map' everywhere except here?*);
         Valid := map.forall_values ExprImp.valid_fun;
-        Call := locals_based_call_spec (fun pick_sp e => @MetricLeakageSemantics.exec _ _ _ _ _ _ _ pick_sp) false;
-        WeakenCall := locals_based_call_spec_weaken _ _ MetricLeakageSemantics.exec.weaken;
+        Call := locals_based_call_spec (fun pick_sp e => @MetricLeakageSemantics.exec _ _ _ _ _ _ e pick_sp) false;
         SettingsInhabited := tt; |}.
 
     (* |                 *)
@@ -237,7 +237,6 @@ Section WithWordAndMem.
         Program := string_keyed_map (list string * list string * FlatImp.stmt string);
         Valid := map.forall_values ParamsNoDup;
         Call := locals_based_call_spec (fun pick_sp e => @FlatImp.exec _ _ _ _ _ _ _ _ PreSpill isRegStr e pick_sp) false;
-        WeakenCall := locals_based_call_spec_weaken _ _ (FlatImp.exec.weaken _ _);
         SettingsInhabited := tt; |}.
 
     (* |                 *)
@@ -258,7 +257,6 @@ Section WithWordAndMem.
         Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
         Valid := map.forall_values ParamsNoDup;
         Call := locals_based_call_spec (fun pick_sp e => @FlatImp.exec _ _ _ _ _ _ _ _ PreSpill isRegZ e pick_sp) false;
-        WeakenCall := locals_based_call_spec_weaken _ _ (FlatImp.exec.weaken _ _);
         SettingsInhabited := tt; |}.
                                     
     (* |                 *)
@@ -269,25 +267,8 @@ Section WithWordAndMem.
         Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
         Valid := map.forall_values FlatToRiscvDef.valid_FlatImp_fun;
         Call := locals_based_call_spec (fun e pick_sp => @FlatImp.exec _ _ _ _ _ _ _ _ PostSpill isRegZ pick_sp e) true;
-        WeakenCall := locals_based_call_spec_weaken _ _ (FlatImp.exec.weaken _ _);
         SettingsInhabited := tt;
       |}.
-    
-    Lemma riscv_call_weaken :
-      forall (pick_sp: list LeakageEvent -> word) p s funcname
-        k t m argvals mc post1,
-        riscv_call p s funcname k t m argvals mc post1 ->
-        forall post2,
-          (forall k' t' m' retvals mc',
-              post1 k' t' m' retvals mc' -> post2 k' t' m' retvals mc') ->
-          riscv_call p s funcname k t m argvals mc post2.
-    Proof.
-      intros. cbv [riscv_call] in *. destruct p. destruct p. destruct s as [ [? ?] ?].
-      destruct H as [f_rel_pos H]. exists f_rel_pos. intuition eauto.
-      cbv [runsTo]. eapply runsToNonDet.runsTo_weaken. 1: eapply H2.
-      all: try eassumption. simpl. intros. fwd. do 3 eexists.
-      intuition eauto.
-    Qed.
     
     (* |                 *)
     (* | FlatToRiscv     *)
@@ -301,7 +282,6 @@ Section WithWordAndMem.
         (* bounds in instructions are checked by `ptsto_instr` *)
         Valid '(insts, finfo, req_stack_size) := True;
         Call := (fun _ => riscv_call);
-        WeakenCall := riscv_call_weaken;
         SettingsInhabited := (word.of_Z 0, word.of_Z 0, word.of_Z 0);
       |}.
 
