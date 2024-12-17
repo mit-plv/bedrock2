@@ -67,10 +67,8 @@ Section WithWordAndMem.
   Record Lang := {
     Program: Type;
       Valid: Program -> Prop;
-      Settings: Type;
-      SettingsInhabited: Settings;
       Leakage: Type;
-      Call(pick_sp: list Leakage -> word)(p: Program)(s: Settings)(funcname: string)
+      Call(pick_sp: list Leakage -> word)(p: Program)(funcname: string)
         (k: list Leakage)(t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
         (post: list Leakage -> trace -> mem -> list word -> MetricLog -> Prop): Prop;
   }.
@@ -85,12 +83,12 @@ Section WithWordAndMem.
     phase_preserves_post: forall p1 p2,
         L1.(Valid) p1 ->
         compile p1 = Success p2 ->
-        forall s1 s2 fname k1 k2 pick_sp2,
+        forall fname k1 k2 pick_sp2,
           exists pick_sp1 k2'',
         forall t m argvals mc1 post,
-        L1.(Call) pick_sp1 p1 s1 fname k1 t m argvals mc1 post ->
+        L1.(Call) pick_sp1 p1 fname k1 t m argvals mc1 post ->
         forall mc2,
-          L2.(Call) pick_sp2 p2 s2 fname k2 t m argvals mc2
+          L2.(Call) pick_sp2 p2 fname k2 t m argvals mc2
                (fun k2' t m a mc2' =>
                   exists mc1' k1',
                     post k1' t m a mc1' /\
@@ -122,20 +120,19 @@ Section WithWordAndMem.
     intros [V12 C12] [V23 C23].
     split; intros; fwd; eauto.
     specialize (V12 p1 a E H).
-    specialize (C23 a p2 V12 H0 L2.(SettingsInhabited) s2 fname nil k2 pick_sp2).
+    specialize (C23 a p2 V12 H0 fname nil k2 pick_sp2).
     destruct C23 as [pick_sp_mid [f23 C23] ].
-    specialize (C12 p1 a H E s1 L2.(SettingsInhabited) fname k1 nil pick_sp_mid).
+    specialize (C12 p1 a H E fname k1 nil pick_sp_mid).
     destruct C12 as [pick_sp1 [f12 C12] ]. 
     exists pick_sp1. exists (fun k3' => f23 (f12 k3')).
-    intros. (*eapply L3.(WeakenCall).
-    { eapply C23. eapply C12. apply H1. } *)
-    eapply C12 in H1. eapply C23 in H1.
+    intros. eapply C12 in H1. eapply C23 in H1.
     eassert ((fun _ _ _ _ _ => exists _, _) = _) as ->. 2: exact H1.
     post_ext. split; intros; fwd.
     - do 2 eexists. split.
       + do 2 eexists. rewrite app_nil_r. eauto.
       + eauto with metric_arith.
-    - do 2 eexists. split; [eassumption|]. rewrite app_nil_r. eauto with metric_arith.
+    - do 2 eexists. split; [eassumption|]. rewrite app_nil_r.
+      eauto with metric_arith.
     Unshelve. all: exact EmptyMetricLog.
   Qed.
 
@@ -184,7 +181,7 @@ Section WithWordAndMem.
              Cmd -> leakage -> trace -> mem -> locals -> MetricLog ->
              (leakage -> trace -> mem -> locals -> MetricLog -> Prop) -> Prop)
       (spilled : bool) (pick_sp: PickSp)
-      (e: string_keyed_map' (list Var * list Var * Cmd)%type)(s : unit) (f: string)
+      (e: string_keyed_map' (list Var * list Var * Cmd)%type) (f: string)
       (k: leakage)(t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
       (post: leakage -> trace -> mem -> list word -> MetricLog -> Prop): Prop :=
       exists argnames retnames fbody l,
@@ -194,28 +191,6 @@ Section WithWordAndMem.
             (fun k' t' m' l' mc' =>
                exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                             post k' t' m' retvals mc').
-
-    Lemma locals_based_call_spec_weaken {Var Cmd: Type}{locals: map.map Var word}
-     {string_keyed_map': forall T: Type, map.map string T} :
-      forall Exec spilled,
-      (forall e pick_sp c k t m l mc post1,
-          Exec pick_sp e c k t m l mc post1 ->
-          forall post2,
-            (forall k' t' m' l' mc', post1 k' t' m' l' mc' -> post2 k' t' m' l' mc') ->
-            Exec pick_sp e c k t m l mc post2) ->
-      forall pick_sp (e: string_keyed_map' (list Var * list Var * Cmd)%type) s f
-        k t m argvals mc post1,
-        locals_based_call_spec Exec spilled pick_sp e s f k t m argvals mc post1 ->
-        forall post2,
-          (forall k' t' m' retvals mc', post1 k' t' m' retvals mc' -> post2 k' t' m' retvals mc') ->
-          locals_based_call_spec Exec spilled pick_sp e s f k t m argvals mc post2.
-    Proof.
-      intros. cbv [locals_based_call_spec] in *.
-      destruct H0 as (argnames & retnames & fbody & l & H2 & H3 & H4).
-      exists argnames, retnames, fbody, l. intuition eauto.
-      eapply H. 1: apply H4. simpl. intros.
-      destruct H0 as [retvals [H5 H6] ]. exists retvals. eauto.
-    Qed.
     
     Definition ParamsNoDup{Var: Type}: (list Var * list Var * FlatImp.stmt Var) -> Prop :=
       fun '(argnames, retnames, body) => NoDup argnames /\ NoDup retnames.
@@ -226,8 +201,7 @@ Section WithWordAndMem.
       {|
         Program := Semantics.env (*why do we use 'string_keyed_map' everywhere except here?*);
         Valid := map.forall_values ExprImp.valid_fun;
-        Call := locals_based_call_spec (fun pick_sp e => @MetricLeakageSemantics.exec _ _ _ _ _ _ e pick_sp) false;
-        SettingsInhabited := tt; |}.
+        Call := locals_based_call_spec (fun pick_sp e => @MetricLeakageSemantics.exec _ _ _ _ _ _ e pick_sp) false; |}.
 
     (* |                 *)
     (* | FlattenExpr     *)
@@ -236,8 +210,7 @@ Section WithWordAndMem.
       {|
         Program := string_keyed_map (list string * list string * FlatImp.stmt string);
         Valid := map.forall_values ParamsNoDup;
-        Call := locals_based_call_spec (fun pick_sp e => @FlatImp.exec _ _ _ _ _ _ _ _ PreSpill isRegStr e pick_sp) false;
-        SettingsInhabited := tt; |}.
+        Call := locals_based_call_spec (fun pick_sp e => @FlatImp.exec _ _ _ _ _ _ _ _ PreSpill isRegStr e pick_sp) false; |}.
 
     (* |                 *)
     (* | UseImmediate    *)
@@ -256,8 +229,7 @@ Section WithWordAndMem.
       {|
         Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
         Valid := map.forall_values ParamsNoDup;
-        Call := locals_based_call_spec (fun pick_sp e => @FlatImp.exec _ _ _ _ _ _ _ _ PreSpill isRegZ e pick_sp) false;
-        SettingsInhabited := tt; |}.
+        Call := locals_based_call_spec (fun pick_sp e => @FlatImp.exec _ _ _ _ _ _ _ _ PreSpill isRegZ e pick_sp) false; |}.
                                     
     (* |                 *)
     (* | Spilling        *)
@@ -266,14 +238,12 @@ Section WithWordAndMem.
       {|
         Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
         Valid := map.forall_values FlatToRiscvDef.valid_FlatImp_fun;
-        Call := locals_based_call_spec (fun e pick_sp => @FlatImp.exec _ _ _ _ _ _ _ _ PostSpill isRegZ pick_sp e) true;
-        SettingsInhabited := tt;
-      |}.
+        Call := locals_based_call_spec (fun e pick_sp => @FlatImp.exec _ _ _ _ _ _ _ _ PostSpill isRegZ pick_sp e) true; |}.
     
     (* |                 *)
     (* | FlatToRiscv     *)
     (* V                 *)
-    Definition RiscvLang: Lang :=
+    Definition RiscvLang (p_funcs stack_pastend ret_addr : word) : Lang :=
       {|
         Program :=
           list Instruction *      (* <- code of all functions concatenated       *)
@@ -281,9 +251,7 @@ Section WithWordAndMem.
             Z;                      (* <- required stack space in XLEN-bit words   *)
         (* bounds in instructions are checked by `ptsto_instr` *)
         Valid '(insts, finfo, req_stack_size) := True;
-        Call := (fun _ => riscv_call);
-        SettingsInhabited := (word.of_Z 0, word.of_Z 0, word.of_Z 0);
-      |}.
+        Call := (fun _ p => riscv_call p (p_funcs, stack_pastend, ret_addr)); |}.
 
     Lemma flatten_functions_NoDup: forall funs funs',
         (forall f argnames retnames body,
@@ -298,6 +266,18 @@ Section WithWordAndMem.
       eapply H. eassumption.
     Qed.
 
+    (*TODO: I could've used this in some other compiler proof files too..*)
+    Definition remove_n_r {X : Type} (n : nat) (l : list X) :=
+      rev (skipn n (rev l)).
+
+    Lemma remove_n_r_spec {X : Type} (l1 l2 : list X) :
+      remove_n_r (length l2) (l1 ++ l2) = l1.
+    Proof.
+      cbv [remove_n_r]. rewrite rev_app_distr. rewrite List.skipn_app_r.
+      - apply rev_involutive.
+      - rewrite length_rev. reflexivity.
+    Qed.
+
     Lemma flattening_correct: phase_correct SrcLang FlatWithStrVars flatten_functions.
     Proof.
       unfold SrcLang, FlatWithStrVars.
@@ -309,8 +289,8 @@ Section WithWordAndMem.
         intros. specialize H0 with (1 := H2). simpl in H0. eapply H0.
       }
       unfold locals_based_call_spec. intros.
-      exists (fun k => pick_sp2 ((rev (skipn (length k1) (rev k)) ++ k2))).
-      exists (fun k => (rev (skipn (length k1) (rev k)))). intros. fwd.
+      exists (fun k => pick_sp2 (remove_n_r (length k1) k ++ k2)).
+      exists (fun k => remove_n_r (length k1) k). intros. fwd.
       pose proof H0 as GF.
       unfold flatten_functions in GF.
       eapply map.try_map_values_fw in GF. 2: eassumption.
@@ -325,9 +305,7 @@ Section WithWordAndMem.
           1: eapply H1p2.
           intros. simpl. simpl_rev. rewrite List.skipn_app_r.
           2: rewrite length_rev; reflexivity.
-          simpl_rev. rewrite List.skipn_app_r.
-          2: rewrite length_rev; reflexivity.
-          rewrite rev_involutive. reflexivity.
+          rewrite remove_n_r_spec. rewrite rev_involutive. reflexivity.
         + reflexivity.
         + match goal with
           | |- ?p = _ => rewrite (surjective_pairing p)
@@ -348,10 +326,8 @@ Section WithWordAndMem.
         + eapply @freshNameGenState_disjoint_fbody.
       - simpl. intros. fwd. eexists. split.
         + eauto using map.getmany_of_list_extends.
-        + do 2 eexists. split; [eassumption|]. rewrite rev_app_distr.
-          rewrite List.skipn_app_r. 2: rewrite length_rev; reflexivity.
-          rewrite rev_involutive. split; [reflexivity|].
-          unfold cost_spill_spec in *; solve_MetricLog.
+        + do 2 eexists. split; [eassumption|]. rewrite remove_n_r_spec.
+          split; [reflexivity|]. unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
     Lemma useimmediate_functions_NoDup: forall funs funs',
@@ -382,8 +358,8 @@ Section WithWordAndMem.
       }
 
       unfold locals_based_call_spec. intros.
-      exists (fun pick_spL kH kL k => pick_spL ((rev (skipn (length kH) (rev k)) ++ kL))).
-      exists (fun pick_spL kH kL kH'' => kH'' ++ kL). intros. fwd.
+      exists (fun k => pick_sp2 ((rev (skipn (length k1) (rev k)) ++ k2))).
+      exists (fun k => (rev (skipn (length k1) (rev k)))). intros. fwd.
       pose proof H0 as GI.
       unfold  useimmediate_functions in GI.
       eapply map.try_map_values_fw in GI. 2: eassumption.
@@ -401,10 +377,12 @@ Section WithWordAndMem.
         2: rewrite length_rev; reflexivity.
         rewrite rev_involutive. reflexivity.
       - simpl. intros. fwd. eexists. intuition eauto.
-        do 3 eexists. intuition eauto.
+        do 2 eexists. intuition eauto.
+        { rewrite rev_app_distr. rewrite List.skipn_app_r.
+          2: rewrite length_rev; reflexivity.
+          rewrite rev_involutive. reflexivity. }
         unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
-
 
     Lemma dce_functions_NoDup: forall funs funs',
         (forall f argnames retnames body,
@@ -449,23 +427,23 @@ Section WithWordAndMem.
       eapply @exec.weaken.
       - eapply exec.exec_ext. 1: eapply dce_correct_aux; eauto.
         { eapply MapEauto.agree_on_refl. }
-        2: { intros. simpl. instantiate (1 := fun x => pick_spL (rev x)).
+        2: { intros. simpl. instantiate (1 := fun x => pick_sp2 (rev x)).
              simpl. rewrite rev_involutive. reflexivity. }
-        intros. remember (k ++ kH) as kk eqn:Hkk.
-        replace k with (rev (skipn (length kH) (rev (k ++ kH)))).
-        { forget (k ++ kH) as kk0. subst. instantiate (2 := fun _ _ _ _ => _).
-          simpl. reflexivity. }
-        simpl_rev. rewrite List.skipn_app_r. 1: apply rev_involutive.
-        rewrite length_rev. reflexivity.
+        intros. remember (k ++ k1) as kk eqn:Hkk.
+        rewrite <- (remove_n_r_spec k k1). forget (k ++ k1) as kk0.
+        subst. instantiate (2 := fun _ => _). simpl. reflexivity.
       - unfold compile_post. intros. fwd.
         exists retvals.
         split.
         + erewrite MapEauto.agree_on_getmany; [ eauto | eapply MapEauto.agree_on_comm; [ eassumption ] ].
         + do 3 eexists; ssplit; eauto. 2: unfold cost_spill_spec in *; solve_MetricLog.
-          instantiate (1 := fun _ _ _ _ => _). simpl.
+          instantiate (1 := fun _ => _). simpl.
           specialize (H1p8 nil (fun _ => nil)). simpl in H1p8.
           do 2 rewrite app_nil_r in H1p8.
-          rewrite <- (rev_involutive kL''). rewrite <- H1p8. reflexivity.
+          rewrite <- (rev_involutive kL''). rewrite <- H1p8.
+          remember (kH'' ++ k1) as kk eqn:Hkk.
+          rewrite <- (remove_n_r_spec kH'' k1).
+          rewrite <- Hkk. reflexivity.
           Unshelve. all: auto.
     Qed.
 
@@ -493,8 +471,8 @@ Section WithWordAndMem.
         eapply regalloc_functions_NoDup; eassumption.
       }
       unfold locals_based_call_spec.
-      intros. exists (fun pick_spL kH kL k => pick_spL ((rev (skipn (length kH) (rev k)) ++ kL))).
-      exists (fun pick_spL kH kL kH'' => kH'' ++ kL). intros. fwd.
+      intros. exists (fun k => pick_sp2 (remove_n_r (length k1) k ++ k2)).
+      exists (fun kH'' => remove_n_r (length k1) kH''). intros. fwd.
       pose proof H0 as GR.
       unfold regalloc_functions in GR.
       fwd. rename E into GR.
@@ -520,9 +498,7 @@ Section WithWordAndMem.
         + eapply FlatImp.exec.exec_ext. 
           1: eapply FlatImp.exec.exec_to_other_trace.
           1: eassumption.
-          intros. simpl. simpl_rev. rewrite List.skipn_app_r.
-          2: rewrite length_rev; reflexivity.
-          simpl_rev. rewrite List.skipn_app_r.
+          intros. simpl. rewrite remove_n_r_spec. simpl_rev. rewrite List.skipn_app_r.
           2: rewrite length_rev; reflexivity.
           rewrite rev_involutive. reflexivity.
         + eapply states_compat_precond.
@@ -531,7 +507,8 @@ Section WithWordAndMem.
           rewrite H1 in P'. inversion P'. exact Cp.
       - simpl. intros. fwd. eexists. split.
         + eauto using states_compat_getmany.
-        + do 3 eexists. intuition eauto. unfold cost_spill_spec in *; solve_MetricLog.
+        + do 2 eexists. rewrite remove_n_r_spec. intuition eauto.
+          unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
     Ltac debool :=
@@ -585,13 +562,12 @@ Section WithWordAndMem.
     Proof.
       unfold FlatWithZVars, FlatWithRegs. split; cbn.
       1: exact spilling_preserves_valid.
-      unfold locals_based_call_spec, locals_based_call_spec_spilled. intros.
-      Check Spilling.fun_leakage.
+      unfold locals_based_call_spec. intros.
       Check (match (map.get p1 fname) with | Some finfo => finfo | None => (nil, nil, SSkip) end).
-      exists (fun pick_spL kH kL k => snd (fun_leakage p1 pick_spL (match (map.get p1 fname) with | Some finfo => finfo | None => (nil, nil, SSkip) end) (skipn (length kH) (rev k)) (rev kL))).
-      exists (fun pick_spL kH kL kH'' => rev (fst (fun_leakage p1 pick_spL (match (map.get p1 fname) with | Some finfo => finfo | None => (nil, nil, SSkip) end) (rev kH'') (rev kL)))).
+      set (finfo := (match (map.get p1 fname) with | Some finfo => finfo | None => (nil, nil, SSkip) end)).
+      exists (fun k => snd (fun_leakage p1 pick_sp2 finfo (skipn (length k1) (rev k)) (rev k2))).
+      exists (fun kH'' => remove_n_r (length k2) (rev (fst (fun_leakage p1 pick_sp2 finfo (rev kH'') (rev k2))))).
       intros. fwd.
-      fwd.
       pose proof H0 as GL.
       unfold spill_functions in GL.
       eapply map.try_map_values_fw in GL. 2: eassumption.
