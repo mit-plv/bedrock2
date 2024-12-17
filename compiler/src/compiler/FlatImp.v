@@ -508,7 +508,7 @@ Module exec.
       - assumption.
     Qed.
 
-    Lemma weaken {pick_sp: PickSp} : forall k t l m mc s post1,
+    Lemma weaken {pick_sp: PickSp} : forall s k t m l mc post1,
         exec s k t m l mc post1 ->
         forall post2,
           (forall k' t' m' l' mc', post1 k' t' m' l' mc' -> post2 k' t' m' l' mc') ->
@@ -557,7 +557,7 @@ Module exec.
              end;
       simp.
 
-    Lemma intersect {pick_sp: PickSp} : forall k t l m mc s post1,
+    Lemma intersect {pick_sp: PickSp} : forall k t m l mc s post1,
         exec s k t m l mc post1 ->
         forall post2,
           exec s k t m l mc post2 ->
