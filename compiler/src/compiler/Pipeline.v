@@ -92,7 +92,7 @@ Section WithWordAndMem.
                (fun k2' t m a mc2' =>
                   exists mc1' k1',
                     post k1' t m a mc1' /\
-                      k2' = k2'' k1' ++ k2 /\
+                      k2' = k2'' k1' /\
                       metricsLeq (mc2' - mc2) (mc1' - mc1));
   }.
 
@@ -127,12 +127,7 @@ Section WithWordAndMem.
     exists pick_sp1. exists (fun k3' => f23 (f12 k3')).
     intros. eapply C12 in H1. eapply C23 in H1.
     eassert ((fun _ _ _ _ _ => exists _, _) = _) as ->. 2: exact H1.
-    post_ext. split; intros; fwd.
-    - do 2 eexists. split.
-      + do 2 eexists. rewrite app_nil_r. eauto.
-      + eauto with metric_arith.
-    - do 2 eexists. split; [eassumption|]. rewrite app_nil_r.
-      eauto with metric_arith.
+    post_ext. split; intros; fwd; eauto 10 with metric_arith.
     Unshelve. all: exact EmptyMetricLog.
   Qed.
 
@@ -290,7 +285,7 @@ Section WithWordAndMem.
       }
       unfold locals_based_call_spec. intros.
       exists (fun k => pick_sp2 (remove_n_r (length k1) k ++ k2)).
-      exists (fun k => remove_n_r (length k1) k). intros. fwd.
+      exists (fun k => remove_n_r (length k1) k ++ k2). intros. fwd.
       pose proof H0 as GF.
       unfold flatten_functions in GF.
       eapply map.try_map_values_fw in GF. 2: eassumption.
@@ -359,7 +354,7 @@ Section WithWordAndMem.
 
       unfold locals_based_call_spec. intros.
       exists (fun k => pick_sp2 ((rev (skipn (length k1) (rev k)) ++ k2))).
-      exists (fun k => (rev (skipn (length k1) (rev k)))). intros. fwd.
+      exists (fun k => remove_n_r (length k1) k ++ k2). intros. fwd.
       pose proof H0 as GI.
       unfold  useimmediate_functions in GI.
       eapply map.try_map_values_fw in GI. 2: eassumption.
@@ -378,9 +373,7 @@ Section WithWordAndMem.
         rewrite rev_involutive. reflexivity.
       - simpl. intros. fwd. eexists. intuition eauto.
         do 2 eexists. intuition eauto.
-        { rewrite rev_app_distr. rewrite List.skipn_app_r.
-          2: rewrite length_rev; reflexivity.
-          rewrite rev_involutive. reflexivity. }
+        { rewrite remove_n_r_spec. reflexivity. }
         unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
@@ -472,7 +465,7 @@ Section WithWordAndMem.
       }
       unfold locals_based_call_spec.
       intros. exists (fun k => pick_sp2 (remove_n_r (length k1) k ++ k2)).
-      exists (fun kH'' => remove_n_r (length k1) kH''). intros. fwd.
+      exists (fun kH'' => remove_n_r (length k1) kH'' ++ k2). intros. fwd.
       pose proof H0 as GR.
       unfold regalloc_functions in GR.
       fwd. rename E into GR.
@@ -566,8 +559,9 @@ Section WithWordAndMem.
       Check (match (map.get p1 fname) with | Some finfo => finfo | None => (nil, nil, SSkip) end).
       set (finfo := (match (map.get p1 fname) with | Some finfo => finfo | None => (nil, nil, SSkip) end)).
       exists (fun k => snd (fun_leakage p1 pick_sp2 finfo (skipn (length k1) (rev k)) (rev k2))).
-      exists (fun kH'' => remove_n_r (length k2) (rev (fst (fun_leakage p1 pick_sp2 finfo (rev kH'') (rev k2))))).
+      exists (fun k1' => rev (fst (fun_leakage p1 pick_sp2 finfo (rev (remove_n_r (length k1) k1')) (rev k2)))).
       intros. fwd.
+      subst finfo. rewrite H1p0 in *.
       pose proof H0 as GL.
       unfold spill_functions in GL.
       eapply map.try_map_values_fw in GL. 2: eassumption.
@@ -587,35 +581,38 @@ Section WithWordAndMem.
       eapply FlatImp.exec.weaken.
       - eapply spill_fun_correct; try eassumption.
         unfold call_spec. intros * E. rewrite E in *. fwd.
-        eassumption.
+        (*eapply FlatImp.exec.exec_ext.*) exact H1p2.
       - cbv beta. intros. fwd. eexists. intuition eauto.
-        do 3 eexists. intuition eauto. rewrite <- (rev_involutive k').
-        rewrite <- H2p1p2. reflexivity.
+        do 2 eexists. intuition eauto. rewrite remove_n_r_spec.
+        rewrite H2p1p2. rewrite rev_involutive. reflexivity.
     Qed.
 
-    Lemma riscv_phase_correct: phase_correct FlatWithRegs RiscvLang (riscvPhase compile_ext_call).
+    Lemma riscv_phase_correct p_funcs stack_pastend ret_addr : phase_correct FlatWithRegs (RiscvLang p_funcs stack_pastend ret_addr) (riscvPhase compile_ext_call).
     Proof.
       unfold FlatWithRegs, RiscvLang.
       split; cbn.
       - intros p1 ((? & finfo) & ?). intros. exact I.
-      - intros. destruct s2 as [ [p_funcs stack_pastend] ret_addr].
-        assert (E: (exists x, map.get p1 fname = Some x) -> map.get p1 fname = Some (match (map.get p1 fname) with | Some finfo => finfo | None => (nil, nil, SSkip) end)).
-        + intros. destruct H1 as [x H1]. destruct (map.get p1 fname); congruence.
-        + destruct (match map.get p1 fname with
-                    | Some finfo => finfo
-                    | None => ([], [], SSkip)
-                    end) as [ [argnames0 retnames0] fbody0 ].
-          destruct p2 as [ [instrs finfo] req_stack_size]. eexists. eexists. intros.
-          cbv [locals_based_call_spec_spilled] in H1. fwd.
-          assert (H1p0': map.get p1 fname = Some (argnames0, retnames0, fbody0)).
-          { eapply E. eexists. apply H1p0. }
-          rewrite H1p0 in H1p0'. inversion H1p0'. subst. clear H1p0'.
-          Check flat_to_riscv_correct. eapply RiscvLang.(WeakenCall).
-          { unfold Call, RiscvLang. assert (H' := flat_to_riscv_correct).
-            specialize H' with (p2 := (instrs, finfo, req_stack_size)).
-            eapply H'; clear H'; eauto.
-            intuition eauto. eapply FlatImp.exec.exec_ext. 1: eassumption.
-            intros. forget (k' ++ kH) as k''. instantiate (1 := fun _ _ _ _ => _).
+      - intros. set (finfo := match (map.get p1 fname) with | Some finfo => finfo | None => (nil, nil, SSkip) end).
+       (* + intros. destruct H1 as [x H1]. destruct (map.get p1 fname); congruence.*)
+        destruct finfo as [ [argnames0 retnames0] fbody0 ] eqn:E.
+        destruct p2 as [ [instrs finfo_] req_stack_size] eqn:E'.
+        eexists. eexists. intros.
+        cbv [locals_based_call_spec] in H1. fwd. subst finfo. rewrite H1p0 in E.
+        inversion E. subst. pose proof flat_to_riscv_correct as H'.
+        repeat specialize (H' ltac:(assumption)).
+        specialize (H' (instrs, finfo_, req_stack_size)).
+        do 2 specialize (H' ltac:(assumption)). cbv beta match in H'.
+                                                                  Search finfo_. simpl in H'.
+          in H1p2. Search riscv_call.
+        assert (H1p0': map.get p1 fname = Some (argnames0, retnames0, fbody0)).
+        { eapply E. eexists. apply H1p0. }
+        rewrite H1p0 in H1p0'. inversion H1p0'. subst. clear H1p0'.
+        Check flat_to_riscv_correct. eapply RiscvLang.(WeakenCall).
+        { unfold Call, RiscvLang. assert (H' := flat_to_riscv_correct).
+          specialize H' with (p2 := (instrs, finfo, req_stack_size)).
+          eapply H'; clear H'; eauto.
+          intuition eauto. eapply FlatImp.exec.exec_ext. 1: eassumption.
+          intros. forget (k' ++ kH) as k''. instantiate (1 := fun _ _ _ _ => _).
             simpl. reflexivity. }
           simpl. intros. fwd. do 3 eexists.
           intros. subst. intuition eauto.
