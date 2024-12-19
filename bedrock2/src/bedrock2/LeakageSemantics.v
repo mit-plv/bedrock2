@@ -27,7 +27,7 @@ Goal exists (x y z : list nat), x ++ y = z. do 3 eexists. Fail Timeout 1 align_t
 
 Ltac align_trace :=
   repeat match goal with
-    | t:=_ :: _:_ |- _ => subst t
+    | t:= _ |- _ => subst t
     end;
   repeat exact eq_refl || eapply align_trace_app || eapply align_trace_cons || eapply align_trace_nil.
 
