@@ -14,11 +14,13 @@ Definition div3329 := func! (x) ~> ret {
 }.
 
 From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
-Import Interface.word Coq.Lists.List List.ListNotations.
-From bedrock2 Require Import Semantics LeakageSemantics BasicC32Semantics LeakageWeakestPrecondition LeakageProgramLogic.
+Import Interface Coq.Lists.List List.ListNotations.
+From bedrock2 Require Import Semantics LeakageSemantics FE310CSemantics LeakageWeakestPrecondition LeakageProgramLogic.
 Import LeakageProgramLogic.Coercions.
-Section WithOracle.
-Context {pick_sp: PickSp}.
+Section WithParameters.
+  Context {word: word.word 32} {mem: Interface.map.map word Byte.byte}.
+  Context {word_ok : word.ok word} {mem_ok : Interface.map.ok mem}.
+  Context {pick_sp: PickSp}.
 
 #[global] Instance ctspec_of_div3329 : spec_of "div3329" :=
   fun functions => forall k, exists k_, forall t m x,
@@ -78,7 +80,7 @@ Definition getline_io n bs :=
 Local Fixpoint getline_leakage f dst n (bs : nat) (i : word) :=
   if i =? n then leak_bool false :: nil else
   match bs with
-  | S bs => getline_leakage f dst n bs (add i (of_Z 1)) ++ (leak_word (add dst i) :: leak_bool false :: f ++ leak_unit :: leak_bool true :: nil)
+  | S bs => getline_leakage f dst n bs (word.add i (word.of_Z 1)) ++ (leak_word (word.add dst i) :: leak_bool false :: f ++ leak_unit :: leak_bool true :: nil)
   | O => leak_bool false :: leak_bool true :: f ++ leak_unit :: leak_bool true :: nil
   end.
 
@@ -150,7 +152,7 @@ Proof.
     { 
       pose proof word.unsigned_range n.
       pose proof word.unsigned_range x3 as Hx3.
-      subst br. rewrite unsigned_ltu in H2; case Z.ltb eqn:? in H2; 
+      subst br. rewrite word.unsigned_ltu in H2; case Z.ltb eqn:? in H2; 
           rewrite ?word.unsigned_of_Z_1, ?word.unsigned_of_Z_0, ?word.unsigned_sub_nowrap  in *; try blia; [].
       eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; cycle 1.
       { eapply H. }
@@ -159,7 +161,7 @@ Proof.
       split; repeat straightline.
       split; repeat straightline.
       { left; repeat straightline.
-        { subst br. rewrite unsigned_ltu, Z.ltb_irrefl; trivial. }
+        { subst br. rewrite word.unsigned_ltu, Z.ltb_irrefl. apply word.unsigned_of_Z_0. }
         eexists _, _; repeat straightline.
         eapply word.if_nonzero, word.eqb_true in H4.
         instantiate (1:=nil); cbn [Array.array]; split.
@@ -195,13 +197,13 @@ Proof.
         cbn [length] in *.
         pose proof word.unsigned_of_Z_1.
         pose proof word.unsigned_add_nowrap x3 (word.of_Z 1).
-        pose proof word.unsigned_sub_nowrap n (add x3 (of_Z 1)).
+        pose proof word.unsigned_sub_nowrap n (word.add x3 (word.of_Z 1)).
         blia. }
       { split.
         { subst  v3.
           pose proof word.unsigned_of_Z_1.
           pose proof word.unsigned_add_nowrap x3 (word.of_Z 1).
-          pose proof word.unsigned_sub_nowrap n (add x3 (of_Z 1)).
+          pose proof word.unsigned_sub_nowrap n (word.add x3 (word.of_Z 1)).
           blia. }
         repeat straightline.
         (* subroutine return *)
@@ -219,19 +221,19 @@ Proof.
         split; trivial.
         split. { cbn [length]. rewrite Nat2Z.inj_succ, H15.
           pose proof word.unsigned_of_Z_1.
-          pose proof word.unsigned_add_nowrap _i (of_Z 1) ltac:(blia).
+          pose proof word.unsigned_add_nowrap _i (word.of_Z 1) ltac:(blia).
           rewrite 2 word.unsigned_sub_nowrap; blia. }
         split; trivial.
         split. {
           pose proof word.unsigned_of_Z_1.
-          pose proof word.unsigned_add_nowrap _i (of_Z 1) ltac:(blia).
+          pose proof word.unsigned_add_nowrap _i (word.of_Z 1) ltac:(blia).
           blia. }
         split. { (* I/O *)
           subst T a0.
           cbv [getline_io]; cbn [rev List.map].
           repeat rewrite ?map_app, <-?app_comm_cons, <-?app_assoc; f_equal.
           { pose proof word.unsigned_of_Z_1 as H_1.
-            rewrite (word.unsigned_add_nowrap _i (of_Z 1) ltac:(blia)), H_1; cbn [length].
+            rewrite (word.unsigned_add_nowrap _i (word.of_Z 1) ltac:(blia)), H_1; cbn [length].
             case Z.eqb eqn:? at 1; case Z.eqb eqn:? at 1; trivial; try blia.
             { (* WHY manual? does zify do a bad job here? *) eapply Z.eqb_neq in Heqb1. blia. }
             { (* WHY manual? does zify do a bad job here? *) eapply Z.eqb_eq in Heqb1. blia. } }
@@ -249,7 +251,7 @@ Proof.
 
     { (* buffer full *)
       replace x3 with n in *; cycle 1.
-      { subst br; rewrite unsigned_ltu in *; eapply word.if_zero, Z.ltb_nlt in H2.
+      { subst br; rewrite word.unsigned_ltu in *; eapply word.if_zero, Z.ltb_nlt in H2.
         apply word.unsigned_inj. blia. }
       exists x, nil; cbn [Array.array].
       split. { ecancel_assumption. }
@@ -308,6 +310,8 @@ Print getline_io.
 Fail Lemma password_checker_ct : program_logic_goal_for_function! password_checker. (*Why*)
 Global Instance spec_of_memequal : spec_of "memequal" := spec_of_memequal.
 
+Require Import coqutil.Word.SimplWordExpr.
+
 Lemma password_checker_ct : program_logic_goal_for_function! password_checker.
 Proof.
   enter password_checker. destruct H as [f H]. destruct H0 as [g H0].
@@ -324,7 +328,7 @@ Proof.
   
   repeat straightline.
   eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; cycle 1.
-  { eapply H. 2: eassumption. ecancel_assumption. }
+  { eapply H. 2: rewrite word.unsigned_of_Z; eassumption. ecancel_assumption. }
   repeat straightline.
   seprewrite_in_by @Array.bytearray_index_merge H9 ltac:(blia).
   eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; cycle 1.
@@ -333,18 +337,18 @@ Proof.
     { ecancel_assumption. }
     split.
     { rewrite ?app_length; blia. }
-    { rewrite H1. reflexivity. } }
+    { rewrite H1. rewrite word.unsigned_of_Z. reflexivity. } }
   assert (length ((x ++ x0)) = 8%nat).
   { rewrite ?app_length. rewrite word.unsigned_of_Z_nowrap in H11; blia. }
   repeat straightline.
   split. { ecancel_assumption. }
-  split. { exact eq_refl. }
+  split. { subst a0. rewrite word.unsigned_of_Z. exact eq_refl. }
   split. { eassumption. }
   split. { (* leakage *)
     subst a0. subst a. subst k'0. subst k'. reflexivity. }
   { (* functional correctness *)
     subst v.
-    destruct (word.eqb_spec x1 (of_Z 8)) as [->|?]; cycle 1.
+    destruct (word.eqb_spec x1 (word.of_Z 8)) as [->|?]; cycle 1.
     { rewrite word.unsigned_and_nowrap, word.unsigned_of_Z_0, Z.land_0_l; split; try discriminate.
       intros X%(f_equal (@length _)). case H13; clear H13; apply word.unsigned_inj.
       rewrite <-H10, X, word.unsigned_of_Z_nowrap; blia. }
