@@ -392,18 +392,7 @@ Section Proofs.
   Hint Extern 3 (map.only_differ _ _ _)
   => eapply only_differ_trans_l; [eassumption|eauto with map_hints ..]
   : map_hints. *)
-  Search option_map.
-  Lemma option_map_option_map {A B C : Type} (f : B -> C) (g : A -> B) x :
-    option_map f (option_map g x) = option_map (fun y => f (g y)) x.
-  Proof. destruct x; reflexivity. Qed.
-
-  Lemma option_map_option_map' {A B C : Type} (f : B -> C) (g : A -> B) x :
-    ltac:(let t := eval cbv beta delta [option_map] in
-    (option_map f (option_map g x) = option_map (fun y => f (g y)) x)
-      in exact t).
-  Proof. destruct x; reflexivity. Qed.
-
-  (*could avoid this with fold_right or something?*)
+  
   Lemma leakage_events_app a i1 i2 l1 l2 :
     length i1 = length l1 ->
     leakage_events a (i1 ++ i2) (l1 ++ l2) =
@@ -465,16 +454,14 @@ Section Proofs.
     intros. get_run1_valid_for_free.
     inline_iff1.
     destruct_RiscvMachine initialL.
-    simulate'.
+    simulate'. simpl.
     destruct b.
     - (* don't branch *)
-      destruct cond; [destruct op | ];
-        simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); rewrite option_map_option_map'; intuition.
-    (*TODO: alternatively, 'rewrite option_map_option_map' could be 'destruct getTrace'.
-      not sure which is nicer.*)
+      destruct cond; [destruct op | ]; destruct getTrace;
+        simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); intuition.
     - (* branch *)
-      destruct cond; [destruct op | ];
-        simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); rewrite option_map_option_map'; intuition.
+      destruct cond; [destruct op | ]; destruct getTrace;
+        simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); intuition.
   Qed.
   
   Local Notation exec e pick_sp := (@exec _ _ _ _ _ _ _ _ PostSpill isRegZ pick_sp e).
@@ -813,7 +800,7 @@ Section Proofs.
         - wcancel_assumption.
       }
       { simpl. intros. rewrite PSP. Print fun_leakage.
-        cbv [fun_leakage fun_leakage_helper]. repeat rewrite option_map_option_map.
+        cbv [fun_leakage fun_leakage_helper].
         simpl_rev.
         rewrite BPW in *. repeat rewrite <- app_assoc. cbn [List.app].
         simpl.
