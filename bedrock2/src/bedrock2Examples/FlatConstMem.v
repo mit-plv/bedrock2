@@ -13,7 +13,7 @@ Definition silly1 := func! (a) ~> c {
 Require Import coqutil.Macros.symmetry.
 
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
-Require Import bedrock2.Semantics bedrock2.ProgramLogic bedrock2.Array.
+Require Import bedrock2.Semantics bedrock2.LeakageSemantics bedrock2.LeakageProgramLogic bedrock2.Array.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import Coq.Lists.List coqutil.Map.OfListWord.
 Require Import coqutil.Z.Lia.
@@ -30,16 +30,17 @@ Require Import AdmitAxiom.
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {pick_sp: PickSp}.
   Add Ring wring : (Properties.word.ring_theory (word := word))
         (preprocess [autorewrite with rew_word_morphism],
          morphism (Properties.word.ring_morph (word := word)),
          constants [Properties.word_cst]).
 
   Local Instance spec_of_silly1 : spec_of "silly1" := fun functions =>
-      forall t m a bs R, Z.of_nat (length bs) = 32 ->
+      forall k t m a bs R, Z.of_nat (length bs) = 32 ->
       (sep (eq (map.of_list_word_at a bs)) R) m ->
-      WeakestPrecondition.call functions "silly1" t m [a]
-      (fun T M rets => True).
+      LeakageWeakestPrecondition.call functions "silly1" k t m [a]
+      (fun K T M rets => True).
 
   Ltac ring_simplify_unsigned_goal :=
     match goal with
@@ -388,7 +389,7 @@ Section WithParameters.
         split_bytes_base_addr bs a0 a_r end;
         match type of H with context[?bs $@ ?a0] =>
         split_bytes_base_addr bs a0 a end end
-    | |- WeakestPrecondition.store ?sz ?m ?a _ _ =>
+    | |- LeakageWeakestPrecondition.store ?sz ?m ?a _ _ =>
         let sz := eval cbv in (Z.of_nat (bytes_per (width:=32) sz)) in
         match goal with H : ?S m |- _ =>
         match S with context[?bs $@ ?a0] =>
@@ -427,7 +428,7 @@ Section WithParameters.
       else idtac.
   Tactic Notation "on_left" tactic3(tac) := on_left tac.
 
-  Import ProgramLogic.Coercions.
+  Import LeakageProgramLogic.Coercions.
 
   (* note: do we want an Ltac coding rule that tactics must not start with a match? *)
   Local Ltac ecancel_assumption := idtac; SeparationLogic.ecancel_assumption.
@@ -469,7 +470,7 @@ Ltac simpl_lengths := repeat simpl_lengths_step.
 
   Lemma silly1_ok : program_logic_goal_for_function! silly1.
   Proof.
-    repeat (straightline || apply WeakestPreconditionProperties.dexpr_expr).
+    repeat (straightline || apply LeakageWeakestPreconditionProperties.dexpr_expr).
 
     eexists ?[v].
 
@@ -496,7 +497,7 @@ Ltac simpl_lengths := repeat simpl_lengths_step.
 
     (* store4(a + $14, b); *)
 
-    cbv [WeakestPrecondition.store].
+    cbv [LeakageWeakestPrecondition.store].
 
     (* remerge *)
     seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
@@ -548,7 +549,7 @@ end end
     split; [trivial|].
     split; [reflexivity|].
 
-    repeat (straightline || apply WeakestPreconditionProperties.dexpr_expr).
+    repeat (straightline || apply LeakageWeakestPreconditionProperties.dexpr_expr).
 
     (* last line *)
 
