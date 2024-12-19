@@ -27,6 +27,7 @@ Section WithParameters.
   Definition isMMIOAligned (n : nat) (addr : word) :=
     n = 4%nat /\ word.unsigned addr mod 4 = 0.
 
+(* FE310 is a simple enough processor that our leakage assumptions are likely to hold.  There is no official documentation of whether multiply always takes the maximum time or not, but both https://eprint.iacr.org/2019/794.pdf and https://pure.tue.nl/ws/portalfiles/portal/169647601/Berg_S._ES_CSE.pdf quote a fixed number of cycles for FE310 multiplication in the context of cryptography. *)
   Global Instance ext_spec: LeakageSemantics.ExtSpec :=
     fun (t : trace) (mGive : mem) a (args: list word) (post: mem -> list word -> list word -> Prop) =>
     if String.eqb "MMIOWRITE" a then
