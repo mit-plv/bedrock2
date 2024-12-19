@@ -75,7 +75,7 @@ Definition getline_io n bs :=
   let newline := if n =? length bs then nil else [getchar_event Byte.x0a] in
   newline ++ chars.
 
-Fixpoint getline_leakage f dst n (bs : nat) (i : word) :=
+Local Fixpoint getline_leakage f dst n (bs : nat) (i : word) :=
   if i =? n then leak_bool false :: nil else
   match bs with
   | S bs => getline_leakage f dst n bs (add i (of_Z 1)) ++ (leak_word (add dst i) :: leak_bool false :: f ++ leak_unit :: leak_bool true :: nil)
