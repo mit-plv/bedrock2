@@ -330,29 +330,24 @@ Ltac straightline :=
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
   | |- exists x y, ?P /\ ?Q =>
-    let x := fresh x in let y := fresh y in
-             refine (let x := _ in let y := _ in
-             ex_intro (fun x => exists y, P /\ Q) x
-             (ex_intro (fun y => P /\ Q) y _));
-             split; [solve [repeat straightline] |  ]
+      (*let x := fresh x in
+        let y := fresh y in
+        refine (let x := _ in let y := _ in
+        ex_intro (fun x => exists y, P /\ Q) x
+        (ex_intro (fun y => P /\ Q) y _));*)
+      (*thing above breaks align_trace, so repeat straightline doesn't solve the goal*)
+      (*doing eexists instead works.*)
+      eexists; eexists; split; [solve [repeat straightline] |  ]
   | |- exists x, Markers.split (?P /\ ?Q) => (*unsure whether still need this, or just case below*)
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
   | |- exists x y, Markers.split (?P /\ ?Q) =>
-    let x := fresh x in let y := fresh y in
-             refine (let x := _ in let y := _ in
-             ex_intro (fun x => exists y, P /\ Q) x
-             (ex_intro (fun y => P /\ Q) y _));
-             split; [solve [repeat straightline] |  ]
+      eexists; eexists; split; [solve [repeat straightline] |  ]
   | |- Markers.unique (exists x, Markers.split (?P /\ ?Q)) => (*unsure whether we still need this, or just need case below*)
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
   | |- Markers.unique (exists x y, Markers.split (?P /\ ?Q)) =>
-    let x := fresh x in let y := fresh y in
-             refine (let x := _ in let y := _ in
-             ex_intro (fun x => exists y, P /\ Q) x
-             (ex_intro (fun y => P /\ Q) y _));
-             split; [solve [repeat straightline] |  ]
+    eexists; eexists; split; [solve [repeat straightline] |  ]
   | |- Markers.unique (Markers.left ?G) =>
     change G;
     unshelve (idtac; repeat match goal with

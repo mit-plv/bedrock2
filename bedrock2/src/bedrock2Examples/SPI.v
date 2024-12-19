@@ -114,21 +114,13 @@ Section WithParameters.
     { repeat straightline. }
     { eapply (Z.lt_wf 0). }
     { do 2 eexists; split; repeat straightline.
-      exfalso. ZnWords. }
-    { repeat (split; trivial; []).
-      subst i. rewrite word.unsigned_of_Z.
-      split.
-      { discriminate. }
-      split; trivial.
-      eexists; split.
-      { rewrite app_nil_l; trivial. }
-      eexists; split.
+      { exfalso. ZnWords. }
+      repeat (eexists || split || trivial || align_trace).
       { constructor. }
-      split.
       { constructor. }
-      exact eq_refl. }
+      rewrite word.unsigned_of_Z. reflexivity. }
     repeat straightline.
-    eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
+    eapply LeakageWeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; split; [exact eq_refl|]; split; [split; trivial|].
     {
       cbv [isMMIOAddr addr].
