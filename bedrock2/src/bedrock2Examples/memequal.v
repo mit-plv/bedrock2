@@ -55,7 +55,7 @@ Section WithParameters.
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
   Import coqutil.Word.Properties coqutil.Map.Properties.
 
-  Fixpoint newtrace x y n :=
+  Local Fixpoint newtrace x y n :=
     match n with
     | S n' => newtrace (word.add x (word.of_Z 1)) (word.add y (word.of_Z 1)) n' ++
                [leak_word y; leak_word x; leak_bool true] 
