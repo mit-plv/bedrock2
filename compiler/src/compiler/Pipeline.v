@@ -587,6 +587,22 @@ Section WithWordAndMem.
         rewrite H2p1p2. rewrite rev_involutive. reflexivity.
     Qed.
 
+    Lemma riscv_call_weaken :
+      forall p s funcname
+        k t m argvals mc post1,
+        riscv_call p s funcname k t m argvals mc post1 ->
+        forall post2,
+          (forall k' t' m' retvals mc',
+              post1 k' t' m' retvals mc' -> post2 k' t' m' retvals mc') ->
+          riscv_call p s funcname k t m argvals mc post2.
+    Proof.
+      intros. cbv [riscv_call] in *. destruct p. destruct p. destruct s as [ [? ?] ?].
+      destruct H as [f_rel_pos H]. exists f_rel_pos. intuition eauto.
+      cbv [runsTo]. eapply runsToNonDet.runsTo_weaken. 1: eapply H2.
+      all: try eassumption. simpl. intros. fwd. do 3 eexists.
+      intuition eauto.
+    Qed.
+
     Lemma riscv_phase_correct p_funcs stack_pastend ret_addr : phase_correct FlatWithRegs (RiscvLang p_funcs stack_pastend ret_addr) (riscvPhase compile_ext_call).
     Proof.
       unfold FlatWithRegs, RiscvLang.
@@ -601,24 +617,13 @@ Section WithWordAndMem.
         inversion E. subst. pose proof flat_to_riscv_correct as H'.
         repeat specialize (H' ltac:(assumption)).
         specialize (H' (instrs, finfo_, req_stack_size)).
-        do 2 specialize (H' ltac:(assumption)). cbv beta match in H'.
-                                                                  Search finfo_. simpl in H'.
-          in H1p2. Search riscv_call.
-        assert (H1p0': map.get p1 fname = Some (argnames0, retnames0, fbody0)).
-        { eapply E. eexists. apply H1p0. }
-        rewrite H1p0 in H1p0'. inversion H1p0'. subst. clear H1p0'.
-        Check flat_to_riscv_correct. eapply RiscvLang.(WeakenCall).
-        { unfold Call, RiscvLang. assert (H' := flat_to_riscv_correct).
-          specialize H' with (p2 := (instrs, finfo, req_stack_size)).
-          eapply H'; clear H'; eauto.
-          intuition eauto. eapply FlatImp.exec.exec_ext. 1: eassumption.
-          intros. forget (k' ++ kH) as k''. instantiate (1 := fun _ _ _ _ => _).
-            simpl. reflexivity. }
-          simpl. intros. fwd. do 3 eexists.
-          intros. subst. intuition eauto.
-          { instantiate (1 := fun _ _ _ _ => _). simpl.
-            rewrite <- (rev_involutive k'). rewrite <- H1p5. reflexivity. }
-          Unshelve. intros. assumption.
+        do 2 specialize (H' ltac:(assumption)). cbv beta match in H'. idtac.
+        eapply riscv_call_weaken. 1: eapply H'; eauto.
+        simpl. intros. fwd. do 2 eexists. split; [eassumption|]. split; [|eassumption].
+        rewrite <- (rev_involutive k'). rewrite <- H1p5.       
+        remember (kH'' ++ k1) as k''. replace kH'' with (remove_n_r (length k1) k'').
+        2: { subst. apply remove_n_r_spec. }
+        instantiate (1 := fun _ => _). simpl. reflexivity.
     Qed.
 
     Definition composed_compile:
@@ -631,7 +636,7 @@ Section WithWordAndMem.
       (compose_phases spill_functions
                       (riscvPhase compile_ext_call)))))).
 
-    Lemma composed_compiler_correct: phase_correct SrcLang RiscvLang composed_compile.
+    Lemma composed_compiler_correct p_funcs stack_pastend ret_addr : phase_correct SrcLang (RiscvLang p_funcs stack_pastend ret_addr) composed_compile.
     Proof.
       unfold composed_compile.
       exact (compose_phases_correct flattening_correct
@@ -639,7 +644,7 @@ Section WithWordAndMem.
             (compose_phases_correct dce_correct
             (compose_phases_correct regalloc_correct
             (compose_phases_correct spilling_correct
-                                    riscv_phase_correct))))).
+                                    (riscv_phase_correct _ _ _)))))).
     Qed.
 
     Definition compile(funs: list (string * (list string * list string * cmd))):
@@ -720,19 +725,19 @@ Section WithWordAndMem.
             raiseMetrics (cost_compile_spec initial.(getMetrics)) = mcL ->
             machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
             runsTo initial (fun final : MetricRiscvMachine =>
-              exists kH'' mH' retvals,
+              exists kH' mH' retvals,
                 arg_regs_contain (getRegs final) retvals /\
-                (exists mcH' : MetricLog,
-                  ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mc)%metricsH /\
-                    post (kH'' ++ kH) (getLog final) mH' retvals mcH') /\
-                  final.(getTrace) = Some (f kH'') /\
+                  (exists mcH' : MetricLog,
+                      ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mc)%metricsH /\
+                        post kH' (getLog final) mH' retvals mcH') /\
+                  final.(getTrace) = Some (f kH') /\
                   map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
                   final.(getPc) = ret_addr /\
                 machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final).
     Proof.
       intros.
-      pose proof (phase_preserves_post composed_compiler_correct) as C.
-      unfold Call, Settings, Leakage, SrcLang, RiscvLang, locals_based_call_spec, riscv_call in C.
+      pose proof (phase_preserves_post (composed_compiler_correct p_funcs stack_hi ret_addr)) as C.
+      unfold Call, Leakage, SrcLang, RiscvLang, locals_based_call_spec, riscv_call in C.
       eapply valid_src_funs_correct in H.
       specialize C with (1 := H).
       assert (composed_compile (map.of_list functions) =
@@ -741,14 +746,13 @@ Section WithWordAndMem.
         rewrite map.of_list_tuples. reflexivity.
       }
       specialize C with (1 := H0').
-      specialize (C tt (p_funcs, stack_hi, ret_addr) fname).
-      Check C.
+      specialize (C fname kH kL (fun _ => word.of_Z 0)).
       destruct C as [pick_spH [L C] ].
       eexists. intros. eexists. intros.
-      specialize (C (fun _ => word.of_Z 0) kH kL).
       specialize C with (1 := H1). specialize (C mcL).
       destruct C as [f_rel_pos C]. exists f_rel_pos. fwd.
-      intuition eauto.       eapply runsToNonDet.runsTo_weaken.
+      intuition eauto.
+      eapply runsToNonDet.runsTo_weaken.
       1: eapply Cp1; eauto. cbv beta. intros. fwd. do 3 eexists. intuition eauto.
     Qed.
 
@@ -775,13 +779,14 @@ Section WithWordAndMem.
         forall kH kL,
         exists f pick_sp, forall
         (* high-level initial state & post on final state: *)
-        (t: trace) (mH: mem) (argvals: list word) (post: leakage -> trace -> mem -> list word -> Prop)
+        (t: trace) (mH: mem) (argvals: list word) (mcH : MetricLog) (mcL : MetricLog) (post: leakage -> trace -> mem -> list word -> MetricLog -> Prop)
         (* ghost vars that help describe the low-level machine: *)
         (stack_lo : word) (Rdata Rexec: mem -> Prop)
         (* low-level machine on which we're going to run the compiled program: *)
         (initial: MetricRiscvMachine),
         NoDup (map fst fs) ->
-        MetricLeakageSemantics.call (pick_sp := pick_sp) (map.of_list fs) fname kH t mH argvals mc post ->
+        MetricLeakageSemantics.call (pick_sp := pick_sp) (map.of_list fs) fname kH t mH argvals (cost_spill_spec mcH) post ->
+        forall mcL,
         map.get (map.of_list finfo) fname = Some f_rel_pos ->
         req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
         word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
@@ -791,12 +796,15 @@ Section WithWordAndMem.
         arg_regs_contain initial.(getRegs) argvals ->
         initial.(getLog) = t ->
         initial.(getTrace) = Some kL ->
+        raiseMetrics (cost_compile_spec initial.(getMetrics)) = mcL ->
         machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
         runsTo initial (fun final : MetricRiscvMachine =>
-              exists kH'' mH' retvals,
+              exists kH' mH' retvals,
                 arg_regs_contain (getRegs final) retvals /\
-                (post (kH'' ++ kH) (getLog final) mH' retvals) /\
-                  final.(getTrace) = Some (f kH'') /\
+                  (exists mcH' : MetricLog,
+                      ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mcH)%metricsH /\
+                        post kH' (getLog final) mH' retvals mcH') /\
+                  final.(getTrace) = Some (f kH') /\
                   map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
                   final.(getPc) = ret_addr /\
                 machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final).
@@ -805,19 +813,12 @@ Section WithWordAndMem.
       destruct (compiler_correct fs instrs finfo req_stack_size fname p_funcs stack_hi ret_addr H H0 kH kL) as
         [f [pick_sp compiler_correct'] ].
       exists f, pick_sp. intros.
-      let H := hyp (LeakageWeakestPrecondition.call (pick_sp := pick_sp)) in rename H into WP.
+      let H := hyp (MetricLeakageSemantics.call (pick_sp := pick_sp)) in rename H into WP.
+      unfold MetricLeakageSemantics.call in WP. fwd.
       edestruct compiler_correct' as (f_rel_pos' & G & C).
-      { unfold LeakageSemantics.call in WP. fwd.
-        do 5 eexists. 1: eassumption. split. 1: eassumption.
-        intros. eapply MetricLeakageSemantics.exec.weaken.
-        { eapply MetricLeakageSemantics.to_leakage_exec.
-          eapply WPp1p1. }
-        instantiate (1:= fun k t m l mc => post k t m l).
-        cbv beta. intros. fwd. eauto. }
-      eapply runsToNonDet.runsTo_weaken. 1: apply C; clear C; try assumption; try congruence.
-      all: eauto.
-      cbv beta. intros. fwd. do 3 eexists. intuition eauto.
-      Unshelve. exact EmptyMetricLog.
+      { do 4 eexists. eauto. }
+      rewrite H3 in G. inversion G; subst; clear G.
+      apply C; auto.
     Qed.
 
   End WithMoreParams.
