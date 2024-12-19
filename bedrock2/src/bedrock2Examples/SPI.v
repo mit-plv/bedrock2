@@ -41,8 +41,8 @@ Definition spi_xchg := func! (b) ~> (b, busy) {
     unpack! b, busy = spi_read()
   }.
 
-Require Import bedrock2.ProgramLogic.
-Require Import bedrock2.FE310CSemantics bedrock2.Semantics.
+Require Import bedrock2.LeakageProgramLogic.
+Require Import bedrock2.FE310CSemantics bedrock2.Semantics bedrock2.LeakageSemantics.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import bedrock2.ZnWords.
@@ -53,6 +53,7 @@ Import ReversedListNotations.
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {pick_sp: PickSp}.
 
   Definition mmio_event_abstraction_relation
     (h : lightbulb_spec.OP word)
@@ -65,15 +66,15 @@ Section WithParameters.
   Definition only_mmio_satisfying P t :=
     exists mmios, mmio_trace_abstraction_relation mmios t /\ P mmios.
 
-  Global Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall t m b,
+  Global Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall k t m b,
     word.unsigned b < 2 ^ 8 ->
-    WeakestPrecondition.call functions "spi_write" t m [b] (fun T M RETS =>
+    LeakageWeakestPrecondition.call functions "spi_write" k t m [b] (fun K T M RETS =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists err, RETS = [err] /\ Logic.or
         (((word.unsigned err <> 0) /\ lightbulb_spec.spi_write_full _ ^* ioh /\ Z.of_nat (length ioh) = patience))
         (word.unsigned err = 0 /\ lightbulb_spec.spi_write word (byte.of_Z (word.unsigned b)) ioh)).
 
-  Global Instance spec_of_spi_read : spec_of "spi_read" := fun functions => forall t m,
-    WeakestPrecondition.call functions "spi_read" t m [] (fun T M RETS =>
+  Global Instance spec_of_spi_read : spec_of "spi_read" := fun functions => forall k t m,
+    LeakageWeakestPrecondition.call functions "spi_read" k t m [] (fun K T M RETS =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b: byte) (err : word), RETS = [word.of_Z (byte.unsigned b); err] /\ Logic.or
         (word.unsigned err <> 0 /\ lightbulb_spec.spi_read_empty _ ^* ioh /\ Z.of_nat (length ioh) = patience)
         (word.unsigned err = 0 /\ lightbulb_spec.spi_read word b ioh)).
@@ -88,20 +89,20 @@ Section WithParameters.
          constants [Properties.word_cst]).
 
   Import coqutil.Tactics.letexists.
-  Import Loops.
+  Import LeakageLoops.
   Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
   Proof.
     repeat straightline.
     rename H into Hb.
 
     (* WHY do theese parentheses matter? *)
-    refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
+    refine ((atleastonce ["b"; "busy"; "i"] (fun v K T M B BUSY I =>
        b = B /\ v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        lightbulb_spec.spi_write_full _ ^* th /\
        Z.of_nat (length th) + word.unsigned I = patience
-       )) _ _ _ _ _ _ _);
+       )) _ _ _ _ _ _);
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
            HList.hlist.foralls HList.tuple.foralls
            HList.hlist.existss HList.tuple.existss
@@ -112,7 +113,7 @@ Section WithParameters.
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
     { repeat straightline. }
     { eapply (Z.lt_wf 0). }
-    { eexists; split; repeat straightline.
+    { do 2 eexists; split; repeat straightline.
       exfalso. ZnWords. }
     { repeat (split; trivial; []).
       subst i. rewrite word.unsigned_of_Z.
