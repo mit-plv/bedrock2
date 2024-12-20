@@ -115,7 +115,7 @@ Definition lan9250_tx := func! (p, l) ~> err {
     unpack! err = lan9250_writeword($TX_DATA_FIFO, load4(p));
     if err { l = $0 } else { p = p + $4; l = l - $4 } } }.
 
-Require Import bedrock2.ProgramLogic.
+Require Import bedrock2.LeakageProgramLogic bedrock2.LeakageSemantics.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Word.Interface.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -125,19 +125,20 @@ Require Import bedrock2.ZnWords.
 
 Import coqutil.Map.Interface.
 Import lightbulb_spec.
-Import Loops.
+Import LeakageLoops.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {pick_sp: PickSp}.
 
   Import lightbulb_spec.
   Local Notation mmio_trace_abstraction_relation := (@mmio_trace_abstraction_relation word).
   Local Notation only_mmio_satisfying := (@only_mmio_satisfying word mem).
 
-  Global Instance spec_of_lan9250_readword : ProgramLogic.spec_of "lan9250_readword" := fun functions => forall t m a,
+  Global Instance spec_of_lan9250_readword : LeakageProgramLogic.spec_of "lan9250_readword" := fun functions => forall k t m a,
     (0x0 <= Word.Interface.word.unsigned a < 0x400) ->
-    WeakestPrecondition.call functions "lan9250_readword" t m [a] (fun T M RETS =>
+    LeakageWeakestPrecondition.call functions "lan9250_readword" k t m [a] (fun K T M RETS =>
       M = m /\
       exists ret err, RETS = [ret; err] /\
       exists iol, T = iol ++ t /\
@@ -145,11 +146,11 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\ lightbulb_spec.lan9250_fastread4 _ a ret ioh)).
 
-  Global Instance spec_of_lan9250_writeword : ProgramLogic.spec_of "lan9250_writeword" := fun functions =>
-    forall t m a v,
+  Global Instance spec_of_lan9250_writeword : spec_of "lan9250_writeword" := fun functions =>
+    forall k t m a v,
       (0x0 <= Word.Interface.word.unsigned a < 0x400) ->
-    (((WeakestPrecondition.call functions "lan9250_writeword"))) t m [a; v]
-      (fun T M RETS =>
+    (((LeakageWeakestPrecondition.call functions "lan9250_writeword"))) k t m [a; v]
+      (fun K T M RETS =>
       M = m /\
       exists err, RETS = [err] /\
       exists iol, T = iol ++ t /\
@@ -157,11 +158,11 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\ lightbulb_spec.lan9250_write4 _ a v ioh)).
 
-  Global Instance spec_of_lan9250_mac_write : ProgramLogic.spec_of "lan9250_mac_write" := fun functions =>
-    forall t m a v,
+  Global Instance spec_of_lan9250_mac_write : spec_of "lan9250_mac_write" := fun functions =>
+    forall k t m a v,
       (0 <= Word.Interface.word.unsigned a < 2^31) ->
-    (((WeakestPrecondition.call functions "lan9250_mac_write"))) t m [a; v]
-      (fun T M RETS =>
+    (((LeakageWeakestPrecondition.call functions "lan9250_mac_write"))) k t m [a; v]
+      (fun K T M RETS =>
       M = m /\
       exists err, RETS = [err] /\
       exists iol, T = iol ++ t /\
@@ -169,10 +170,10 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\  lan9250_mac_write_trace _ a v ioh )).
 
-  Global Instance spec_of_lan9250_wait_for_boot : ProgramLogic.spec_of "lan9250_wait_for_boot" := fun functions =>
-    forall t m,
-    (((WeakestPrecondition.call functions "lan9250_wait_for_boot"))) t m []
-      (fun T M RETS =>
+  Global Instance spec_of_lan9250_wait_for_boot : spec_of "lan9250_wait_for_boot" := fun functions =>
+    forall k t m,
+    (((LeakageWeakestPrecondition.call functions "lan9250_wait_for_boot"))) k t m []
+      (fun K T M RETS =>
       M = m /\
       exists err, RETS = [err] /\
       exists iol, T = iol ++ t /\
@@ -181,10 +182,10 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ lan9250_boot_timeout _ ioh))
         (word.unsigned err = 0 /\ lan9250_wait_for_boot_trace _ ioh)).
 
-  Global Instance spec_of_lan9250_init : ProgramLogic.spec_of "lan9250_init" := fun functions =>
-    forall t m,
-    (((WeakestPrecondition.call functions "lan9250_init"))) t m []
-      (fun T M RETS =>
+  Global Instance spec_of_lan9250_init : spec_of "lan9250_init" := fun functions =>
+    forall k t m,
+    (((LeakageWeakestPrecondition.call functions "lan9250_init"))) k t m []
+      (fun K T M RETS =>
       M = m /\
       exists err, RETS = [err] /\
       exists iol, T = iol ++ t /\
@@ -195,10 +196,10 @@ Section WithParameters.
 
   Local Ltac split_if :=
     lazymatch goal with
-      |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
+      |- LeakageWeakestPrecondition.cmd _ ?c _ _ _ _ ?post =>
       let c := eval hnf in c in
           lazymatch c with
-          | cmd.cond _ _ _ => letexists; split; [solve[repeat straightline]|split]
+          | cmd.cond _ _ _ => letexists; eexists; split; [solve[repeat straightline]|split]
           end
     end.
 
@@ -259,7 +260,7 @@ Section WithParameters.
     | _ => straightline
     | _ => straightline_call; [  solve[repeat t].. | ]
     | _ => split_if; [  solve[repeat t].. | ]
-    | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ => eapply WeakestPreconditionProperties.interact_nomem; [  solve[repeat t].. | ]
+    | |- LeakageWeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ _ => eapply LeakageWeakestPreconditionProperties.interact_nomem; [  solve[repeat t].. | ]
     end.
 
   Import Word.Properties.
@@ -307,7 +308,7 @@ Section WithParameters.
       split; [|exact eq_refl]; clear.
       cbv -[Z.le Z.lt]. blia. }
     repeat straightline.
-    eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
+    eapply LeakageWeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
@@ -391,6 +392,7 @@ Section WithParameters.
     t.
     t.
     t.
+    t.
     letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
@@ -405,7 +407,7 @@ Section WithParameters.
     t.
     t.
     t.
-    t.
+    (*t.*)
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr addr0. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
@@ -513,14 +515,14 @@ Section WithParameters.
   Lemma lan9250_wait_for_boot_ok : program_logic_goal_for_function! lan9250_wait_for_boot.
   Proof.
     repeat straightline.
-    refine ((atleastonce ["err"; "i"; "byteorder"] (fun v T M ERR I BUSY =>
+    refine ((atleastonce ["err"; "i"; "byteorder"] (fun v K T M ERR I BUSY =>
        v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        exists n, (multiple (lan9250_boot_attempt _) n) th /\
        Z.of_nat n + word.unsigned I = patience
             ))
-            _ _ _ _ _ _ _);
+            _ _ _ _ _ _);
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
            HList.hlist.foralls HList.tuple.foralls
            HList.hlist.existss HList.tuple.existss
@@ -532,7 +534,6 @@ Section WithParameters.
     { exact (Z.lt_wf 0). }
     { exfalso. subst i. rewrite word.unsigned_of_Z in H0; inversion H0. }
     { subst i; repeat t.
-      { rewrite word.unsigned_of_Z. intro X. inversion X. }
       exists O; cbn; split; trivial.
       rewrite word.unsigned_of_Z. exact eq_refl. }
     { straightline_call.
@@ -639,7 +640,7 @@ Section WithParameters.
       | |- context G[string_dec ?x ?y] =>
           unshelve erewrite (_ : string_dec x y = right _); [ | exact eq_refl | ]
       | _ => straightline_cleanup
-      | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ => eapply WeakestPreconditionProperties.interact_nomem
+      | |- LeakageWeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ _ => eapply LeakageWeakestPreconditionProperties.interact_nomem
       | |- ext_spec _ _ _ _ _ =>
     letexists; split; [exact eq_refl|]; split; [split; trivial|]
       | |- ext_spec _ _ _ _ _ =>
@@ -647,8 +648,8 @@ Section WithParameters.
 
       | H: ?x = 0 |-  _ => rewrite H
       | |- ?F ?a ?b ?c =>
-          match F with WeakestPrecondition.get => idtac end;
-          let f := (eval cbv beta delta [WeakestPrecondition.get] in F) in
+          match F with LeakageWeakestPrecondition.get => idtac end;
+          let f := (eval cbv beta delta [LeakageWeakestPrecondition.get] in F) in
           change (f a b c); cbv beta
       | _ => straightline
       | _ => straightline_call
@@ -764,15 +765,15 @@ Section WithParameters.
     all : try (Z.div_mod_to_equations; blia).
   Qed.
 
-  Import WeakestPrecondition SeparationLogic Array Scalars ProgramLogic.Coercions.
+  Import LeakageWeakestPrecondition SeparationLogic Array Scalars LeakageProgramLogic.Coercions.
   Local Notation spi_timeout := (lightbulb_spec.spi_timeout word).
   Local Notation lan9250_send := (lightbulb_spec.lan9250_send word).
-  Global Instance spec_of_lan9250_tx : ProgramLogic.spec_of "lan9250_tx" :=
+  Global Instance spec_of_lan9250_tx : spec_of "lan9250_tx" :=
     fnspec! "lan9250_tx" p l / bs R ~> err,
-    { requires t m := word.unsigned l = length bs /\
+    { requires k t m := word.unsigned l = length bs /\
        word.unsigned l mod 4 = 0 /\
        (array ptsto (word.of_Z 1) p bs * R)%sep m;
-     ensures T M := M = m /\
+     ensures K T M := M = m /\
       exists iol, T = iol ++ t /\
       exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ spi_timeout) ioh)
@@ -782,7 +783,7 @@ Section WithParameters.
 
   Local Ltac no_call :=
     lazymatch goal with
-    | |- Semantics.call _ _ _ _ _ _ => fail
+    | |- LeakageSemantics.call _ _ _ _ _ _ _ => fail
     | |- _ => idtac
     end.
 
@@ -791,27 +792,26 @@ Section WithParameters.
 
   Lemma lan9250_tx_ok : program_logic_goal_for_function! lan9250_tx.
   Proof.
-
-    repeat (subst || straightline || straightline_call || ZnWords || intuition eauto || esplit).
-    repeat (straightline || esplit).
+    repeat (subst || straightline || intuition eauto || esplit).
+    straightline_call; [ZnWords|].
+    repeat (subst || straightline || intuition eauto || esplit).
     straightline_call; [ZnWords|]; repeat (intuition idtac; repeat straightline).
-    { eexists; split; repeat (straightline; intuition idtac; eauto).
-      subst a. rewrite app_assoc.
+    { eexists; eexists; split; repeat (straightline; intuition idtac; eauto).
+      subst a1. rewrite app_assoc.
       eexists; Tactics.ssplit; eauto.
-      eexists; Tactics.ssplit; try mmio_trace_abstraction; eauto using any_app_more. }
-    eexists; split; repeat (straightline; intuition eauto).
-
-    refine (Loops.tailrec_earlyout
+       eexists; Tactics.ssplit; try mmio_trace_abstraction; eauto using any_app_more. }
+    eexists; eexists; split; repeat (straightline; intuition eauto).
+    refine (tailrec_earlyout
       (HList.polymorphic_list.cons (list Byte.byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
       ["p";"l";"err"]
-      (fun v bs R t m p l err => PrimitivePair.pair.mk (
+      (fun v bs R k t m p l err => PrimitivePair.pair.mk (
          word.unsigned l = length bs /\
          word.unsigned l mod 4 = 0 /\
         (array ptsto (word.of_Z 1) p bs * R)%sep m /\
         v = word.unsigned l /\
         err = 0 :> Z
       )
-      (fun T M P L ERR =>
+      (fun K T M P L ERR =>
          M = m /\ exists iol, T = iol ++ t /\
         exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
         (word.unsigned ERR <> 0 /\ (any +++ spi_timeout) ioh)
@@ -853,7 +853,7 @@ Section WithParameters.
       { autoforward with typeclass_instances in E.
         rewrite firstn_length. ZnWords. }
 
-      eexists; split; repeat straightline.
+      eexists; eexists; split; repeat straightline.
       straightline_call; repeat straightline.
       { ZnWords. }
 
@@ -862,7 +862,7 @@ Section WithParameters.
         rewrite firstn_length. ZnWords. }
 
       rename x5 into err.
-      eexists; split; repeat straightline; intuition idtac.
+      eexists; eexists; split; repeat straightline; intuition idtac.
       { seprewrite_in (symmetry! @array_append) H15.
         rewrite (firstn_skipn 4 bs) in H15.
         repeat straightline.
@@ -903,8 +903,8 @@ Section WithParameters.
   Implicit Type l : word.
   Instance spec_of_lan9250_tx' : spec_of "lan9250_tx" :=
     fnspec! "lan9250_tx" p l / bs ~> err,
-    { requires t m := m =*> bytes p bs ∧ l = length bs :> Z ∧ l mod 4 = 0 :> Z;
-      ensures T M := M = m ∧ ∃ t', T = t' ++ t ∧ only_mmio_satisfying (fun h =>
+    { requires k t m := m =*> bytes p bs ∧ l = length bs :> Z ∧ l mod 4 = 0 :> Z;
+      ensures K T M := M = m ∧ ∃ t', T = t' ++ t ∧ only_mmio_satisfying (fun h =>
        (0 <> err ∧ (any+++spi_timeout) h) ∨ (0 = err ∧ lan9250_send bs h)) t' }.
 
   Lemma lan9250_tx_ok' : program_logic_goal_for_function! lan9250_tx.
@@ -914,7 +914,7 @@ Section WithParameters.
     cbv [spec_of_lan9250_tx'  spec_of_lan9250_tx] in *.
     intros; eauto.
     case H3 as ([]&?&?).
-    eapply WeakestPreconditionProperties.Proper_call; [|eapply H]; intuition idtac; Tactics.ssplit; eauto.
+    eapply LeakageWeakestPreconditionProperties.Proper_call; [|eapply H]; intuition idtac; Tactics.ssplit; eauto.
     repeat intro.
     repeat match goal with
            | H : exists _, _ |- _ =>  case H as []
