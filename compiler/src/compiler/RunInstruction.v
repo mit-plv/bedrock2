@@ -31,6 +31,8 @@ Require Export coqutil.Word.SimplWordExpr.
 Require Import coqutil.Tactics.Simp.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.ZLemmas.
+Require Import riscv.Spec.LeakageOfInstr.
+Require Import coqutil.Datatypes.Option.
 Import Utility.
 
 Notation Register0 := 0%Z (only parsing).
@@ -104,7 +106,7 @@ Section Run.
 
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
-  Context {RVM: RiscvProgram M word}.
+  Context {RVM: RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
@@ -124,6 +126,13 @@ Section Run.
 
   Context (iset: InstructionSet).
 
+  Notation w0 := (word.of_Z 0).
+  Definition final_trace (r1 r2 : Z) (v1 v2 : word) (i : Instruction) (pc : word)
+    (initial_trace : option (list LeakageEvent)) :=
+    option_map2 cons
+      (concrete_leakage_of_instr (fun r => if r =? r1 then v1 else v2) i)
+      (option_map (cons (fetchInstr pc)) initial_trace).                        
+  
   Definition run_Jalr0_spec :=
     forall (rs1: Z) (oimm12: Z) (initialL: RiscvMachineL) (Exec R Rexec: mem -> Prop)
            (dest: word),
@@ -148,6 +157,7 @@ Section Run.
         finalL.(getPc) = word.add dest (word.of_Z oimm12) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         finalL.(getMetrics) = addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 initialL.(getMetrics))) /\
+        finalL.(getTrace) = final_trace rs1 0 dest w0 (Jalr RegisterNames.zero rs1 oimm12) initialL.(getPc) initialL.(getTrace) /\
         valid_machine finalL).
 
   Definition run_Jal_spec :=
@@ -167,6 +177,7 @@ Section Run.
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         finalL.(getMetrics) = addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 initialL.(getMetrics))) /\
+        finalL.(getTrace) = final_trace 0 0 w0 w0 (Jal rd jimm20) initialL.(getPc) initialL.(getTrace) /\
         valid_machine finalL).
 
   Definition run_Jal0_spec :=
@@ -184,6 +195,7 @@ Section Run.
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         finalL.(getMetrics) = addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 initialL.(getMetrics))) /\
+        finalL.(getTrace) = final_trace 0 0 w0 w0 (Jal Register0 jimm20) initialL.(getPc) initialL.(getTrace) /\
         valid_machine finalL).
 
   Definition run_ImmReg_spec(Op: Z -> Z -> Z -> Instruction)
@@ -205,6 +217,7 @@ Section Run.
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         finalL.(getMetrics) = addMetricInstructions 1 (addMetricLoads 1 initialL.(getMetrics)) /\
+        finalL.(getTrace) = final_trace rs 0 rs_val w0 (Op rd rs imm) initialL.(getPc) initialL.(getTrace) /\
         valid_machine finalL).
 
   Definition run_Load_spec(n: nat)(L: Z -> Z -> Z -> Instruction)
@@ -230,6 +243,7 @@ Section Run.
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         finalL.(getMetrics) = addMetricInstructions 1 (addMetricLoads 2 initialL.(getMetrics)) /\
+        finalL.(getTrace) = final_trace rs 0 base w0 (L rd rs ofs) initialL.(getPc) initialL.(getTrace) /\
         valid_machine finalL).
 
   Definition run_Store_spec(n: nat)(S: Z -> Z -> Z -> Instruction): Prop :=
@@ -255,6 +269,7 @@ Section Run.
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         finalL.(getMetrics) = addMetricInstructions 1 (addMetricStores 1 (addMetricLoads 1 initialL.(getMetrics))) /\
+        finalL.(getTrace) = final_trace rs1 rs2 base v_new (S rs1 rs2 ofs) initialL.(getPc) initialL.(getTrace) /\
         valid_machine finalL).
 
   Ltac inline_iff1 :=
@@ -268,13 +283,15 @@ Section Run.
     end;
     simpl in *; subst;
     simulate';
+    cbv [final_trace];
     simpl;
+    repeat rewrite Z.eqb_refl;
     repeat match goal with
-           | |- _ /\ _ => split
-           | |- _ => solve [auto]
-           | |- _ => ecancel_assumption
-           | |- _ => solve_MetricLog
-           end.
+      | |- _ /\ _ => split
+      | |- _ => solve [auto]
+      | |- _ => ecancel_assumption
+      | |- _ => solve_MetricLog
+      end.
 
   Ltac t := repeat intro; inline_iff1; get_run1_valid_for_free; t0.
 

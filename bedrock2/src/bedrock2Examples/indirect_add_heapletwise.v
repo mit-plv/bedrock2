@@ -12,40 +12,41 @@ Definition indirect_add_twice := func! (a, b) {
   indirect_add(a, a, b)
 }.
 
-Require Import bedrock2.WeakestPrecondition.
+Require Import bedrock2.LeakageWeakestPrecondition.
 Require Import coqutil.Word.Interface coqutil.Map.Interface bedrock2.Map.SeparationLogic.
 Require Import coqutil.Tactics.fwd.
 Require Import bedrock2.Map.DisjointUnion.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.enable_frame_trick.
 Require Import bedrock2.PurifySep.
-Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
+Require Import bedrock2.Semantics bedrock2.LeakageSemantics bedrock2.FE310CSemantics.
 Require Import coqutil.Macros.WithBaseName.
 
-Require bedrock2.WeakestPreconditionProperties.
+Require bedrock2.LeakageWeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
-Require Import bedrock2.ProgramLogic bedrock2.Scalars bedrock2.Array.
+Require Import bedrock2.LeakageProgramLogic bedrock2.Scalars bedrock2.Array.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {pick_sp: PickSp}.
 
   Definition f (a b : word) := word.add (word.add a b) b.
 
   Instance spec_of_indirect_add : spec_of "indirect_add" :=
     fnspec! "indirect_add" a b c / va Ra vb Rb vc Rc,
-    { requires t m :=
+    { requires k t m :=
         m =* scalar b vb * Rb /\
         m =* scalar c vc * Rc /\
         (* Note: the surviving frame needs to go last for heapletwise callers to work! *)
         m =* scalar a va * Ra;
-      ensures t' m' :=
+      ensures k' t' m' :=
         t = t' /\
         m' =* scalar a (word.add vb vc) * Ra }.
   Instance spec_of_indirect_add_twice : spec_of "indirect_add_twice" :=
     fnspec! "indirect_add_twice" a b / va vb R,
-    { requires t m := m =* scalar a va * scalar b vb * R;
-      ensures t' m' := t=t' /\ m' =* scalar a (f va vb) * scalar b vb * R }.
+    { requires k t m := m =* scalar a va * scalar b vb * R;
+      ensures k' t' m' := t=t' /\ m' =* scalar a (f va vb) * scalar b vb * R }.
 
   Lemma indirect_add_ok : program_logic_goal_for_function! indirect_add.
   Proof.
@@ -93,8 +94,8 @@ Section WithParameters.
   Definition g (a b c : word) := word.add (word.add a b) c.
   Instance spec_of_indirect_add_three : spec_of "indirect_add_three" :=
     fnspec! "indirect_add_three" a b c / va vb vc Rb R,
-    { requires t m := m =* scalar a va * scalar c vc * R /\ m =* scalar b vb * Rb;
-      ensures t' m' := t=t' /\ m' =* scalar a (g va vb vc) * scalar c vc * R }.
+    { requires k t m := m =* scalar a va * scalar c vc * R /\ m =* scalar b vb * Rb;
+      ensures k' t' m' := t=t' /\ m' =* scalar a (g va vb vc) * scalar c vc * R }.
 
   Lemma indirect_add_three_ok : program_logic_goal_for_function! indirect_add_three.
   Proof.
@@ -116,12 +117,12 @@ Section WithParameters.
 
   Instance spec_of_indirect_add_three' : spec_of "indirect_add_three'" :=
     fnspec! "indirect_add_three'" out a b c / vout va vb vc Ra Rb Rc R,
-    { requires t m :=
+    { requires k t m :=
         m =* scalar out vout * R /\
         m =* scalar a va * Ra /\
         m =* scalar b vb * Rb /\
         m =* scalar c vc * Rc;
-      ensures t' m' := t=t' /\ m' =* scalar out (g va vb vc) * R }.
+      ensures k' t' m' := t=t' /\ m' =* scalar out (g va vb vc) * R }.
 
   Lemma indirect_add_three'_ok : program_logic_goal_for_function! indirect_add_three'.
   Proof.
@@ -173,18 +174,18 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
     intros. eapply scalar_to_anybytes in H. exact H.
   Qed.
 
-  Lemma sep_call: forall funs f t m args
+  Lemma sep_call: forall funs f k t m args
       (calleePre: Prop)
-      (calleePost callerPost: trace -> mem -> list word -> Prop),
+      (calleePost callerPost: leakage -> trace -> mem -> list word -> Prop),
       (* definition-site format: *)
-      (calleePre -> WeakestPrecondition.call funs f t m args calleePost) ->
+      (calleePre -> LeakageWeakestPrecondition.call funs f k t m args calleePost) ->
       (* use-site format: *)
       (calleePre /\ enable_frame_trick
-                      (forall t' m' rets, calleePost t' m' rets -> callerPost t' m' rets)) ->
+                      (forall k' t' m' rets, calleePost k' t' m' rets -> callerPost k' t' m' rets)) ->
       (* conclusion: *)
-      WeakestPrecondition.call funs f t m args callerPost.
+      LeakageWeakestPrecondition.call funs f k t m args callerPost.
   Proof.
-    intros. destruct H0. eapply WeakestPreconditionProperties.Proper_call; eauto.
+    intros. destruct H0. eapply LeakageWeakestPreconditionProperties.Proper_call; eauto.
   Qed.
 
   Lemma purify_scalar: forall (a v: word), purify (scalar a v) True.
@@ -201,7 +202,7 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
 
   Ltac straightline_call ::=
     lazymatch goal with
-    | |- WeakestPrecondition.call ?functions ?callee _ _ _ _ =>
+    | |- LeakageWeakestPrecondition.call ?functions ?callee _ _ _ _ _ =>
         let callee_spec := lazymatch constr:(_:spec_of callee) with ?s => s end in
         let Hcall := lazymatch goal with H: callee_spec functions |- _ => H end in
         eapply sep_call; [ eapply Hcall | ]
@@ -274,8 +275,8 @@ but that rest can be split in 4 different ways:
   Remove Hints spec_of_indirect_add : typeclass_instances.
   Instance spec_of_indirect_add_gen : spec_of "indirect_add" :=
     fnspec! "indirect_add" a b c / va Ra vb Rb vc Rc,
-    { requires t m := m =* scalar a va * Ra /\ m =* scalar b vb * Rb /\ m =* scalar c vc * Rc;
-      ensures t' m' := t=t' /\
+    { requires k t m := m =* scalar a va * Ra /\ m =* scalar b vb * Rb /\ m =* scalar c vc * Rc;
+      ensures k' t' m' := t=t' /\
         forall va Ra, m =* scalar a va * Ra -> m' =* scalar a (word.add vb vc) * Ra }.
 
   Lemma indirect_add_gen_ok : program_logic_goal_for_function! indirect_add.

@@ -22,6 +22,7 @@ Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.DivisibleBy4.
 Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
+Require Import riscv.Spec.LeakageOfInstr.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Proofs.EncodeBound.
 Require Import riscv.Proofs.DecodeEncode.
@@ -42,7 +43,7 @@ Section Go.
 
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
-  Context {RVM: RiscvProgram M word}.
+  Context {RVM: RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
@@ -236,6 +237,11 @@ Section Go.
         mcomp_sat (Bind (Machine.storeDouble kind addr v) f) initialL post.
   Proof. t spec_storeDouble. Qed.
 
+  Lemma go_leakEvent : forall (initialL: RiscvMachineL) (f: unit -> M unit) (e : option LeakageEvent) post,
+        mcomp_sat (f tt) (withLeakageEvent e initialL) post ->
+        mcomp_sat (Bind (leakEvent e) f) initialL post.
+  Proof. t spec_leakEvent. Qed.
+
   Lemma go_getPC: forall (initialL: RiscvMachineL) (f: word -> M unit) post,
         mcomp_sat (f initialL.(getPc)) initialL post ->
         mcomp_sat (Bind getPC f) initialL post.
@@ -427,13 +433,25 @@ Section Go.
     | _ => True
     end.
 
+  Lemma getXAddrs_withLeakageEvent e x :
+    getXAddrs (withLeakageEvent e x) = getXAddrs x.
+  Proof. destruct x, getMachine. reflexivity. Qed.
+
+  Lemma getMem_withLeakageEvent e x :
+    getMem (withLeakageEvent e x) = getMem x.
+  Proof. destruct x, getMachine. reflexivity. Qed.
+
   Lemma go_fetch_inst{initialL: RiscvMachineL} {inst pc0 R Rexec} (post: RiscvMachineL -> Prop):
       pc0 = initialL.(getPc) ->
       subset (footpr (program iset pc0 [inst] * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
       (program iset pc0 [inst] * Rexec * R)%sep initialL.(getMem) ->
       not_InvalidInstruction inst ->
-      mcomp_sat (Bind (execute inst) (fun _ => endCycleNormal))
-                (updateMetrics (addMetricLoads 1) initialL) post ->
+      mcomp_sat (Bind (leakage_of_instr getRegister inst)
+                   (fun e => Bind (leakEvent e)
+                            (fun _ => Bind (execute inst)
+                                     (fun _ => endCycleNormal))))
+        (updateMetrics (addMetricLoads 1)
+           (withLeakageEvent (Some (fetchInstr (getPc initialL))) initialL)) post ->
       mcomp_sat (run1 iset) initialL post.
   Proof.
     intros. subst.
@@ -446,10 +464,11 @@ Section Go.
       assert ((T * R * Rexec * P1 * P2)%sep m) as A by ecancel_assumption; clear H
     end.
     do 2 (apply sep_emp_r in A; destruct A as [A ?]).
+    apply go_leakEvent.
     eapply go_loadWord_Fetch.
-    - eapply ptsto_instr_subset_to_isXAddr4.
+    - rewrite getXAddrs_withLeakageEvent. eapply ptsto_instr_subset_to_isXAddr4.
       eapply shrink_footpr_subset. 1: eassumption. simpl. ecancel.
-    - unfold Memory.loadWord.
+    - rewrite getMem_withLeakageEvent. unfold Memory.loadWord.
       unfold truncated_scalar, littleendian, Memory.bytes_per in A.
       eapply load_bytes_of_sep with (n:=(length (LittleEndianList.le_split 4 (encode inst)))).
       (* TODO here it would be useful if seplog unfolded Memory.bytes_per for me,
@@ -838,6 +857,7 @@ Ltac simulate_step :=
         | eapply go_loadDouble     ; [sidecondition..|]
         | eapply go_storeDouble    ; [sidecondition..|]
         *)
+        | refine (go_leakEvent _ _ _ _ _);           [sidecondition..|]
         | refine (go_getPC _ _ _ _);               [sidecondition..|]
         | refine (go_setPC _ _ _ _ _);             [sidecondition..|]
         | refine (go_endCycleNormal _ _ _);        [sidecondition..|]

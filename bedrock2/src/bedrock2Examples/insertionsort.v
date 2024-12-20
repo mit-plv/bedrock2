@@ -26,19 +26,20 @@ Definition insertionsort := func! (a, n) {
 
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Tactics.Tactics.
-Require Import bedrock2.WeakestPrecondition.
-Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
+Require Import bedrock2.LeakageWeakestPrecondition.
+Require Import bedrock2.LeakageSemantics bedrock2.FE310CSemantics.
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 
-Require bedrock2.WeakestPreconditionProperties.
+Require bedrock2.LeakageWeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
-Require Import bedrock2.ProgramLogic bedrock2.Scalars bedrock2.Array bedrock2.Loops.
+Require Import bedrock2.LeakageProgramLogic bedrock2.Scalars bedrock2.Array bedrock2.LeakageLoops.
 Require Import bedrock2.ZnWords.
 Require Import coqutil.Sorting.Permutation.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {pick_sp: PickSp}.
 
   Definition nth(l: list word)(n: nat): word := List.nth n l (word.of_Z 0).
 
@@ -202,8 +203,8 @@ Section WithParameters.
 
   Instance spec_of_insertionsort : spec_of "insertionsort" :=
     fnspec! "insertionsort" addr n / xs R,
-    { requires t m := n = word.of_Z (Z.of_nat (List.length xs)) /\ (array scalar32 (word.of_Z 4) addr xs * R) m;
-      ensures t' m' := t = t' /\ exists ys,
+    { requires k t m := n = word.of_Z (Z.of_nat (List.length xs)) /\ (array scalar32 (word.of_Z 4) addr xs * R) m;
+      ensures k' t' m' := t = t' /\ exists ys,
             Sorted ys /\ Permutation xs ys /\ (array scalar32 (word.of_Z 4) addr ys * R) m' }.
 
   Definition sorted_except(unsortedLen: nat)(addr: word)(xs: list word)(m: mem)(R: mem -> Prop): Prop :=
@@ -222,12 +223,12 @@ Section WithParameters.
 
     refine (tailrec HList.polymorphic_list.nil
         ["a"; "i"; "n"]
-        (fun unsortedLen t m a i n => PrimitivePair.pair.mk
+        (fun unsortedLen k t m a i n => PrimitivePair.pair.mk
           (Z.of_nat (List.length xs) = word.unsigned n /\
            word.unsigned i + Z.of_nat unsortedLen = word.unsigned n /\
            a = addr /\
            sorted_except unsortedLen addr xs m R)
-          (fun T M A I N => T = t /\ sorted_except 0 addr xs M R))
+          (fun K T M A I N => T = t /\ sorted_except 0 addr xs M R))
         lt _ (List.length xs) _ _ _);
     cbn [reconstruct map.putmany_of_list HList.tuple.to_list
          HList.hlist.foralls HList.tuple.foralls
@@ -281,7 +282,7 @@ Section WithParameters.
       match type of HM with
       | context[word.add _ (word.mul _ ?x)] => replace x with i in HM by ZnWords
       end.
-      eexists. split. {
+      eexists. eexists. split. {
         repeat straightline.
       }
       repeat straightline.
@@ -289,14 +290,14 @@ Section WithParameters.
       refine (tailrec (HList.polymorphic_list.cons _ (HList.polymorphic_list.cons _
                       (HList.polymorphic_list.cons _ HList.polymorphic_list.nil)))
           ["a"; "i"; "j"; "n"; "t"]
-          (fun remSortedLen seenSorted remSorted R t m a i0 j n0 e0 => PrimitivePair.pair.mk
+          (fun remSortedLen seenSorted remSorted R k t m a i0 j n0 e0 => PrimitivePair.pair.mk
             (List.length remSorted = remSortedLen /\
              i0 = i /\ a = addr /\ n0 = n /\ e0 = e /\ sorted = seenSorted ++ remSorted /\
              word.unsigned j + Z.of_nat remSortedLen = word.unsigned i /\
              (forall k: nat, (k < List.length seenSorted)%nat -> word.unsigned (nth sorted k) <= word.unsigned e) /\
              (array scalar32 (word.of_Z 4) (word.add addr (word.mul (word.of_Z 4) j)) remSorted *
               scalar32 (word.add addr (word.mul (word.of_Z 4) i)) e * R) m)
-            (fun T M A I J N E => T = t /\ I = i /\ N = n /\ e = E /\ a = A /\
+            (fun K T M A I J N E => T = t /\ I = i /\ N = n /\ e = E /\ a = A /\
               word.unsigned J <= word.unsigned i /\
               List.length remSorted = remSortedLen /\
               sorted = seenSorted ++ remSorted /\
@@ -321,7 +322,7 @@ Section WithParameters.
       { (* current state satisfies loop precondition *)
         repeat straightline. ssplit. all: reflexivity || ZnWords || idtac.
         { instantiate (1 := []). reflexivity. }
-        { intros k C. inversion C. }
+        { intros kk C. inversion C. }
         subst j.
         match goal with
         | |- context[array _ _ ?a] => replace a with addr by ZnWords
@@ -334,7 +335,7 @@ Section WithParameters.
         { (* exiting loop because element e itself has been reached *)
           assert (0 = remSortedLen)%nat by assumption. subst remSortedLen.
           assert (j = i) by ZnWords. subst j.
-          eexists. split. {
+          eexists. eexists. split. {
             repeat straightline.
           }
           split; intro C. {
@@ -353,7 +354,7 @@ Section WithParameters.
             | |- context[List.nth ?N _ _] => replace N with O by ZnWordsL
             end.
             assumption. }
-          { intros k Hk.
+          { intros kk Hkk.
             match goal with
             | H: forall _: nat, _ -> _ |- _ => apply H
             end.
@@ -370,7 +371,7 @@ Section WithParameters.
         | H: (_ * _) m1 |- _ => rename H into HM1
         end.
         seprewrite_in @array_cons HM1.
-        eexists. split. {
+        eexists. eexists. split. {
           repeat straightline.
         }
         split; intro C. 2: {
@@ -384,7 +385,7 @@ Section WithParameters.
             rewrite <- List.app_assoc. rewrite <- List.app_comm_cons.
             rewrite List.nth_middle.
             assumption. }
-          { intros k Hk.
+          { intros kk Hkk.
             match goal with
             | H: forall _: nat, _ -> _ |- _ => apply H
             end.
@@ -410,11 +411,11 @@ Section WithParameters.
         eexists (seenSorted ++ [e']), remSorted, _, _. split.
         { (* precondition of next loop iteration holds *)
           ssplit. all: rewrite <-?List.app_assoc; try reflexivity || ZnWords.
-          { intros k Hk. assert (k < List.length seenSorted \/ k = List.length seenSorted)%nat as D by ZnWordsL.
+          { intros kk Hkk. assert (kk < List.length seenSorted \/ kk = List.length seenSorted)%nat as D by ZnWordsL.
             unfold nth in *.
             destruct D as [D | D].
             - auto.
-            - subst k. rewrite List.nth_middle. Lia.lia. }
+            - subst kk. rewrite List.nth_middle. Lia.lia. }
           subst j.
           use_sep_assumption. cancel.
           cancel_seps_at_indices 1%nat 0%nat. {
@@ -470,7 +471,7 @@ Section WithParameters.
       (* second inner loop: *)
       refine (tailrec (HList.polymorphic_list.cons _ (HList.polymorphic_list.cons _ HList.polymorphic_list.nil))
           ["a"; "i"; "j"; "n"; "t"]
-          (fun StoShiftLen toShift R t m a i0 j n0 shelf => PrimitivePair.pair.mk
+          (fun StoShiftLen toShift R k t m a i0 j n0 shelf => PrimitivePair.pair.mk
             (i0 = i /\ a = addr /\ n0 = n /\
              match StoShiftLen with
              | S toShiftLen => List.length toShift = toShiftLen /\
@@ -480,7 +481,7 @@ Section WithParameters.
              | O => (* special precondition for just before exiting the loop: *)
                     word.unsigned j = word.unsigned i + 1 /\ toShift = [] /\ R m
              end)
-            (fun T M A I J N E => T = t /\ I = i /\ N = n /\ A = a /\
+            (fun K T M A I J N E => T = t /\ I = i /\ N = n /\ A = a /\
                match StoShiftLen with
                | S toShiftLen =>
                  (array scalar32 (word.of_Z 4)

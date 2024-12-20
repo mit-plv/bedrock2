@@ -41,8 +41,8 @@ Definition spi_xchg := func! (b) ~> (b, busy) {
     unpack! b, busy = spi_read()
   }.
 
-Require Import bedrock2.ProgramLogic.
-Require Import bedrock2.FE310CSemantics bedrock2.Semantics.
+Require Import bedrock2.LeakageProgramLogic.
+Require Import bedrock2.FE310CSemantics bedrock2.Semantics bedrock2.LeakageSemantics.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import bedrock2.ZnWords.
@@ -53,6 +53,7 @@ Import ReversedListNotations.
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {pick_sp: PickSp}.
 
   Definition mmio_event_abstraction_relation
     (h : lightbulb_spec.OP word)
@@ -65,15 +66,15 @@ Section WithParameters.
   Definition only_mmio_satisfying P t :=
     exists mmios, mmio_trace_abstraction_relation mmios t /\ P mmios.
 
-  Global Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall t m b,
+  Global Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall k t m b,
     word.unsigned b < 2 ^ 8 ->
-    WeakestPrecondition.call functions "spi_write" t m [b] (fun T M RETS =>
+    LeakageWeakestPrecondition.call functions "spi_write" k t m [b] (fun K T M RETS =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists err, RETS = [err] /\ Logic.or
         (((word.unsigned err <> 0) /\ lightbulb_spec.spi_write_full _ ^* ioh /\ Z.of_nat (length ioh) = patience))
         (word.unsigned err = 0 /\ lightbulb_spec.spi_write word (byte.of_Z (word.unsigned b)) ioh)).
 
-  Global Instance spec_of_spi_read : spec_of "spi_read" := fun functions => forall t m,
-    WeakestPrecondition.call functions "spi_read" t m [] (fun T M RETS =>
+  Global Instance spec_of_spi_read : spec_of "spi_read" := fun functions => forall k t m,
+    LeakageWeakestPrecondition.call functions "spi_read" k t m [] (fun K T M RETS =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b: byte) (err : word), RETS = [word.of_Z (byte.unsigned b); err] /\ Logic.or
         (word.unsigned err <> 0 /\ lightbulb_spec.spi_read_empty _ ^* ioh /\ Z.of_nat (length ioh) = patience)
         (word.unsigned err = 0 /\ lightbulb_spec.spi_read word b ioh)).
@@ -88,20 +89,20 @@ Section WithParameters.
          constants [Properties.word_cst]).
 
   Import coqutil.Tactics.letexists.
-  Import Loops.
+  Import LeakageLoops.
   Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
   Proof.
     repeat straightline.
     rename H into Hb.
 
     (* WHY do theese parentheses matter? *)
-    refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
+    refine ((atleastonce ["b"; "busy"; "i"] (fun v K T M B BUSY I =>
        b = B /\ v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        lightbulb_spec.spi_write_full _ ^* th /\
        Z.of_nat (length th) + word.unsigned I = patience
-       )) _ _ _ _ _ _ _);
+       )) _ _ _ _ _ _);
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
            HList.hlist.foralls HList.tuple.foralls
            HList.hlist.existss HList.tuple.existss
@@ -112,22 +113,14 @@ Section WithParameters.
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
     { repeat straightline. }
     { eapply (Z.lt_wf 0). }
-    { eexists; split; repeat straightline.
-      exfalso. ZnWords. }
-    { repeat (split; trivial; []).
-      subst i. rewrite word.unsigned_of_Z.
-      split.
-      { discriminate. }
-      split; trivial.
-      eexists; split.
-      { rewrite app_nil_l; trivial. }
-      eexists; split.
+    { do 2 eexists; split; repeat straightline.
+      { exfalso. ZnWords. }
+      repeat (eexists || split || trivial || align_trace).
       { constructor. }
-      split.
       { constructor. }
-      exact eq_refl. }
+      rewrite word.unsigned_of_Z. reflexivity. }
     repeat straightline.
-    eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
+    eapply LeakageWeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; split; [exact eq_refl|]; split; [split; trivial|].
     {
       cbv [isMMIOAddr addr].
@@ -143,9 +136,10 @@ Section WithParameters.
          WeakestPrecondition.dexpr m l0 cond letboundEvar /\
          ThenCorrectness /\
          ElseCorrectness
-    *)
-    letexists. split.
-    { repeat straightline. }
+     *)
+    letexists.
+    Fail letexists; split; [solve [repeat straightline]|].
+    eexists; split; [solve [repeat straightline]|].
     split; intros.
     { (* CASE if-condition was true (word.unsigned v0 <> 0), i.e. NOP, loop exit depends on whether timeout *)
     repeat straightline. (* <-- does split on a postcondition of the form
@@ -166,9 +160,9 @@ Section WithParameters.
           repeat econstructor.
           ZnWords. }
         { ZnWordsL. } }
-        { ZnWords. } }
+      { ZnWords. } }
     { (* SUBCASE loop condition was false (exit loop because of timeout *)
-      letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
+      letexists; eexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
       subst t0.
       eexists (_ ;++ cons _ nil); split.
       { rewrite <-app_assoc; cbn [app]; f_equal. }
@@ -189,10 +183,10 @@ Section WithParameters.
     repeat straightline.
     { subst i.
       rewrite Properties.word.unsigned_xor_nowrap in *; rewrite Z.lxor_nilpotent in *; contradiction. }
-    (* evaluate condition then split if *) letexists; split; [solve[repeat straightline]|split].
+    (* evaluate condition then split if *) letexists; eexists; split; [solve[repeat straightline]|split].
     1:contradiction.
     repeat straightline.
-    eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
+    eapply LeakageWeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { cbv [isMMIOAddr]. ZnWords. }
     repeat straightline.
@@ -223,16 +217,16 @@ Section WithParameters.
 
   Local Ltac split_if :=
     lazymatch goal with
-      |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
+      |- LeakageWeakestPrecondition.cmd _ ?c _ _ _ _ ?post =>
       let c := eval hnf in c in
           lazymatch c with
-          | cmd.cond _ _ _ => letexists; split; [solve[repeat straightline]|split]
+          | cmd.cond _ _ _ => letexists; eexists; split; [solve[repeat straightline]|split]
           end
     end.
 
   Lemma spi_read_ok : program_logic_goal_for_function! spi_read.
     repeat straightline.
-    refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
+    refine ((atleastonce ["b"; "busy"; "i"] (fun v K T M B BUSY I =>
        v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        B = word.of_Z (byte.unsigned (byte.of_Z (word.unsigned B))) /\
        exists tl, T = tl++t /\
@@ -240,7 +234,7 @@ Section WithParameters.
        lightbulb_spec.spi_read_empty _ ^* th /\
        Z.of_nat (length th) + word.unsigned I = patience
             ))
-            _ _ _ _ _ _ _);
+            _ _ _ _ _ _);
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
            HList.hlist.foralls HList.tuple.foralls
            HList.hlist.existss HList.tuple.existss
@@ -260,7 +254,7 @@ Section WithParameters.
       split; trivial.
       eexists nil; split; trivial.
       eexists nil; split; try split; solve [constructor]. }
-    { eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
+    { eapply LeakageWeakestPreconditionProperties.interact_nomem; repeat straightline.
       letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { cbv [isMMIOAddr]. ZnWords. }
       repeat ((split; trivial; []) || straightline || split_if).
@@ -371,9 +365,9 @@ Section WithParameters.
           trivial. } } }
   Qed.
 
-  Global Instance spec_of_spi_xchg : spec_of "spi_xchg" := fun functions => forall t m b_out,
+  Global Instance spec_of_spi_xchg : spec_of "spi_xchg" := fun functions => forall k t m b_out,
     word.unsigned b_out < 2 ^ 8 ->
-    WeakestPrecondition.call functions "spi_xchg" t m [b_out] (fun T M RETS =>
+    LeakageWeakestPrecondition.call functions "spi_xchg" k t m [b_out] (fun K T M RETS =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b_in:byte) (err : word), RETS = [word.of_Z (byte.unsigned b_in); err] /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\ lightbulb_spec.spi_xchg word (byte.of_Z (word.unsigned b_out)) b_in ioh)).
@@ -383,8 +377,8 @@ Section WithParameters.
     repeat (
     match goal with
     | |- ?F ?a ?b ?c =>
-        match F with WeakestPrecondition.get => idtac end;
-        let f := (eval cbv beta delta [WeakestPrecondition.get] in F) in
+        match F with LeakageWeakestPrecondition.get => idtac end;
+        let f := (eval cbv beta delta [LeakageWeakestPrecondition.get] in F) in
         change (f a b c); cbv beta
       | H :  _ /\ _ \/ ?Y /\ _, G : not ?X |- _ =>
           constr_eq X Y; let Z := fresh in destruct H as [|[Z ?]]; [|case (G Z)]
@@ -416,7 +410,7 @@ Section WithParameters.
 
       { destruct H10; intuition eauto.
         { eexists. split.
-          { subst a0. subst a.
+          { subst a0. subst a2.
             rewrite List.app_assoc; trivial. }
             eexists. split.
             { eapply Forall2_app; eauto. }
@@ -426,7 +420,7 @@ Section WithParameters.
             eapply concat_app; cbv [any choice lightbulb_spec.spi_timeout]; eauto. }
             eexists.
             subst a0.
-            subst a.
+            subst a2.
             split.
             { rewrite List.app_assoc; trivial. }
             eexists.
