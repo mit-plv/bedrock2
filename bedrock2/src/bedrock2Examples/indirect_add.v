@@ -12,28 +12,29 @@ Definition indirect_add_twice := func! (a, b) {
   indirect_add(a, a, b)
 }.
 
-Require Import bedrock2.WeakestPrecondition.
+Require Import bedrock2.LeakageWeakestPrecondition bedrock2.LeakageSemantics.
 Require Import coqutil.Word.Interface coqutil.Map.Interface bedrock2.Map.SeparationLogic.
 Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 
-Require bedrock2.WeakestPreconditionProperties.
+Require bedrock2.LeakageWeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
-Require Import bedrock2.ProgramLogic bedrock2.Scalars.
+Require Import bedrock2.LeakageProgramLogic bedrock2.Scalars.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {pick_sp: PickSp}.
 
   Definition f (a b : word) := word.add (word.add a b) b.
 
   Instance spec_of_indirect_add : spec_of "indirect_add" :=
     fnspec! "indirect_add" a b c / va Ra vb Rb vc Rc,
-    { requires t m := m =* scalar a va * Ra /\ m =* scalar b vb * Rb /\ m =* scalar c vc * Rc;
-      ensures t' m' := t=t' /\ m' =* scalar a (word.add vb vc) * Ra }.
+    { requires k t m := m =* scalar a va * Ra /\ m =* scalar b vb * Rb /\ m =* scalar c vc * Rc;
+      ensures k' t' m' := t=t' /\ m' =* scalar a (word.add vb vc) * Ra }.
   Instance spec_of_indirect_add_twice : spec_of "indirect_add_twice" :=
     fnspec! "indirect_add_twice" a b / va vb R,
-    { requires t m := m =* scalar a va * scalar b vb * R;
-      ensures t' m' := t=t' /\ m' =* scalar a (f va vb) * scalar b vb * R }.
+    { requires k t m := m =* scalar a va * scalar b vb * R;
+      ensures k' t' m' := t=t' /\ m' =* scalar a (f va vb) * scalar b vb * R }.
 
   Lemma indirect_add_ok : program_logic_goal_for_function! indirect_add.
   Proof. repeat straightline; []; eauto. Qed.
@@ -66,8 +67,8 @@ Section WithParameters.
   Definition g (a b c : word) := word.add (word.add a b) c.
   Instance spec_of_indirect_add_three : spec_of "indirect_add_three" :=
     fnspec! "indirect_add_three" a b c / va vb vc Rb R,
-    { requires t m := m =* scalar a va * scalar c vc * R /\ m =* scalar b vb * Rb;
-      ensures t' m' := t=t' /\ m' =* scalar a (g va vb vc) * scalar c vc * R }.
+    { requires k t m := m =* scalar a va * scalar c vc * R /\ m =* scalar b vb * Rb;
+      ensures k' t' m' := t=t' /\ m' =* scalar a (g va vb vc) * scalar c vc * R }.
 
   Lemma indirect_add_three_ok : program_logic_goal_for_function! indirect_add_three.
   Proof.
@@ -89,12 +90,12 @@ Section WithParameters.
 
   Instance spec_of_indirect_add_three' : spec_of "indirect_add_three'" :=
     fnspec! "indirect_add_three'" out a b c / vout va vb vc Ra Rb Rc R,
-    { requires t m :=
+    { requires k t m :=
         m =* scalar out vout * R /\
         m =* scalar a va * Ra /\
         m =* scalar b vb * Rb /\
         m =* scalar c vc * Rc;
-      ensures t' m' := t=t' /\ m' =* scalar out (g va vb vc) * R }.
+      ensures k' t' m' := t=t' /\ m' =* scalar out (g va vb vc) * R }.
 
   Lemma indirect_add_three'_ok : program_logic_goal_for_function! indirect_add_three'.
   Proof.
@@ -178,9 +179,9 @@ H9 : (scalar a0 (word.add va vb)
      *)
     rename m into m'.
     rename a2 into m.
-    eapply sep_and_r_fwd in H9; destruct H9 as [? H9].
-    eapply sep_and_r_fwd in H9; destruct H9 as [? H9].
-    eapply sep_and_r_fwd in H9; destruct H9 as [? H9].
+    eapply sep_and_r_fwd in H12; destruct H12 as [? H12].
+    eapply sep_and_r_fwd in H12; destruct H12 as [? H12].
+    eapply sep_and_r_fwd in H12; destruct H12 as [? H12].
 
     straightline_call.
     { split; [>|split]; try ecancel_assumption. }
@@ -200,8 +201,8 @@ H9 : (scalar a0 (word.add va vb)
   Remove Hints spec_of_indirect_add : typeclass_instances.
   Instance spec_of_indirect_add_gen : spec_of "indirect_add" :=
     fnspec! "indirect_add" a b c / va Ra vb Rb vc Rc,
-    { requires t m := m =* scalar a va * Ra /\ m =* scalar b vb * Rb /\ m =* scalar c vc * Rc;
-      ensures t' m' := t=t' /\
+    { requires k t m := m =* scalar a va * Ra /\ m =* scalar b vb * Rb /\ m =* scalar c vc * Rc;
+      ensures k' t' m' := t=t' /\
         forall va Ra, m =* scalar a va * Ra -> m' =* scalar a (word.add vb vc) * Ra }.
 
   Lemma indirect_add_gen_ok : program_logic_goal_for_function! indirect_add.

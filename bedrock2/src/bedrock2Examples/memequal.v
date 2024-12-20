@@ -32,22 +32,11 @@ Section WithParameters.
   Import LeakageProgramLogic.Coercions.
 
   Global Instance spec_of_memequal : spec_of "memequal" :=
-        fun functions =>
-      exists f,
-      forall (x y n : word) xs ys Rx Ry,
-      forall k t m,
-        m =* xs$@x * Rx /\ m =* ys$@y * Ry /\ length xs = n :>Z /\ length ys = n :>Z ->
-        LeakageWeakestPrecondition.call functions "memequal" k t m [x; y; n]
-          (fun k' t' m' rets =>
-             exists r,
-               rets = [r] /\
-                 f x y n ++ k = k' /\ m=m' /\ t=t' /\ (r = 0 :>Z \/ r = 1 :>Z) /\
-                 (r  = 1 :>Z <-> xs  = ys)).
-    (*fnspec! "memequal" (x y n : word) / (xs ys : list byte) (Rx Ry : mem -> Prop) ~> r,
-    { requires t m := m =* xs$@x * Rx /\ m =* ys$@y * Ry /\
+    fnspec_ex! f "memequal" (x y n : word) / (xs ys : list byte) (Rx Ry : mem -> Prop) ~> r,
+    { requires k t m := m =* xs$@x * Rx /\ m =* ys$@y * Ry /\
                       length xs = n :>Z /\ length ys = n :>Z;
-      ensures t' m' := m=m' /\ t=t' /\ (r = 0 :>Z \/ r = 1 :>Z) /\
-                       (r  = 1 :>Z <-> xs  = ys) }.*)
+      ensures k' t' m' := f x y n ++ k = k' /\ m=m' /\ t=t' /\ (r = 0 :>Z \/ r = 1 :>Z) /\
+                       (r  = 1 :>Z <-> xs  = ys) }.
 
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok : map.ok locals}
     {ext_spec_ok : ext_spec.ok ext_spec}.
@@ -165,8 +154,7 @@ Section WithParameters.
         split.
         { cbn in *; ZnWords. }
         intuition idtac; repeat straightline_cleanup.
-        { replace (n0 =? 0) with false by ZnWords.
-          replace (Z.to_nat n0) with (S (Z.to_nat (word.sub n0 v5))) by ZnWords.
+        { replace (Z.to_nat n0) with (S (Z.to_nat (word.sub n0 v4))) by ZnWords.
           cbn [newtrace List.app]. rewrite <- List.app_assoc. cbn [List.app].
           subst v3 v4. apply H9. } 
         rewrite H11, word.unsigned_or_nowrap, <-Z.lor_assoc.
@@ -181,7 +169,7 @@ Section WithParameters.
         eapply word.unsigned_inj in HH; eapply word.of_Z_inj_small in HH; try ZnWords.
         eapply byte.unsigned_inj in HH; trivial. }
 
-      intuition idtac. case H7 as (?&?&?). subst. subst v.
+      intuition idtac. case H7 as (?&?&?). subst. subst r.
       eapply LeakageWeakestPreconditionProperties.dexpr_expr.
       letexists; split; cbn.
       { rewrite ?Properties.map.get_put_dec; cbn; exact eq_refl. }
