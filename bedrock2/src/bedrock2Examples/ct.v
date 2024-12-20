@@ -23,7 +23,7 @@ Section WithParameters.
   Context {pick_sp: PickSp}. Locate "fnspec!".
 
 #[global] Instance ctspec_of_div3329 : spec_of "div3329" :=
-    fnspec_ex! f "div3329" x ~> ret,
+    fnspec! exists f, "div3329" x ~> ret,
       { requires k t m := True ; ensures k' t' m' := t' = t /\ m' = m /\ k' = f k }.
 
 Lemma div3329_ct : program_logic_goal_for_function! div3329.
@@ -49,7 +49,7 @@ Import Byte.
 Definition getchar_event c : LogItem :=
   ((Interface.map.empty, "getchar", []), (Interface.map.empty, [word.of_Z (byte.unsigned c)])).
 #[global] Instance ctspec_of_getchar : spec_of "getchar" :=
-  fnspec_ex! f "getchar" ~> ret,
+  fnspec! exists f, "getchar" ~> ret,
     { requires k t m := True ; ensures k' t' m' :=
         exists c, ret = word.of_Z (byte.unsigned c) /\
                k' = f ++ k /\ m' = m /\ t' = cons (getchar_event c) t }.
@@ -81,7 +81,7 @@ Local Fixpoint getline_leakage f dst n (bs : nat) (i : word) :=
   end.
 
 #[global] Instance ctspec_of_getline : spec_of "getline" :=
-  fnspec_ex! f "getline" (dst n : word) / d R ~> l,
+  fnspec! exists f, "getline" (dst n : word) / d R ~> l,
     { requires k t m := (d$@dst * R) m /\ length d = n :> Z ;
       ensures k' t' m' := exists bs es,
         k' = f dst n l ++ k /\
@@ -288,7 +288,7 @@ Definition password_checker := func! (password) ~> ret {
                                  }.
 
 #[global] Instance ctspec_of_password_checker : spec_of "password_checker" :=
-  fnspec_ex! f "password_checker" password_addr / R password ~> ret (*bs =? password*),
+  fnspec! exists f, "password_checker" password_addr / R password ~> ret (*bs =? password*),
     { requires k t m := length password = 8 :> Z /\ (password$@password_addr * R) m ;
       ensures k' t' m' := exists bs (l : word),
         (password$@password_addr * R) m' /\
@@ -351,14 +351,14 @@ Qed.
 Definition output_event x : LogItem :=
   ((Interface.map.empty, "output", [x]), (Interface.map.empty, [])).
 #[global] Instance ctspec_of_output : spec_of "output" :=
-  fnspec_ex! f "output" x,
+  fnspec! exists f, "output" x,
     { requires k t m := True ;
       ensures k' t' m' := k' = f ++ k /\ m' = m /\ t' = cons (output_event x) t }.
 
 Definition getprime_event p : LogItem :=
   ((Interface.map.empty, "getprime", []), (Interface.map.empty, [p])).
 #[global] Instance ctspec_of_getprime : spec_of "getprime" :=
-  fnspec_ex! f "getprime" ~> p,
+  fnspec! exists f, "getprime" ~> p,
     { requires k t m := True ;
       ensures k' t' m' := k' = f ++ k /\ m' = m /\ t' = cons (getprime_event p) t }.
 
@@ -370,7 +370,7 @@ Definition semiprime := func! () ~> (p, q) {
 }.
 
 #[global] Instance ctspec_of_semiprime : spec_of "semiprime" :=
-  fnspec_ex! f "semiprime" ~> p q,
+  fnspec! exists f, "semiprime" ~> p q,
     { requires k t m := True ;
       ensures k' t' m' :=
         k' = f ++ k /\ m' = m
