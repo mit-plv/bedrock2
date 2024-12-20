@@ -261,7 +261,7 @@ Ltac straightline :=
     ident_of_constr_string_cps s ltac:(fun x =>
       ensure_free x;
       (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
-      letexists _ as x; split; [solve [repeat straightline]|])
+      letexists _ as x; eexists (*for reasons I do not comprehend, putting a letexists here causes the evar's context to be too small*); split; [solve [repeat straightline]|])
   | |- cmd _ ?c _ _ _ _ ?post =>
     let c := eval hnf in c in
     lazymatch c with
@@ -330,29 +330,23 @@ Ltac straightline :=
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
   | |- exists x y, ?P /\ ?Q =>
-    let x := fresh x in let y := fresh y in
-             refine (let x := _ in let y := _ in
-             ex_intro (fun x => exists y, P /\ Q) x
-             (ex_intro (fun y => P /\ Q) y _));
-             split; [solve [repeat straightline] |  ]
+      let x := fresh x in
+      refine (let x := _ in ex_intro (fun x => exists y, P /\ Q) x _);
+      eexists (*it is important, for some reason, that this is not a letexists*); split; [solve [repeat straightline] |  ]
   | |- exists x, Markers.split (?P /\ ?Q) => (*unsure whether still need this, or just case below*)
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
   | |- exists x y, Markers.split (?P /\ ?Q) =>
-    let x := fresh x in let y := fresh y in
-             refine (let x := _ in let y := _ in
-             ex_intro (fun x => exists y, P /\ Q) x
-             (ex_intro (fun y => P /\ Q) y _));
-             split; [solve [repeat straightline] |  ]
+      let x := fresh x in
+      refine (let x := _ in ex_intro (fun x => exists y, P /\ Q) x _);
+      eexists (*it is important, for some reason, that this is not a letexists*); split; [solve [repeat straightline] |  ]
   | |- Markers.unique (exists x, Markers.split (?P /\ ?Q)) => (*unsure whether we still need this, or just need case below*)
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
   | |- Markers.unique (exists x y, Markers.split (?P /\ ?Q)) =>
-    let x := fresh x in let y := fresh y in
-             refine (let x := _ in let y := _ in
-             ex_intro (fun x => exists y, P /\ Q) x
-             (ex_intro (fun y => P /\ Q) y _));
-             split; [solve [repeat straightline] |  ]
+      let x := fresh x in
+      refine (let x := _ in ex_intro (fun x => exists y, P /\ Q) x _);
+      eexists (*it is important, for some reason, that this is not a letexists*); split; [solve [repeat straightline] |  ]
   | |- Markers.unique (Markers.left ?G) =>
     change G;
     unshelve (idtac; repeat match goal with
