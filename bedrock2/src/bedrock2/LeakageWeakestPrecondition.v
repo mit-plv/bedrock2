@@ -232,7 +232,7 @@ Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' k tr mem := p
   (fun functions =>
      (forall a0,
         .. (forall an,
-               (forall tr mem,
+               (forall k tr mem,
                    pre ->
                    LeakageWeakestPrecondition.call
                      functions name k tr mem (cons a0 .. (cons an nil) ..)
@@ -378,7 +378,7 @@ Notation "'fnspec_ex!' f name a0 .. an '~>' r0 .. rn ',' '{' 'requires' k tr mem
      exists f,
        (forall a0,
            .. (forall an,
-                 (forall tr mem,
+                 (forall k tr mem,
                      pre ->
                      LeakageWeakestPrecondition.call
                        functions name k tr mem (cons a0 .. (cons an nil) ..)
