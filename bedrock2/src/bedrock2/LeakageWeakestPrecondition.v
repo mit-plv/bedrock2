@@ -184,19 +184,17 @@ Ltac unfold1_list_map'_goal :=
 
 Import Coq.ZArith.ZArith.
 
-(*I'll deal with these notations later.  Not sure what to do with them.*)
-
-Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
               (forall g0,
                   .. (forall gn,
-                         (forall tr mem,
+                         (forall k tr mem,
                              pre ->
                              LeakageWeakestPrecondition.call
-                               functions name tr mem (cons a0 .. (cons an nil) ..)
-                               (fun tr' mem' rets =>
+                               functions name k tr mem (cons a0 .. (cons an nil) ..)
+                               (fun k' tr' mem' rets =>
                                   (exists r0,
                                       .. (exists rn,
                                              rets = (cons r0 .. (cons rn nil) ..) /\
@@ -206,39 +204,39 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' 
      a0 binder, an binder,
      g0 binder, gn binder,
      r0 closed binder, rn closed binder,
-     tr name, tr' name, mem name, mem' name,
+     k name, k' name, tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
               (forall g0,
                   .. (forall gn,
-                         (forall tr mem,
+                         (forall k tr mem,
                              pre ->
                              LeakageWeakestPrecondition.call
-                               functions name tr mem (cons a0 .. (cons an nil) ..)
-                               (fun tr' mem' rets =>
+                               functions name k tr mem (cons a0 .. (cons an nil) ..)
+                               (fun k' tr' mem' rets =>
                                   rets = nil /\ post))) ..)) ..))
     (at level 200,
      name at level 0,
      a0 binder, an binder,
      g0 binder, gn binder,
-     tr name, tr' name, mem name, mem' name,
+     k name, k' name, tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
                (forall tr mem,
                    pre ->
                    LeakageWeakestPrecondition.call
-                     functions name tr mem (cons a0 .. (cons an nil) ..)
-                     (fun tr' mem' rets =>
+                     functions name k tr mem (cons a0 .. (cons an nil) ..)
+                     (fun k' tr' mem' rets =>
                         (exists r0,
                             .. (exists rn,
                                    rets = (cons r0 .. (cons rn nil) ..) /\
@@ -247,20 +245,20 @@ Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' tr mem := pre
      name at level 0,
      a0 binder, an binder,
      r0 closed binder, rn closed binder,
-     tr name, tr' name, mem name, mem' name,
+     k name, k' name, tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
   (fun functions =>
         (forall an,
               (forall g0,
                   .. (forall gn,
-                         (forall tr mem,
+                         (forall k tr mem,
                              pre ->
                              LeakageWeakestPrecondition.call
-                               functions name tr mem nil
-                               (fun tr' mem' rets =>
+                               functions name k tr mem nil
+                               (fun k' tr' mem' rets =>
                                   (exists r0,
                                       .. (exists rn,
                                              rets = (cons r0 .. (cons rn nil) ..) /\
@@ -269,51 +267,51 @@ Notation "'fnspec!' name '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' tr mem :=
      name at level 0,
      g0 binder, gn binder,
      r0 closed binder, rn closed binder,
-     tr name, tr' name, mem name, mem' name,
+     k name, k' name, tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
-               (forall tr mem,
+               (forall k tr mem,
                    pre ->
                    LeakageWeakestPrecondition.call
-                     functions name tr mem (cons a0 .. (cons an nil) ..)
-                     (fun tr' mem' rets =>
+                     functions name k tr mem (cons a0 .. (cons an nil) ..)
+                     (fun k' tr' mem' rets =>
                         rets = nil /\ post))) ..))
     (at level 200,
      name at level 0,
      a0 binder, an binder,
-     tr name, tr' name, mem name, mem' name,
+     k name, k' name, tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name '/' g0 .. gn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name '/' g0 .. gn ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
   (fun functions =>
               (forall g0,
                   .. (forall gn,
-                         (forall tr mem,
+                         (forall k tr mem,
                              pre ->
                              LeakageWeakestPrecondition.call
-                               functions name tr mem nil
-                               (fun tr' mem' rets =>
+                               functions name k tr mem nil
+                               (fun k' tr' mem' rets =>
                                   rets = nil /\ post))) ..))
     (at level 200,
      name at level 0,
      g0 binder, gn binder,
-     tr name, tr' name, mem name, mem' name,
+     k name, k' name, tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name '~>' r0 .. rn ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
   (fun functions =>
-     (forall tr mem,
+     (forall k tr mem,
          pre ->
          LeakageWeakestPrecondition.call
-           functions name tr mem nil
-           (fun tr' mem' rets =>
+           functions name k tr mem nil
+           (fun k' tr' mem' rets =>
               (exists r0,
                   .. (exists rn,
                          rets = (cons r0 .. (cons rn nil) ..) /\
@@ -321,6 +319,6 @@ Notation "'fnspec!' name '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ens
     (at level 200,
      name at level 0,
      r0 closed binder, rn closed binder,
-     tr name, tr' name, mem name, mem' name,
+     k name, k' name, tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
