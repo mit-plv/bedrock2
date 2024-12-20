@@ -32,7 +32,7 @@ Section WithParameters.
   Import LeakageProgramLogic.Coercions.
 
   Global Instance spec_of_memequal : spec_of "memequal" :=
-    fnspec_ex! f "memequal" (x y n : word) / (xs ys : list byte) (Rx Ry : mem -> Prop) ~> r,
+    fnspec! exists f, "memequal" (x y n : word) / (xs ys : list byte) (Rx Ry : mem -> Prop) ~> r,
     { requires k t m := m =* xs$@x * Rx /\ m =* ys$@y * Ry /\
                       length xs = n :>Z /\ length ys = n :>Z;
       ensures k' t' m' := f x y n ++ k = k' /\ m=m' /\ t=t' /\ (r = 0 :>Z \/ r = 1 :>Z) /\
