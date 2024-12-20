@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import bedrock2.Syntax bedrock2.Semantics.
+Require Import bedrock2.Syntax bedrock2.Semantics bedrock2.LeakageSemantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Import coqutil.Word.Interface.
 Require Export coqutil.Word.Bitwidth32.
@@ -27,18 +27,19 @@ Section WithParameters.
   Definition isMMIOAligned (n : nat) (addr : word) :=
     n = 4%nat /\ word.unsigned addr mod 4 = 0.
 
-  Global Instance ext_spec: ExtSpec :=
-    fun (t : trace) (mGive : mem) a (args: list word) (post: mem -> list word -> Prop) =>
+(* FE310 is a simple enough processor that our leakage assumptions are likely to hold.  There is no official documentation of whether multiply always takes the maximum time or not, but both https://eprint.iacr.org/2019/794.pdf and https://pure.tue.nl/ws/portalfiles/portal/169647601/Berg_S._ES_CSE.pdf quote a fixed number of cycles for FE310 multiplication in the context of cryptography. *)
+  Global Instance ext_spec: LeakageSemantics.ExtSpec :=
+    fun (t : trace) (mGive : mem) a (args: list word) (post: mem -> list word -> list word -> Prop) =>
     if String.eqb "MMIOWRITE" a then
       exists addr val,
         args = [addr; val] /\
         (mGive = Interface.map.empty /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0) /\
-        post Interface.map.empty nil
+        post Interface.map.empty nil [addr]
     else if String.eqb "MMIOREAD" a then
       exists addr,
         args = [addr] /\
         (mGive = Interface.map.empty /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0) /\
-        forall val, post Interface.map.empty [val]
+        forall val, post Interface.map.empty [val] [addr]
     else False.
 
   Global Instance ext_spec_ok : ext_spec.ok ext_spec.
@@ -48,12 +49,16 @@ Section WithParameters.
     intros.
     all :
     repeat match goal with
-      | H : context[(?x =? ?y)%string] |- _ =>
-          destruct (x =? y)%string in *
-      | H: exists _, _ |- _ => destruct H
-      | H: _ /\ _ |- _ => destruct H
-      | H: False |- _ => destruct H
-    end; subst; eauto 8 using Properties.map.same_domain_refl.
+        | H : context[(?x =? ?y)%string] |- _ =>
+            destruct (x =? y)%string in *
+        | H: exists _, _ |- _ => destruct H
+        | H: _ /\ _ |- _ => destruct H
+        | H: False |- _ => destruct H
+        end; subst;
+      repeat match goal with
+        | H: _ :: _ = _ :: _ |- _ => injection H; intros; subst; clear H
+        end;
+      eauto 8 using Properties.map.same_domain_refl.
   Qed.
 
   Global Instance locals: Interface.map.map String.string word := SortedListString.map _.
