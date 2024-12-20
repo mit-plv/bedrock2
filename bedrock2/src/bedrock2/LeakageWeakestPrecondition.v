@@ -322,3 +322,158 @@ Notation "'fnspec!' name '~>' r0 .. rn ',' '{' 'requires' k tr mem := pre ';' 'e
      k name, k' name, tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
+
+(*with existent function*)
+
+Notation "'fnspec_ex!' f name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     exists f,
+       (forall a0,
+           .. (forall an,
+                 (forall g0,
+                     .. (forall gn,
+                           (forall k tr mem,
+                               pre ->
+                               LeakageWeakestPrecondition.call
+                                 functions name k tr mem (cons a0 .. (cons an nil) ..)
+                                 (fun k' tr' mem' rets =>
+                                    (exists r0,
+                                        .. (exists rn,
+                                              rets = (cons r0 .. (cons rn nil) ..) /\
+                                                post) ..)))) ..)) ..))
+    (at level 200,
+      f at level 0,
+      name at level 0,
+      a0 binder, an binder,
+      g0 binder, gn binder,
+      r0 closed binder, rn closed binder,
+      k name, k' name, tr name, tr' name, mem name, mem' name,
+      pre at level 200,
+      post at level 200).
+
+Notation "'fnspec_ex!' f name a0 .. an '/' g0 .. gn ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     exists f,
+       (forall a0,
+           .. (forall an,
+                 (forall g0,
+                     .. (forall gn,
+                           (forall k tr mem,
+                               pre ->
+                               LeakageWeakestPrecondition.call
+                                 functions name k tr mem (cons a0 .. (cons an nil) ..)
+                                 (fun k' tr' mem' rets =>
+                                    rets = nil /\ post))) ..)) ..))
+    (at level 200,
+      f at level 0,
+      name at level 0,
+      a0 binder, an binder,
+      g0 binder, gn binder,
+      k name, k' name, tr name, tr' name, mem name, mem' name,
+      pre at level 200,
+      post at level 200).
+
+Notation "'fnspec_ex!' f name a0 .. an '~>' r0 .. rn ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     exists f,
+       (forall a0,
+           .. (forall an,
+                 (forall tr mem,
+                     pre ->
+                     LeakageWeakestPrecondition.call
+                       functions name k tr mem (cons a0 .. (cons an nil) ..)
+                       (fun k' tr' mem' rets =>
+                          (exists r0,
+                              .. (exists rn,
+                                    rets = (cons r0 .. (cons rn nil) ..) /\
+                                      post) ..)))) ..))
+    (at level 200,
+      f at level 0,
+      name at level 0,
+      a0 binder, an binder,
+      r0 closed binder, rn closed binder,
+      k name, k' name, tr name, tr' name, mem name, mem' name,
+      pre at level 200,
+      post at level 200).
+
+Notation "'fnspec_ex!' f name '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     exists f,
+       (forall an,
+           (forall g0,
+               .. (forall gn,
+                     (forall k tr mem,
+                         pre ->
+                         LeakageWeakestPrecondition.call
+                           functions name k tr mem nil
+                           (fun k' tr' mem' rets =>
+                              (exists r0,
+                                  .. (exists rn,
+                                        rets = (cons r0 .. (cons rn nil) ..) /\
+                                          post) ..)))) ..)))
+    (at level 200,
+      f at level 0,
+      name at level 0,
+      g0 binder, gn binder,
+      r0 closed binder, rn closed binder,
+      k name, k' name, tr name, tr' name, mem name, mem' name,
+      pre at level 200,
+      post at level 200).
+
+Notation "'fnspec_ex!' f name a0 .. an ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     exists f,
+       (forall a0,
+           .. (forall an,
+                 (forall k tr mem,
+                     pre ->
+                     LeakageWeakestPrecondition.call
+                       functions name k tr mem (cons a0 .. (cons an nil) ..)
+                       (fun k' tr' mem' rets =>
+                          rets = nil /\ post))) ..))
+    (at level 200,
+      f at level 0,
+      name at level 0,
+      a0 binder, an binder,
+      k name, k' name, tr name, tr' name, mem name, mem' name,
+      pre at level 200,
+      post at level 200).
+
+Notation "'fnspec_ex!' f name '/' g0 .. gn ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     exists f,
+       (forall g0,
+           .. (forall gn,
+                 (forall k tr mem,
+                     pre ->
+                     LeakageWeakestPrecondition.call
+                       functions name k tr mem nil
+                       (fun k' tr' mem' rets =>
+                          rets = nil /\ post))) ..))
+    (at level 200,
+      f at level 0,
+      name at level 0,
+      g0 binder, gn binder,
+      k name, k' name, tr name, tr' name, mem name, mem' name,
+      pre at level 200,
+      post at level 200).
+
+Notation "'fnspec_ex!' f name '~>' r0 .. rn ',' '{' 'requires' k tr mem := pre ';' 'ensures' k' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     exists f,
+       (forall k tr mem,
+           pre ->
+           LeakageWeakestPrecondition.call
+             functions name k tr mem nil
+             (fun k' tr' mem' rets =>
+                (exists r0,
+                    .. (exists rn,
+                          rets = (cons r0 .. (cons rn nil) ..) /\
+                            post) ..))))
+    (at level 200,
+      f at level 0,
+      name at level 0,
+      r0 closed binder, rn closed binder,
+      k name, k' name, tr name, tr' name, mem name, mem' name,
+      pre at level 200,
+      post at level 200).
