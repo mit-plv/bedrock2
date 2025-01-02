@@ -18,24 +18,66 @@ Definition stackdisj := func! () ~> (a,b) {
   /*skip*/
 }.
 
-Require bedrock2.WeakestPrecondition.
-Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
+Definition stackswap := func! (a, b) ~> (b, a) {
+  stackalloc 4 as x;                          
+  store(x, a);
+  stackalloc 4 as y;                          
+  store(y, b);
+  swap(y, x);
+  a = load(x);
+  b = load(y)
+}.
+
+Require Import bedrock2.LeakageWeakestPrecondition.
+Require Import bedrock2.Semantics bedrock2.LeakageSemantics bedrock2.FE310CSemantics.
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 
-Require bedrock2.WeakestPreconditionProperties.
+Require Import bedrock2.LeakageWeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
-Require Import bedrock2.ProgramLogic bedrock2.Scalars.
+Require Import bedrock2.LeakageProgramLogic bedrock2.Scalars.
 Require Import coqutil.Word.Interface.
 From coqutil.Tactics Require Import reference_to_string .
 From bedrock2 Require ToCString PrintListByte.
 
+(* where to put all of this? *)
+Require Import coqutil.Z.Lia.
+Section aLemmaThatDoesntBelongHere.
+  Context {width: Z} {word: word.word width} {word_ok : word.ok word}.
+  Lemma word_to_bytes (a : word) :
+        a = word.of_Z (LittleEndianList.le_combine (LittleEndianList.le_split (Z.to_nat ((width + 7) / 8)) (word.unsigned a))).
+  Proof.
+    rewrite LittleEndianList.le_combine_split. rewrite Z.mod_small.
+    - symmetry. apply word.of_Z_unsigned.
+    - assert (H := Properties.word.unsigned_range a). destruct H as [H1 H2].
+
+      split; try apply H1. clear H1.
+      eapply Z.lt_le_trans; try apply H2. clear H2.
+      apply Z.pow_le_mono_r; try blia.
+      rewrite Znat.Z2Nat.id.
+      + replace ((width + 7) / 8 * 8) with (width + 7 - (width + 7) mod 8).
+        -- assert (H := Z.mod_pos_bound (width + 7) 8). blia.
+        -- rewrite Zdiv.Zmod_eq_full; blia.
+      + apply Z.div_pos; try blia. destruct word_ok. blia.
+  Qed.
+
+  Lemma word_to_bytes' (a : word) :
+    exists l, length l = (Z.to_nat ((width + 7) / 8)) /\
+                a = word.of_Z (LittleEndianList.le_combine l).
+  Proof.
+    eexists. split; try apply word_to_bytes. apply LittleEndianList.length_le_split.
+  Qed.
+End aLemmaThatDoesntBelongHere.
+
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {pick_sp: PickSp}.
+  Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-  Instance spec_of_stacktrivial : spec_of "stacktrivial" := fun functions => forall m t,
-      WeakestPrecondition.call functions
-        "stacktrivial" t m [] (fun t' m' rets => rets = [] /\ m'=m /\ t'=t).
+  Instance spec_of_stacktrivial : spec_of "stacktrivial" :=
+    fun functions =>
+      forall k t m, LeakageWeakestPrecondition.call functions
+                 "stacktrivial" k t m [] (fun k' t' m' rets => rets = [] /\ m'=m /\ t'=t).
 
   Lemma stacktrivial_ok : program_logic_goal_for_function! stacktrivial.
   Proof.
@@ -56,9 +98,9 @@ Section WithParameters.
     intuition congruence.
   Qed.
 
-  Instance spec_of_stacknondet : spec_of "stacknondet" := fun functions => forall m t,
-      WeakestPrecondition.call functions
-        "stacknondet" t m [] (fun t' m' rets => exists a b, rets = [a;b] /\ a = b /\ m'=m/\t'=t).
+  Instance spec_of_stacknondet : spec_of "stacknondet" := fun functions => forall m t k,
+      LeakageWeakestPrecondition.call functions
+        "stacknondet" k t m [] (fun k' t' m' rets => exists a b, rets = [a;b] /\ a = b /\ m'=m/\t'=t).
 
   Add Ring wring : (Properties.word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -83,6 +125,7 @@ Section WithParameters.
     assert ((Array.array ptsto (word.of_Z 1) a [(Byte.byte.of_Z (word.unsigned v0)); b0; b1; b2] ⋆ R)%sep m1).
     { cbn [Array.array].
       use_sep_assumption; cancel; Morphisms.f_equiv; f_equal; f_equal; ring. }
+    subst a.
     seprewrite_in_by @scalar32_of_bytes H0 reflexivity.
     repeat straightline.
     seprewrite_in_by (symmetry! @scalar32_of_bytes) H0 reflexivity.
@@ -111,9 +154,9 @@ Section WithParameters.
   Definition stacknondet_c := String.list_byte_of_string (c_module (("main",stacknondet_main)::("stacknondet",stacknondet)::nil)).
   (* Goal True. print_list_byte stacknondet_c. Abort. *)
 
-  Instance spec_of_stackdisj : spec_of "stackdisj" := fun functions => forall m t,
-      WeakestPrecondition.call functions
-        "stackdisj" t m [] (fun t' m' rets => exists a b, rets = [a;b] /\ a <> b /\ m'=m/\t'=t).
+  Instance spec_of_stackdisj : spec_of "stackdisj" := fun functions => forall m t k,
+      LeakageWeakestPrecondition.call functions
+        "stackdisj" k t m [] (fun k' t' m' rets => exists a b, rets = [a;b] /\ a <> b /\ m'=m/\t'=t).
 
   Lemma stackdisj_ok : program_logic_goal_for_function! stackdisj.
   Proof.
@@ -125,4 +168,63 @@ Section WithParameters.
     all : try intuition congruence.
     match goal with |- _ <> _ => idtac end.
   Abort.
+
+  Instance ct_spec_of_stackswap : spec_of "stackswap" :=
+    fnspec! exists f, "stackswap" a b ~> B A,
+    { requires k t m := True ;
+      ensures k' t' m' := k' = f ++ k }.
+
+  Require Import bedrock2Examples.swap.
+
+
+  Lemma stackswap_ct :
+    let swapspec := ct_spec_of_swap in
+    program_logic_goal_for_function! stackswap.
+  Proof.
+    repeat straightline.
+    set (R := eq m).
+    pose proof (eq_refl : R m) as Hm.
+    repeat straightline.
+    repeat (destruct stack as [|?b stack]; try solve [cbn in H2; Lia.lia]; []).
+    clear H2. clear length_stack. clear H1.
+    seprewrite_in_by @scalar_of_bytes Hm reflexivity.
+    repeat straightline.
+    repeat (destruct stack as [|?b stack]; try solve [cbn in length_stack; Lia.lia]; []).
+    clear H5 length_stack H3.
+    seprewrite_in_by @scalar_of_bytes H1 reflexivity.
+    repeat straightline.
+    assert (HToBytesa := word_to_bytes' a).
+    destruct HToBytesa as [la [length_la HToBytesa]].
+    repeat (destruct la as [|? la]; try solve [cbn in length_la; Lia.lia]; []).
+    assert (HToBytesb := word_to_bytes' b).
+    destruct HToBytesb as [lb [length_lb HToBytesb]].
+    repeat (destruct lb as [|? lb]; try solve [cbn in length_lb; Lia.lia]; []).
+    subst a b.
+    straightline_ct_call.
+    { apply sep_assoc. eassumption. }
+    repeat straightline.
+    Import symmetry.
+    seprewrite_in_by (symmetry! @scalar_of_bytes) H5 reflexivity.
+    straightline_stackdealloc.
+    seprewrite_in_by (symmetry! @scalar_of_bytes) H5 reflexivity.
+    straightline_stackdealloc.
+    repeat straightline. eexists. split.
+    - trace_alignment.
+    - intros Hpredicts.
+      simpl in Hpredicts. rewrite List.rev_app_distr in Hpredicts. simpl in Hpredicts.
+      inversion Hpredicts. subst. inversion H12. subst. inversion H14. subst.
+      clear Hpredicts H12 H13 H14 H16. specialize (H11 I). specialize (H15 I).
+      instantiate (1 := 
+                     match pick_sp [] with
+                     | consume_word a =>
+                         match pick_sp [consume_word a; leak_word a] with
+                         | consume_word b => _
+                         | _ => @nil event
+                         end
+                     | _ => _
+                     end).
+      rewrite H11. rewrite H15. reflexivity.
+      Unshelve.
+      all: apply nil.
+  Qed.
 End WithParameters.
