@@ -172,26 +172,73 @@ Section WithParameters.
   Instance ct_spec_of_stackswap : spec_of "stackswap" :=
     fnspec! exists f, "stackswap" a b ~> B A,
     { requires k t m := True ;
-      ensures k' t' m' := k' = f ++ k }.
+      ensures k' t' m' := k' = f k ++ k }.
 
   Require Import bedrock2Examples.swap.
 
 
   Lemma stackswap_ct :
-    let swapspec := ct_spec_of_swap in
+    let swapspec := spec_of_swap in
     program_logic_goal_for_function! stackswap.
   Proof.
-    repeat straightline.
+    cbv beta delta [program_logic_goal_for].
+    Print bind_body_of_function.
+    let f := normalize_body_of_function swap in
+    let fargs := open_constr:(_) in
+    let frets := open_constr:(_) in
+    let fbody := open_constr:(_) in
+    let funif := open_constr:((fargs, frets, fbody)) in
+    unify f funif;
+    (let G := lazymatch goal with
+              | |- ?G => G
+              end in
+     let P := lazymatch eval pattern swap in G with
+              | ?P _ => P
+              end in
+         change (bindcmd fbody (fun c : Syntax.cmd => P (fargs, frets, c)));
+              cbv beta iota delta [bindcmd]).
+    let x := eval hnf in (spec_of_swap map.empty) in idtac x.
+    
+    repeat special_intro || intro.
+    special_intro.
+                    cbv[callee_spec];
+                    match goal with
+                    | |- (exists _, _) -> _ => intros [?f ?H]
+                    end
+                | _ => intros ?
+                          end.
+    special_intro. special_intro. special_intro. special_intro. special_intro.
+     repeat match goal with
+     | |- ?callee_spec ?functions -> _ =>
+         cbv[callee_spec] end. end.
+                    match goal with
+                    | |- (exists _, _) -> _ => intros [?f ?H]
+                    end end.
+    special_intro.
+              repeat
+                match goal with
+                | |- ?callee_spec ?functions =>
+                    cbv[callee_spec];
+                    match goal with
+                    | |- (exists _, _) -> _ => intros [?f ?H]
+                    end
+                | _ => intros ?
+                end).
+    enter swap. Print enter.
+    
+    repeat straightline. 
     set (R := eq m).
     pose proof (eq_refl : R m) as Hm.
     repeat straightline.
     repeat (destruct stack as [|?b stack]; try solve [cbn in H2; Lia.lia]; []).
     clear H2. clear length_stack. clear H1.
-    seprewrite_in_by @scalar_of_bytes Hm reflexivity.
+    seprewrite_in @scalar_of_bytes Hm.
+    { rewrite H3. reflexivity. }
     repeat straightline.
-    repeat (destruct stack as [|?b stack]; try solve [cbn in length_stack; Lia.lia]; []).
-    clear H5 length_stack H3.
-    seprewrite_in_by @scalar_of_bytes H1 reflexivity.
+    repeat (destruct stack as [|?b stack]; try solve [cbn in length_stack0; Lia.lia]; []).
+    clear H5 H3.
+    seprewrite_in @scalar_of_bytes H1.
+    { rewrite H6. reflexivity. }
     repeat straightline.
     assert (HToBytesa := word_to_bytes' a).
     destruct HToBytesa as [la [length_la HToBytesa]].
@@ -200,31 +247,15 @@ Section WithParameters.
     destruct HToBytesb as [lb [length_lb HToBytesb]].
     repeat (destruct lb as [|? lb]; try solve [cbn in length_lb; Lia.lia]; []).
     subst a b.
-    straightline_ct_call.
+    straightline_call.
     { apply sep_assoc. eassumption. }
     repeat straightline.
     Import symmetry.
-    seprewrite_in_by (symmetry! @scalar_of_bytes) H5 reflexivity.
+    seprewrite_in_by (symmetry! @scalar_of_bytes) H7 reflexivity.
     straightline_stackdealloc.
-    seprewrite_in_by (symmetry! @scalar_of_bytes) H5 reflexivity.
+    seprewrite_in_by (symmetry! @scalar_of_bytes) H7 reflexivity.
     straightline_stackdealloc.
-    repeat straightline. eexists. split.
-    - trace_alignment.
-    - intros Hpredicts.
-      simpl in Hpredicts. rewrite List.rev_app_distr in Hpredicts. simpl in Hpredicts.
-      inversion Hpredicts. subst. inversion H12. subst. inversion H14. subst.
-      clear Hpredicts H12 H13 H14 H16. specialize (H11 I). specialize (H15 I).
-      instantiate (1 := 
-                     match pick_sp [] with
-                     | consume_word a =>
-                         match pick_sp [consume_word a; leak_word a] with
-                         | consume_word b => _
-                         | _ => @nil event
-                         end
-                     | _ => _
-                     end).
-      rewrite H11. rewrite H15. reflexivity.
-      Unshelve.
-      all: apply nil.
+    repeat straightline. align_trace.
   Qed.
 End WithParameters.
+

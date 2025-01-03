@@ -72,7 +72,7 @@ Ltac program_logic_goal_for_function proc :=
   constr_string_basename_of_constr_reference_cps ltac:(Tactics.head proc) ltac:(fun fname =>
   let spec := lazymatch constr:(_:spec_of fname) with ?s => s end in
   exact (forall (functions : @map.rep _ _ Semantics.env) (EnvContains : map.get functions fname = Some proc), ltac:(
-    let callees := eval cbv in (callees (snd proc)) in
+    let callees := eval cbv in (callees' (snd proc)) in
     let s := assuming_correctness_of_in callees functions (spec functions) in
     exact s))).
 Definition program_logic_goal_for (_ : Syntax.func) (P : Prop) := P.
@@ -96,12 +96,22 @@ Ltac bind_body_of_function f_ :=
   let G := lazymatch goal with |- ?G => G end in
   let P := lazymatch eval pattern f_ in G with ?P _ => P end in
   change (bindcmd fbody (fun c : Syntax.cmd => P (fargs, frets, c)));
-  cbv beta iota delta [bindcmd]; intros.
+  cbv beta iota delta [bindcmd].
+
+Ltac special_intro :=
+  repeat match goal with
+  | |- ?P -> ?Q =>
+      let P' := eval hnf in P in
+        match P' with
+        | exists _, _ => intros ?H'; destruct H' as [?f ?H](*important to do this now so that f is in the context of evars*); revert H
+        end
+  end; intro.
 
 (* note: f might have some implicit parameters (eg a record of constants) *)
 Ltac enter f :=
   cbv beta delta [program_logic_goal_for];
   bind_body_of_function f;
+  repeat special_intro;
   lazymatch goal with |- ?s ?p => let s := rdelta s in change (s p); cbv beta end.
 
 Require coqutil.Map.SortedList. (* special-case eq_refl *)
@@ -245,11 +255,10 @@ Ltac straightline :=
   | _ => straightline_cleanup
   | |- Basics.impl _ _ => cbv [Basics.impl] (*why does swap break without this?*)
   | |- program_logic_goal_for ?f _ =>
-      enter f; intros;
-      match goal with
-      | |- LeakageWeakestPrecondition.call _ _ _ _ _ _ _ => idtac
-      | |- exists _, _ => eexists
-      end; intros;
+      enter f;
+      repeat match goal with
+        | |- exists _, _ => eexists
+        end; intros;
       match goal with
       | H: map.get ?functions ?fname = Some _ |- _ =>
           eapply start_func; [exact H | clear H]
@@ -368,18 +377,20 @@ Ltac straightline :=
   | H : context[sep (sep _ _) _] |- _ => progress (flatten_seps_in H; cbn [seps] in H)
   end.
 
-(* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
-Ltac straightline_call :=
+(*for use when the spec of callee has been written using regular 'fnspec' notation*)
+Ltac straightline_call_noex :=
   lazymatch goal with
   | |- LeakageWeakestPrecondition.call ?functions ?callee _ _ _ _ _ =>
     let callee_spec := lazymatch constr:(_:spec_of callee) with ?s => s end in
     let Hcall := lazymatch goal with H: callee_spec functions |- _ => H end in
+    repeat destruct Hcall as [?f Hcall]; 
     eapply LeakageWeakestPreconditionProperties.Proper_call; cycle -1;
       [ eapply Hcall | try eabstract (solve [Morphisms.solve_proper]) .. ];
       [ .. | intros ? ? ? ?]
   end.
 
-Ltac straightline_ct_call :=
+(*for use when the spec of callee has been written using 'fnspec exists' notation*)
+Ltac straightline_call_ex :=
   lazymatch goal with
   | |- call ?functions ?callee _ _ _ _ _ =>
       let Hcall := multimatch goal with
@@ -389,6 +400,9 @@ Ltac straightline_ct_call :=
         [ eapply Hcall | try eabstract solve [ Morphisms.solve_proper ].. ];
         [ .. | intros ? ? ? ? ]
   end.
+
+(* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
+Ltac straightline_call := straightline_call_noex || straightline_call_ex.
 
 Ltac current_trace_mem_locals :=
   lazymatch goal with
