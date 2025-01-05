@@ -98,18 +98,6 @@ Import Separation SeparationLogic.
 
 Lemma getline_ct : program_logic_goal_for_function! getline.
 Proof.
-  enter getline. destruct H as [f H].
-  intros;
-         match goal with
-         | |- call _ _ _ _ _ _ _ => idtac
-         | |- exists _, _ => eexists
-         end; intros;
-         match goal with
-         | H:Interface.map.get ?functions ?fname = Some _
-           |- _ =>
-               eapply LeakageWeakestPreconditionProperties.start_func;
-                [ exact H | clear H ]
-         end; cbv beta match delta [func].
   repeat straightline.
 
   refine ((LeakageLoops.tailrec_earlyout
@@ -304,18 +292,6 @@ Require Import coqutil.Word.SimplWordExpr.
 
 Lemma password_checker_ct : program_logic_goal_for_function! password_checker.
 Proof.
-  enter password_checker. destruct H as [f H]. destruct H0 as [g H0].
-         match goal with
-         | |- call _ _ _ _ _ _ _ => idtac
-         | |- exists _, _ => eexists
-         end; intros;
-         match goal with
-         | H:Interface.map.get ?functions ?fname = Some _
-           |- _ =>
-               eapply LeakageWeakestPreconditionProperties.start_func;
-                [ exact H | clear H ]
-         end; cbv beta match delta [func].
-  
   repeat straightline.
   eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; cycle 1.
   { eapply H. split. 2: rewrite word.unsigned_of_Z; eassumption. ecancel_assumption. }

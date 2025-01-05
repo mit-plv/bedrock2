@@ -169,63 +169,17 @@ Section WithParameters.
     match goal with |- _ <> _ => idtac end.
   Abort.
 
-  Instance ct_spec_of_stackswap : spec_of "stackswap" :=
+  Instance spec_of_stackswap : spec_of "stackswap" :=
     fnspec! exists f, "stackswap" a b ~> B A,
     { requires k t m := True ;
       ensures k' t' m' := k' = f k ++ k }.
 
   Require Import bedrock2Examples.swap.
 
-
-  Lemma stackswap_ct :
+  Lemma stackswap_ok :
     let swapspec := spec_of_swap in
     program_logic_goal_for_function! stackswap.
   Proof.
-    cbv beta delta [program_logic_goal_for].
-    Print bind_body_of_function.
-    let f := normalize_body_of_function swap in
-    let fargs := open_constr:(_) in
-    let frets := open_constr:(_) in
-    let fbody := open_constr:(_) in
-    let funif := open_constr:((fargs, frets, fbody)) in
-    unify f funif;
-    (let G := lazymatch goal with
-              | |- ?G => G
-              end in
-     let P := lazymatch eval pattern swap in G with
-              | ?P _ => P
-              end in
-         change (bindcmd fbody (fun c : Syntax.cmd => P (fargs, frets, c)));
-              cbv beta iota delta [bindcmd]).
-    let x := eval hnf in (spec_of_swap map.empty) in idtac x.
-    
-    repeat special_intro || intro.
-    special_intro.
-                    cbv[callee_spec];
-                    match goal with
-                    | |- (exists _, _) -> _ => intros [?f ?H]
-                    end
-                | _ => intros ?
-                          end.
-    special_intro. special_intro. special_intro. special_intro. special_intro.
-     repeat match goal with
-     | |- ?callee_spec ?functions -> _ =>
-         cbv[callee_spec] end. end.
-                    match goal with
-                    | |- (exists _, _) -> _ => intros [?f ?H]
-                    end end.
-    special_intro.
-              repeat
-                match goal with
-                | |- ?callee_spec ?functions =>
-                    cbv[callee_spec];
-                    match goal with
-                    | |- (exists _, _) -> _ => intros [?f ?H]
-                    end
-                | _ => intros ?
-                end).
-    enter swap. Print enter.
-    
     repeat straightline. 
     set (R := eq m).
     pose proof (eq_refl : R m) as Hm.
