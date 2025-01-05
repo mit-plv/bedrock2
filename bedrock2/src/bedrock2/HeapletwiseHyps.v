@@ -1024,7 +1024,7 @@ Ltac start_canceling :=
       let clausetree := reify (sep P Q) in change (Tree.to_sep clausetree m);
       eapply (canceling_start_noand D)
   end;
-  cbn [Tree.flatten Tree.interp bedrock2.Map.SeparationLogic.app].
+  cbn [Tree.flatten Tree.interp coqutil.Map.SeparationLogic.app].
 
 Ltac path_in_mem_tree om m :=
   lazymatch om with
@@ -1253,7 +1253,7 @@ Ltac start_canceling_in_hyp H :=
           clear D;
           cbn [SeparationLogic.Tree.flatten
                SeparationLogic.Tree.interp
-               bedrock2.Map.SeparationLogic.app] in H
+               coqutil.Map.SeparationLogic.app] in H
       end
   end.
 
