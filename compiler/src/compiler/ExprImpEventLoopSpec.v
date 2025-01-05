@@ -10,7 +10,7 @@ Require Import compiler.Pipeline.
 Section Params1.
   Context {width} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
-  Context {ext_spec: Semantics.ExtSpec}.
+  Context {ext_spec: LeakageSemantics.ExtSpec}.
 
   Set Implicit Arguments.
 
@@ -24,8 +24,8 @@ Section Params1.
     isReady: Semantics.trace -> mem -> Prop;
   }.
 
-  Definition hl_inv(spec: ProgramSpec)(t: Semantics.trace)(m: mem)
-             (l: locals)(mc: bedrock2.MetricLogging.MetricLog)
+  Definition hl_inv(spec: ProgramSpec)(k: LeakageSemantics.leakage)(t: Semantics.trace)
+    (m: mem)(l: locals)(mc: bedrock2.MetricLogging.MetricLog)
     : Prop := (* Restriction: no locals can be shared between loop iterations *)
     spec.(isReady) t m /\ spec.(goodTrace) t.
 
@@ -38,14 +38,14 @@ Section Params1.
     funs_valid: valid_src_funs e = true;
     init_code: Syntax.cmd.cmd;
     get_init_code: map.get (map.of_list e : env) init_f = Some (nil, nil, init_code);
-    init_code_correct: forall m0 mc0,
+    init_code_correct: forall k0 m0 mc0,
         mem_available spec.(datamem_start) spec.(datamem_pastend) m0 ->
-        MetricSemantics.exec (map.of_list e) init_code nil m0 map.empty mc0 (hl_inv spec);
+        (forall pick_spH : LeakageSemantics.PickSp, MetricLeakageSemantics.exec (map.of_list e) init_code nil k0 m0 map.empty mc0 (hl_inv spec));
     loop_body: Syntax.cmd.cmd;
     get_loop_body: map.get (map.of_list e : env) loop_f = Some (nil, nil, loop_body);
-    loop_body_correct: forall t m l mc,
-        hl_inv spec t m l mc ->
-        MetricSemantics.exec (map.of_list e) loop_body t m l mc (hl_inv spec);
+    loop_body_correct: forall k t m l mc,
+        hl_inv spec k t m l mc ->
+        (forall pick_spH : LeakageSemantics.PickSp, MetricLeakageSemantics.exec (map.of_list e) loop_body k t m l mc (hl_inv spec));
   }.
 
 End Params1.
