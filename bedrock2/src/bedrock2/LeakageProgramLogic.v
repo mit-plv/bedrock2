@@ -105,13 +105,18 @@ Ltac special_intro :=
         match P' with
         | exists _, _ => intros ?H'; destruct H' as [?f ?H](*important to do this now so that f is in the context of evars*); revert H
         end
-  end; intro.
+    end;
+  match goal with
+  | |- forall (x : ?P), ?Q => intro
+  | |- _ => idtac (*avoid unfolding things to do intro*)
+  end.
 
 (* note: f might have some implicit parameters (eg a record of constants) *)
 Ltac enter f :=
   cbv beta delta [program_logic_goal_for];
   bind_body_of_function f;
   repeat special_intro;
+  intros;
   lazymatch goal with |- ?s ?p => let s := rdelta s in change (s p); cbv beta end.
 
 Require coqutil.Map.SortedList. (* special-case eq_refl *)
