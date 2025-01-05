@@ -115,7 +115,7 @@ Ltac special_intro :=
 Ltac enter f :=
   cbv beta delta [program_logic_goal_for];
   bind_body_of_function f;
-  repeat special_intro;
+  repeat (special_intro || match goal with | |- let _ := _ in _ => intro end);
   intros;
   lazymatch goal with |- ?s ?p => let s := rdelta s in change (s p); cbv beta end.
 

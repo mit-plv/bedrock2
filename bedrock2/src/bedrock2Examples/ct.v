@@ -354,21 +354,10 @@ Definition semiprime := func! () ~> (p, q) {
 
 Lemma semiprime_ct : program_logic_goal_for_function! semiprime.
 Proof.
-  enter semiprime. destruct H as [f H]. destruct H0 as [g H0]. destruct H1 as [h H1].
-  match goal with
-         | |- call _ _ _ _ _ _ _ => idtac
-         | |- exists _, _ => eexists
-         end; intros;
-         match goal with
-         | H:Interface.map.get ?functions ?fname = Some _
-           |- _ =>
-               eapply LeakageWeakestPreconditionProperties.start_func;
-                [ exact H | clear H ]
-         end; cbv beta match delta [func].
   repeat straightline.
   eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; [|eapply H]; repeat straightline.
   eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; [|eapply H]; repeat straightline.
-  eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; [|eapply H1]; repeat straightline.
+  eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; [|eapply H0]; repeat straightline.
   Tactics.ssplit; trivial; simpl in *; align_trace.
 Qed.
 
