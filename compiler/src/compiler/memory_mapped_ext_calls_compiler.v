@@ -8,6 +8,7 @@ Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.FreeMonad.
 Require Import compiler.FlatImp.
 Require Import riscv.Spec.Decode.
+Require Import riscv.Spec.LeakageOfInstr.
 Require Import coqutil.sanity.
 Require Import riscv.Utility.MkMachineWidth.
 Require Import riscv.Spec.PseudoInstructions.
@@ -27,10 +28,13 @@ Require Import coqutil.Datatypes.Option.
 Require Import compiler.RiscvWordProperties.
 Require Import coqutil.Datatypes.ListSet.
 
+
 (* Goal of this file: compile from this (bedrock2 ext calls): *)
 Require Import bedrock2.memory_mapped_ext_spec.
+
 (* to this (risc-v "ext calls" implemented by load and store instructions): *)
 Require Import compiler.memory_mapped_ext_calls_riscv.
+Fail Fail Check MetricMaterialize.
 
 Import ListNotations.
 
@@ -46,10 +50,22 @@ Definition compile_load{width: Z}{BW: Bitwidth width}
   if action =? "memory_mapped_extcall_read32" then (if Z.eqb width 32 then Lw else Lwu) else
   if action =? "memory_mapped_extcall_read16" then Lhu else Lbu.
 
+Definition leak_load{width: Z}{BW: Bitwidth width}{word: word.word width}
+  (action: string)(addr : word) : InstructionLeakage :=
+  if action =? "memory_mapped_extcall_read64" then I64Leakage (Ld_leakage addr) else
+  if action =? "memory_mapped_extcall_read32" then (if Z.eqb width 32 then ILeakage (Lw_leakage addr) else I64Leakage (Lwu_leakage addr)) else
+  if action =? "memory_mapped_extcall_read16" then ILeakage (Lhu_leakage addr) else ILeakage (Lbu_leakage addr).
+
 Definition compile_store(action: string): Z -> Z -> Z -> Instruction :=
   if action =? "memory_mapped_extcall_write64" then Sd else
   if action =? "memory_mapped_extcall_write32" then Sw else
   if action =? "memory_mapped_extcall_write16" then Sh else Sb.
+
+Definition leak_store{width: Z}{BW: Bitwidth width}{word: word.word width}
+  (action: string)(addr: word): InstructionLeakage :=
+  if action =? "memory_mapped_extcall_write64" then I64Leakage (Sd_leakage addr) else
+  if action =? "memory_mapped_extcall_write32" then ILeakage (Sw_leakage addr) else
+  if action =? "memory_mapped_extcall_write16" then ILeakage (Sh_leakage addr) else ILeakage (Sb_leakage addr).
 
 Definition compile_interact{width: Z}{BW: Bitwidth width}
   (results: list Z)(a: string)(args: list Z): list Instruction :=
@@ -58,6 +74,18 @@ Definition compile_interact{width: Z}{BW: Bitwidth width}
   | [addr] => [compile_load a (List.hd RegisterNames.a0 results) addr 0]
   | _ => [] (* invalid, excluded by ext_spec *)
   end.
+
+Definition leak_interact{width: Z}{BW: Bitwidth width}{word: word.word width}
+  (abs_pos: word)(results: list Z)(a: string)(args: list Z)(leakage: list word): list LeakageEvent :=
+  match leakage with
+  | [addr'] =>
+      match args with
+      | [addr; val] => leakage_events abs_pos [compile_store a addr val 0] [leak_store a addr']
+      | [addr] => leakage_events abs_pos [compile_load a (List.hd RegisterNames.a0 results) addr 0] [leak_load a addr']
+      | _ => [] (* invalid, excluded by ext_spec *)
+      end
+  | _ => [] (*invalid*)
+  end.  
 
 Local Arguments Z.mul: simpl never.
 Local Arguments Z.add: simpl never.
@@ -76,7 +104,7 @@ Section GetSetRegValid.
     unfold valid_register, getReg. intros. destruct_one_match.
     - rewrite H0. reflexivity.
     - exfalso. lia.
-  Qed.
+  Qed. Check getReg.
 
   Lemma setReg_valid:
     forall x (v: word) regs, valid_register x -> setReg x v regs = map.put regs x v.
@@ -109,6 +137,12 @@ Section MMIO.
       | SInteract resvars action argvars => compile_interact resvars action argvars
       | _ => []
       end.
+
+  Definition leak_ext_call(program_base: word)(_: funname_env Z)(pos _: Z)(s: stmt Z)(l: list word) :=
+    match s with
+    | SInteract resvars action argvars => leak_interact (word.add program_base (word.of_Z pos)) resvars action argvars l
+    | _ => []
+    end.
 
 (*
   Lemma load4bytes_in_MMIO_is_None: forall (m: mem) (addr: word),
@@ -205,7 +239,12 @@ Section MMIO.
     cbv iota;
     unfold ExecuteI.execute, ExecuteI64.execute;
     eapply go_associativity;
-    (eapply go_getRegister; [ eassumption | eassumption | ]);
+    (epose proof go_getRegister as H; cbn [getRegister] in H; eapply H; [eassumption|eassumption|clear H]);
+    (*we have the above awkwardness because go_getRegister is stated in terms of the
+      getRegister of a RiscvProgramWithLeakage, while the goal here is in terms of
+      the getRegister of the RiscvProgram belonging to the RiscvProgramWithLeakage
+      ... i'm not sure how best to fix this.  should go_getRegister be changed to use
+      the getRegister of a RiscvProgram?*)
     eapply go_associativity;
     eapply go_associativity;
     unfold mcomp_sat, Primitives.mcomp_sat, primitivesParams, Bind, free.Monad_free in *;
@@ -223,6 +262,18 @@ Section MMIO.
     only_destruct_RiscvMachine initialL;
     cbn -[HList.tuple Memory.load_bytes] in *;
     try (eapply H; assumption).
+  Qed.
+
+  Lemma go_ext_call_leak_load: forall action x a addr (initialL: MetricRiscvMachine) post f,
+      valid_register a ->
+      map.get initialL.(getRegs) a = Some addr ->
+      mcomp_sat (f (Some (executeInstr (compile_load action x a 0) (leak_load action addr)))) initialL post ->
+      mcomp_sat (Bind (leakage_of_instr getRegister (compile_load action x a 0)) f) initialL post.
+  Proof.
+    intros. cbv [leakage_of_instr compile_load leak_load] in *.
+    repeat destruct_one_match.
+    all: epose proof go_getRegister as H'; cbn [getRegister] in H'; eapply H'; [eassumption|eassumption|clear H'].
+    all: assumption.
   Qed.
 
   Lemma go_ext_call_store: forall n action a addr v val mGive mKeep
@@ -262,7 +313,7 @@ Section MMIO.
     cbv iota;
     unfold ExecuteI.execute, ExecuteI64.execute;
     eapply go_associativity;
-    (eapply go_getRegister; [ eassumption | eassumption | ]);
+    (epose proof go_getRegister as H; cbn [getRegister] in H; eapply H; [eassumption|eassumption|clear H]);(*do this for the same reason as in go_ext_call_load*)
     eapply go_associativity;
     eapply go_associativity;
     unfold mcomp_sat, Primitives.mcomp_sat, primitivesParams, Bind, free.Monad_free in *;
@@ -285,6 +336,18 @@ Section MMIO.
     lazymatch goal with
     | H: free.interp interp_action _ _ _ |- free.interp interp_action _ _ _ => exact H
     end.
+  Qed.
+
+  Lemma go_ext_call_leak_store: forall action a v addr (initialL: MetricRiscvMachine) post f,
+      valid_register a ->
+      map.get initialL.(getRegs) a = Some addr ->
+      mcomp_sat (f (Some (executeInstr (compile_store action a v 0) (leak_store action addr)))) initialL post ->
+      mcomp_sat (Bind (leakage_of_instr getRegister (compile_store action a v 0)) f) initialL post.
+  Proof.
+    intros. cbv [leakage_of_instr compile_store leak_store] in *.
+    repeat destruct_one_match.
+    all: epose proof go_getRegister as H'; cbn [getRegister] in H'; eapply H'; [eassumption|eassumption|clear H'].
+    all: assumption.
   Qed.
 
   Lemma disjoint_load_bytes_is_None: forall m (addr: word) n,
@@ -338,7 +401,7 @@ Section MMIO.
   Qed.
 
   Lemma compile_ext_call_correct: forall resvars extcall argvars,
-      FlatToRiscvCommon.compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
+      FlatToRiscvCommon.compiles_FlatToRiscv_correctly compile_ext_call leak_ext_call compile_ext_call
         (FlatImp.SInteract resvars extcall argvars).
   Proof.
     unfold FlatToRiscvCommon.compiles_FlatToRiscv_correctly. simpl. intros.
@@ -367,7 +430,8 @@ Section MMIO.
       destruct argvars. 2: discriminate Hl. clear Hl.
       fwd.
       unfold compile_interact in *. cbn [List.length] in *.
-      eapply go_fetch_inst; simpl_MetricRiscvMachine_get_set.
+      pose proof go_fetch_inst as gfi. cbn [getRegister] in gfi. (*this nonsense again*)
+      eapply gfi; clear gfi; simpl_MetricRiscvMachine_get_set.
       { reflexivity. }
       { eapply rearrange_footpr_subset. 1: eassumption. wwcancel. }
       { wcancel_assumption. }
@@ -375,6 +439,9 @@ Section MMIO.
         repeat destruct nValid as [nValid|nValid]; [..|apply proj1 in nValid]; subst n.
         all: try exact I.
         destruct width_cases as [W | W]; rewrite W; exact I. }
+      eapply go_ext_call_leak_load.
+      { unfold valid_FlatImp_var, valid_register in *. lia. }
+      { cbn. unfold map.extends in *. eauto. }
       eapply go_ext_call_load.
       { reflexivity. }
       { assumption. }
@@ -396,7 +463,7 @@ Section MMIO.
       cbv beta. intros v mRcv HO mL' Hsp.
       destruct HO as (HO & mExt' & HsE).
       lazymatch goal with
-      | H: forall _ _, outcome _ _ -> _ |- _ =>
+      | H: forall _ _ _, outcome _ _ _ -> _ |- _ =>
           specialize H with (1 := HO); destruct H as (l' & Hp & HPost)
       end.
       fwd.
@@ -423,6 +490,10 @@ Section MMIO.
         eapply MapEauto.only_differ_put.
         cbn. left. reflexivity. }
       { unfold MetricCosts.cost_interact in *; MetricsToRiscv.solve_MetricLog. }
+      { instantiate (1:= [_]). reflexivity. }
+      { reflexivity. }
+      { intros. rewrite fix_step. cbn [stmt_leakage_body rev List.app].
+        repeat rewrite <- app_assoc. reflexivity. }
       { eapply map.put_extends. eassumption. }
       { eapply map.forall_keys_put; assumption. }
       { rewrite map.get_put_diff; eauto. unfold RegisterNames.sp.
@@ -481,7 +552,8 @@ Section MMIO.
       destruct argvars. 2: discriminate Hl. clear Hl.
       fwd.
       unfold compile_interact in *. cbn [List.length] in *.
-      eapply go_fetch_inst; simpl_MetricRiscvMachine_get_set.
+      pose proof go_fetch_inst as gfi. cbn [getRegister] in gfi.
+      eapply gfi; clear gfi; simpl_MetricRiscvMachine_get_set.
       { reflexivity. }
       { eapply rearrange_footpr_subset. 1: eassumption. wwcancel. }
       { wcancel_assumption. }
@@ -500,6 +572,9 @@ Section MMIO.
           end;
           cbv; congruence.
       }
+      eapply go_ext_call_leak_store.
+      { unfold valid_FlatImp_var, valid_register in *. lia. }
+      { cbn. unfold map.extends in *. eauto. }
       eapply go_ext_call_store with (mKeep := map.putmany mKeep mL) (mGive := mGive).
       { reflexivity. }
       { assumption. }
@@ -523,7 +598,7 @@ Section MMIO.
         replace (LittleEndian.split n (LittleEndian.combine n v)) with v.
         1: assumption. symmetry. apply LittleEndian.split_combine. }
       lazymatch goal with
-      | HO: outcome _ _, H: forall _ _, outcome _ _ -> _ |- _ =>
+      | HO: outcome _ _ _, H: forall _ _ _, outcome _ _ _ -> _ |- _ =>
           specialize H with (1 := HO); destruct H as (l' & Hp & HPost)
       end.
       fwd.
@@ -537,7 +612,11 @@ Section MMIO.
         eapply map.split_empty_r. reflexivity. }
       { reflexivity. }
       { eapply MapEauto.only_differ_refl. }
-      { unfold MetricCosts.cost_interact in *; MetricsToRiscv.solve_MetricLog. }
+      { cbv [id]. unfold MetricCosts.cost_interact in *; MetricsToRiscv.solve_MetricLog. }
+      { instantiate (1 := [_]). reflexivity. }
+      { reflexivity. }
+      { intros. rewrite fix_step. cbn [stmt_leakage_body rev List.app].
+        repeat rewrite <- app_assoc. reflexivity. }
       { eassumption. }
       { assumption. }
       { assumption. }

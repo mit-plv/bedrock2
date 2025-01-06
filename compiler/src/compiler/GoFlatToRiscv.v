@@ -741,6 +741,7 @@ Ltac simpl_MetricRiscvMachine_get_set :=
      getMem
      getXAddrs
      getLog
+     getTrace
      withRegs
      withPc
      withNextPc
@@ -749,6 +750,8 @@ Ltac simpl_MetricRiscvMachine_get_set :=
      withLog
      withLogItem
      withLogItems
+     withLeakageEvent
+     withLeakageEvents
      RiscvMachine.withRegs
      RiscvMachine.withPc
      RiscvMachine.withNextPc
@@ -757,6 +760,8 @@ Ltac simpl_MetricRiscvMachine_get_set :=
      RiscvMachine.withLog
      RiscvMachine.withLogItem
      RiscvMachine.withLogItems
+     RiscvMachine.withLeakageEvent
+     RiscvMachine.withLeakageEvents
   ].
 
 Ltac simpl_MetricRiscvMachine_mem :=
