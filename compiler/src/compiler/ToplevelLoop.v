@@ -150,6 +150,7 @@ Section Pipeline1.
       exists mH,
         isReady spec mach.(getLog) mH /\ goodTrace spec mach.(getLog) /\
         mach.(getPc) = word.add loop_pos (word.of_Z (if done then 4 else 0)) /\
+        (exists kL0, mach.(getTrace) = Some kL0) /\
         machine_ok functions_pos ml.(stack_start) ml.(stack_pastend) functions_instrs mH R
                    (program iset init_sp_pos (init_sp_insts ++
                                               init_insts init_fun_pos ++
@@ -461,6 +462,7 @@ Section Pipeline1.
              | |- _ => reflexivity
              end.
       + cbn. solve_word_eq word_ok.
+      + cbn. simpl in Hp5p3. subst. simpl. reflexivity.
       + cbn. destruct mlOk. subst. simpl in *. subst loop_pos init_pos. solve_divisibleBy4.
     - unfold ll_good, machine_ok.
       intros. fwd. assumption.
@@ -523,7 +525,7 @@ Section Pipeline1.
           do 4 eexists. split. 1: eassumption. split. 1: reflexivity.
           eapply (*ExprImp.weaken_exec*)MetricLeakageSemantics.exec.weaken.
           - eapply loop_body_correct; eauto.
-          - cbv beta. intros * _ HP. exists []. split. 1: reflexivity. exact HP.
+          - cbv beta. intros _ * _ HP. exists []. split. 1: reflexivity. exact HP.
         }
         all: try eassumption.
         all: simpl_MetricRiscvMachine_get_set.
@@ -532,6 +534,7 @@ Section Pipeline1.
           solve_word_eq word_ok. }
         { cbn. rewrite map.get_put_same. f_equal. solve_word_eq word_ok. }
         { subst loop_pos init_pos. destruct mlOk. solve_divisibleBy4. }
+        { reflexivity. }
         { reflexivity. }
         { reflexivity. }
         { reflexivity. }
@@ -579,6 +582,7 @@ Section Pipeline1.
           { f_equal. solve_word_eq word_ok. }
           { solve_word_eq word_ok. }
           { solve_word_eq word_ok. }
+          { f_equal. f_equal. f_equal. f_equal. solve_word_eq word_ok. }
       + cbv beta.
         intros.
         destruct_RiscvMachine final.
@@ -597,7 +601,7 @@ Section Pipeline1.
         * wcancel_assumption.
         * eapply rearrange_footpr_subset. 1: eassumption.
           wwcancel.
-    Unshelve. exact MetricLogging.EmptyMetricLog.
+    Unshelve. 1: exact nil. 1: exact MetricLogging.EmptyMetricLog.
   Qed.
 
   Lemma ll_inv_implies_prefix_of_good: forall st,

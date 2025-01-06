@@ -72,7 +72,7 @@ Section EventLoop.
       let state' := (withPc pc_start
                     (withNextPc (word.add pc_start (word.of_Z 4))
                     (withMetrics newMetrics
-                    (withLeakageEvents newLeakage state)))) in
+                    (withLeakageEvents (Some newLeakage) state)))) in
       valid_machine state' ->
       goodReadyState false state'.
 
@@ -138,7 +138,7 @@ Section EventLoop.
         repeat f_equal.
         all: try solve_word_eq word_ok.
         destruct getTrace; simpl.
-        { instantiate (1 := Some [_;_]). reflexivity. }
+        { instantiate (1 := [_;_]). reflexivity. }
         reflexivity.
       + simpl.
         match goal with
