@@ -575,7 +575,7 @@ Section Equiv.
 
   Inductive states_related: KamiMachine * list Event -> RiscvMachine -> Prop :=
   | relate_states:
-      forall t t' m riscvXAddrs kpc krf rrf rpc nrpc pinit instrMem kdataMem rdataMem metrics,
+      forall k t t' m riscvXAddrs kpc krf rrf rpc nrpc pinit instrMem kdataMem rdataMem metrics,
         traces_related t t' ->
         KamiProc.RegsToT m = Some (kamiStMk kpc krf pinit instrMem kdataMem) ->
         (pinit = false -> riscvXAddrs = kamiXAddrs) ->
@@ -590,7 +590,8 @@ Section Equiv.
                                      RiscvMachine.getNextPc := nrpc;
                                      RiscvMachine.getMem := rdataMem;
                                      RiscvMachine.getXAddrs := riscvXAddrs;
-                                     RiscvMachine.getLog := t'; |};
+                                     RiscvMachine.getLog := t';
+                                     RiscvMachine.getTrace := k; |};
                     getMetrics := metrics; |}.
 
   Inductive KamiLabelR: Kami.Semantics.LabelT -> list Event -> Prop :=
@@ -1111,7 +1112,7 @@ Section Equiv.
                      fst snd
                      getMetrics getMachine
                      translate
-                     getRegs getPc getNextPc getMem getXAddrs getLog]
+                     getRegs getPc getNextPc getMem getXAddrs getLog getTrace]
          in (interp_action a state (fun x state' => mcomp_sat (kV x) state' post)) in
              change TR in HR; subst kV
        | free.ret ?v => change (post v state) in HR
@@ -1212,8 +1213,8 @@ Section Equiv.
         (cbv beta delta [load store] in H;
          cbn beta iota delta [
            load store fst snd translate
-           withMetrics updateMetrics getMachine getMetrics getRegs getPc getNextPc getMem getXAddrs getLog withRegs withPc withNextPc withMem withXAddrs withLog withLogItem withLogItems
-           RiscvMachine.withRegs RiscvMachine.withPc RiscvMachine.withNextPc RiscvMachine.withMem RiscvMachine.withXAddrs RiscvMachine.withLog RiscvMachine.withLogItem RiscvMachine.withLogItems] in H)
+           withMetrics updateMetrics getMachine getMetrics getRegs getPc getNextPc getMem getXAddrs getLog getTrace withRegs withPc withNextPc withMem withXAddrs withLog withLogItem withLogItems withLeakageEvent withLeakageEvents
+           RiscvMachine.withRegs RiscvMachine.withPc RiscvMachine.withNextPc RiscvMachine.withMem RiscvMachine.withXAddrs RiscvMachine.withLog RiscvMachine.withLogItem RiscvMachine.withLogItems RiscvMachine.withLeakageEvent RiscvMachine.withLeakageEvents] in H)
     end.
 
   Ltac rt := repeat (r || t).
@@ -1641,7 +1642,10 @@ Section Equiv.
       unblock_subst kupd.
 
       (** Evaluate (invert) the two fetchers *)
-      rt. eval_kami_fetch. rt.
+      rt. eval_kami_fetch. r || t.
+      r || t. Print inst'.
+      subst inst'. rewrite H11 in *. (*this let comes from a let that I typed in run1... apparently this rewrite H11 in * happened sometime a while ago, but it didnt work because inst' was stuck in a let or something.  anyway, this would go away if i hadn't typed the let in run1.*)
+      rt.
 
       (** Begin symbolic evaluation of Kami decode/execute *)
       kami_cbn_hint Heqic.
@@ -1702,7 +1706,7 @@ Section Equiv.
       all: simpl_bit_manip.
 
       (** Evaluation of riscv-coq decode/execute *)
-
+      
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
@@ -1719,16 +1723,17 @@ Section Equiv.
                | H : Z |- _ => clear H
                | H : list Instruction |- _ => clear H
                | H : Instruction |- _ => clear H
-               end.
+          end.
 
-      all: replace (getReg rrf rs1) with
-        (if Z.eq_dec rs1 0 then word.of_Z 0
-         else match map.get rrf rs1 with
-              | Some x => x
-              | None => word.of_Z 0
-              end) in *.
-      2,4,6,8,10,12:
-        unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
+      all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
+                      else match map.get rrf rs1 with
+                           | Some x => x
+                           | None => word.of_Z 0
+                           end).
+      all: try (assert (getReg rrf rs1 = v') as Hv'; [|rewrite Hv' in *]).
+      
+      1,3,5,7,9:
+        subst v'; unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
       [ Lia.lia
       | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
         change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
@@ -1741,8 +1746,9 @@ Section Equiv.
       all: try match goal with
                | [H: match Memory.load_bytes ?sz ?m ?a with | Some _ => _ | None => _ end |- _] =>
                  destruct (Memory.load_bytes sz m a) as [lv|] eqn:Hlv; [exfalso|]
-               end.
-      all: try (subst v oimm12;
+             end.
+      all: subst v; rewrite Hv' in *. 
+      all: try (subst v' oimm12;
                 regs_get_red Hlv;
                 match goal with
                 | [Heqic: true = evalExpr (isMMIO _ _) |- _] =>
@@ -1790,7 +1796,7 @@ Section Equiv.
 
       prove_states_related.
       { kami_struct_cbv_goal; cbn [evalExpr evalConstT].
-        subst v oimm12 ldVal.
+        subst v' oimm12 ldVal.
         regs_get_red_goal.
         constructor; [|assumption].
         apply events_related_mmioLoadEvent.
@@ -1816,7 +1822,7 @@ Section Equiv.
       unblock_subst kupd.
 
       (** Evaluate (invert) the two fetchers *)
-      rt. eval_kami_fetch. rt.
+      rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
 
       (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
@@ -1893,16 +1899,17 @@ Section Equiv.
                | H : Z |- _ => clear H
                | H : list Instruction |- _ => clear H
                | H : Instruction |- _ => clear H
-               end.
+          end.
 
-      all: replace (getReg rrf rs1) with
-        (if Z.eq_dec rs1 0 then word.of_Z 0
-         else match map.get rrf rs1 with
-              | Some x => x
-              | None => word.of_Z 0
-              end) in *.
-      2,4,6,8,10,12:
-        unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
+      all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
+                      else match map.get rrf rs1 with
+                           | Some x => x
+                           | None => word.of_Z 0
+                           end).
+      all: try (assert (getReg rrf rs1 = v') as Hv'; [|rewrite Hv' in *]).
+
+      1,3,5,7,9:
+        subst v'; unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
       [ Lia.lia
       | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
         change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
@@ -1916,13 +1923,13 @@ Section Equiv.
                | [H: match Memory.load_bytes ?sz ?m ?a with | Some _ => _ | None => _ end |- _] =>
                  destruct (Memory.load_bytes sz m a) as [lv|] eqn:Hlv
                end.
-
+      all: try (subst v; rewrite Hv' in *). 
       all: try match goal with
                | [H: nonmem_load _ _ _ _ _ |- _] =>
                  destruct H as [? [[? ?] ?]]; discriminate
                end.
       6: { exfalso.
-           subst v oimm12.
+           subst v' oimm12.
            destruct H13 as [? [? ?]].
            regs_get_red H13.
            apply is_mmio_sound in H13.
@@ -1951,7 +1958,7 @@ Section Equiv.
       all: regs_get_red_goal.
       all: cbv [int8ToReg int16ToReg uInt8ToReg uInt16ToReg int32ToReg
                           MachineWidth_XLEN word.of_Z word wordW KamiWord.word kofZ].
-      all: subst v oimm12 rs1.
+      all: subst v' oimm12 rs1.
       all: regs_get_red Hlv.
       all: cbv [Utility.add
                   ZToReg MachineWidth_XLEN
@@ -2085,7 +2092,7 @@ Section Equiv.
       unblock_subst kupd.
 
       (** Evaluate (invert) the two fetchers *)
-      rt. eval_kami_fetch. rt.
+      rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
 
       (** Begin symbolic evaluation of Kami decode/execute *)
       kami_cbn_hint Heqic.
@@ -2159,16 +2166,17 @@ Section Equiv.
                | H : Z |- _ => clear H
                | H : list Instruction |- _ => clear H
                | H : Instruction |- _ => clear H
-               end.
+          end.
 
-      all: replace (getReg rrf rs1) with
-        (if Z.eq_dec rs1 0 then word.of_Z 0
-         else match map.get rrf rs1 with
-              | Some x => x
-              | None => word.of_Z 0
-              end) in *.
-      2,4,6,8,10,12:
-        unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
+      all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
+                      else match map.get rrf rs1 with
+                           | Some x => x
+                           | None => word.of_Z 0
+                           end).
+      all: try (assert (getReg rrf rs1 = v') as Hv'; [|rewrite Hv' in *]).
+
+      1,3,5,7,9:
+        subst v'; unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
       [ Lia.lia
       | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
         change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
@@ -2181,8 +2189,9 @@ Section Equiv.
       all: try match goal with
                | [H: match Memory.load_bytes ?sz ?m ?a with | Some _ => _ | None => _ end |- _] =>
                  destruct (Memory.load_bytes sz m a) as [lv|] eqn:Hlv; [exfalso|]
-               end.
-      all: try (subst v oimm12;
+             end.
+      all: subst v; rewrite Hv' in *. 
+      all: try (subst v' oimm12;
                 regs_get_red Hlv;
                 match goal with
                 | [Heqic: true = evalExpr (isMMIO _ _) |- _] =>
@@ -2217,7 +2226,7 @@ Section Equiv.
            else map.put rrf rd newval) in *
       end.
       2: { unfold setReg; repeat destruct_one_match; try reflexivity; [ | contradiction ].
-           exfalso. clear -E. intuition Lia.lia.
+           exfalso. clear -E0. intuition Lia.lia.
       }
 
       rt.
@@ -2227,7 +2236,7 @@ Section Equiv.
 
       prove_states_related.
       { kami_struct_cbv_goal; cbn [evalExpr evalConstT].
-        subst v oimm12.
+        subst v' oimm12.
         regs_get_red_goal.
         constructor; [|assumption].
         apply events_related_mmioLoadEvent.
@@ -2247,7 +2256,7 @@ Section Equiv.
       unblock_subst kupd.
 
       (** Evaluate (invert) the two fetchers *)
-      rt. eval_kami_fetch. rt.
+      rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
 
       (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
@@ -2322,14 +2331,15 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
-      all: replace (getReg rrf rs1) with
-        (if Z.eq_dec rs1 0 then word.of_Z 0
-         else match map.get rrf rs1 with
-              | Some x => x
-              | None => word.of_Z 0
-              end) in *.
-      2,4,6,8,10,12:
-        unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
+      all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
+                      else match map.get rrf rs1 with
+                           | Some x => x
+                           | None => word.of_Z 0
+                           end).
+      all: try (assert (getReg rrf rs1 = v') as Hv'; [|rewrite Hv' in *]).
+
+      1,3,5,7,9:
+        subst v'; unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
       [ Lia.lia
       | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
         change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
@@ -2343,13 +2353,13 @@ Section Equiv.
                | [H: match Memory.load_bytes ?sz ?m ?a with | Some _ => _ | None => _ end |- _] =>
                  destruct (Memory.load_bytes sz m a) as [lv|] eqn:Hlv
                end.
-
+      all: subst v; rewrite Hv' in *.
       all: try match goal with
                | [H: nonmem_load _ _ _ _ _ |- _] =>
                  destruct H as [? [[? ?] ?]]; discriminate
                end.
       4: { exfalso.
-           subst v oimm12.
+           subst v' oimm12.
            destruct H13 as [? [? ?]].
            regs_get_red H13.
            apply is_mmio_sound in H13.
@@ -2409,7 +2419,7 @@ Section Equiv.
       unblock_subst kupd.
 
       (** Evaluate (invert) the two fetchers *)
-      rt. eval_kami_fetch. rt.
+      rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
 
       (** Begin symbolic evaluation of Kami decode/execute *)
       kami_cbn_hint Heqic.
@@ -2476,35 +2486,35 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
-      all: replace (getReg rrf rs1) with
-        (if Z.eq_dec rs1 0 then word.of_Z 0
-         else match map.get rrf rs1 with
-              | Some x => x
-              | None => word.of_Z 0
-              end) in *
-          by (
-            unfold getReg; repeat destruct_one_match; try reflexivity;
-            exfalso;
-            [ Lia.lia
-            | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
-              change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
-              Lia.lia ]).
+      all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
+                      else match map.get rrf rs1 with
+                           | Some x => x
+                           | None => word.of_Z 0
+                           end).
+      all: try (assert (getReg rrf rs1 = v') as Hv'; [|rewrite Hv' in *]).
+      1,3,5:
+        subst v'; unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
+      [ Lia.lia
+      | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
+        change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+        Lia.lia ].
 
-      all: repeat r; t.
-
-      all: replace (getReg rrf rs2) with
-        (if Z.eq_dec rs2 0 then word.of_Z 0
+      all: repeat rt.
+      all: subst v; rewrite Hv' in *.
+      all: subst v0.      
+      all: set (v2' := if Z.eq_dec rs2 0 then word.of_Z 0
          else match map.get rrf rs2 with
               | Some x => x
               | None => word.of_Z 0
-              end) in *
-          by (
-            unfold getReg; repeat destruct_one_match; try reflexivity;
+              end).
+      all: try (assert (getReg rrf rs2 = v2') as Hv2'; [|rewrite Hv2' in *]).
+      1,3,5:
+        subst v2'; unfold getReg; repeat destruct_one_match; try reflexivity;
             exfalso;
             [ Lia.lia
             | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 20 25 as HR;
               change (bitSlice (@kunsigned 32 kinst) 20 25) with rs2 in HR;
-              Lia.lia ]).
+              Lia.lia ].
 
       (** Consistency proof for each instruction *)
       all: rt.
@@ -2518,7 +2528,7 @@ Section Equiv.
 
       all: rewrite @kunsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat) in *.
       all: simpl_bit_manip.
-      all: try (subst v simm12;
+      all: try (subst v' simm12;
                 regs_get_red Hst;
                 cbv [Memory.store_bytes] in Hst;
                 destruct (Memory.load_bytes _ _ _) eqn:Hlv in Hst; [clear Hst|discriminate];
@@ -2546,7 +2556,7 @@ Section Equiv.
 
       prove_states_related.
       { kami_struct_cbv_goal; cbn [evalExpr evalConstT].
-        subst v simm12.
+        subst v' simm12.
         regs_get_red_goal.
         constructor; [|assumption].
         apply events_related_mmioStoreEvent.
@@ -2558,7 +2568,7 @@ Section Equiv.
           rewrite unsigned_split2_as_bitSlice.
           reflexivity.
         }
-        { subst v0; regs_get_red_goal.
+        { subst v2'; regs_get_red_goal.
           cbv [regToInt32
                  MachineWidth_XLEN word.unsigned word wordW KamiWord.word kofZ].
           setoid_rewrite signExtend_combine_split_unsigned.
@@ -2578,7 +2588,7 @@ Section Equiv.
       unblock_subst kupd.
 
       (** Evaluate (invert) the two fetchers *)
-      rt. eval_kami_fetch. rt.
+      rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
 
       (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
@@ -2644,35 +2654,37 @@ Section Equiv.
                | H : Z |- _ => clear H
                | H : list Instruction |- _ => clear H
                | H : Instruction |- _ => clear H
-               end.
+          end.
 
-      all: replace (getReg rrf rs1) with
-        (if Z.eq_dec rs1 0 then word.of_Z 0
-         else match map.get rrf rs1 with
-              | Some x => x
-              | None => word.of_Z 0
-              end) in *
-          by (
-            unfold getReg; repeat destruct_one_match; try reflexivity;
-            exfalso;
-            [ Lia.lia
-            | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
-              change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
-              Lia.lia ]).
-      all: repeat r; t.
-      all: replace (getReg rrf rs2) with
-        (if Z.eq_dec rs2 0 then word.of_Z 0
+      all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
+                      else match map.get rrf rs1 with
+                           | Some x => x
+                           | None => word.of_Z 0
+                           end).
+      all: try (assert (getReg rrf rs1 = v') as Hv'; [|rewrite Hv' in *]).
+      1,3,5:
+        subst v'; unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
+      [ Lia.lia
+      | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
+        change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+        Lia.lia ].
+
+      all: repeat rt.
+      all: subst v; rewrite Hv' in *.
+      all: subst v0.      
+      all: set (v2' := if Z.eq_dec rs2 0 then word.of_Z 0
          else match map.get rrf rs2 with
               | Some x => x
               | None => word.of_Z 0
-              end) in *
-          by (
-            unfold getReg; repeat destruct_one_match; try reflexivity;
+              end).
+      all: try (assert (getReg rrf rs2 = v2') as Hv2'; [|rewrite Hv2' in *]).
+      1,3,5:
+        subst v2'; unfold getReg; repeat destruct_one_match; try reflexivity;
             exfalso;
             [ Lia.lia
             | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 20 25 as HR;
               change (bitSlice (@kunsigned 32 kinst) 20 25) with rs2 in HR;
-              Lia.lia ]).
+              Lia.lia ].
 
       (** Consistency proof for each instruction *)
       all: rt.
@@ -2693,7 +2705,7 @@ Section Equiv.
                  destruct H as [? [[? ?] ?]]; discriminate
                end.
       4: { exfalso.
-           subst v simm12.
+           subst v' simm12.
            destruct H5 as [? [? ?]].
            regs_get_red H5.
            apply is_mmio_sound in H5.
@@ -2711,7 +2723,7 @@ Section Equiv.
       all: prove_states_related.
 
       (* -- prove [RiscvXAddrsSafe] after store *)
-      all: subst v simm12 rs1 v0.
+      all: subst v2' simm12 rs1 v'.
       all: regs_get_red_goal; regs_get_red Hnmem.
 
       all: cbv [Memory.store_bytes] in Hnmem;
@@ -2740,7 +2752,7 @@ Section Equiv.
                HList.tuple.option_all HList.tuple.map HList.tuple.unfoldn
                Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2] in Hlv.
         repeat (destruct_one_match_hyp; [|discriminate]).
-        erewrite H12 in E1.
+        erewrite H12 in E2.
         destruct_one_match_hyp; [|discriminate].
         repeat apply RiscvXAddrsSafe_removeXAddr_write_ok; assumption.
       }
@@ -2751,7 +2763,7 @@ Section Equiv.
                HList.tuple.option_all HList.tuple.map HList.tuple.unfoldn
                Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2] in Hlv.
         repeat (destruct_one_match_hyp; [|discriminate]).
-        erewrite H12 in E1, E3, E5.
+        erewrite H12 in E2, E4, E6.
         repeat (destruct_one_match_hyp; [|discriminate]).
         repeat apply RiscvXAddrsSafe_removeXAddr_write_ok; assumption.
       }
@@ -2845,7 +2857,7 @@ Section Equiv.
     unblock_subst kupd.
 
     (** Evaluate (invert) the two fetchers *)
-    rt. eval_kami_fetch. rt.
+    rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
 
     (** Symbolic evaluation of Kami decode/execute *)
     kami_cbn_all.
@@ -2992,7 +3004,7 @@ Section Equiv.
     { (* [pc_related_and_valid] for `JAL` *)
       subst newPC jimm20.
       split. {
-        apply AddrAligned_consistent. rewrite E. reflexivity.
+        apply AddrAligned_consistent. rewrite E0. reflexivity.
       }
       clear; red.
       cbv [Utility.add
@@ -3005,7 +3017,7 @@ Section Equiv.
     }
 
     { (* [pc_related_and_valid] for `JALR` *)
-      subst newPC oimm12 v rs1.
+      subst newPC oimm12 v0 rs1.
       split. {
         apply AddrAligned_consistent. rewrite E. reflexivity.
       }
@@ -3193,7 +3205,7 @@ Section Equiv.
     unblock_subst kupd.
 
     (** Evaluate (invert) the two fetchers *)
-    rt. eval_kami_fetch. rt.
+    rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
 
     (** Symbolic evaluation of Kami decode/execute *)
     kami_cbn_all.
@@ -3356,7 +3368,7 @@ Section Equiv.
     { (* jal *)
       subst newPC jimm20.
       split. {
-        apply AddrAligned_consistent. rewrite E. reflexivity.
+        apply AddrAligned_consistent. rewrite E0. reflexivity.
       }
       clear; red.
       cbv [Utility.add
@@ -3369,7 +3381,7 @@ Section Equiv.
     }
 
     { (* jalr *)
-      subst newPC oimm12 v rs1.
+      subst newPC oimm12 v0 rs1.
       split. {
         apply AddrAligned_consistent. rewrite E. reflexivity.
       }
@@ -3385,7 +3397,7 @@ Section Equiv.
     { (* beq(eq) *)
       subst newPC sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E0. reflexivity.
+        apply AddrAligned_consistent. rewrite E1. reflexivity.
       }
       clear; red.
       cbv [Utility.add
@@ -3398,28 +3410,28 @@ Section Equiv.
     }
 
     { (* beq(eq-neq contradiction) *)
-      exfalso; subst v v0 rs1 rs2.
-      regs_get_red E.
+      exfalso; subst v v0 v1 v2 rs1 rs2.
+      regs_get_red E0.
       apply N2Z.inj, wordToN_inj in e1; auto.
     }
 
     { (* beq(eq-neq contradiction) *)
-      exfalso; subst v v0 rs1 rs2.
-      regs_get_red E; congruence.
+      exfalso; subst v v0 v1 v2 rs1 rs2.
+      regs_get_red E0; congruence.
     }
 
     { (* bne(neq) *)
       match goal with
       | [ |- context [Z.eqb ?x ?y] ] => destruct (Z.eqb_spec x y)
       end.
-      { exfalso; subst v v0 rs1 rs2.
-        regs_get_red E.
+      { exfalso; subst v v0 v1 v2 rs1 rs2.
+        regs_get_red E0.
         apply N2Z.inj, wordToN_inj in e1; auto.
       }
       { cbv [negb].
         subst addr sbimm12.
         split. {
-          apply AddrAligned_consistent. rewrite E0. reflexivity.
+          apply AddrAligned_consistent. rewrite E1. reflexivity.
         }
         clear; red.
         cbv [Utility.add
@@ -3437,20 +3449,20 @@ Section Equiv.
       | [ |- context [Z.eqb ?x ?y] ] => destruct (Z.eqb_spec x y)
       end.
       { apply pc_related_plus4; red; eauto. }
-      { exfalso; subst v v0 rs1 rs2.
-        regs_get_red E.
+      { exfalso; subst v v0 v1 v2 rs1 rs2.
+        regs_get_red E0.
         congruence.
       }
     }
 
     { (* blt(lt) *)
       cbv [evalBinBitBool].
-      subst v v0 rs1 rs2.
-      regs_get_red E.
-      destruct (wslt_dec _ _); [|exfalso; apply n; apply E].
+      subst v v0 v1 v2 rs1 rs2.
+      regs_get_red E0.
+      destruct (wslt_dec _ _); [|exfalso; apply n; apply E0].
       subst addr sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E0. reflexivity.
+        apply AddrAligned_consistent. rewrite E1. reflexivity.
       }
       clear; red.
       cbv [Utility.add
@@ -3464,22 +3476,22 @@ Section Equiv.
 
     { (* blt(not lt) *)
       cbv [evalBinBitBool].
-      subst v v0 rs1 rs2.
-      regs_get_red E.
+      subst v v0 v1 v2 rs1 rs2.
+      regs_get_red E0.
       destruct (wslt_dec _ _).
-      { exfalso. eapply Z.le_ngt in E. apply E. apply w. }
+      { exfalso. eapply Z.le_ngt in E0. apply E0. apply w. }
       apply pc_related_plus4; red; eauto.
     }
 
     { (* bge(ge) *)
       cbv [evalBinBitBool].
-      subst v v0 rs1 rs2.
-      regs_get_red E.
+      subst v v0 v1 v2 rs1 rs2.
+      regs_get_red E0.
       destruct (wslt_dec _ _).
-      { exfalso. eapply Z.le_ngt in E. apply E. apply w. }
+      { exfalso. eapply Z.le_ngt in E0. apply E0. apply w. }
       subst addr sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E0. reflexivity.
+        apply AddrAligned_consistent. rewrite E1. reflexivity.
       }
       clear; red.
       cbv [negb Utility.add
@@ -3493,29 +3505,29 @@ Section Equiv.
 
     { (* bge(not ge) *)
       cbv [evalBinBitBool].
-      subst v v0 rs1 rs2.
-      regs_get_red E.
-      destruct (wslt_dec _ _); [|exfalso; apply n; apply E].
+      subst v v0 v1 v2 rs1 rs2.
+      regs_get_red E0.
+      destruct (wslt_dec _ _); [|exfalso; apply n; apply E0].
       apply pc_related_plus4; red; eauto.
     }
 
     { (* bltu(ltu) *)
       cbv [evalBinBitBool].
-      subst v v0 rs1 rs2.
-      regs_get_red E.
+      subst v v0 v1 v2 rs1 rs2.
+      regs_get_red E0.
       destruct (wlt_dec _ _).
       2: {
         exfalso.
-        lazymatch type of E with
+        lazymatch type of E0 with
         | word.unsigned ?x < word.unsigned ?y =>
-            change (Z.of_N (wordToN x) < Z.of_N (wordToN y)) in E
+            change (Z.of_N (wordToN x) < Z.of_N (wordToN y)) in E0
         end.
-        eapply N2Z.inj_lt in E.
-        apply n. apply E.
+        eapply N2Z.inj_lt in E0.
+        apply n. apply E0.
       }
       subst addr sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E0. reflexivity.
+        apply AddrAligned_consistent. rewrite E1. reflexivity.
       }
       clear; red.
       cbv [Utility.add
@@ -3529,34 +3541,34 @@ Section Equiv.
 
     { (* bltu(not ltu) *)
       cbv [evalBinBitBool].
-      subst v v0 rs1 rs2.
-      regs_get_red E.
+      subst v v0 v1 v2 rs1 rs2.
+      regs_get_red E0.
       destruct (wlt_dec _ _). {
         exfalso.
-        lazymatch type of E with
+        lazymatch type of E0 with
         | word.unsigned ?x <= word.unsigned ?y =>
-            change (Z.of_N (wordToN x) <= Z.of_N (wordToN y)) in E
+            change (Z.of_N (wordToN x) <= Z.of_N (wordToN y)) in E0
         end.
-        eapply N2Z.inj_le in E. eapply N.lt_nge in w. apply w. apply E.
+        eapply N2Z.inj_le in E0. eapply N.lt_nge in w. apply w. apply E0.
       }
       apply pc_related_plus4; red; eauto.
     }
 
     { (* bgeu(geu) *)
       cbv [evalBinBitBool].
-      subst v v0 rs1 rs2.
-      regs_get_red E.
+      subst v v0 v1 v2 rs1 rs2.
+      regs_get_red E0.
       destruct (wlt_dec _ _). {
         exfalso.
-        lazymatch type of E with
+        lazymatch type of E0 with
         | word.unsigned ?x <= word.unsigned ?y =>
-            change (Z.of_N (wordToN x) <= Z.of_N (wordToN y)) in E
+            change (Z.of_N (wordToN x) <= Z.of_N (wordToN y)) in E0
         end.
-        eapply N2Z.inj_le in E. eapply N.lt_nge in w. apply w. apply E.
+        eapply N2Z.inj_le in E0. eapply N.lt_nge in w. apply w. apply E0.
       }
       subst addr sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E0. reflexivity.
+        apply AddrAligned_consistent. rewrite E1. reflexivity.
       }
       clear; red.
       cbv [negb Utility.add
@@ -3570,10 +3582,10 @@ Section Equiv.
 
     { (* bgeu(not geu) *)
       cbv [evalBinBitBool].
-      subst v v0 rs1 rs2.
-      regs_get_red E.
+      subst v v0 v1 v2 rs1 rs2.
+      regs_get_red E0.
       destruct (wlt_dec _ _).
-      2: { exfalso. apply n. eapply N2Z.inj_lt. apply E. }
+      2: { exfalso. apply n. eapply N2Z.inj_lt. apply E0. }
       apply pc_related_plus4; red; eauto.
     }
 
