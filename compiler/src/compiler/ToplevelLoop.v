@@ -314,7 +314,7 @@ Section Pipeline1.
         move init_code_correct at bottom.
         do 4 eexists. split. 1: eassumption. split. 1: reflexivity.
         eapply (*ExprImp.weaken_exec*)MetricLeakageSemantics.exec.weaken.
-        - refine (init_code_correct _ _ _ _ _).
+        - refine (init_code_correct _ _ _ _).
           replace (datamem_start spec) with (heap_start ml) by congruence.
           replace (datamem_pastend spec) with (heap_pastend ml) by congruence.
           exact HMem.
@@ -416,7 +416,7 @@ Section Pipeline1.
         * eapply iff1ToEq.
           unfold init_sp_insts, init_insts, loop_insts, backjump_insts.
           wwcancel.
-    Unshelve. exact MetricLogging.EmptyMetricLog.
+    Unshelve. 1: exact MetricLogging.EmptyMetricLog.
   Qed.
 
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),

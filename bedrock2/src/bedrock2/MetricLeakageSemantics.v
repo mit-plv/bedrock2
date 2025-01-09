@@ -640,9 +640,19 @@ Section WithParams.
       destruct IHarges as (mc'' & IH). rewrite IH. eauto.
   Qed.
 
+  Definition deleakaged_ext_spec :=
+    fun t mGive a args post => ext_spec t mGive a args (fun mReceive resvals klist => post mReceive resvals).
+  
+  Lemma deleakaged_ext_spec_ok {ext_spec_ok: ext_spec.ok ext_spec}:
+    Semantics.ext_spec.ok deleakaged_ext_spec.
+  Proof.
+    destruct ext_spec_ok. cbv [deleakaged_ext_spec]. constructor; eauto.
+    intros. cbv [Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl] in *.
+    intros. eapply weaken; eauto. intros. apply H. simpl in *. assumption.
+  Qed.    
+
   Context (e: env).
-  Context (sem_ext_spec : Semantics.ExtSpec := fun t mGive a args post => ext_spec t mGive a args (fun mReceive resvals klist => post mReceive resvals)).
-  Existing Instance sem_ext_spec.
+  Instance sem_ext_spec : Semantics.ExtSpec := deleakaged_ext_spec.
 
   Lemma to_plain_exec: forall c t m l post,
       Semantics.exec e c t m l post ->

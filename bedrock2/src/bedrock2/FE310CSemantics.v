@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import bedrock2.Syntax bedrock2.Semantics bedrock2.LeakageSemantics.
+Require Import bedrock2.Syntax bedrock2.Semantics bedrock2.LeakageSemantics bedrock2.MetricLeakageSemantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Import coqutil.Word.Interface.
 Require Export coqutil.Word.Bitwidth32.
@@ -60,6 +60,9 @@ Section WithParameters.
         end;
       eauto 8 using Properties.map.same_domain_refl.
   Qed.
+
+  Global Instance sem_ext_spec : Semantics.ExtSpec := deleakaged_ext_spec.
+  Global Instance sem_ext_spec_ok : Semantics.ext_spec.ok sem_ext_spec := deleakaged_ext_spec_ok.
 
   Global Instance locals: Interface.map.map String.string word := SortedListString.map _.
   Global Instance env: Interface.map.map String.string (list String.string * list String.string * cmd) :=

@@ -38,9 +38,9 @@ Section Params1.
     funs_valid: valid_src_funs e = true;
     init_code: Syntax.cmd.cmd;
     get_init_code: map.get (map.of_list e : env) init_f = Some (nil, nil, init_code);
-    init_code_correct: forall k0 m0 mc0,
+    init_code_correct: forall m0 mc0,
         mem_available spec.(datamem_start) spec.(datamem_pastend) m0 ->
-        (forall pick_spH : LeakageSemantics.PickSp, MetricLeakageSemantics.exec (map.of_list e) init_code nil k0 m0 map.empty mc0 (hl_inv spec));
+        (forall pick_spH : LeakageSemantics.PickSp, MetricLeakageSemantics.exec (map.of_list e) init_code nil nil m0 map.empty mc0 (hl_inv spec));
     loop_body: Syntax.cmd.cmd;
     get_loop_body: map.get (map.of_list e : env) loop_f = Some (nil, nil, loop_body);
     loop_body_correct: forall k t m l mc,

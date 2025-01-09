@@ -190,7 +190,7 @@ Section Connect.
   Definition goodTraceE(t: list Event): Prop :=
     exists bedrockTrace, traces_related t bedrockTrace /\ spec.(goodTrace) bedrockTrace.
 
-  Definition bedrock2Inv := (fun t m l => forall mc, hl_inv spec t m l mc).
+  Definition bedrock2Inv := (fun t m l => forall k mc, hl_inv spec k t m l mc).
 
   Hypothesis goodTrace_implies_related_to_Events: forall (t: list LogItem),
       spec.(goodTrace) t -> exists t': list Event, traces_related t' t.
@@ -282,7 +282,7 @@ Section Connect.
 
   #[export]
   Instance BWM_RV32I : FlatToRiscvCommon.bitwidth_iset 32 RV32I. constructor. Defined.
-
+  
   (* end to end, but still generic over the program *)
   Lemma end2end:
     (* Assumptions on the program logic level: *)
@@ -322,7 +322,7 @@ Section Connect.
 
     (* stack of proofs, bottom-up: *)
 
-    (* 1) Kami pipelined processor to riscv-coq *)
+    (* 1) Kami pipelined processor to riscv-coq *) Check riscv_to_kamiImplProcessor.
     pose proof @riscv_to_kamiImplProcessor as P1.
     specialize_first P1 traceProp.
     specialize_first P1 (ll_inv compile_ext_call ml spec).
@@ -333,7 +333,7 @@ Section Connect.
     (* destruct spec. TODO why "Error: sat is already used." ?? *)
 
     (* 2) riscv-coq to bedrock2 semantics *)
-    pose proof compiler_invariant_proofs compile_ext_call compile_ext_call_correct as P2.
+    pose proof compiler_invariant_proofs compile_ext_call leak_ext_call compile_ext_call_correct as P2.
     specialize_first P2 spec.
     specialize_first P2 ml.
     specialize_first P2 mlOk.
@@ -356,19 +356,19 @@ Section Connect.
         * exact V.
         * exact GetInit.
         * intros.
-          eapply ExprImp.weaken_exec.
+          eapply MetricLeakageSemantics.exec.weaken.
           -- match goal with
              | H: LowerPipeline.mem_available ?from ?to _ |- _ =>
                rewrite heap_start_agree in H;
                rewrite heap_pastend_agree in H
              end.
-             eapply MetricSemantics.of_metrics_free.
+             eapply MetricLeakageSemantics.to_plain_exec.
              eapply WeakestPreconditionProperties.sound_cmd; eauto.
           -- simpl. clear. intros. unfold bedrock2Inv in *. eauto.
         * exact GetLoop.
         * intros. unfold bedrock2Inv in *.
-          eapply ExprImp.weaken_exec.
-          -- eapply MetricSemantics.of_metrics_free.
+          eapply MetricLeakageSemantics.exec.weaken.
+          -- eapply MetricLeakageSemantics.to_plain_exec.
              eapply WeakestPreconditionProperties.sound_cmd; eauto.
           -- simpl. clear. intros. eauto.
       + assumption.
@@ -512,6 +512,7 @@ Section Connect.
         | H: forall _, _ -> _ <> None |- _ => eapply H; eauto
         end.
       + reflexivity.
+      + assumption.
       + simpl. split.
         * apply @riscv_init_memory_undef_on_MMIO with (instrMemSizeLg:= instrMemSizeLg).
           { apply instrMemSizeLg_bounds. }
