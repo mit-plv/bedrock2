@@ -28,7 +28,7 @@ Section WithParameters.
     n = 4%nat /\ word.unsigned addr mod 4 = 0.
 
 (* FE310 is a simple enough processor that our leakage assumptions are likely to hold.  There is no official documentation of whether multiply always takes the maximum time or not, but both https://eprint.iacr.org/2019/794.pdf and https://pure.tue.nl/ws/portalfiles/portal/169647601/Berg_S._ES_CSE.pdf quote a fixed number of cycles for FE310 multiplication in the context of cryptography. *)
-  Global Instance ext_spec: LeakageSemantics.ExtSpec :=
+  Global Instance leakage_ext_spec: LeakageSemantics.ExtSpec :=
     fun (t : trace) (mGive : mem) a (args: list word) (post: mem -> list word -> list word -> Prop) =>
     if String.eqb "MMIOWRITE" a then
       exists addr val,
@@ -42,10 +42,10 @@ Section WithParameters.
         forall val, post Interface.map.empty [val] [addr]
     else False.
 
-  Global Instance ext_spec_ok : ext_spec.ok ext_spec.
+  Global Instance leakage_ext_spec_ok : ext_spec.ok leakage_ext_spec.
   Proof.
     split;
-    cbv [ext_spec Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl];
+    cbv [leakage_ext_spec Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl];
     intros.
     all :
     repeat match goal with
@@ -61,8 +61,8 @@ Section WithParameters.
       eauto 8 using Properties.map.same_domain_refl.
   Qed.
 
-  Global Instance sem_ext_spec : Semantics.ExtSpec := deleakaged_ext_spec.
-  Global Instance sem_ext_spec_ok : Semantics.ext_spec.ok sem_ext_spec := deleakaged_ext_spec_ok.
+  Global Instance ext_spec : Semantics.ExtSpec := deleakaged_ext_spec.
+  Global Instance ext_spec_ok : Semantics.ext_spec.ok sem_ext_spec := deleakaged_ext_spec_ok.
 
   Global Instance locals: Interface.map.map String.string word := SortedListString.map _.
   Global Instance env: Interface.map.map String.string (list String.string * list String.string * cmd) :=

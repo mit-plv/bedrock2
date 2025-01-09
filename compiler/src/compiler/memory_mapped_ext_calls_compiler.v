@@ -422,7 +422,7 @@ Section MMIO.
     end.
     destruct_RiscvMachine initialL. subst.
     lazymatch goal with
-    | H: ext_spec _ _ _ _ _ |- _ => destruct H as (n & nValid & HExt)
+    | H: leakage_ext_spec _ _ _ _ _ |- _ => destruct H as (n & nValid & HExt)
     end.
     destruct HExt; fwd.
     - (* load *)

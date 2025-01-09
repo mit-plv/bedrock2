@@ -290,10 +290,10 @@ Section MMIO1.
     + (* MMOutput *)
       progress simpl in *|-.
       match goal with
-      | H: FE310CSemantics.ext_spec _ _ _ _ _ |- _ => rename H into Ex
+      | H: FE310CSemantics.leakage_ext_spec _ _ _ _ _ |- _ => rename H into Ex
       end.
       unfold compile_interact in *.
-      cbv [FE310CSemantics.ext_spec] in Ex.
+      cbv [FE310CSemantics.leakage_ext_spec] in Ex.
       rewrite E in *.
       destruct Ex as (?&?&?&(?&?&?)&?). subst mGive argvals.
       repeat match goal with
@@ -449,10 +449,10 @@ Section MMIO1.
     + (* MMInput *)
       simpl in *|-.
       match goal with
-      | H: FE310CSemantics.ext_spec _ _ _ _ _ |- _ => rename H into Ex
+      | H: FE310CSemantics.leakage_ext_spec _ _ _ _ _ |- _ => rename H into Ex
       end.
       unfold compile_interact in *.
-      cbv [FE310CSemantics.ext_spec] in Ex.
+      cbv [FE310CSemantics.leakage_ext_spec] in Ex.
       simpl in *|-.
 
       rewrite E in *.

@@ -187,7 +187,6 @@ Qed.*)
   Definition post : list LogItem -> mem32 -> list Words32Naive.word -> Prop := fun _ _ _ => True.
   
   Print spec_of_memequal.
-  Check (@compiler_correct_wp _ _ Words32Naive.word mem32 _ ext_spec _ _ _ ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct compile_ext_call_length fs_memequal instrs_memequal finfo_memequal req_stack_size_memequal fname_memequal _ _ _ _).
   Check compiler_correct_wp.
 
   Print spec_of_memequal.
@@ -221,12 +220,12 @@ Qed.*)
                  LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_memequal mH' 
                    Rdata Rexec final)).
   Proof.
-    assert (spec := @memequal_ok _ _ Words32Naive.word mem32 (SortedListString.map (@Naive.rep 32)) ext_spec).
+    assert (spec := @memequal_ok _ _ Words32Naive.word mem32 (SortedListString.map (@Naive.rep 32)) leakage_ext_spec).
     intros.
-    edestruct (@compiler_correct_wp _ _ Words32Naive.word mem32 _ ext_spec _ _ _ ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct compile_ext_call_length fs_memequal instrs_memequal finfo_memequal req_stack_size_memequal fname_memequal p_funcs stack_hi ret_addr f_rel_pos_memequal) as [f_ [pick_sp_ H] ].
+    edestruct (@compiler_correct_wp _ _ Words32Naive.word mem32 _ leakage_ext_spec _ _ _ leakage_ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct compile_ext_call_length fs_memequal instrs_memequal finfo_memequal req_stack_size_memequal fname_memequal p_funcs stack_hi ret_addr f_rel_pos_memequal) as [f_ [pick_sp_ H] ].
     { simpl. reflexivity. }
     { vm_compute. reflexivity. } Search SortedListString.map.
-    specialize (spec pick_sp_ word_ok' _ ltac:(apply SortedListString.ok) ext_spec_ok).
+    specialize (spec pick_sp_ word_ok' _ ltac:(apply SortedListString.ok) leakage_ext_spec_ok).
     cbv [LeakageProgramLogic.program_logic_goal_for] in spec.
     specialize (spec (map.of_list fs_memequal) eq_refl).
     cbv [spec_of_memequal] in spec. destruct spec as [f spec].
