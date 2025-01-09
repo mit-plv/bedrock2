@@ -16,7 +16,7 @@ Require Import riscv.Utility.Encode.
 Require Import riscv.Utility.RegisterNames.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.LeakageSemantics.
-Require Import compiler.CustomFix.
+Require Import compiler.FixEq.
 Require Import coqutil.Map.Interface.
 Require Import compiler.SeparationLogic.
 Require Import riscv.Spec.Decode.
@@ -92,7 +92,7 @@ Section FlatToRiscv1.
     | access_size.word => if bitwidth iset =? 32 then Lw else Ld
     end.
 
-  Definition leak_Lbu x := (ILeakage (Lbu_leakage x)).
+  Definition leak_Lbu x := ILeakage (Lbu_leakage x).
   Definition leak_Lhu x := ILeakage (Lhu_leakage x).
   Definition leak_Lw x := ILeakage (Lw_leakage x).
   Definition leak_Lwu x := I64Leakage (Lwu_leakage x).
@@ -757,28 +757,6 @@ Section FlatToRiscv1.
         (x1, x2, x3, x4, x5, x6) = (y1, y2, y3, y4, y5, y6) /\
           forall k rk,
             fx k rk = fy k rk.
-
-      (*is this used anywhere?*)
-      Lemma Equiv_sym (x y : tuple) :
-        Equiv x y -> Equiv y x.
-      Proof.
-        intros. cbv [Equiv] in *.
-        destruct x as [ [ [ [ [ [x1 x2] x3] x4] x5] x6] fx].
-        destruct y as [ [ [ [ [ [y1 y2] y3] y4] y5] y6] fy].
-        destruct H as [H1 H2]. auto.
-      Qed.
-
-      (*is this used anywhere?*)
-      Lemma lt_tuple_resp_Equiv_left (x1 x2 y : tuple) :
-        Equiv x1 x2 -> lt_tuple x1 y -> lt_tuple x2 y.
-      Proof.
-        cbv [lt_tuple Equiv]. 
-        destruct x1 as [ [ [ [ [ [x1_1 x2_1] x3_1] x4_1] x5_1] x6_1] fx_1].
-        destruct x2 as [ [ [ [ [ [x1_2 x2_2] x3_2] x4_2] x5_2] x6_2] fx_2].
-        destruct y as [ [ [ [ [ [y1 y2] y3] y4] y5] y6] fy].
-        cbn [project_tuple].
-        intros [H1 H2] H3. injection H1. intros. subst. assumption.
-      Qed.
       
       Lemma stmt_leakage_body_ext :
         forall (x1 x2 : tuple) (f1 : forall y : tuple, lt_tuple y x1 -> list LeakageEvent * word)
@@ -803,19 +781,6 @@ Section FlatToRiscv1.
         apply (@Fix_eq'_nondep _ _ lt_tuple_wf _ (stmt_leakage_body) Equiv eq).
         { apply stmt_leakage_body_ext. }
         { cbv [Equiv]. destruct tup as [ [ [ [ [ [x1 x2] x3] x4] x5] x6] fx]. intuition. }
-      Qed.
-
-      (*is this used anywhere?*)
-      Lemma stmt_leakage_ext :
-        forall (x1 x2 : tuple), Equiv x1 x2 -> stmt_leakage x1 = stmt_leakage x2.
-      Proof.
-        intros x1. induction x1 using (well_founded_induction lt_tuple_wf). intros.
-        rewrite fix_step. symmetry. rewrite fix_step.
-        apply stmt_leakage_body_ext.
-        - apply Equiv_sym. assumption.
-        - intros. apply H.
-          + eapply lt_tuple_resp_Equiv_left; eauto using Equiv_sym.
-          + assumption.
       Qed.
 
       Definition fun_leakage 

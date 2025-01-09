@@ -313,7 +313,7 @@ Section Pipeline1.
         unfold hl_inv in init_code_correct.
         move init_code_correct at bottom.
         do 4 eexists. split. 1: eassumption. split. 1: reflexivity.
-        eapply (*ExprImp.weaken_exec*)MetricLeakageSemantics.exec.weaken.
+        eapply MetricLeakageSemantics.exec.weaken.
         - refine (init_code_correct _ _ _ _).
           replace (datamem_start spec) with (heap_start ml) by congruence.
           replace (datamem_pastend spec) with (heap_pastend ml) by congruence.
@@ -416,7 +416,7 @@ Section Pipeline1.
         * eapply iff1ToEq.
           unfold init_sp_insts, init_insts, loop_insts, backjump_insts.
           wwcancel.
-    Unshelve. 1: exact MetricLogging.EmptyMetricLog.
+    Unshelve. exact MetricLogging.EmptyMetricLog.
   Qed.
 
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
@@ -523,7 +523,7 @@ Section Pipeline1.
         11: {
           move loop_body_correct at bottom.
           do 4 eexists. split. 1: eassumption. split. 1: reflexivity.
-          eapply (*ExprImp.weaken_exec*)MetricLeakageSemantics.exec.weaken.
+          eapply MetricLeakageSemantics.exec.weaken.
           - eapply loop_body_correct; eauto.
           - cbv beta. intros _ * _ HP. exists []. split. 1: reflexivity. exact HP.
         }
@@ -601,7 +601,7 @@ Section Pipeline1.
         * wcancel_assumption.
         * eapply rearrange_footpr_subset. 1: eassumption.
           wwcancel.
-    Unshelve. 1: exact nil. 1: exact MetricLogging.EmptyMetricLog.
+    Unshelve. 1: exact nil. exact MetricLogging.EmptyMetricLog.
   Qed.
 
   Lemma ll_inv_implies_prefix_of_good: forall st,

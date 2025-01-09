@@ -20,7 +20,7 @@ Import LeakageProgramLogic.Coercions.
 Section WithParameters.
   Context {word: word.word 32} {mem: Interface.map.map word Byte.byte}.
   Context {word_ok : word.ok word} {mem_ok : Interface.map.ok mem}.
-  Context {pick_sp: PickSp}. Locate "fnspec!".
+  Context {pick_sp: PickSp}.
 
 #[global] Instance ctspec_of_div3329 : spec_of "div3329" :=
     fnspec! exists f, "div3329" x ~> ret,

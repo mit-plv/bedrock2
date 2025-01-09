@@ -174,8 +174,7 @@ Section WithArguments1.
         * eapply H7p0p1.
         * solve_compile_post.
           -- agree_on_solve. repeat listset_to_set. subset_union_solve.
-          -- simpl. rewrite H0. 
-                 rewrite H7p5. reflexivity.
+          -- simpl. rewrite H0. rewrite H7p5. reflexivity.
     - intros.
       eapply agree_on_find in H3; fwd.
       destr (existsb (eqb x) used_after); fwd.
@@ -308,7 +307,7 @@ Section WithArguments1.
         unfold compile_post in *.
         fwd.
         apply agree_on_eval_bcond.
-        repeat listset_to_set. Check agree_on_union.
+        repeat listset_to_set.
         apply agree_on_union in H4p1.
         fwd.
         eapply agree_on_subset; [ | eapply H4p1p1 ].
@@ -318,7 +317,7 @@ Section WithArguments1.
       destruct (eval_bcond l' cond) as [b|] eqn:E; try congruence. exists b.
       split; [reflexivity|]. split.
       { intros. subst. solve_compile_post. rewrite <- app_assoc. simpl. rewrite H4p5.
-        cbv [CustomFix.Let_In_pf_nd]. rewrite List.skipn_app_r by reflexivity.
+        cbv [FixEq.Let_In_pf_nd]. rewrite List.skipn_app_r by reflexivity.
         simpl. rewrite <- app_assoc. reflexivity. }
       { intros. subst.
         eapply exec.weaken.
@@ -329,7 +328,7 @@ Section WithArguments1.
           - intros. rewrite associate_one_left. rewrite app_assoc. rewrite H8.
             repeat (rewrite rev_app_distr || cbn [rev List.app] || rewrite <- app_assoc).
             rewrite dfix_step. cbn [stmt_leakage_body]. rewrite H4p5.
-            cbv [CustomFix.Let_In_pf_nd]. rewrite List.skipn_app_r by reflexivity.
+            cbv [FixEq.Let_In_pf_nd]. rewrite List.skipn_app_r by reflexivity.
             reflexivity.
         }
         cbv beta. intros. fwd.
@@ -338,12 +337,12 @@ Section WithArguments1.
           intros. rewrite associate_one_left. repeat rewrite app_assoc. rewrite H8.
           repeat (rewrite rev_app_distr || cbn [rev List.app] || rewrite <- app_assoc).
           f_equal. f_equal. rewrite dfix_step. cbn [stmt_leakage_body]. rewrite H4p5.
-          cbv [CustomFix.Let_In_pf_nd]. rewrite List.skipn_app_r by reflexivity.
+          cbv [FixEq.Let_In_pf_nd]. rewrite List.skipn_app_r by reflexivity.
           f_equal. f_equal. rewrite H6p5. rewrite List.skipn_app_r by reflexivity.
           reflexivity. }
         cbv beta. intros. fwd. solve_compile_post. cbn [stmt_leakage_body].
         repeat (rewrite rev_app_distr || cbn [rev List.app] || rewrite <- app_assoc).
-        rewrite H4p5. f_equal. cbv [CustomFix.Let_In_pf_nd].
+        rewrite H4p5. f_equal. cbv [FixEq.Let_In_pf_nd].
         rewrite List.skipn_app_r by reflexivity. f_equal. rewrite H6p5.
         rewrite List.skipn_app_r by reflexivity. rewrite H6p9. reflexivity. }
     - intros.

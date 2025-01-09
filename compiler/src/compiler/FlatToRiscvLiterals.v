@@ -104,7 +104,7 @@ Section FlatToRiscvLiterals.
       simpl_word_exprs word_ok.
       match_apply_runsTo.
       erewrite signExtend_nop; eauto; try blia.
-      Tactics.destruct_one_match; try reflexivity.
+      destruct_one_match; reflexivity.
     - unfold compile_lit_32bit, leak_lit_32bit in *.
       simpl in P.
       run1det. run1det.
@@ -145,7 +145,7 @@ Section FlatToRiscvLiterals.
           }
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
-      + simpl. repeat Tactics.destruct_one_match || reflexivity.
+      + simpl. destruct_one_match; reflexivity.
     - unfold compile_lit_64bit, leak_lit_64bit, compile_lit_32bit, compile_lit_32bit in *.
       remember (signExtend 12 (signExtend 32 (bitSlice v 32 64))) as mid.
       remember (signExtend 32 (signExtend 32 (bitSlice v 32 64))) as hi.
@@ -189,8 +189,7 @@ Section FlatToRiscvLiterals.
         all: Btauto.btauto.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
-      + repeat Tactics.destruct_one_match || reflexivity.
-        (*^this is kind of absurd; I should be able to rewrite somethign to get rid of it*)
+      + destruct_one_match; reflexivity.
   Qed.
 
   Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R Rexec,

@@ -9,7 +9,7 @@ Require Import Coq.Logic.FunctionalExtensionality.
 Require Import riscv.Utility.Utility.
 Require Import coqutil.Map.MapEauto.
 Require Import coqutil.Tactics.Simp.
-Require Import compiler.CustomFix.
+Require Import compiler.FixEq.
 Require Import compiler.Registers.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SpillingMapGoals.
@@ -1602,7 +1602,7 @@ Section Spilling.
          execpost pick_sp e fbody k t m l mc (fun k' t' m' l' mc' =>
                    exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                                 post k' t' m' retvals mc').
-  
+
   (* In exec.call, there are many maps of locals involved:
 
          H = High-level, L = Low-level, C = Caller, F = called Function
@@ -1683,7 +1683,7 @@ Section Spilling.
       Z.to_euclidean_division_equations; blia.
     }
     eapply exec.seq_cps.
-    eapply set_vars_to_reg_range_correct. Check set_vars_to_reg_range_correct.
+    eapply set_vars_to_reg_range_correct.
     { eapply fresh_related with (m1 := m) (frame := eq map.empty).
       - eassumption.
       - blia.
@@ -2370,7 +2370,7 @@ Section Spilling.
       + align_trace.
       + intros. rewrite sfix_step. reflexivity.
   Qed.
- 
+
   Lemma spill_fun_correct: forall e1 e2 pick_sp2 argnames1 retnames1 body1 argnames2 retnames2 body2,
       spill_functions e1 = Success e2 ->
       spill_fun (argnames1, retnames1, body1) = Success (argnames2, retnames2, body2) ->

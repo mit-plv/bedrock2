@@ -2,6 +2,7 @@ Require Import coqutil.sanity coqutil.Byte.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.
 Require coqutil.Map.SortedListString.
+Require Import coqutil.Z.Lia.
 Require Import bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Export bedrock2.Memory.
@@ -261,8 +262,6 @@ Module exec. Section WithParams.
         eauto 10.
   Qed.
 
-    Require Import coqutil.Z.Lia.
-
   Lemma eval_expr_extends_trace :
     forall e0 m l mc k v mc' k',
     eval_expr m l e0 k mc = Some (v, k', mc') ->
@@ -401,7 +400,6 @@ Module exec. Section WithParams.
     (forall k', pick_sp1 (k' ++ k) = pick_sp2 (k' ++ k)) ->
     exec (pick_sp := pick_sp2) s k t m l mc post.
   Proof.
-    Set Printing Implicit.
     intros H1 pick_sp2. induction H1; intros; try solve [econstructor; eauto].
     - econstructor; eauto. intros. replace (pick_sp1 k) with (pick_sp2 k) in *.
       { subst a. eapply weaken.
@@ -640,7 +638,7 @@ Section WithParams.
       destruct IHarges as (mc'' & IH). rewrite IH. eauto.
   Qed.
 
-  Definition deleakaged_ext_spec :=
+  Definition deleakaged_ext_spec : Semantics.ExtSpec :=
     fun t mGive a args post => ext_spec t mGive a args (fun mReceive resvals klist => post mReceive resvals).
   
   Lemma deleakaged_ext_spec_ok {ext_spec_ok: ext_spec.ok ext_spec}:
@@ -652,7 +650,8 @@ Section WithParams.
   Qed.    
 
   Context (e: env).
-  Instance sem_ext_spec : Semantics.ExtSpec := deleakaged_ext_spec.
+  Existing Instance deleakaged_ext_spec.
+  Existing Instance deleakaged_ext_spec_ok.
 
   Lemma to_plain_exec: forall c t m l post,
       Semantics.exec e c t m l post ->

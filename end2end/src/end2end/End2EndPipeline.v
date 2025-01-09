@@ -282,7 +282,7 @@ Section Connect.
 
   #[export]
   Instance BWM_RV32I : FlatToRiscvCommon.bitwidth_iset 32 RV32I. constructor. Defined.
-  
+
   (* end to end, but still generic over the program *)
   Lemma end2end:
     (* Assumptions on the program logic level: *)
@@ -322,7 +322,7 @@ Section Connect.
 
     (* stack of proofs, bottom-up: *)
 
-    (* 1) Kami pipelined processor to riscv-coq *) Check riscv_to_kamiImplProcessor.
+    (* 1) Kami pipelined processor to riscv-coq *)
     pose proof @riscv_to_kamiImplProcessor as P1.
     specialize_first P1 traceProp.
     specialize_first P1 (ll_inv compile_ext_call ml spec).

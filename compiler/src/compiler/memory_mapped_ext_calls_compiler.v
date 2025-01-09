@@ -28,13 +28,10 @@ Require Import coqutil.Datatypes.Option.
 Require Import compiler.RiscvWordProperties.
 Require Import coqutil.Datatypes.ListSet.
 
-
 (* Goal of this file: compile from this (bedrock2 ext calls): *)
 Require Import bedrock2.memory_mapped_ext_spec.
-
 (* to this (risc-v "ext calls" implemented by load and store instructions): *)
 Require Import compiler.memory_mapped_ext_calls_riscv.
-Fail Fail Check MetricMaterialize.
 
 Import ListNotations.
 
@@ -104,7 +101,7 @@ Section GetSetRegValid.
     unfold valid_register, getReg. intros. destruct_one_match.
     - rewrite H0. reflexivity.
     - exfalso. lia.
-  Qed. Check getReg.
+  Qed.
 
   Lemma setReg_valid:
     forall x (v: word) regs, valid_register x -> setReg x v regs = map.put regs x v.
@@ -241,7 +238,7 @@ Section MMIO.
     eapply go_associativity;
     (epose proof go_getRegister as H; cbn [getRegister] in H; eapply H; [eassumption|eassumption|clear H]);
     (*we have the above awkwardness because go_getRegister is stated in terms of the
-      getRegister of a RiscvProgramWithLeakage, while the goal here is in terms of
+      getRegister of a RiscvProgramWithLeakage, while the goal here is (why?) in terms of
       the getRegister of the RiscvProgram belonging to the RiscvProgramWithLeakage
       ... i'm not sure how best to fix this.  should go_getRegister be changed to use
       the getRegister of a RiscvProgram?*)
@@ -430,7 +427,7 @@ Section MMIO.
       destruct argvars. 2: discriminate Hl. clear Hl.
       fwd.
       unfold compile_interact in *. cbn [List.length] in *.
-      pose proof go_fetch_inst as gfi. cbn [getRegister] in gfi. (*this nonsense again*)
+      pose proof go_fetch_inst as gfi. cbn [getRegister] in gfi.
       eapply gfi; clear gfi; simpl_MetricRiscvMachine_get_set.
       { reflexivity. }
       { eapply rearrange_footpr_subset. 1: eassumption. wwcancel. }

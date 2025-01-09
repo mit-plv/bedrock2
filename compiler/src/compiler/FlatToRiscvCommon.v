@@ -214,7 +214,7 @@ Section WithParameters.
     clear -BW.
     intros. unfold framelength.
     pose proof (stackalloc_words_nonneg body).
-    assert (SeparationLogic.bytes_per_word = 4 \/ bytes_per_word = 8). {
+    assert (bytes_per_word = 4 \/ bytes_per_word = 8). {
       unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
     }
     Z.div_mod_to_equations.
@@ -291,13 +291,13 @@ Section WithParameters.
       let '(argnames, retnames, fbody) := fun_impl in
       exists pos, map.get finfo f = Some pos /\ pos mod 4 = 0.
 
-  Local Notation stmt := (stmt Z). Check @exec.
+  Local Notation stmt := (stmt Z).
   Local Notation exec pick_sp e := (@exec _ _ _ _ _ _ _ _ PostSpill isRegZ e pick_sp).
   
   (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
      we enter a new function body, to make sure functions cannot call themselves, while
      [e_impl] and [e_pos] remain the same throughout because that's mandated by
-     [FlatImp.exec] and [compile_stmt], respectively *) Check stmt_leakage.
+     [FlatImp.exec] and [compile_stmt], respectively *)
   Definition compiles_FlatToRiscv_correctly{BWM: bitwidth_iset width iset}
     (f: pos_map -> Z -> Z -> stmt -> list Instruction)
     (s: stmt): Prop :=

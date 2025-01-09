@@ -1642,10 +1642,8 @@ Section Equiv.
       unblock_subst kupd.
 
       (** Evaluate (invert) the two fetchers *)
-      rt. eval_kami_fetch. r || t.
-      r || t. Print inst'.
-      subst inst'. rewrite H11 in *. (*this let comes from a let that I typed in run1... apparently this rewrite H11 in * happened sometime a while ago, but it didnt work because inst' was stuck in a let or something.  anyway, this would go away if i hadn't typed the let in run1.*)
-      rt.
+      rt. eval_kami_fetch. rt.
+      subst inst'. rewrite H11 in *.
 
       (** Begin symbolic evaluation of Kami decode/execute *)
       kami_cbn_hint Heqic.
@@ -1706,7 +1704,7 @@ Section Equiv.
       all: simpl_bit_manip.
 
       (** Evaluation of riscv-coq decode/execute *)
-      
+
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
@@ -1723,7 +1721,7 @@ Section Equiv.
                | H : Z |- _ => clear H
                | H : list Instruction |- _ => clear H
                | H : Instruction |- _ => clear H
-          end.
+               end.
 
       all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
                       else match map.get rrf rs1 with
@@ -1746,7 +1744,7 @@ Section Equiv.
       all: try match goal with
                | [H: match Memory.load_bytes ?sz ?m ?a with | Some _ => _ | None => _ end |- _] =>
                  destruct (Memory.load_bytes sz m a) as [lv|] eqn:Hlv; [exfalso|]
-             end.
+               end.
       all: subst v; rewrite Hv' in *. 
       all: try (subst v' oimm12;
                 regs_get_red Hlv;
@@ -1822,7 +1820,8 @@ Section Equiv.
       unblock_subst kupd.
 
       (** Evaluate (invert) the two fetchers *)
-      rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
+      rt. eval_kami_fetch. rt.
+      subst inst'. rewrite H11 in *.
 
       (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
@@ -1899,7 +1898,7 @@ Section Equiv.
                | H : Z |- _ => clear H
                | H : list Instruction |- _ => clear H
                | H : Instruction |- _ => clear H
-          end.
+               end.
 
       all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
                       else match map.get rrf rs1 with
@@ -2092,7 +2091,8 @@ Section Equiv.
       unblock_subst kupd.
 
       (** Evaluate (invert) the two fetchers *)
-      rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
+      rt. eval_kami_fetch. rt.
+      subst inst'. rewrite H11 in *.
 
       (** Begin symbolic evaluation of Kami decode/execute *)
       kami_cbn_hint Heqic.
@@ -2166,7 +2166,7 @@ Section Equiv.
                | H : Z |- _ => clear H
                | H : list Instruction |- _ => clear H
                | H : Instruction |- _ => clear H
-          end.
+               end.
 
       all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
                       else match map.get rrf rs1 with
@@ -2256,7 +2256,8 @@ Section Equiv.
       unblock_subst kupd.
 
       (** Evaluate (invert) the two fetchers *)
-      rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
+      rt. eval_kami_fetch. rt.
+      subst inst'. rewrite H11 in *.
 
       (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
@@ -2419,7 +2420,8 @@ Section Equiv.
       unblock_subst kupd.
 
       (** Evaluate (invert) the two fetchers *)
-      rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
+      rt. eval_kami_fetch. rt.
+      subst inst'. rewrite H11 in *.
 
       (** Begin symbolic evaluation of Kami decode/execute *)
       kami_cbn_hint Heqic.
@@ -2588,7 +2590,8 @@ Section Equiv.
       unblock_subst kupd.
 
       (** Evaluate (invert) the two fetchers *)
-      rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
+      rt. eval_kami_fetch. rt.
+      subst inst'. rewrite H11 in *.
 
       (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
@@ -2654,7 +2657,7 @@ Section Equiv.
                | H : Z |- _ => clear H
                | H : list Instruction |- _ => clear H
                | H : Instruction |- _ => clear H
-          end.
+               end.
 
       all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
                       else match map.get rrf rs1 with
@@ -2857,7 +2860,8 @@ Section Equiv.
     unblock_subst kupd.
 
     (** Evaluate (invert) the two fetchers *)
-    rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
+    rt. eval_kami_fetch. rt.
+    subst inst'. rewrite H11 in *.
 
     (** Symbolic evaluation of Kami decode/execute *)
     kami_cbn_all.
@@ -3205,7 +3209,8 @@ Section Equiv.
     unblock_subst kupd.
 
     (** Evaluate (invert) the two fetchers *)
-    rt. eval_kami_fetch. r || t. r || t. subst inst'. rewrite H11 in *. rt.
+    rt. eval_kami_fetch. rt.
+    subst inst'. rewrite H11 in *.
 
     (** Symbolic evaluation of Kami decode/execute *)
     kami_cbn_all.

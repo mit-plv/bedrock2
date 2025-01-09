@@ -1,3 +1,4 @@
+
 Require Import bedrock2.LeakageSemantics.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import coqutil.Map.Interface.
@@ -134,8 +135,6 @@ Section LowerPipeline.
   Context {word: word.word width} {word_ok: word.ok word}.
   Context {locals: map.map Z word} {locals_ok: map.ok locals}.
   Context {mem: map.map word byte} {mem_ok: map.ok mem}.
-  (*Context (leak_ext_call: pos_map -> Z -> Z -> stmt Z -> list word -> list LeakageEvent).*)
-
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -392,11 +391,11 @@ Section LowerPipeline.
       compiles_FlatToRiscv_correctly compile_ext_call leak_ext_call compile_ext_call
                                      (FlatImp.SInteract resvars extcall argvars).
 
-  Definition riscv_call(p: list Instruction * pos_map * Z)(s: word(*p_funcs*) * word (*stack_pastend*) * word (*ret_addr*))
-             (f_name: string)(kL: list LeakageEvent)(t: Semantics.trace)(mH: mem)(argvals: list word)(mc: MetricLog)
-             (post: list LeakageEvent -> Semantics.trace -> mem -> list word -> MetricLog -> Prop): Prop :=
+  Definition riscv_call(p: list Instruction * pos_map * Z)
+    (p_funcs stack_pastend ret_addr : word)(f_name: string)(kL: list LeakageEvent)
+    (t: Semantics.trace)(mH: mem)(argvals: list word)(mc: MetricLog)
+    (post: list LeakageEvent -> Semantics.trace -> mem -> list word -> MetricLog -> Prop): Prop :=
     let '(instrs, finfo, req_stack_size) := p in
-    let '(p_funcs, stack_pastend, ret_addr) := s in
     exists f_rel_pos,
       map.get finfo f_name = Some f_rel_pos /\
       forall stack_start Rdata Rexec (initial: MetricRiscvMachine),
@@ -487,7 +486,6 @@ Section LowerPipeline.
     cbv beta iota zeta in H.
     exact H.
   Qed.
-  Print fun_leakage. Check riscvPhase. 
 
   Lemma flat_to_riscv_correct: forall p1 p2,
      map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
@@ -509,7 +507,7 @@ Section LowerPipeline.
                 exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                              post kH' t' m' retvals mc')) ->
       forall mcL,
-        riscv_call p2 (p_funcs, stack_pastend, ret_addr) fname kL t m argvals mcL
+        riscv_call p2 p_funcs stack_pastend ret_addr fname kL t m argvals mcL
           (fun kL' t m a mcL' =>
              exists mcH' kH' kH'',
                metricsLeq (mcL' - mcL) (mcH' - mcH) /\
@@ -629,7 +627,7 @@ Section LowerPipeline.
       + eassumption.
       + assumption.
       + unfold machine_ok in *. fwd. assumption.
-      + Search (getTrace initial). rewrite H1. reflexivity.
+      + rewrite H1. reflexivity.
       + simpl_g_get. reflexivity.
       + unfold machine_ok in *. subst. fwd.
         unfold goodMachine; simpl_g_get. ssplit.

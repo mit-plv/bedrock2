@@ -301,7 +301,7 @@ Module exec.
     Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
     Context {mem: map.map word byte} {locals: map.map varname word}
             {env: map.map String.string (list varname * list varname * stmt varname)}.
-    Context {ext_spec: ExtSpec} .
+    Context {ext_spec: ExtSpec}.
     Context {varname_eq_spec: EqDecider varname_eqb}
             {word_ok: word.ok word}
             {mem_ok: map.ok mem}
@@ -669,7 +669,6 @@ Module exec.
         (forall k', pick_sp1 (k' ++ k) = pick_sp2 (k' ++ k)) ->
         exec (pick_sp := pick_sp2) s k t m l mc post.
     Proof.
-      Set Printing Implicit.
       intros H1 pick_sp2. induction H1; intros; try solve [econstructor; eauto].
       - econstructor. 4: eapply exec_extends_trace. all: intuition eauto.
         { eapply IHexec. intros. rewrite associate_one_left.

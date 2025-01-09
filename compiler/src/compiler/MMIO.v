@@ -116,9 +116,8 @@ Section MMIO1.
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := word)),
-        constants [word_cst]).
+       constants [word_cst]).
 
-  
   Definition leak_interact(abs_pos: word)(results: list Z) a (args: list Z) (leakage: list word):
     list LeakageEvent :=
     match leakage with

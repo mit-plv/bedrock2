@@ -49,20 +49,20 @@ Section WithParameters.
     intros.
     all :
     repeat match goal with
-        | H : context[(?x =? ?y)%string] |- _ =>
-            destruct (x =? y)%string in *
-        | H: exists _, _ |- _ => destruct H
-        | H: _ /\ _ |- _ => destruct H
-        | H: False |- _ => destruct H
-        end; subst;
-      repeat match goal with
-        | H: _ :: _ = _ :: _ |- _ => injection H; intros; subst; clear H
-        end;
-      eauto 8 using Properties.map.same_domain_refl.
+      | H : context[(?x =? ?y)%string] |- _ =>
+          destruct (x =? y)%string in *
+      | H: exists _, _ |- _ => destruct H
+      | H: _ /\ _ |- _ => destruct H
+      | H: False |- _ => destruct H
+    end; subst;
+    repeat match goal with
+      | H: _ :: _ = _ :: _ |- _ => injection H; intros; subst; clear H
+    end;
+    eauto 8 using Properties.map.same_domain_refl.
   Qed.
 
   Global Instance ext_spec : Semantics.ExtSpec := deleakaged_ext_spec.
-  Global Instance ext_spec_ok : Semantics.ext_spec.ok sem_ext_spec := deleakaged_ext_spec_ok.
+  Global Instance ext_spec_ok : Semantics.ext_spec.ok ext_spec := deleakaged_ext_spec_ok.
 
   Global Instance locals: Interface.map.map String.string word := SortedListString.map _.
   Global Instance env: Interface.map.map String.string (list String.string * list String.string * cmd) :=

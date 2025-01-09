@@ -240,7 +240,7 @@ Section Proofs.
     | |- _ => solve [ solve_valid_machine word_ok ]
     | H:subset (footpr _) _
       |- subset (footpr _) _ => eapply rearrange_footpr_subset; [ exact H | solve [ wwcancel ] ]
-    | |- _ => solve [ rewrite ?of_list_list_union in *; eauto 8 with map_hints ]          
+    | |- _ => solve [ rewrite ?of_list_list_union in *; eauto 8 with map_hints ]
     | |- _ => idtac
   end.
 
@@ -799,7 +799,7 @@ Section Proofs.
         - blia.
         - wcancel_assumption.
       }
-      { simpl. intros. rewrite PSP. Print fun_leakage.
+      { simpl. intros. rewrite PSP.
         cbv [fun_leakage fun_leakage_helper].
         simpl_rev.
         rewrite BPW in *. repeat rewrite <- app_assoc. cbn [List.app].
@@ -1179,10 +1179,10 @@ Section Proofs.
       blia.
 
     + do 2 eexists. split; [solve [align_trace]|]. simpl. cbv [final_trace]. simpl.
-      split; [reflexivity|]. Print fun_leakage. intros. cbv [fun_leakage fun_leakage_helper].
+      split; [reflexivity|]. intros. cbv [fun_leakage fun_leakage_helper].
       simpl_rev. rewrite BPW in *. repeat rewrite <- app_assoc in *. cbn [List.app] in *.
       remember (p_sp - _) as new_sp. eassert (Esp: new_sp = _).
-      2: { rewrite Esp in *. Print simpl_rev. rewrite H2p7p2. f_equal. repeat f_equal.
+      2: { rewrite Esp in *. rewrite H2p7p2. f_equal. repeat f_equal.
            cbv [leakage_events_rel]. rewrite leakage_events_app.
            2: { rewrite length_load_regs, length_leak_load_regs. reflexivity. }
            rewrite length_load_regs. simpl. repeat solve_word_eq word_ok || f_equal. }
@@ -1503,7 +1503,7 @@ Section Proofs.
       assert (valid_register RegisterNames.ra) by (cbv; auto).
       assert (valid_register RegisterNames.sp) by (cbv; auto).
 
-      (* jump to function *) 
+      (* jump to function *)
       eapply runsToStep. {
         eapply run_Jal; simpl; try solve [sidecondition]; cycle 2.
         - solve_divisibleBy4.
@@ -1554,7 +1554,7 @@ Section Proofs.
                  goodMachine finalTrace finalMH finalRegsH g finalL))
       end.
       2: { subst. reflexivity. }
-      
+
       pose proof functions_expose as P.
       match goal with
       | H: map.get e_impl _ = Some _ |- _ => specialize P with (2 := H)
@@ -1720,8 +1720,7 @@ Section Proofs.
               | H: (binds_count <= 8)%nat |- _ => rename H into BC
               end.
               move BC after OC.
-              (*I need to remember the definition of mach, or at least that getTrace mach = _ :: getTrace...
-                why are we doing the clearbody thing?*)
+              (*We need to remember the definition of mach, or at least that getTrace mach = _ :: getTrace...*)
               eassert (Hmach : mach.(getTrace) = _).
               { subst mach. simpl. cbv [final_trace]. simpl. reflexivity. }
               repeat match goal with
@@ -2174,8 +2173,8 @@ Section Proofs.
             all: try safe_sidecond.
             1: reflexivity.
             intros. repeat rewrite associate_one_left, app_assoc. rewrite H18.
-            rewrite fix_step. simpl. simpl_rev. Search body1. rewrite H3p4p2.
-            rewrite List.skipn_app_r by reflexivity. cbn [CustomFix.Let_In_pf_nd].
+            rewrite fix_step. simpl. simpl_rev. rewrite H3p4p2.
+            rewrite List.skipn_app_r by reflexivity. cbn [FixEq.Let_In_pf_nd].
             simpl_rev. repeat rewrite <- app_assoc.
             cbn [leakage_events_rel leakage_events].
             repeat solve_word_eq word_ok || f_equal. reflexivity. }
@@ -2194,8 +2193,8 @@ Section Proofs.
             all: try safe_sidecond.
             1: reflexivity.
             intros. rewrite associate_one_left, 2 app_assoc. rewrite H18.
-            rewrite fix_step. simpl. simpl_rev. Search body1. rewrite H3p4p2.
-            rewrite List.skipn_app_r by reflexivity. cbn [CustomFix.Let_In_pf_nd].
+            rewrite fix_step. simpl. simpl_rev. rewrite H3p4p2.
+            rewrite List.skipn_app_r by reflexivity. cbn [FixEq.Let_In_pf_nd].
             simpl_rev. repeat rewrite <- app_assoc.
             cbn [leakage_events_rel leakage_events].
             eassert (rev finalKL ++ _ = _) as ->. 2: rewrite H3p12p2.
@@ -2205,7 +2204,7 @@ Section Proofs.
           (* at end of loop, just prove that computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd. run1done. 1: finishcost.
           intros. rewrite H3p4p2. rewrite List.skipn_app_r by reflexivity.
-          cbn [CustomFix.Let_In_pf_nd].
+          cbn [FixEq.Let_In_pf_nd].
           simpl_rev. repeat rewrite <- app_assoc.
             cbn [leakage_events_rel leakage_events].
             eassert (rev finalKL ++ _ = _) as ->. 2: rewrite H3p12p2.
@@ -2224,8 +2223,8 @@ Section Proofs.
           }
           simpl_MetricRiscvMachine_get_set.
           intros. destruct_RiscvMachine mid. fwd. run1done. 1: finishcost.
-          Search body1. rewrite H3p4p2. rewrite List.skipn_app_r by reflexivity.
-          cbn [CustomFix.Let_In_pf_nd]. repeat solve_word_eq word_ok || f_equal.
+          rewrite H3p4p2. rewrite List.skipn_app_r by reflexivity.
+          cbn [FixEq.Let_In_pf_nd]. repeat solve_word_eq word_ok || f_equal.
 
     - idtac "Case compile_stmt_correct/SSeq".
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]
@@ -2254,11 +2253,11 @@ Section Proofs.
           all: try safe_sidecond.
           1: reflexivity.
           intros. rewrite app_assoc. rewrite H14. rewrite fix_step. simpl.
-          Search s1. simpl_rev. rewrite H1p4p2. rewrite List.skipn_app_r by reflexivity.
+          simpl_rev. rewrite H1p4p2. rewrite List.skipn_app_r by reflexivity.
           reflexivity.
         * simpl. intros. destruct_RiscvMachine middle. fwd. run1done.
           rewrite H1p4p2. rewrite List.skipn_app_r by reflexivity.
-          Search s2. rewrite H1p12p2. reflexivity.
+          rewrite H1p12p2. reflexivity.
 
     - idtac "Case compile_stmt_correct/SSkip".
       run1done.
