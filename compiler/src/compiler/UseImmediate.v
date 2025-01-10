@@ -1,4 +1,5 @@
 Require Import compiler.util.Common.
+Require Import bedrock2.LeakageSemantics.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.Syntax.
@@ -17,7 +18,8 @@ Section WithArguments.
   Context {env :  map.map string (list var * list var * stmt var) } {env_ok : map.ok env}.
   Context {mem :  map.map word (Init.Byte.byte : Type) } {mem_ok: map.ok mem}.
   Context {locals :  map.map string word } {locals_ok: map.ok locals}.
-  Context {ext_spec : Semantics.ExtSpec} {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
+  Context {ext_spec : ExtSpec} {ext_spec_ok: ext_spec.ok ext_spec}.
+  Context {pick_sp: PickSp}.
   Context (is5BitImmediate : Z -> bool).
   Context (is12BitImmediate  : Z -> bool).
 
@@ -71,11 +73,11 @@ Section WithArguments.
   Lemma useImmediate_correct_aux:
     forall eH eL,
        (useimmediate_functions is5BitImmediate is12BitImmediate) eH = Success eL ->
-       forall sH t m mcH lH post,
-       exec eH sH t m lH mcH post ->
+       forall sH k t m mcH lH post,
+       exec eH sH k t m lH mcH post ->
        forall mcL,
-       exec eL (useImmediate is5BitImmediate is12BitImmediate sH) t m lH mcL
-       (fun t' m' l' mcL' => exists mcH', metricsLeq (mcL' - mcL) (mcH' - mcH) /\ post t' m' l' mcH').
+       exec eL (useImmediate is5BitImmediate is12BitImmediate sH) k t m lH mcL
+       (fun k' t' m' l' mcL' => exists mcH', metricsLeq (mcL' - mcL) (mcH' - mcH) /\ post k' t' m' l' mcH').
   Proof.
     induction 2; try solve [
       simpl; econstructor; eauto;
@@ -91,13 +93,13 @@ Section WithArguments.
         exact Hmap. }
       cbv beta.
       intros * (?&?&Houtcome).
-      destruct (H4 _ _ _ _ Houtcome) as (retvs&l'&Hpost).
+      destruct (H4 _ _ _ _ _ Houtcome) as (retvs&l'&Hpost).
       exists retvs, l'.
       tandem Hpost.
       finish.
 
     - (* SStackalloc *)
-      simpl; econstructor; eauto.
+      simpl; econstructor; eauto. simpl in *.
       tandem H2.
       eapply exec.weaken; [eauto|].
       simpl; intros * (?&?&?&?&?&?&?).
@@ -120,7 +122,7 @@ Section WithArguments.
       { intros * (?&?&?) **.
         eapply exec.weaken; [eauto|].
         simpl; intros * (?&?&?).
-        instantiate (1 := fun t m l MC1 => exists MC2, MC1 - mcL <= MC2 - mc /\ mid2 t m l MC2).
+        instantiate (1 := fun k t m l MC1 => exists MC2, MC1 - mcL <= MC2 - mc /\ mid2 k t m l MC2).
         finish. }
       { intros * (?&?&?).
         eapply exec.weaken; [eauto|].
@@ -145,18 +147,18 @@ Section WithArguments.
       all: eapply @exec.seq_cps; eapply @exec.lit.
 
       all: match goal with
-           | H: exec _ _ _ _ _ _ ?mid,
-               H': forall t m l mc,
-                 ?mid _ _ _ _ -> exec ?eL _ _ _ _ _ ?post
+           | H: exec _ _ _ _ _ _ _ ?mid,
+               H': forall k t m l mc,
+                 ?mid _ _ _ _ _ -> exec ?eL _ _ _ _ _ _ ?post
                  |- _ => inversion H
            end.
 
       all: match goal with
-           | H: ?mid _ _ _ _,
-             H0: forall t m l mc,
-                 ?mid t m l mc -> forall mcL, exec ?eL _ _ _ _ mcL _
-                 |- exec ?eL _ _ _ _ _ _
-             => specialize (H0 _ _ _ _ H EmptyMetricLog); inversion H0
+           | H: ?mid _ _ _ _ _,
+             H0: forall k t m l mc,
+                 ?mid k t m l mc -> forall mcL, exec ?eL _ _ _ _ _ mcL _
+                 |- exec ?eL _ _ _ _ _ _ _
+             => specialize (H0 _ _ _ _ _ H EmptyMetricLog); inversion H0
            end.
 
       all: simpl in *;

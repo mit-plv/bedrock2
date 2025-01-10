@@ -3,6 +3,7 @@ Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Byte.
 Require Import riscv.Utility.bverify.
+Require Import riscv.Spec.LeakageOfInstr.
 Require Import bedrock2.Array.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import compiler.SeparationLogic.
@@ -35,10 +36,10 @@ Section Pipeline1.
   Context {mem: map.map word byte}.
   Context {Registers: map.map Z word}.
   Context {string_keyed_map: forall T: Type, map.map string T}. (* abstract T for better reusability *)
-  Context {ext_spec: Semantics.ExtSpec}.
+  Context {ext_spec: LeakageSemantics.ExtSpec}.
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
-  Context {RVM: RiscvProgram M word}.
+  Context {RVM: RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context {string_keyed_map_ok: forall T, map.ok (string_keyed_map T)}.
@@ -47,10 +48,11 @@ Section Pipeline1.
   Context {iset: InstructionSet}.
   Context {BWM: bitwidth_iset width iset}.
   Context {mem_ok: map.ok mem}.
-  Context {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
+  Context {ext_spec_ok: LeakageSemantics.ext_spec.ok ext_spec}.
   Context (compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z -> list Instruction).
+  Context (leak_ext_call: word -> string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z -> list word -> list LeakageEvent).
   Context (compile_ext_call_correct: forall resvars extcall argvars,
-              compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
+              compiles_FlatToRiscv_correctly compile_ext_call leak_ext_call compile_ext_call
                                              (FlatImp.SInteract resvars extcall argvars)).
   Context (compile_ext_call_length_ignores_positions: forall stackoffset posmap1 posmap2 c pos1 pos2,
               List.length (compile_ext_call posmap1 pos1 stackoffset c) =
@@ -191,6 +193,7 @@ Section Pipeline1.
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) /\
       regs_initialized.regs_initialized initial.(getRegs) /\
       initial.(getLog) = nil /\
+      initial.(getTrace) = Some nil /\
       valid_machine initial.
 
   Lemma compiler_invariant_proofs:
@@ -201,7 +204,7 @@ Section Pipeline1.
                 exists suff, spec.(goodTrace) (suff ++ st.(getLog))).
   Proof.
     ssplit; intros.
-    - eapply (establish_ll_inv _ compile_ext_call_correct compile_ext_call_length_ignores_positions).
+    - eapply (establish_ll_inv _ _ compile_ext_call_correct compile_ext_call_length_ignores_positions).
       1: assumption.
       unfold initial_conditions, ToplevelLoop.initial_conditions in *.
       simp.

@@ -10,7 +10,7 @@ Require coqutil.Datatypes.String.
 Require Import coqutil.Map.Interface coqutil.Map.Domain.
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import coqutil.Word.Properties.
-Require Import bedrock2.Semantics.
+Require Import bedrock2.Semantics bedrock2.LeakageSemantics bedrock2.MetricLeakageSemantics.
 Require Import bedrock2.TraceInspection.
 Local Open Scope string_scope.
 
@@ -48,18 +48,20 @@ Section WithMem.
   (* Note: This ext_spec is crafted in such a way that no matter how liberal
      read_step and write_step are, all ext calls allowed by this ext_spec can
      be compiled to a RISC-V load or store instruction *)
-  Definition ext_spec{mmio_ext_calls: MemoryMappedExtCalls}: ExtSpec :=
+  Definition leakage_ext_spec{mmio_ext_calls: MemoryMappedExtCalls}: ExtSpec :=
     fun (t: trace) (mGive: mem) (action: string) (args: list word)
-        (post: mem -> list word -> Prop) =>
+        (post: mem -> list word -> list word -> Prop) =>
       exists n, (n = 1 \/ n = 2 \/ n = 4 \/ (n = 8 /\ width = 64%Z))%nat /\
       ((action = "memory_mapped_extcall_read" ++ String.of_nat (n * 8) /\
         exists addr, args = [addr] /\ mGive = map.empty /\
                      read_step n t addr (fun v mRcv =>
-                         post mRcv [word.of_Z (LittleEndian.combine n v)])) \/
+                         post mRcv [word.of_Z (LittleEndian.combine n v)] [addr])) \/
        (action = "memory_mapped_extcall_write" ++ String.of_nat (n * 8) /\
         exists addr v, args = [addr; word.of_Z (LittleEndian.combine n v)] /\
                        write_step n t addr v mGive /\
-                       post map.empty nil)).
+                    post map.empty nil [addr])).
+  
+  Definition ext_spec{mmio_ext_calls: MemoryMappedExtCalls} : Semantics.ExtSpec := @deleakaged_ext_spec _ _ _ _ leakage_ext_spec.
 
   Definition footprint_list(addr: word)(n: nat): list word :=
     List.unfoldn (word.add (word.of_Z 1)) n addr.
@@ -97,22 +99,22 @@ Section WithMem.
       PropSet.subset (PropSet.of_list (footprint_list addr n)) (map.domain mExt);
   }.
 
-  Lemma weaken_ext_spec{mmio_ext_calls: MemoryMappedExtCalls}
+  Lemma weaken_leakage_ext_spec{mmio_ext_calls: MemoryMappedExtCalls}
     {mmio_ext_calls_ok: MemoryMappedExtCallsOk mmio_ext_calls}:
     forall t mGive a args post1 post2,
-      (forall mRcv rets, post1 mRcv rets -> post2 mRcv rets) ->
-      ext_spec t mGive a args post1 ->
-      ext_spec t mGive a args post2.
+      (forall mRcv rets klist, post1 mRcv rets klist -> post2 mRcv rets klist) ->
+      leakage_ext_spec t mGive a args post1 ->
+      leakage_ext_spec t mGive a args post2.
   Proof.
-    unfold ext_spec; intros; fwd; destruct H0p1; fwd; eauto 10 using weaken_read_step.
+    unfold leakage_ext_spec; intros; fwd; destruct H0p1; fwd; eauto 10 using weaken_read_step.
   Qed.
 
-  Instance ext_spec_ok(mmio_ext_calls: MemoryMappedExtCalls)
-    {mmio_ext_calls_ok: MemoryMappedExtCallsOk mmio_ext_calls}: ext_spec.ok ext_spec.
+  Instance leakage_ext_spec_ok(mmio_ext_calls: MemoryMappedExtCalls)
+    {mmio_ext_calls_ok: MemoryMappedExtCallsOk mmio_ext_calls}: ext_spec.ok leakage_ext_spec.
   Proof.
     constructor.
     - (* mGive unique *)
-      unfold ext_spec. intros. fwd. destruct H1p1; destruct H2p1; fwd; try congruence.
+      unfold leakage_ext_spec. intros. fwd. destruct H1p1; destruct H2p1; fwd; try congruence.
       inversion H1p1. fwd. subst n0.
       eapply (f_equal word.unsigned) in H2.
       pose proof (LittleEndian.combine_bound v).
@@ -129,16 +131,20 @@ Section WithMem.
       eauto using write_step_unique_mGive.
     - (* weaken *)
       unfold Morphisms.Proper, Morphisms.respectful, Morphisms.pointwise_relation,
-        Basics.impl. eapply weaken_ext_spec.
+        Basics.impl. eapply weaken_leakage_ext_spec.
     - (* intersect *)
-      unfold ext_spec. intros. fwd. destruct Hp1; destruct H0p1; fwd;
+      unfold leakage_ext_spec. intros. fwd. destruct Hp1; destruct H0p1; fwd;
         match goal with
         | H: _ ++ _ = _ ++ _ |- _ => inversion H; clear H
         end;
         fwd; eauto 10 using intersect_read_step.
   Qed.
 
+  Definition ext_spec_ok(mmio_ext_calls: MemoryMappedExtCalls)
+    {mmio_ext_calls_ok: MemoryMappedExtCallsOk mmio_ext_calls}: Semantics.ext_spec.ok ext_spec := deleakaged_ext_spec_ok.
 End WithMem.
 
+#[export] Existing Instance leakage_ext_spec.
+#[export] Existing Instance leakage_ext_spec_ok.
 #[export] Existing Instance ext_spec.
 #[export] Existing Instance ext_spec_ok.

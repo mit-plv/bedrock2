@@ -1,3 +1,4 @@
+Require Import bedrock2.LeakageSemantics.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.Syntax.
@@ -14,17 +15,17 @@ Require Import bedrock2.MetricCosts.
 (*  below only for of_list_list_diff *)
 Require Import compiler.DeadCodeElimDef.
 
-Local Notation exec := (exec PreSpill isRegStr).
+Local Notation exec e pick_sp := (@exec _ _ _ _ _ _ _ _ PreSpill isRegStr pick_sp e).
 
 Section WithArguments1.
   Context {width: Z}.
-  Context {BW: Bitwidth.Bitwidth width }.
-  Context {word : word width } { word_ok : word.ok word }.
-  Context {env: map.map string (list var * list var * stmt var) } { env_ok : map.ok env }.
-  Context {mem: map.map word (Init.Byte.byte : Type) } {mem_ok : map.ok mem } .
-  Context {locals: map.map string word } {locals_ok : map.ok locals }.
-  Context {ext_spec : Semantics.ExtSpec } {ext_spec_ok: Semantics.ext_spec.ok ext_spec } .
-
+  Context {BW: Bitwidth.Bitwidth width}.
+  Context {word : word width} {word_ok : word.ok word}.
+  Context {env: map.map string (list var * list var * stmt var)} {env_ok : map.ok env}.
+  Context {mem: map.map word (Init.Byte.byte : Type) } {mem_ok : map.ok mem} .
+  Context {locals: map.map string word} {locals_ok: map.ok locals}.
+  Context {ext_spec: LeakageSemantics.ExtSpec} {ext_spec_ok: LeakageSemantics.ext_spec.ok ext_spec}.
+  
   Lemma agree_on_put_existsb_false:
     forall used_after x (l: locals) lL,
       map.agree_on (diff (of_list used_after) (singleton_set x)) l lL
@@ -109,16 +110,20 @@ Section WithArguments1.
         rewrite ListSet.of_list_removeb
     end.
 
-  Ltac mcsolve := eexists; split; [|split; cycle 1; [eauto|FlatImp.scost_hammer]]; try assumption.
-
+  Ltac solve_compile_post :=
+    do 5 eexists; ssplit;
+    [eauto | repeat listset_to_set; agree_on_solve | scost_hammer | align_trace | align_trace |
+      intros; rewrite dfix_step; simpl_rev; cbv beta; try reflexivity ].
+                                                             
   Lemma dce_correct_aux :
-    forall eH eL,
+    forall eH eL pick_spL,
       dce_functions eH = Success eL ->
-      forall sH t m mcH lH postH,
-        exec eH sH t m lH mcH postH ->
-        forall used_after lL mcL,
+      forall pick_spH sH kH t m mcH lH postH,
+        exec pick_spH eH sH kH t m lH mcH postH ->
+        forall f used_after kL lL mcL,
           map.agree_on (of_list (live sH used_after)) lH lL ->
-          exec eL (dce sH used_after) t m lL mcL (compile_post mcH mcL used_after postH).
+          (forall k, pick_spH (k ++ kH) = pick_spL (rev kL ++ stmt_leakage eH (rev k, sH, used_after, f k))) ->
+          exec (fun k => pick_spL (rev k)) eL (dce sH used_after) kL t m lL mcL (compile_post eH sH kH kL mcH mcL used_after postH).
   Proof.
     induction 2;
       match goal with
@@ -131,20 +136,17 @@ Section WithArguments1.
         * eapply H1.
         * repeat listset_to_set. agree_on_solve.
       + intros.
-        eapply H3 in H5.
+        eapply H3 in H6.
         fwd.
         let Heq := fresh in
-        pose proof H5p0 as Heq;
+        pose proof H6p0 as Heq;
         eapply map.putmany_of_list_zip_sameLength, map.sameLength_putmany_of_list in Heq.
         fwd.
         eexists.
         split.
-        * eapply H5.
-        * intros.
-          unfold compile_post.
-          exists l'. mcsolve.
-          agree_on_solve. repeat listset_to_set.
-          subset_union_solve.
+        * eapply H6.
+        * intros. solve_compile_post.
+          repeat listset_to_set. subset_union_solve.
     - intros.
       eapply @exec.call; try solve [ eassumption ].
       + unfold dce_functions, dce_function  in *.
@@ -155,37 +157,33 @@ Section WithArguments1.
         * eapply H1.
         * listset_to_set. agree_on_solve.
       + eapply IHexec.
-        eapply agree_on_refl.
+        -- eapply agree_on_refl.
+        -- intros. rewrite associate_one_left. rewrite H6. rewrite dfix_step.
+           simpl. rewrite rev_app_distr. simpl. rewrite H0.
+           rewrite <- app_assoc. reflexivity. 
       + intros.
         unfold compile_post in *.
-        fwd. eapply H4 in H6p2. fwd.
+        fwd. eapply H4 in H7p0. fwd.
         let Heq := fresh in
-        pose proof H6p2p1 as Heq;
-        eapply map.putmany_of_list_zip_sameLength,  map.sameLength_putmany_of_list in H6p2p1. fwd.
+        pose proof H7p0p1 as Heq;
+        eapply map.putmany_of_list_zip_sameLength,  map.sameLength_putmany_of_list in H7p0p1. fwd.
         exists retvs. eexists. repeat split.
         * erewrite agree_on_getmany.
-          -- eapply H6p2p0.
+          -- eapply H7p0p0.
           -- listset_to_set. agree_on_solve.
-        * eapply H6p2p1.
-        * eexists. mcsolve.
-          agree_on_solve.
-          repeat listset_to_set.
-          subset_union_solve.
+        * eapply H7p0p1.
+        * solve_compile_post.
+          -- agree_on_solve. repeat listset_to_set. subset_union_solve.
+          -- simpl. rewrite H0. rewrite H7p5. reflexivity.
     - intros.
       eapply agree_on_find in H3; fwd.
       destr (existsb (eqb x) used_after); fwd.
       + eapply @exec.load.
         * rewrite <- H3p1. eassumption.
         * eauto.
-        * unfold compile_post.
-          exists (map.put l x v); mcsolve.
-          repeat listset_to_set.
-          agree_on_solve.
+        * solve_compile_post. simpl. rewrite E. reflexivity.
       + eapply @exec.skip.
-        * unfold compile_post.
-          exists (map.put l x v); mcsolve.
-          repeat listset_to_set.
-          agree_on_solve.
+        * solve_compile_post. simpl. rewrite E. reflexivity.
     - intros. repeat listset_to_set.
       eapply agree_on_union in H4; fwd.
       all: try solve [ eauto using String.eqb_spec ].
@@ -195,43 +193,34 @@ Section WithArguments1.
       + erewrite <- H4p0; eauto.
         unfold elem_of; destr (a =? v)%string; [ eapply in_eq | eapply in_cons, in_eq ].
       + eassumption.
-      + unfold compile_post. exists l; mcsolve.
+      + solve_compile_post.
     - intros.
       eapply agree_on_find in H4; fwd.
       destr (existsb (eqb x) used_after); fwd.
       + eapply @exec.inlinetable; eauto.
         * rewrite <- H4p1. eassumption.
-        * unfold compile_post; eexists; mcsolve.
-          repeat listset_to_set; agree_on_solve.
+        * solve_compile_post. simpl. rewrite E. reflexivity.
       + eapply @exec.skip; eauto.
-        unfold compile_post.
-        eexists; mcsolve.
-        repeat listset_to_set; agree_on_solve.
+        solve_compile_post. simpl. rewrite E. reflexivity.
     - intros.
       repeat listset_to_set.
       eapply @exec.stackalloc.
       * eassumption.
-      * intros. eapply H2 with (used_after := used_after) (lL :=  (map.put lL x a)) in H4.
-        2: eapply H5.
-        2: { agree_on_solve. }
-        eapply @exec.weaken.
-        -- eapply H4.
-        --  unfold compile_post. intros. fwd. exists mSmall'. exists mStack'. split.
-            ++ eassumption.
-            ++ split.
-               ** eassumption.
-               ** eexists; mcsolve; eauto.
+      * intros. assert (H4' := H4 nil). rewrite dfix_step in H4'. simpl in H4'.
+        rewrite app_nil_r in H4'. rewrite H4' in H2.
+        eapply H2 with (used_after := used_after) (lL :=  (map.put lL x a)) in H5; subst a.
+        2: eapply H6.
+        -- eapply exec.weaken. 1: eapply H5. intros.
+           unfold compile_post in H7. fwd. eexists. eexists.
+           split; [eassumption|]. split; [eassumption|].
+           solve_compile_post. simpl. rewrite H7p5. reflexivity.
+        -- agree_on_solve.
+        -- intros. rewrite associate_one_left. rewrite H4. rewrite dfix_step. simpl.
+           rewrite rev_app_distr. simpl. repeat Tactics.destruct_one_match.
+           repeat rewrite <- app_assoc. reflexivity.
     - intros. destr (existsb (eqb x) used_after).
-      + eapply @exec.lit.
-        unfold compile_post.
-        repeat listset_to_set.
-        eexists; mcsolve.
-        agree_on_solve.
-      + eapply @exec.skip.
-        unfold compile_post.
-        repeat listset_to_set.
-        eexists; mcsolve.
-        agree_on_solve.
+      + eapply @exec.lit. solve_compile_post.
+      + eapply @exec.skip. solve_compile_post.
     - destr z.
       + intros. repeat listset_to_set.
         eapply agree_on_union in H3; try solve [ eauto using String.eqb_spec ].
@@ -247,39 +236,28 @@ Section WithArguments1.
              unfold elem_of; destr ((y =? v)%string).
              ++ eapply in_eq.
              ++ eapply in_cons, in_eq.
-          -- unfold compile_post.
-             eexists; mcsolve.
-             agree_on_solve.
-        * eapply @exec.skip.
-          unfold compile_post.
-          eexists; mcsolve.
-          agree_on_solve.
+          -- solve_compile_post. simpl. rewrite E.
+             Tactics.destruct_one_match; reflexivity.
+        * eapply @exec.skip. solve_compile_post. simpl. rewrite E.
+          Tactics.destruct_one_match; reflexivity.
       + intros.
         eapply agree_on_find in H3; fwd.
         destr (existsb (eqb x) used_after).
         * eapply @exec.op.
           -- rewrite <- H3p1. eassumption.
           -- simpl. constructor.
-          -- unfold compile_post. simpl in *. inversion H1. fwd. eexists; mcsolve.
-             repeat listset_to_set.
-             agree_on_solve.
-        * eapply @exec.skip. unfold compile_post.
-          eexists; mcsolve.
-          repeat listset_to_set.
-          agree_on_solve.
+          -- simpl in *. inversion H1. subst. solve_compile_post.
+             simpl. rewrite E. Tactics.destruct_one_match; reflexivity.
+        * eapply @exec.skip. solve_compile_post.
+          simpl. rewrite E. Tactics.destruct_one_match; reflexivity.
     - intros.
       eapply agree_on_find in H2; fwd.
       repeat listset_to_set.
       destr (existsb (eqb x) used_after).
       { eapply @exec.set.
         - rewrite <- H2p1; eassumption.
-        - unfold compile_post. eexists; mcsolve.
-          agree_on_solve.
-      }
-      { eapply @exec.skip.
-        - unfold compile_post. eexists; mcsolve.
-          agree_on_solve.
-      }
+        - solve_compile_post. }
+      { eapply @exec.skip. solve_compile_post. }
     - intros.
       repeat listset_to_set.
       eapply agree_on_union in H2; fwd.
@@ -287,10 +265,12 @@ Section WithArguments1.
       eapply @exec.if_true.
       + erewrite agree_on_eval_bcond; [ eassumption | ].
         pose agree_on_comm; eauto.
-      + eapply @exec.weaken; [eauto|].
-        unfold compile_post.
-        intros * (?&?&?&?&?).
-        eexists. mcsolve.
+      + eapply @exec.weaken.
+        -- eapply IHexec; eauto. intros. rewrite associate_one_left. rewrite H3.
+           rewrite dfix_step. rewrite rev_app_distr. simpl.
+           repeat Tactics.destruct_one_match. rewrite <- app_assoc. reflexivity.
+        -- unfold compile_post. intros. fwd. solve_compile_post.
+           simpl. rewrite H2p6. reflexivity.
     - intros.
       repeat listset_to_set.
       eapply agree_on_union in H2; fwd.
@@ -298,89 +278,88 @@ Section WithArguments1.
       eapply @exec.if_false.
       + erewrite agree_on_eval_bcond; [ eassumption | ].
         pose agree_on_comm; eauto.
-      + eapply @exec.weaken; [eauto|].
-        unfold compile_post.
-        intros * (?&?&?&?&?).
-        eexists. mcsolve.
+      + eapply @exec.weaken.
+        -- eapply IHexec; eauto. intros. rewrite associate_one_left. rewrite H3.
+           rewrite dfix_step. rewrite rev_app_distr. simpl.
+           repeat rewrite <- app_assoc. repeat Tactics.destruct_one_match.
+           reflexivity.
+        -- unfold compile_post. intros. fwd. solve_compile_post.
+           simpl. rewrite H2p6. reflexivity.
     - intros.
       cbn - [live].
       rename IHexec into IH1.
       rename H6 into IH12.
       rename H4 into IH2.
       cbn - [live] in IH12.
-      eapply @exec.loop with (mid2 := compile_post mc mcL (live (SLoop body1 cond body2) used_after) mid2).
+      eapply exec.loop_cps.
+      eapply exec.weaken.
       { eapply IH1.
-        eapply agree_on_subset.
-        - let Heq := fresh in
-          specialize (live_while body1 cond body2 used_after) as Heq; cbn zeta in Heq.
-          eapply H4.
-        - eapply H7.
-      }
+        - eapply agree_on_subset.
+          + let Heq := fresh in
+            specialize (live_while body1 cond body2 used_after) as Heq; cbn zeta in Heq.
+            eapply H4.
+          + eapply H7.
+        - intros. rewrite H8. rewrite dfix_step. reflexivity. }
+      intros. unfold compile_post in *. fwd.
+      specialize H1 with (1 := H4p0). specialize H2 with (1 := H4p0).
+      assert (H4: eval_bcond lH' cond = eval_bcond l' cond).
       { intros.
         unfold compile_post in *.
-        repeat destr H4. destr H6.
-        eapply H1 in H8.
-        erewrite agree_on_eval_bcond; [ eassumption | ].
-        eapply agree_on_comm.
-        repeat listset_to_set.
-        eapply agree_on_union in H4.
         fwd.
-        eapply agree_on_subset; [ | eapply H4p1 ].
+        apply agree_on_eval_bcond.
+        repeat listset_to_set.
+        apply agree_on_union in H4p1.
+        fwd.
+        eapply agree_on_subset; [ | eapply H4p1p1 ].
         subset_union_solve.
       }
-      { intros.
-        unfold compile_post in *.
-        repeat destr H4. destr H8.
-        eapply H2 in H9.
-        - exists x. mcsolve.
-          repeat listset_to_set.
-          eapply agree_on_subset; [ | eapply H4 ].
-          subset_union_solve.
-        - erewrite agree_on_eval_bcond; [ eassumption | ].
-          repeat listset_to_set.
-          eapply agree_on_subset; [ | eapply H4 ].
-          subset_union_solve.
-      }
-      {
-        intros.
-        unfold compile_post in *.
-        repeat destr H4. destr H8.
-        assert (eval_bcond x cond = Some true) as Hbcond.
-        { erewrite agree_on_eval_bcond; [ eassumption | ].
-          repeat listset_to_set.
-          eapply agree_on_subset; [ | eapply H4 ].
-          subset_union_solve. }
-        eapply @exec.weaken; [eapply IH2|].
-        - eapply H9.
-        - exact Hbcond.
-        - repeat listset_to_set.
-          eapply agree_on_subset; [ | eapply H4 ].
-          subset_union_solve.
-        - cbv beta. intros * (?&?&?&?&?).
-          eexists. mcsolve.
-      }
-      {
-        intros.
-        unfold compile_post in *.
-        repeat destr H4. destr H6.
-        eapply @exec.weaken; [eapply IH12|].
-        - eapply H8.
-        - eapply H4.
-        - cbv beta. intros * (?&?&?&?&?).
-          eexists. mcsolve.
-      }
+      rewrite -> H4 in *.
+      destruct (eval_bcond l' cond) as [b|] eqn:E; try congruence. exists b.
+      split; [reflexivity|]. split.
+      { intros. subst. solve_compile_post. rewrite <- app_assoc. simpl. rewrite H4p5.
+        cbv [FixEq.Let_In_pf_nd]. rewrite List.skipn_app_r by reflexivity.
+        simpl. rewrite <- app_assoc. reflexivity. }
+      { intros. subst.
+        eapply exec.weaken.
+        { eapply IH2; eauto.
+          - repeat listset_to_set.
+            eapply agree_on_subset; [ | eapply H4p1 ].
+            subset_union_solve.
+          - intros. rewrite associate_one_left. rewrite app_assoc. rewrite H8.
+            repeat (rewrite rev_app_distr || cbn [rev List.app] || rewrite <- app_assoc).
+            rewrite dfix_step. cbn [stmt_leakage_body]. rewrite H4p5.
+            cbv [FixEq.Let_In_pf_nd]. rewrite List.skipn_app_r by reflexivity.
+            reflexivity.
+        }
+        cbv beta. intros. fwd.
+        eapply exec.weaken.
+        { eapply IH12; [eassumption|eassumption|].
+          intros. rewrite associate_one_left. repeat rewrite app_assoc. rewrite H8.
+          repeat (rewrite rev_app_distr || cbn [rev List.app] || rewrite <- app_assoc).
+          f_equal. f_equal. rewrite dfix_step. cbn [stmt_leakage_body]. rewrite H4p5.
+          cbv [FixEq.Let_In_pf_nd]. rewrite List.skipn_app_r by reflexivity.
+          f_equal. f_equal. rewrite H6p5. rewrite List.skipn_app_r by reflexivity.
+          reflexivity. }
+        cbv beta. intros. fwd. solve_compile_post. cbn [stmt_leakage_body].
+        repeat (rewrite rev_app_distr || cbn [rev List.app] || rewrite <- app_assoc).
+        rewrite H4p5. f_equal. cbv [FixEq.Let_In_pf_nd].
+        rewrite List.skipn_app_r by reflexivity. f_equal. rewrite H6p5.
+        rewrite List.skipn_app_r by reflexivity. rewrite H6p9. reflexivity. }
     - intros.
       eapply @exec.seq.
-      + eapply IHexec. eassumption.
+      + eapply IHexec; [eassumption|].
+        intros. rewrite H4. rewrite dfix_step. reflexivity.
       + unfold compile_post. intros. fwd.
         eapply @exec.weaken.
-        * eapply H2.
-          -- eassumption.
-          -- eassumption.
-        * unfold compile_post. intros. fwd.
-          eexists. mcsolve.
-    - intros.
-      eapply @exec.skip.
-      unfold compile_post. eexists. mcsolve.
+        * eapply H2; [eassumption|eassumption|].
+          intros. rewrite app_assoc. rewrite H4.
+          repeat rewrite rev_app_distr. rewrite dfix_step. simpl.
+          rewrite H5p5. rewrite List.skipn_app_r by reflexivity.
+          rewrite <- app_assoc. reflexivity.
+        * unfold compile_post. intros. fwd. solve_compile_post.
+          simpl. rewrite <- app_assoc. rewrite H5p5.
+          rewrite List.skipn_app_r by reflexivity. rewrite H5p9.
+          repeat rewrite <- app_assoc. reflexivity.
+    - intros. eapply @exec.skip. solve_compile_post.
   Qed.
 End WithArguments1.
