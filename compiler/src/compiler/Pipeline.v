@@ -266,7 +266,7 @@ Section WithWordAndMem.
     Proof.
       cbv [remove_n_r]. rewrite rev_app_distr. rewrite List.skipn_app_r.
       - apply rev_involutive.
-      - rewrite length_rev. reflexivity.
+      - rewrite rev_length. reflexivity.
     Qed.
 
     Lemma flattening_correct: phase_correct SrcLang FlatWithStrVars flatten_functions.
@@ -295,7 +295,7 @@ Section WithWordAndMem.
           1: eapply MetricLeakageSemantics.exec.exec_to_other_trace.
           1: eapply H1p2.
           intros. simpl. simpl_rev. rewrite List.skipn_app_r.
-          2: rewrite length_rev; reflexivity.
+          2: rewrite rev_length; reflexivity.
           rewrite remove_n_r_spec. rewrite rev_involutive. reflexivity.
         + reflexivity.
         + match goal with
@@ -363,9 +363,9 @@ Section WithWordAndMem.
         1: eapply FlatImp.exec.exec_to_other_trace.
         1: eassumption.
         intros. simpl. simpl_rev. rewrite List.skipn_app_r.
-        2: rewrite length_rev; reflexivity.
+        2: rewrite rev_length; reflexivity.
         simpl_rev. rewrite List.skipn_app_r.
-        2: rewrite length_rev; reflexivity.
+        2: rewrite rev_length; reflexivity.
         rewrite rev_involutive. reflexivity.
       - simpl. intros. fwd. eexists. intuition eauto.
         do 2 eexists. intuition eauto.
@@ -488,7 +488,7 @@ Section WithWordAndMem.
           1: eapply FlatImp.exec.exec_to_other_trace.
           1: eassumption.
           intros. simpl. rewrite remove_n_r_spec. simpl_rev. rewrite List.skipn_app_r.
-          2: rewrite length_rev; reflexivity.
+          2: rewrite rev_length; reflexivity.
           rewrite rev_involutive. reflexivity.
         + eapply states_compat_precond.
           edestruct putmany_of_list_zip_states_compat as (lL' & P' & Cp); try eassumption.

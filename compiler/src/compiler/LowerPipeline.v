@@ -700,7 +700,7 @@ Section LowerPipeline.
         { reflexivity. }
         { assumption. }
       + simpl. intros. simpl_rev.
-        rewrite List.skipn_app_r by (rewrite length_rev; reflexivity).
+        rewrite List.skipn_app_r by (rewrite rev_length; reflexivity).
         reflexivity.        
     - cbv beta. unfold goodMachine. simpl_g_get. unfold machine_ok in *. intros. fwd.
       assert (0 < bytes_per_word). { (* TODO: deduplicate *)
