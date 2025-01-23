@@ -5,6 +5,7 @@ Require Import compiler.util.Common.
 Require Import bedrock2.Semantics.
 Require Import riscv.Utility.Monads.
 Require Import compiler.FlatImp.
+Require Import riscv.Spec.LeakageOfInstr.
 Require Import riscv.Spec.Decode.
 Require Import coqutil.sanity.
 Require Import riscv.Utility.MkMachineWidth.
@@ -117,12 +118,36 @@ Section MMIO1.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Definition compile_ext_call(_: funname_env Z)(_ _: Z)(s: stmt Z) :=
-      match s with
-      | SInteract resvars action argvars => compile_interact resvars action argvars
-      | _ => []
-      end.
+  Definition leak_interact(abs_pos: word)(results: list Z) a (args: list Z) (leakage: list word):
+    list LeakageEvent :=
+    match leakage with
+    | [addr'] =>
+        if String.eqb "MMIOWRITE" a then
+          match results, args with
+          | [], [addr; val] =>
+              leakage_events abs_pos [[ Sw addr val 0 ]] [ ILeakage (Sw_leakage addr') ]
+          | _, _ => [] (* invalid, excluded by ext_spec *)
+          end
+        else
+          match results, args with
+          | [res], [addr] => leakage_events abs_pos [[ Lw res addr 0 ]] [ ILeakage (Lw_leakage addr') ]
+          | _, _ => [] (* invalid, excluded by ext_spec *)
+          end
+    | _ => [] (*invalid*)
+    end.
 
+  Definition compile_ext_call(_: funname_env Z)(_ _: Z)(s: stmt Z) :=
+    match s with
+    | SInteract resvars action argvars => compile_interact resvars action argvars
+    | _ => []
+    end.
+  
+  Definition leak_ext_call(program_base: word)(_: funname_env Z)(pos _: Z)(s: stmt Z)(l: list word) :=
+    match s with
+    | SInteract resvars action argvars => leak_interact (word.add program_base (word.of_Z pos)) resvars action argvars l
+    | _ => []
+    end.
+  
   Section CompilationTest.
     Definition magicMMIOAddrLit: Z := 0x10024000.
     Variable addr: Z.
@@ -246,7 +271,7 @@ Section MMIO1.
   Time Qed.
 
   Lemma compile_ext_call_correct: forall resvars extcall argvars,
-      FlatToRiscvCommon.compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
+      FlatToRiscvCommon.compiles_FlatToRiscv_correctly compile_ext_call leak_ext_call compile_ext_call
         (FlatImp.SInteract resvars extcall argvars).
   Proof.
     unfold FlatToRiscvCommon.compiles_FlatToRiscv_correctly. simpl. intros.
@@ -257,17 +282,17 @@ Section MMIO1.
     destruct_RiscvMachine initialL.
     unfold FlatToRiscvCommon.goodMachine in *.
     match goal with
-    | H: forall _ _, outcome _ _ -> _ |- _ => specialize H with (mReceive := map.empty)
+    | H: forall _ _ _, outcome _ _ _ -> _ |- _ => specialize H with (mReceive := map.empty)
     end.
     destruct (String.eqb "MMIOWRITE" action) eqn: E;
       cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics getXAddrs] in *.
     + (* MMOutput *)
       progress simpl in *|-.
       match goal with
-      | H: FE310CSemantics.ext_spec _ _ _ _ _ |- _ => rename H into Ex
+      | H: FE310CSemantics.leakage_ext_spec _ _ _ _ _ |- _ => rename H into Ex
       end.
       unfold compile_interact in *.
-      cbv [FE310CSemantics.ext_spec] in Ex.
+      cbv [FE310CSemantics.leakage_ext_spec] in Ex.
       rewrite E in *.
       destruct Ex as (?&?&?&(?&?&?)&?). subst mGive argvals.
       repeat match goal with
@@ -300,7 +325,7 @@ Section MMIO1.
       | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
       end.
       match goal with
-      | HO: outcome _ _, H: _ |- _ => specialize (H _ HO); rename H into HP
+      | HO: outcome _ _ _, H: _ |- _ => specialize (H _ _ HO); rename H into HP
       end.
       destruct g. FlatToRiscvCommon.simpl_g_get.
       simp.
@@ -337,7 +362,7 @@ Section MMIO1.
       }
       repeat fwd.
 
-      unfold getReg.
+      unfold RiscvMachine.withLeakageEvent, getRegs, getReg.
       destr ((0 <? z1) && (z1 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia].
       destr ((0 <? z2) && (z2 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia].
       replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto).
@@ -364,13 +389,16 @@ Section MMIO1.
       apply eqb_eq in E. subst action.
       cbn -[invalidateWrittenXAddrs] in *.
       specialize (HPp1 mKeep). rewrite map.split_empty_r in HPp1. specialize (HPp1 eq_refl).
-      do 4 eexists.
+      do 5 eexists.
       split; eauto.
       split; eauto.
       split; [unfold map.only_differ; eauto|].
       split. {
         unfold id, MetricCosts.cost_interact. MetricsToRiscv.solve_MetricLog.
       }
+      split; eauto.
+      { eexists [_], _. split; [reflexivity|]. split; [reflexivity|].
+        intros. rewrite fix_step. simpl. rewrite <- app_assoc. simpl. reflexivity. }
       split; eauto.
       split; eauto.
       split; eauto.
@@ -420,10 +448,10 @@ Section MMIO1.
     + (* MMInput *)
       simpl in *|-.
       match goal with
-      | H: FE310CSemantics.ext_spec _ _ _ _ _ |- _ => rename H into Ex
+      | H: FE310CSemantics.leakage_ext_spec _ _ _ _ _ |- _ => rename H into Ex
       end.
       unfold compile_interact in *.
-      cbv [FE310CSemantics.ext_spec] in Ex.
+      cbv [FE310CSemantics.leakage_ext_spec] in Ex.
       simpl in *|-.
 
       rewrite E in *.
@@ -480,7 +508,7 @@ Section MMIO1.
 
       repeat fwd.
 
-      unfold getReg.
+      unfold getReg, getRegs, RiscvMachine.withLeakageEvent.
       destr ((0 <? z1) && (z1 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia].
       replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto).
 
@@ -499,12 +527,12 @@ Section MMIO1.
 
       eapply runsToNonDet.runsToDone.
       simpl_MetricRiscvMachine_get_set.
-      simpl_word_exprs word_ok.
+      simpl_word_exprs word_ok. simpl.
 
       unfold mmioLoadEvent, signedByteTupleToReg.
       match goal with
-      | A: forall _, outcome _ _ -> _, OC: forall _, outcome _ _ |- _ =>
-         epose proof (A (cons _ nil) (OC _)) as P; clear A
+      | A: forall _ _, outcome _ _ _ -> _, OC: forall _, outcome _ _ _ |- _ =>
+         epose proof (A (cons _ nil) (cons _ nil) (OC _)) as P; clear A
       end.
       cbn in P.
       simp.
@@ -513,7 +541,7 @@ Section MMIO1.
       specialize (Pp1 mKeep). rewrite map.split_empty_r in Pp1. specialize (Pp1 eq_refl).
       unfold setReg.
       destr ((0 <? z1) && (z1 <? 32))%bool; [|exfalso;blia].
-      do 4 eexists.
+      do 5 eexists.
       split; eauto.
       split; eauto.
       split. {
@@ -524,6 +552,9 @@ Section MMIO1.
       split. {
         unfold id, MetricCosts.cost_interact. MetricsToRiscv.solve_MetricLog.
       }
+      split.
+      { do 2 eexists. split; [LeakageSemantics.align_trace|]. split; [reflexivity|].
+        intros. rewrite fix_step. simpl. rewrite <- app_assoc. reflexivity. }
       split. {
         eapply map.put_extends. eassumption.
       }

@@ -1,3 +1,6 @@
+Require Import Coq.Init.Wf Wellfounded.
+Require Import compiler.FixEq.
+Require Import bedrock2.LeakageSemantics.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.Syntax.
@@ -22,7 +25,8 @@ Section WithArguments1.
   Context {env: map.map string (list var * list var * stmt var) } { env_ok : map.ok env }.
   Context {mem: map.map word (Init.Byte.byte : Type) } {mem_ok : map.ok mem } .
   Context {locals: map.map string word } {locals_ok : map.ok locals }.
-  Context {ext_spec : Semantics.ExtSpec } {ext_spec_ok: Semantics.ext_spec.ok ext_spec } .
+  Context {ext_spec : LeakageSemantics.ExtSpec } {ext_spec_ok: LeakageSemantics.ext_spec.ok ext_spec } .
+  Context {pick_sp : LeakageSemantics.PickSp}.
   Ltac subset_union_solve :=
     match goal  with
     | |- subset (union _ _) _  => eapply subset_union_l; subset_union_solve
@@ -465,12 +469,13 @@ Section WithArguments1.
           SSkip
     | SStackalloc x n body =>
         SStackalloc x n (dce body u)
-        (* The below optimization probably can be made to work;
-           on past attempt, got stuck at goals about `Memory.anybytes n a map.empty` *)
-        (* if (existsb (eqb x) (live body u)) then
-          SStackalloc x n (dce body u)
-        else
-          (dce body u) *)
+    (* Finite address spaces are subtle, so the below optimization is unsound.  See
+       https://github.com/mit-plv/bedrock2/pull/393#discussion_r1685645179*)
+
+    (* if (existsb (eqb x) (live body u)) then
+       SStackalloc x n (dce body u)
+       else
+       (dce body u) *)
     | SLit x _ =>
         if (existsb (eqb x) u) then
           s
@@ -502,6 +507,191 @@ Section WithArguments1.
     | SSkip => SSkip
     end.
 
+  Definition tuple : Type := leakage * stmt var * list var * (leakage (*skip*) -> leakage (*everything*)).
+  Definition project_tuple (tup : tuple) :=
+    let '(kH, s, u, f) := tup in (length kH, s).
+  Definition lt_tuple (x y : tuple) :=
+    lt_tuple' (project_tuple x) (project_tuple y).
+  
+  Lemma lt_tuple_wf : well_founded lt_tuple.
+  Proof.
+    cbv [lt_tuple]. apply wf_inverse_image. apply lt_tuple'_wf.
+  Defined.
+
+  Definition stmt_leakage_body
+    (e: env)
+    (tup : leakage * stmt var * list var * (leakage -> leakage))
+    (dtransform_stmt_trace : forall othertup, lt_tuple othertup tup -> leakage)
+    : leakage.
+    refine (
+        match tup as x return tup = x -> _ with
+        | (kH, s, u, f) =>
+            fun _ =>
+              match s as x return s = x -> _ with
+              | SInteract _ _ _ =>
+                  fun _ =>
+                    match kH with
+                    | leak_list l :: kH' => leak_list l :: f [leak_list l]
+                    | _ => nil
+                    end
+              | SCall _ fname _ =>
+                  fun _ =>
+                    match kH as x return kH = x -> _ with
+                    | leak_unit :: kH' =>
+                        fun _ =>
+                          match map.get e fname with
+                          | Some (params, rets, fbody) =>
+                              leak_unit :: dtransform_stmt_trace (kH', fbody, rets,
+                                fun skip => f (leak_unit :: skip)) _
+                          | None => nil
+                          end
+                    | _ => fun _ => nil
+                    end eq_refl
+              | SLoad _ x _ _ =>
+                  fun _ =>
+                    match kH with
+                    | leak_word addr :: kH' =>
+                        if (existsb (eqb x) u) then
+                          leak_word addr :: f [leak_word addr]
+                        else
+                          f [leak_word addr]
+                    | _ => nil
+                    end
+              | SStore _ _ _ _ =>
+                  fun _ =>
+                    match kH with
+                    | leak_word addr :: kH' => leak_word addr :: f [leak_word addr]
+                    | _ => nil
+                    end
+              | SInlinetable _ x _ _ =>
+                  fun _ =>
+                    match kH with
+                    | leak_word i :: kH' =>
+                        if (existsb (eqb x) u) then
+                          leak_word i :: f [leak_word i]
+                        else
+                          f [leak_word i]
+                    | _ => nil
+                    end
+              | SStackalloc x n body =>
+                  fun _ =>
+                    match kH as x return kH = x -> _ with
+                    | leak_unit :: kH' =>
+                        fun _ => leak_unit :: dtransform_stmt_trace (kH', body, u,
+                                  fun skip => f (leak_unit :: skip)) _
+                    | _ => fun _ => nil
+                    end eq_refl
+              | SLit x _ => fun _ => f nil
+              | SOp x op _ _ =>
+                  fun _ =>
+                    (*copied from spilling.
+                      Maybe I should do a leak_list for ops (or just make every op leak two words)
+                      to avoid this awkwardness*)
+                    let skip :=
+                      match op with
+                      | Syntax.bopname.divu
+                      | Syntax.bopname.remu =>
+                          match kH with
+                          | leak_word x1 :: leak_word x2 :: k' => [leak_word x1; leak_word x2]
+                          | _ => nil
+                          end
+                      | Syntax.bopname.slu
+                      | Syntax.bopname.sru
+                      | Syntax.bopname.srs =>
+                          match kH with
+                          | leak_word x2 :: kH' => [leak_word x2]
+                          | _ => nil
+                          end
+                      | _ => nil
+                      end
+                    in
+                    if (existsb (eqb x) u) then
+                      skip ++ f skip
+                    else
+                      f skip
+              | SSet _ _ => fun _ => f nil
+              | SIf _ thn els =>
+                  fun _ =>
+                    match kH as x return kH = x -> _ with
+                    | leak_bool b :: kH' =>
+                        fun _ => leak_bool b ::
+                                dtransform_stmt_trace (kH', if b then thn else els, u,
+                                  fun skip => f (leak_bool b :: skip)) _
+                    | _ => fun _ => nil
+                    end eq_refl
+              | SLoop s1 c s2 =>
+                  fun _ =>
+                    let live_before := live (SLoop s1 c s2) u in
+                    dtransform_stmt_trace (kH, s1, (list_union String.eqb
+                                                            (live s2 live_before)
+                                                            (list_union eqb (accessed_vars_bcond c) u)),
+                        fun skip1 =>
+                          Let_In_pf_nd (List.skipn (length skip1) kH)
+                            (fun kH' _ =>
+                               match kH' as x return kH' = x -> _ with
+                               | leak_bool true :: kH'' =>
+                                   fun _ => leak_bool true ::
+                                           dtransform_stmt_trace (kH'', s2, live_before,
+                                             fun skip2 =>
+                                               let kH''' := List.skipn (length skip2) kH'' in
+                                               dtransform_stmt_trace (kH''', s, u,
+                                                   fun skip3 =>
+                                                     f (skip1 ++ [leak_bool true] ++ skip2 ++ skip3)) _) _
+                               | leak_bool false :: kH'' =>
+                                   fun _ => leak_bool false :: f (skip1 ++ [leak_bool false])
+                               | _ => fun _ => nil
+                               end eq_refl)) _
+              | SSeq s1 s2 =>
+                  fun _ => dtransform_stmt_trace (kH, s1, live s2 u,
+                            fun skip1 =>
+                              let kH' := List.skipn (length skip1) kH in
+                              dtransform_stmt_trace (kH', s2, u, fun skip2 => f (skip1 ++ skip2)) _) _
+              | SSkip => fun _ => f nil
+              end eq_refl
+        end eq_refl).
+    Proof.
+      Unshelve.
+      all: cbv [lt_tuple project_tuple].
+      all: subst.
+      all: repeat match goal with
+             | t := List.skipn ?n ?k |- _ =>
+                      let H := fresh "H" in
+                      assert (H := List.skipn_length n k); subst t end.
+      all: try (left; simpl; blia).
+      all: try (right; constructor; constructor).
+    - assert (H' := skipn_length (length skip1) kH).
+      rewrite e3 in *. simpl in *. left. blia.
+    - assert (H' := skipn_length (length skip1) kH).
+      rewrite e3 in *. simpl in *. left. blia.
+    - destruct (length (List.skipn (length skip1) kH) =? length kH)%nat eqn:E.
+      + apply Nat.eqb_eq in E. rewrite E. right. constructor. constructor.
+      + apply Nat.eqb_neq in E. left. blia.
+    Defined.
+
+    Definition stmt_leakage e :=
+      Fix lt_tuple_wf _ (stmt_leakage_body e).
+
+    Definition Equiv (x1 x2 : tuple) : Prop :=
+      let '(k1, s1, u1, f1) := x1 in
+      let '(k2, s2, u2, f2) := x2 in
+      k1 = k2 /\ s1 = s2 /\ u1 = u2 /\ (forall y, f1 y = f2 y).
+
+    Lemma Equiv_refl x : Equiv x x.
+    Proof. unfold Equiv. repeat Tactics.destruct_one_match. auto. Qed.
+
+    Lemma dfix_step e tup : stmt_leakage e tup = stmt_leakage_body e tup (fun y _ => stmt_leakage e y).
+    Proof.
+      cbv [stmt_leakage].
+      apply (@Fix_eq'_nondep _ _ lt_tuple_wf _ (stmt_leakage_body e) Equiv eq).
+      2: { apply Equiv_refl. }
+      intros. clear tup. cbv [stmt_leakage_body]. cbv beta.
+      destruct x1 as [[[k1 s1] u1] c1]. destruct x2 as [[[k2 s2] u2] c2].
+      cbv [Equiv] in H. fwd. subst. rename Hp3 into H. repeat rewrite H.
+      repeat (Tactics.destruct_one_match || rewrite H || apply H0 || cbv [Equiv] || intuition auto || match goal with | |- _ :: _ = _ :: _ => f_equal end || intuition auto(*why does putting this here make this work*)).
+      apply Let_In_pf_nd_ext.
+      repeat (Tactics.destruct_one_match || rewrite H || apply H0 || cbv [Equiv] || intuition auto || match goal with | |- _ :: _ = _ :: _ => f_equal end || intuition auto).
+    Qed.
+
   Definition dce_function: (list string *
                               list string *
                               stmt string ) ->
@@ -518,16 +708,19 @@ Section WithArguments1.
 
 
   Definition compile_post
-    mcH mcL used_after
-    (postH: Semantics.trace -> mem -> locals -> MetricLog -> Prop)
+    e s kH kL mcH mcL used_after
+    (postH: leakage -> Semantics.trace -> mem -> locals -> MetricLog -> Prop)
     :
-    Semantics.trace -> mem -> locals -> MetricLog -> Prop
+    leakage -> Semantics.trace -> mem -> locals -> MetricLog -> Prop
     :=
-    (fun t' m' lL' mcL' =>
-       exists lH' mcH',
-         map.agree_on (PropSet.of_list used_after) lH' lL'
+    (fun k' t' m' lL' mcL' =>
+       exists kH' kH'' kL'' lH' mcH',
+         postH kH' t' m' lH' mcH'
+         /\ map.agree_on (PropSet.of_list used_after) lH' lL'
          /\ metricsLeq (mcL' - mcL) (mcH' - mcH)
-         /\ postH t' m' lH' mcH').
+         /\ k' = kL'' ++ kL
+         /\ kH' = kH'' ++ kH
+         /\ forall kH''' f, stmt_leakage e (rev kH'' ++ kH''', s, used_after, f) = rev kL'' ++ f (rev kH'')).
 
   Lemma agree_on_eval_bcond:
     forall cond (m1 m2: locals),

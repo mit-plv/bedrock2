@@ -42,7 +42,7 @@ Section split_mcomp_sane.
 
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
-  Context {RVM: RiscvProgram M word}.
+  Context {RVM: RiscvProgramWithLeakage M word}.
   Context {RVS: @Spec.Machine.RiscvMachine M word _ _ RVM}.
   Context {p: PrimitivesParams M MetricRiscvMachine}.
 
@@ -163,6 +163,7 @@ Section Riscv.
         postF tt (withNextPc (word.add mach.(getPc) (word.of_Z 4)) mach)
     | EndCycleNormal => fun postF postA => postF tt (updatePc mach)
     | EndCycleEarly _ => fun postF postA => postA (updatePc mach) (* ignores postF containing the continuation *)
+    | LeakEvent e => fun postF postA => postF tt (withLeakageEvent e mach)
     | MakeReservation _
     | ClearReservation _
     | CheckReservation _
@@ -270,7 +271,7 @@ Section Riscv.
     destruct P as (v & mRcv & (N1 & N2)).
     destruct N2 as (mExt' & Sp).
     destruct mach.
-    eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _) _).
+    eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _ _) _).
     cbn -[HList.tuple String.append] in *.
     eapply N1. clear N1 HI.
     unfold map.split. split. 1: reflexivity.

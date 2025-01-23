@@ -260,7 +260,7 @@ Proof.
   - reflexivity.
   - (* preserve invariant *)
     intros.
-    specialize (H ltac:(repeat constructor)).
+    specialize (H ltac:(repeat constructor) ltac:(repeat constructor)).
     unfold hl_inv, isReady, goodTrace, goodHlTrace in *.
     Simp.simp.
     repeat ProgramLogic.straightline.

@@ -44,7 +44,7 @@ Section EventLoop.
 
   Context {M: Type -> Type}.
   Context {MM: Monad M}.
-  Context {RVM: RiscvProgram M word}.
+  Context {RVM: RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
@@ -67,11 +67,12 @@ Section EventLoop.
       goodReadyState done m -> m.(getPc) = if done then pc_end else pc_start.
 
   Hypothesis goodReadyState_preserved_by_jump_back:
-    forall (state: RiscvMachineL) newMetrics,
+    forall (state: RiscvMachineL) newMetrics newLeakage,
       goodReadyState true state ->
       let state' := (withPc pc_start
                     (withNextPc (word.add pc_start (word.of_Z 4))
-                    (withMetrics newMetrics state))) in
+                    (withMetrics newMetrics
+                    (withLeakageEvents (Some newLeakage) state)))) in
       valid_machine state' ->
       goodReadyState false state'.
 
@@ -135,12 +136,15 @@ Section EventLoop.
         | |- ?G => let T := type of H in replace G with T; [exact H|]
         end.
         repeat f_equal.
-        all: solve_word_eq word_ok.
+        all: try solve_word_eq word_ok.
+        destruct getTrace; simpl.
+        { instantiate (1 := [_;_]). reflexivity. }
+        reflexivity.
       + simpl.
         match goal with
         | H: valid_machine ?m1 |- valid_machine ?m2 => replace m2 with m1; [exact H|]
         end.
-        f_equal. f_equal; solve_word_eq word_ok.
+        f_equal. f_equal; try solve_word_eq word_ok. destruct getTrace; reflexivity.
     - intros state [C1 C2].
       apply goodReadyState_checks_PC in C1.
       apply goodReadyState_checks_PC in C2.

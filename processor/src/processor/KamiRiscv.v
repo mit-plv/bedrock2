@@ -447,7 +447,8 @@ Section Equiv.
               RiscvMachine.getNextPc := word.of_Z 4;
               RiscvMachine.getMem := riscvMemInit;
               RiscvMachine.getXAddrs := kamiXAddrs instrMemSizeLg;
-              RiscvMachine.getLog := nil; (* <-- intended to be nil *) |};
+              RiscvMachine.getLog := nil; (* <-- intended to be nil *)
+              RiscvMachine.getTrace := Some nil |};
          getMetrics := MetricLogging.EmptyMetricLog; |}.
   Proof.
     econstructor; try reflexivity.
@@ -530,6 +531,7 @@ Section Equiv.
                 disjoint (of_list m0RV.(RiscvMachine.getXAddrs)) isMMIOAddr ->
                 (forall reg, 0 < reg < 32 -> map.get m0RV.(getRegs) reg <> None) ->
                 m0RV.(getLog) = nil ->
+                m0RV.(getTrace) = Some nil ->
                 RvInv m0RV)
            (preserveRvInv:
               forall (m: RiscvMachine), RvInv m -> mcomp_sat_unit (run1 iset) m RvInv)

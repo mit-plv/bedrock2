@@ -19,9 +19,9 @@ Section Proofs.
   Context {mem: map.map word byte}.
   Context {M: Type -> Type}.
   Context {MM: Monads.Monad M}.
-  Context {RVM: Machine.RiscvProgram M word}.
+  Context {RVM: Machine.RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
-  Context {ext_spec: Semantics.ExtSpec}.
+  Context {ext_spec: LeakageSemantics.ExtSpec}.
   Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context {locals_ok: map.ok locals}.
   Context {mem_ok: map.ok mem}.
@@ -61,20 +61,22 @@ Section Proofs.
           final.(getMetrics) =
               Platform.MetricLogging.addMetricInstructions (Z.of_nat (List.length vars))
                 (Platform.MetricLogging.addMetricStores (Z.of_nat (List.length vars))
-                   (Platform.MetricLogging.addMetricLoads (Z.of_nat (List.length vars)) initial.(getMetrics))) /\   
+                   (Platform.MetricLogging.addMetricLoads (Z.of_nat (List.length vars)) initial.(getMetrics))) /\
+          final.(getTrace) =
+            option_map (List.app (rev (leakage_events initial.(getPc) (save_regs iset vars offset) (leak_save_regs iset p_sp vars)))) initial.(getTrace) /\
           valid_machine final).
   Proof.
     unfold map.getmany_of_list.
     induction vars; intros; subst addr.
     - simpl in *. simp. destruct oldvalues; simpl in *; [|discriminate].
       apply runsToNonDet.runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
-      destruct_RiscvMachine initial. destruct initial_metrics. MetricsToRiscv.solve_MetricLog. 
+      + destruct_RiscvMachine initial. destruct initial_metrics. MetricsToRiscv.solve_MetricLog.
+      + destruct_RiscvMachine initial. destruct getTrace; reflexivity.
     - simpl in *. simp.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       destruct oldvalues as [|oldvalue oldvalues]; simpl in *; [discriminate|].
-      replace (Memory.bytes_per_word (Decode.bitwidth iset)) with bytes_per_word in *. 2: {
-        rewrite bitwidth_matches. reflexivity.
-      }
+      replace (Memory.bytes_per_word (Decode.bitwidth iset)) with bytes_per_word in *.
+      2: { rewrite bitwidth_matches. reflexivity. }
       eapply runsToNonDet.runsToStep. {
         eapply run_store_word.
         7: eassumption.
@@ -99,8 +101,9 @@ Section Proofs.
           etransitivity; [eassumption|].
           replace (List.length vars) with (List.length oldvalues) by blia.
           solve_word_eq word_ok.
-        - rewrite H0p7. MetricsToRiscv.solve_MetricLog. 
-      }
+        - rewrite H0p7. MetricsToRiscv.solve_MetricLog.
+        - subst. destruct getTrace; [|reflexivity]. simpl. repeat rewrite <- app_assoc.
+          reflexivity. }
       all: try eassumption.
       + simpl in *. etransitivity. 1: eassumption. ecancel.
       + simpl. use_sep_assumption. wcancel.
@@ -135,12 +138,15 @@ Section Proofs.
               Platform.MetricLogging.addMetricInstructions (Z.of_nat (List.length vars))
                 (Platform.MetricLogging.addMetricLoads (Z.of_nat (2 * (List.length vars)))
                    initial.(getMetrics)) /\
+          final.(getTrace) =
+            option_map (List.app (rev (leakage_events initial.(getPc) (load_regs iset vars offset) (leak_load_regs iset p_sp vars)))) initial.(getTrace) /\
           valid_machine final).
   Proof.
     induction vars; intros.
     - simpl in *. simp. destruct values; simpl in *; [|discriminate].
       apply runsToNonDet.runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
-      destruct_RiscvMachine initial. destruct initial_metrics. MetricsToRiscv.solve_MetricLog. 
+      + destruct_RiscvMachine initial. destruct initial_metrics. MetricsToRiscv.solve_MetricLog.
+      + destruct_RiscvMachine initial. destruct getTrace; reflexivity.
     - simpl in *. simp.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       assert (valid_register a). {
@@ -183,7 +189,9 @@ Section Proofs.
           rewrite Znat.Nat2Z.inj_succ. rewrite <- Z.add_1_r.
           replace (List.length values) with (List.length vars) by congruence.
           solve_word_eq word_ok.
-        * rewrite H1p3. MetricsToRiscv.solve_MetricLog. 
+        * rewrite H1p3. MetricsToRiscv.solve_MetricLog.
+        * rewrite H1p4. destruct getTrace; [|reflexivity]. simpl.
+          repeat rewrite <- app_assoc. reflexivity.
   Qed.
 
   Lemma length_load_regs: forall vars offset,

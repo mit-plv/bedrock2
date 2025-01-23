@@ -1,6 +1,7 @@
 Require Import coqutil.Macros.unique.
 Require Import coqutil.Decidable.
 Require Import compiler.FlatImp.
+Require Import Coq.Wellfounded.Wellfounded.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.ZArith.ZArith.
@@ -14,9 +15,12 @@ Require Import coqutil.Datatypes.ListSet.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Utility.RegisterNames.
 Require Import bedrock2.Syntax.
+Require Import bedrock2.LeakageSemantics.
+Require Import compiler.FixEq.
 Require Import coqutil.Map.Interface.
 Require Import compiler.SeparationLogic.
 Require Import riscv.Spec.Decode.
+Require Import riscv.Spec.LeakageOfInstr.
 Require Import compiler.Registers.
 Require Import compiler.FlatImpConstraints.
 
@@ -68,6 +72,7 @@ Section FlatToRiscv1.
 
 
   Context (iset: InstructionSet).
+  Context {width} {BW : Bitwidth width} {word: word.word width}.
 
   (* Part 2: compilation *)
 
@@ -87,6 +92,21 @@ Section FlatToRiscv1.
     | access_size.word => if bitwidth iset =? 32 then Lw else Ld
     end.
 
+  Definition leak_Lbu x := ILeakage (Lbu_leakage x).
+  Definition leak_Lhu x := ILeakage (Lhu_leakage x).
+  Definition leak_Lw x := ILeakage (Lw_leakage x).
+  Definition leak_Lwu x := I64Leakage (Lwu_leakage x).
+  Definition leak_Ld x := I64Leakage (Ld_leakage x).
+
+  Definition leak_load(sz: access_size) :
+    word -> InstructionLeakage :=
+    match sz with
+    | access_size.one => leak_Lbu
+    | access_size.two => leak_Lhu
+    | access_size.four => if bitwidth iset =? 32 then leak_Lw else leak_Lwu
+    | access_size.word => if bitwidth iset =? 32 then leak_Lw else leak_Ld
+    end.
+
   Definition compile_store(sz: access_size):
     Z -> Z -> Z -> Instruction :=
     match sz with
@@ -94,6 +114,20 @@ Section FlatToRiscv1.
     | access_size.two => Sh
     | access_size.four => Sw
     | access_size.word => if bitwidth iset =? 32 then Sw else Sd
+    end.
+
+  Definition leak_Sb x := ILeakage (Sb_leakage x).
+  Definition leak_Sh x := ILeakage (Sh_leakage x).
+  Definition leak_Sw x := ILeakage (Sw_leakage x).
+  Definition leak_Sd x := I64Leakage (Sd_leakage x).
+
+  Definition leak_store(sz: access_size) :
+    word -> InstructionLeakage :=
+    match sz with
+    | access_size.one => leak_Sb
+    | access_size.two => leak_Sh
+    | access_size.four => leak_Sw
+    | access_size.word => if bitwidth iset =? 32 then leak_Sw else leak_Sd
     end.
 
   Definition compile_op_imm(rd: Z)(op: Syntax.bopname)(rs1: Z)(c2: Z): list Instruction :=
@@ -108,6 +142,30 @@ Section FlatToRiscv1.
     | Syntax.bopname.lts => [[Slti rd rs1 c2]]
     | Syntax.bopname.ltu => [[Sltiu rd rs1 c2]]
     | _ => [InvalidInstruction (-1)]
+    end.
+
+  Definition leak_Addi := ILeakage Addi_leakage.
+  Definition leak_Andi := ILeakage Andi_leakage.
+  Definition leak_Ori := ILeakage Ori_leakage.
+  Definition leak_Xori := ILeakage Xori_leakage.
+  Definition leak_Srli := ILeakage Srli_leakage.
+  Definition leak_Slli := ILeakage Slli_leakage.
+  Definition leak_Srai := ILeakage Srai_leakage.
+  Definition leak_Slti := ILeakage Slti_leakage.
+  Definition leak_Sltiu := ILeakage Sltiu_leakage.
+
+  Definition leak_op_imm(op: Syntax.bopname) : list InstructionLeakage :=
+    match op with
+    | Syntax.bopname.add => [leak_Addi]
+    | Syntax.bopname.and => [leak_Andi]
+    | Syntax.bopname.or  => [leak_Ori]
+    | Syntax.bopname.xor => [leak_Xori]
+    | Syntax.bopname.sru => [leak_Srli]
+    | Syntax.bopname.slu => [leak_Slli]
+    | Syntax.bopname.srs => [leak_Srai]
+    | Syntax.bopname.lts => [leak_Slti]
+    | Syntax.bopname.ltu => [leak_Sltiu]
+    | _ => []
     end.
 
   Definition compile_op_register(rd: Z)(op: Syntax.bopname)(rs1 rs2: Z): list Instruction :=
@@ -128,14 +186,60 @@ Section FlatToRiscv1.
     | Syntax.bopname.ltu => [[Sltu rd rs1 rs2]]
     | Syntax.bopname.eq  => [[Sub rd rs1 rs2; Seqz rd rd]]
     end.
+
+  Definition leak_Add := ILeakage Add_leakage.
+  Definition leak_Sub := ILeakage Sub_leakage.
+  Definition leak_Mul := MLeakage Mul_leakage.
+  Definition leak_Mulhu := MLeakage Mulhu_leakage.
+  Definition leak_Divu (num den : word) := MLeakage (Divu_leakage num den).
+  Definition leak_Remu (num den : word) := MLeakage (Remu_leakage num den).
+  Definition leak_And := ILeakage And_leakage.
+  Definition leak_Or := ILeakage Or_leakage.
+  Definition leak_Xor := ILeakage Xor_leakage.
+  Definition leak_Srl := ILeakage Srl_leakage.
+  Definition leak_Sll := ILeakage Sll_leakage.
+  Definition leak_Sra := ILeakage Sra_leakage.
+  Definition leak_Slt := ILeakage Slt_leakage.
+  Definition leak_Sltu := ILeakage Sltu_leakage.
+  Definition leak_Seqz := ILeakage Sltiu_leakage.
+  
+  Definition leak_op_register (op: Syntax.bopname) (x1 x2 : word) : list InstructionLeakage :=
+    match op with
+    | Syntax.bopname.add => [ leak_Add ]
+    | Syntax.bopname.sub => [ leak_Sub ]
+    | Syntax.bopname.mul => [ leak_Mul ]
+    | Syntax.bopname.mulhuu => [ leak_Mulhu ]
+    | Syntax.bopname.divu => [ leak_Divu x1 x2 ] 
+    | Syntax.bopname.remu => [ leak_Remu x1 x2 ]
+    | Syntax.bopname.and => [ leak_And ]
+    | Syntax.bopname.or  => [ leak_Or ]
+    | Syntax.bopname.xor => [ leak_Xor ]
+    | Syntax.bopname.sru => [ leak_Srl ]
+    | Syntax.bopname.slu => [ leak_Sll ]
+    | Syntax.bopname.srs => [ leak_Sra ]
+    | Syntax.bopname.lts => [ leak_Slt ]
+    | Syntax.bopname.ltu => [ leak_Sltu ]
+    | Syntax.bopname.eq  => [ leak_Sub ; leak_Seqz ]
+    end.
+  
   Definition compile_op(rd: Z)(op: Syntax.bopname)(op1 : Z)(op2: operand): list Instruction :=
     match  op2 with
     | Var v2 => compile_op_register rd op op1 v2
     | Const c2 => compile_op_imm rd op op1 c2
     end.
 
+  Definition leak_op (op : Syntax.bopname) (op2: @operand Z) (x1 x2 : word) :
+    list InstructionLeakage :=
+    match op2 with
+    | Var _ => leak_op_register op x1 x2
+    | Const c2 => leak_op_imm op
+    end.
+
   Definition compile_lit_12bit(rd: Z)(v: Z): list Instruction :=
     [[ Addi rd Register0 (signExtend 12 v) ]].
+
+  Definition leak_lit_12bit : list InstructionLeakage :=
+    [ leak_Addi ].
 
   (* On a 64bit machine, loading a constant -2^31 <= v < 2^31 is not always possible with
      a Lui followed by an Addi:
@@ -160,6 +264,11 @@ Section FlatToRiscv1.
     let hi := Z.lxor (signExtend 32 v) lo in
     [[ Lui rd hi ; Xori rd rd lo ]].
 
+  Definition leak_Lui := ILeakage Lui_leakage.
+  
+  Definition leak_lit_32bit : list InstructionLeakage :=
+    [ leak_Lui ; leak_Xori ].
+
   Definition compile_lit_64bit(rd: Z)(v: Z): list Instruction :=
     let v0 := bitSlice v  0 11 in
     let v1 := bitSlice v 11 22 in
@@ -173,12 +282,28 @@ Section FlatToRiscv1.
        Slli rd rd 11 ;
        Xori rd rd v0 ]].
 
+  Definition leak_lit_64bit : list InstructionLeakage :=
+    leak_lit_32bit ++
+    [ leak_Slli ;
+      leak_Xori ;
+      leak_Slli ;
+      leak_Xori ;
+      leak_Slli ;
+      leak_Xori ].
+
   Definition compile_lit(rd: Z)(v: Z): list Instruction :=
     if ((-2^11 <=? v)%Z && (v <? 2^11)%Z)%bool then
       compile_lit_12bit rd v
     else if ((bitwidth iset =? 32)%Z || (- 2 ^ 31 <=? v)%Z && (v <? 2 ^ 31)%Z)%bool then
       compile_lit_32bit rd v
     else compile_lit_64bit rd v.
+
+  Definition leak_lit(v: Z) : list InstructionLeakage :=
+    if ((-2^11 <=? v)%Z && (v <? 2^11)%Z)%bool then
+      leak_lit_12bit
+    else if ((bitwidth iset =? 32)%Z || (- 2 ^ 31 <=? v)%Z && (v <? 2 ^ 31)%Z)%bool then
+      leak_lit_32bit
+    else leak_lit_64bit.
 
   (* Inverts the branch condition. *)
   Definition compile_bcond_by_inverting
@@ -197,6 +322,29 @@ Section FlatToRiscv1.
         Beq x Register0 amt
     end.
 
+  Definition leak_Bne x := ILeakage (Bne_leakage x).
+  Definition leak_Beq x := ILeakage (Beq_leakage x).
+  Definition leak_Bge x := ILeakage (Bge_leakage x).
+  Definition leak_Blt x := ILeakage (Blt_leakage x).
+  Definition leak_Bgeu x := ILeakage (Bgeu_leakage x).
+  Definition leak_Bltu x := ILeakage (Bltu_leakage x).
+
+  Definition leak_bcond_by_inverting
+    (cond: bcond Z) : bool -> InstructionLeakage :=
+    match cond with
+    | CondBinary op _ _ =>
+        match op with
+        | BEq  => leak_Bne
+        | BNe  => leak_Beq
+        | BLt  => leak_Bge
+        | BGe  => leak_Blt
+        | BLtu => leak_Bgeu
+        | BGeu => leak_Bltu
+        end
+    | CondNez _ =>
+        leak_Beq
+    end.
+
   Local Notation bytes_per_word := (Memory.bytes_per_word (bitwidth iset)).
 
   Fixpoint save_regs(regs: list Z)(offset: Z): list Instruction :=
@@ -206,11 +354,25 @@ Section FlatToRiscv1.
                    :: (save_regs regs (offset + bytes_per_word))
     end.
 
+  Fixpoint leak_save_regs
+    (sp_val: word)(regs: list Z): list InstructionLeakage :=
+    match regs with
+    | nil => nil
+    | r :: regs' => leak_store access_size.word sp_val :: leak_save_regs sp_val regs'
+    end.
+
   Fixpoint load_regs(regs: list Z)(offset: Z): list Instruction :=
     match regs with
     | nil => nil
     | r :: regs => compile_load access_size.word r sp offset
                    :: (load_regs regs (offset + bytes_per_word))
+    end.
+
+  Fixpoint leak_load_regs
+    (sp_val: word)(regs: list Z): list InstructionLeakage :=
+    match regs with
+    | nil => nil
+    | r :: regs' => leak_load access_size.word sp_val :: leak_load_regs sp_val regs' 
     end.
 
   (* number of words of stack allocation space needed within current frame *)
@@ -242,12 +404,16 @@ Section FlatToRiscv1.
   (* All positions are relative to the beginning of the progam, so we get completely
      position independent code. *)
 
+  Context {mem: map.map word byte}.
   Context {env: map.map String.string (list Z * list Z * stmt Z)}.
   Context {pos_map: map.map String.string Z}.
   Context (compile_ext_call: pos_map -> Z -> Z -> stmt Z -> list Instruction).
+  Context (leak_ext_call: word(*program_base*) -> pos_map -> Z (*sp_val*) -> Z (*stackoffset*) -> stmt Z -> list word (*source-level leakage*) -> list LeakageEvent).
 
   Section WithEnv.
     Variable e: pos_map.
+    Variable e_env: env.
+    Variable program_base: word.
 
     (* mypos: position of the code relative to the positions in e
        stackoffset: $sp + stackoffset is the (last) highest used stack address (for SStackalloc)
@@ -332,7 +498,7 @@ Section FlatToRiscv1.
         [[ Jalr zero ra 0 ]].
 
     Definition add_compiled_function(state: list Instruction * pos_map)(fname: String.string)
-               (fimpl: list Z * list Z * stmt Z): list Instruction * pos_map :=
+      (fimpl: list Z * list Z * stmt Z): list Instruction * pos_map :=
       let '(old_insts, infomap) := state in
       let pos := 4 * Z.of_nat (length (old_insts)) in
       let new_insts := compile_function pos fimpl in
@@ -342,6 +508,288 @@ Section FlatToRiscv1.
 
     Definition compile_funs: env -> list Instruction * pos_map :=
       map.fold add_compiled_function (nil, map.empty).
+
+    Definition leak_Jal := ILeakage Jal_leakage.
+    Definition leak_Jalr x := ILeakage (Jalr_leakage x).
+
+    Definition tuple : Type := stmt Z * leakage * list LeakageEvent * Z * word * Z * (leakage -> list LeakageEvent -> list LeakageEvent * word).
+
+    (*having to add in this extra information is inconvenient.
+      it'd be nice to prove that it's all redundant, and hence can be reconstructed from just the 'leakages' list.
+      This would probably be feasible if we could prove that only the program is ever executed, and the program is
+      never modified.  But proving these things would probably be more effort than just including the redundant information.*)
+    Fixpoint leakage_events (abs_pos: word) (instrs : list Instruction) (leakages : list InstructionLeakage) : list LeakageEvent :=
+      match instrs, leakages with
+      | instr :: instrs, leakage :: leakages =>
+          fetchInstr abs_pos ::
+            executeInstr instr leakage ::
+            leakage_events (word.add abs_pos (word.of_Z 4)) instrs leakages
+      | _, _ => nil
+      end.
+
+    Definition leakage_events_rel (mypos: Z) :=
+      leakage_events (word.add program_base (word.of_Z mypos)).
+
+    Definition project_tuple (tup : tuple) : nat * stmt Z :=
+      let '(s, k, rk_so_far, mypos, sp_val, stackoffset, f) := tup in
+      (length k, s).
+
+    Definition lt_tuple (x y : tuple) :=
+      lt_tuple' (project_tuple x) (project_tuple y).
+
+    Lemma lt_tuple_wf : well_founded lt_tuple.
+    Proof.
+      cbv [lt_tuple]. apply wf_inverse_image. apply lt_tuple'_wf.
+    Defined.
+
+    Definition fun_leakage_helper
+        (mypos : Z) (sp_val ra_val : word) rets fbody :=
+        let need_to_save := list_diff Z.eqb (modVars_as_list Z.eqb fbody) rets in
+        let scratchwords := stackalloc_words fbody in
+        let framesize := (bytes_per_word *
+                            (Z.of_nat (length need_to_save) + 1 + scratchwords))%Z in
+        let sp_val' := word.add sp_val (word.of_Z (-framesize)) in
+        let beforeBodyInstrs :=
+          [[ Addi sp sp (-framesize) ]] ++
+            [[ compile_store access_size.word sp ra
+                 (bytes_per_word * (Z.of_nat (length need_to_save) + scratchwords)) ]] ++
+            save_regs need_to_save (bytes_per_word * scratchwords) in
+        let beforeBodyLeakage :=
+          [ leak_Addi ] ++ (* Addi sp sp (-framesize) *)
+            [ leak_store access_size.word sp_val' ] ++
+            leak_save_regs sp_val' need_to_save in
+        let afterBodyInstrs :=
+          load_regs need_to_save (bytes_per_word * scratchwords) ++
+            [[ compile_load access_size.word ra sp
+                 (bytes_per_word * (Z.of_nat (length need_to_save) + scratchwords)) ]] ++
+            [[ Addi sp sp framesize ]] ++
+            [[ Jalr zero ra 0 ]] in
+        let afterBodyLeakage :=
+          leak_load_regs sp_val' need_to_save ++
+            [ leak_load access_size.word sp_val' ] ++
+            [ leak_Addi ] ++ (* Addi sp sp framesize *)
+            [ leak_Jalr ra_val ] in
+        let body_pos := mypos + 4 * (2 + Z.of_nat (length need_to_save)) in
+        let body_stackoffset := (bytes_per_word * scratchwords)%Z in
+        let fbody_length := 4 * Z.of_nat (length (compile_stmt body_pos body_stackoffset fbody)) in
+        (beforeBodyInstrs, beforeBodyLeakage, afterBodyInstrs, afterBodyLeakage, body_pos, body_pos + fbody_length, sp_val', body_stackoffset).
+
+    Definition stmt_leakage_body
+      (tup : tuple)
+      (stmt_leakage : forall othertup, lt_tuple othertup tup -> list LeakageEvent * word)
+      : list LeakageEvent * word.
+      refine (
+          match tup as x return tup = x -> _ with
+          | (s, k, rk_so_far, mypos, sp_val, stackoffset, f) =>
+              fun _ =>
+              let leakage_events' := leakage_events_rel mypos (compile_stmt mypos stackoffset s) in
+              match s as x return s = x -> _ with
+              | SLoad sz x y o =>
+                  fun _ =>
+                    match k with
+                    | leak_word addr :: k' =>
+                        f [leak_word addr] (rk_so_far ++ leakage_events' [leak_load sz (word.sub addr (word.of_Z o) (*this is silly to add it and then subtract it off again.... the alternative is to have Flattening trace transformation function not be the identity, though*))])
+                    | _ => (nil, word.of_Z 0)
+                    end
+              | SStore sz x y o =>
+                  fun _ =>
+                    match k with
+                    | leak_word addr :: k' =>
+                        f [leak_word addr] (rk_so_far ++ leakage_events' [leak_store sz (word.sub addr (word.of_Z o))])
+                    | _ => (nil, word.of_Z 0)
+                    end
+              | SInlinetable sz x t i =>
+                  fun _ =>
+                    match k with
+                    | leak_word i' :: k' =>
+                        f [leak_word i'] (rk_so_far ++ leakage_events_rel mypos [[ Jal x (4 + Z.of_nat (length (compile_byte_list t)) * 4)]] [leak_Jal] ++ leakage_events_rel (mypos + (4 + Z.of_nat (length (compile_byte_list t)) * 4)) [[Add x x i; compile_load sz x x 0 ]] [leak_Add; leak_load sz (word.add (word.add (word.add program_base (word.of_Z mypos)) (word.of_Z 4)) i')])
+                    | _ => (nil, word.of_Z 0)
+                    end
+              | SStackalloc x n body =>
+                  fun _ =>
+                    match k as x return k = x -> _ with
+                    | leak_unit :: k' =>
+                        fun _ =>
+                          stmt_leakage (body, k', rk_so_far ++ leakage_events_rel mypos [[Addi x sp (stackoffset-n)]] [ leak_Addi ],
+                              mypos + 4, sp_val, stackoffset - n, fun skip => f (leak_unit :: skip)) _
+                    | _ => fun _ => (nil, word.add sp_val (word.of_Z (stackoffset - n)))
+                    end eq_refl
+              | SLit _ v =>
+                  fun _ =>
+                    f [] (rk_so_far ++ leakage_events' (leak_lit v))
+              | SOp _ op _ operand2 =>
+                  fun _ =>
+                    let newt_operands :=
+                      match op with
+                      | Syntax.bopname.divu
+                      | Syntax.bopname.remu =>
+                          match k with
+                          | leak_word x1 :: leak_word x2 :: k' => Some ([leak_word x1; leak_word x2], x1, x2)
+                          | _ => None
+                          end
+                      | Syntax.bopname.slu
+                      | Syntax.bopname.sru
+                      | Syntax.bopname.srs =>
+                          match k with
+                          | leak_word x2 :: k' => Some ([leak_word x2], word.of_Z 0, x2)
+                          | _ => None
+                          end
+                      | _ => Some ([], word.of_Z 0, word.of_Z 0)
+                      end
+                    in
+                    match newt_operands with
+                    | Some (newt, x1, x2) =>
+                        f newt (rk_so_far ++ leakage_events' (leak_op op operand2 x1 x2))
+                    | None => (nil, word.of_Z 0)
+                    end
+              | SSet _ _ =>
+                  fun _ =>
+                    f [] (rk_so_far ++ leakage_events' [ leak_Add ])
+              | SIf cond bThen bElse =>
+                  fun _ =>
+                    let thenLength := Z.of_nat (length (compile_stmt (mypos + 4) stackoffset bThen)) in
+                    let elseLength := Z.of_nat (length (compile_stmt (mypos + 4 + 4 * thenLength + 4) stackoffset bElse)) in
+                    match k as x return k = x -> _ with
+                    | leak_bool b :: k' =>
+                        fun _ =>
+                          stmt_leakage (if b then bThen else bElse,
+                              k',
+                              rk_so_far ++ leakage_events_rel mypos [[compile_bcond_by_inverting cond ((thenLength + 2) * 4)]] [ leak_bcond_by_inverting cond (negb b) ],
+                              if b then mypos + 4 else mypos + 4 + 4 * thenLength + 4,
+                              sp_val,
+                              stackoffset,
+                              fun skip rk_so_far' =>
+                                f (leak_bool b :: skip)
+                                  (rk_so_far' ++ if b then leakage_events_rel (mypos + 4 + 4 * thenLength) [[Jal Register0 ((elseLength + 1) * 4)]] [leak_Jal] else [])) _
+                    | _ => fun _ => (nil, word.of_Z 0)
+                    end eq_refl
+              | SLoop body1 cond body2 =>
+                  fun _ =>
+                    let body1Length := Z.of_nat (length (compile_stmt mypos stackoffset body1)) in
+                    let body2Length := Z.of_nat (length (compile_stmt (mypos + (body1Length + 1) * 4) stackoffset body2)) in
+                    stmt_leakage (body1, k, rk_so_far, mypos, sp_val, stackoffset,
+                        fun skip rk_so_far'  =>
+                          Let_In_pf_nd (List.skipn (length skip) k)
+                          (fun k' _ =>
+                             match k' as x return k' = x -> _ with
+                             | leak_bool true :: k'' =>
+                                 fun _ =>
+                                   stmt_leakage (body2,
+                                       k'',
+                                       rk_so_far' ++ leakage_events_rel (mypos + body1Length * 4) [[compile_bcond_by_inverting cond ((body2Length + 2) * 4)]] [ leak_bcond_by_inverting cond (negb true) ],
+                                       mypos + (body1Length + 1) * 4, sp_val, stackoffset,
+                                       fun skip' rk_so_far'' =>
+                                         let k''' := List.skipn (length skip') k'' in
+                                         stmt_leakage (s,
+                                             k''',
+                                             rk_so_far'' ++ leakage_events_rel (mypos + (body1Length + 1 + body2Length) * 4) [[Jal Register0 (- (body1Length + 1 + body2Length) * 4)]] [ leak_Jal ],
+                                             mypos, sp_val, stackoffset,
+                                             fun skip'' => f (skip ++ leak_bool true :: skip' ++ skip'')) _) _
+                             | leak_bool false :: k'' =>
+                                 fun _ =>
+                                   f (skip ++ [leak_bool false]) (rk_so_far' ++ leakage_events_rel (mypos + body1Length * 4) [[compile_bcond_by_inverting cond ((body2Length + 2) * 4)]] [ leak_bcond_by_inverting cond (negb false) ])
+                             | _ => fun _ => (nil, word.of_Z 0)
+                             end eq_refl)) _
+              | SSeq s1 s2 =>
+                  fun _ =>
+                    let s1Length := Z.of_nat (length (compile_stmt mypos stackoffset s1)) in
+                    stmt_leakage (s1, k, rk_so_far, mypos, sp_val, stackoffset,
+                        fun skip rk_so_far' =>
+                          let k' := List.skipn (length skip) k in
+                          stmt_leakage (s2, k', rk_so_far', mypos + 4 * s1Length, sp_val, stackoffset,
+                              fun skip' => f (skip ++ skip')) _) _
+              | SSkip => fun _ => f [] rk_so_far
+              | SCall resvars fname argvars =>
+                  fun _ =>
+                    match k as x return k = x -> _ with
+                    | leak_unit :: k' =>
+                        fun _ =>
+                          match map.get e_env fname, map.get e fname with
+                          | Some (params, rets, fbody), Some fpos =>
+                              let '(beforeBodyInstrs, beforeBodyLeakage, afterBodyInstrs, afterBodyLeakage, mypos', after_fun_pos, sp_val', stackoffset') := fun_leakage_helper fpos sp_val (word.add (word.add program_base (word.of_Z mypos)) (word.of_Z 4)) rets fbody in
+                              stmt_leakage (fbody,
+                                  k',
+                                  rk_so_far ++ leakage_events_rel mypos [[ Jal ra (fpos - mypos) ]] [leak_Jal] ++ leakage_events_rel fpos beforeBodyInstrs beforeBodyLeakage,
+                                  mypos', sp_val', stackoffset',
+                                  fun skip rk_so_far' =>
+                                    let k'' := List.skipn (length skip) k' in
+                                    f (leak_unit :: skip) (rk_so_far' ++ leakage_events_rel after_fun_pos afterBodyInstrs afterBodyLeakage)) _
+                          | _, _ => (nil, word.of_Z 0)
+                          end
+                    | _ => fun _ => (nil, word.of_Z 0)
+                    end eq_refl
+              | SInteract _ _ _ =>
+                  fun _ =>
+                    match k with
+                    | leak_list l :: k' =>
+                        f [leak_list l] (rk_so_far ++ leak_ext_call program_base e mypos stackoffset s l)
+                    | _ => (nil, word.of_Z 0)
+                    end
+              end eq_refl
+          end eq_refl).
+      Proof. (*copied verbatim from spilling*)
+        Unshelve.
+        all: intros.
+        all: cbv [lt_tuple project_tuple].
+        all: subst.
+        all: repeat match goal with
+               | t := List.skipn ?n ?k |- _ =>
+                        let H := fresh "H" in
+                        assert (H := List.skipn_length n k); subst t end.
+        all: try (right; constructor; constructor).
+        all: try (left; constructor; constructor).
+        - assert (H0 := skipn_length (length skip) k). left.
+          rewrite H. assert (H1:= @f_equal _ _ (@length _) _ _ e3).
+          simpl in H1. blia.
+        - assert (H := skipn_length (length skip) k). left.
+          assert (H1 := @f_equal _ _ (@length _) _ _ e3). simpl in H1. blia.
+        - destruct (length (List.skipn (length skip) k) =? length k)%nat eqn:E.
+          + apply Nat.eqb_eq in E. rewrite E. right. constructor. constructor.
+          + apply Nat.eqb_neq in E. left. blia.
+      Defined.
+
+      Definition stmt_leakage
+        := Fix lt_tuple_wf _ stmt_leakage_body.
+
+      Definition Equiv (x y : tuple) :=
+        let '(x1, x2, x3, x4, x5, x6, fx) := x in
+        let '(y1, y2, y3, y4, y5, y6, fy) := y in
+        (x1, x2, x3, x4, x5, x6) = (y1, y2, y3, y4, y5, y6) /\
+          forall k rk,
+            fx k rk = fy k rk.
+      
+      Lemma stmt_leakage_body_ext :
+        forall (x1 x2 : tuple) (f1 : forall y : tuple, lt_tuple y x1 -> list LeakageEvent * word)
+               (f2 : forall y : tuple, lt_tuple y x2 -> list LeakageEvent * word),
+          Equiv x1 x2 ->
+          (forall (y1 y2 : tuple) (p1 : lt_tuple y1 x1) (p2 : lt_tuple y2 x2),
+              Equiv y1 y2 -> f1 y1 p1 = f2 y2 p2) -> @stmt_leakage_body x1 f1 = @stmt_leakage_body x2 f2.
+      Proof.
+        intros. cbv [stmt_leakage_body]. cbv beta.
+        destruct x1 as [ [ [ [ [ [s_1 k_1] rk_so_far_1] mypos_1] sp_val_1] stackoffset_1] f_1].
+        destruct x2 as [ [ [ [ [ [s_2 k_2] rk_so_far_2] mypos_2] sp_val_2] stackoffset_2] f_2].
+        cbv [Equiv] in H. destruct H as [H1 H2]. injection H1. intros. subst. clear H1.
+        repeat (Tactics.destruct_one_match || rewrite H || apply H0 || cbv [Equiv] || intuition auto || match goal with | |- _ :: _ = _ :: _ => f_equal end || intuition auto(*why does putting this here make this work*)).
+        apply Let_In_pf_nd_ext.
+        repeat (Tactics.destruct_one_match || rewrite H || apply H0 || cbv [Equiv] || intuition auto || match goal with | |- _ :: _ = _ :: _ => f_equal end || intuition auto).
+      Qed.
+
+      Lemma fix_step tup :
+        stmt_leakage tup = @stmt_leakage_body tup (fun y _ => stmt_leakage y).
+      Proof.
+        cbv [stmt_leakage].
+        apply (@Fix_eq'_nondep _ _ lt_tuple_wf _ (stmt_leakage_body) Equiv eq).
+        { apply stmt_leakage_body_ext. }
+        { cbv [Equiv]. destruct tup as [ [ [ [ [ [x1 x2] x3] x4] x5] x6] fx]. intuition. }
+      Qed.
+
+      Definition fun_leakage 
+        (k : leakage) (rk_so_far : list LeakageEvent) (fpos : Z) (sp_val ra_val : word)
+        (rets : list Z) fbody
+        (f : leakage -> list LeakageEvent -> list LeakageEvent * word) :=
+        let '(beforeBodyInstrs, beforeBodyLeakage, afterBodyInstrs, afterBodyLeakage, mypos', after_fun_pos, sp_val', stackoffset') := fun_leakage_helper fpos sp_val ra_val rets fbody in
+        stmt_leakage (fbody, k, rk_so_far ++ leakage_events_rel fpos beforeBodyInstrs beforeBodyLeakage, mypos', sp_val', stackoffset',
+            fun skip rk_so_far' => f skip (rk_so_far' ++ leakage_events_rel after_fun_pos afterBodyInstrs afterBodyLeakage)).
   End WithEnv.
 
   (* compiles all functions just to obtain their code size *)

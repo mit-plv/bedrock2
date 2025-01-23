@@ -1,4 +1,5 @@
 Require Import compiler.util.Common.
+Require Import bedrock2.LeakageSemantics.
 Require Import compiler.FlatImp.
 Require Import coqutil.Tactics.simpl_rewrite.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -916,7 +917,8 @@ Section CheckerCorrect.
   Context {impLocalsOk: map.ok impLocals}.
   Context {srcEnv: map.map String.string (list srcvar * list srcvar * stmt)} {srcEnvOk: map.ok srcEnv}.
   Context {impEnv: map.map String.string (list impvar * list impvar * stmt')} {impEnvOk: map.ok impEnv}.
-  Context {ext_spec: Semantics.ExtSpec}.
+  Context {ext_spec: LeakageSemantics.ExtSpec}.
+  Context {pick_sp: PickSp}.
 
   Definition states_compat(st: srcLocals)(corresp: list (srcvar * impvar))(st': impLocals) :=
     forall (x: srcvar) (x': impvar),
@@ -1192,16 +1194,16 @@ Section CheckerCorrect.
 
   Ltac b := unfold assert_in, assignment, check_regs in *; cost_hammer.
 
-  Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s t m lH mcH post,
+  Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s k t m lH mcH post,
       check_funcs e e' = Success tt ->
-      exec PreSpill isRegStr e s t m lH mcH post ->
+      exec PreSpill isRegStr e s k t m lH mcH post ->
       forall lL corresp corresp' s' mcL,
       check corresp s s' = Success corresp' ->
       states_compat lH (precond corresp s s') lL ->
-      exec PreSpill isRegZ e' s' t m lL mcL (fun t' m' lL' mcL' =>
+      exec PreSpill isRegZ e' s' k t m lL mcL (fun k' t' m' lL' mcL' =>
         exists lH' mcH', states_compat lH' corresp' lL' /\
                     (mcL' - mcL <= mcH' - mcH)%metricsH /\
-                    post t' m' lH' mcH').
+                    post k' t' m' lH' mcH').
   Proof.
     induction 2; intros;
       match goal with
@@ -1300,13 +1302,13 @@ Section CheckerCorrect.
       unfold loop_inv in SC.
       rewrite E in SC.
       eapply exec.loop with
-        (mid2 := (fun (t'0 : Semantics.trace) (m'0 : mem) (lL' : impLocals) (mcL' : MetricLog) =>
+        (mid2 := (fun k'0 t'0 m'0 lL' mcL' =>
            exists (lH' : srcLocals) (mcH' : MetricLog),
              states_compat lH' a1 lL' /\
                (exists mcHmid mcLmid,
                mcLmid - mcL <= mcHmid - mc /\
                mcL' - mcLmid <= mcH' - mcHmid)%metricsH /\
-             mid2 t'0 m'0 lH' mcH')).
+             mid2 k'0 t'0 m'0 lH' mcH')).
       + eapply IH1. 1: eassumption. eapply states_compat_precond. exact SC.
       + cbv beta. intros. fwd. eauto using states_compat_eval_bcond_None.
       + cbv beta. intros. fwd. eexists. eexists. (* exists (exec.cost_SLoop_false isRegStr cond mcH'). *)
@@ -1341,7 +1343,7 @@ Section CheckerCorrect.
       eapply exec.seq.
       + eapply IH1. 1: eassumption.
         eapply states_compat_precond. assumption.
-      + cbv beta. intros t' m' l' mcblah ?. fwd.
+      + cbv beta. intros k' t' m' l' mcblah ?. fwd.
         eapply IH2 in H2p2. 2,3: eauto using states_compat_precond.
         eapply exec.weaken; eauto.
         cbv beta. intros. fwd. exists lH'0. exists mcH'0. split. 2:split. 1,3: eauto.
