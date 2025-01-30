@@ -128,7 +128,7 @@ Proof.
   { subst. cbv [fname_memequal]. move spec at bottom.
     specialize (spec x y n xs ys Rx Ry [] (initial.(getLog)) m ltac:(intuition eauto)).
     eapply MetricLeakageSemantics.weaken_call.
-    { eapply MetricLeakageSemantics.to_leakage_call. exact spec. }
+    { eapply SemanticsRelations.metricleakage_to_leakage_call. exact spec. }
     cbv beta. intros. fwd. split; [|reflexivity]. reflexivity. }
   { reflexivity. }
   { reflexivity. }

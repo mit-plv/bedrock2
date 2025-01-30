@@ -10,7 +10,8 @@ Require coqutil.Datatypes.String.
 Require Import coqutil.Map.Interface coqutil.Map.Domain.
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import coqutil.Word.Properties.
-Require Import bedrock2.Semantics bedrock2.LeakageSemantics bedrock2.MetricLeakageSemantics.
+Require Import bedrock2.Semantics bedrock2.LeakageSemantics.
+Require Import bedrock2.SemanticsRelations.
 Require Import bedrock2.TraceInspection.
 Local Open Scope string_scope.
 
