@@ -1,5 +1,6 @@
 Require Import Coq.ZArith.ZArith.
-Require Import bedrock2.Syntax bedrock2.Semantics bedrock2.LeakageSemantics bedrock2.MetricLeakageSemantics.
+Require Import bedrock2.Syntax bedrock2.Semantics bedrock2.LeakageSemantics.
+Require Import bedrock2.SemanticsRelations.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Import coqutil.Word.Interface.
 Require Export coqutil.Word.Bitwidth32.

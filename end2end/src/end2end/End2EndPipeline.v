@@ -362,13 +362,13 @@ Section Connect.
                rewrite heap_start_agree in H;
                rewrite heap_pastend_agree in H
              end.
-             eapply MetricLeakageSemantics.to_plain_exec.
+             eapply SemanticsRelations.metricleakage_to_plain_exec.
              eapply WeakestPreconditionProperties.sound_cmd; eauto.
           -- simpl. clear. intros. unfold bedrock2Inv in *. eauto.
         * exact GetLoop.
         * intros. unfold bedrock2Inv in *.
           eapply MetricLeakageSemantics.exec.weaken.
-          -- eapply MetricLeakageSemantics.to_plain_exec.
+          -- eapply SemanticsRelations.metricleakage_to_plain_exec.
              eapply WeakestPreconditionProperties.sound_cmd; eauto.
           -- simpl. clear. intros. eauto.
       + assumption.

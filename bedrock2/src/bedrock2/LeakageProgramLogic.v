@@ -6,9 +6,10 @@ Require Import bedrock2.LeakageWeakestPrecondition.
 Require Import bedrock2.LeakageWeakestPreconditionProperties.
 Require Import bedrock2.LeakageLoops.
 Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
+Require bedrock2.ProgramLogic.
+Require Import bedrock2.SemanticsRelations.
 
-Definition spec_of (procname:String.string) := Semantics.env -> Prop.
-Existing Class spec_of.
+Notation spec_of := bedrock2.ProgramLogic.spec_of.
 
 Module Import Coercions.
   Import Map.Interface Word.Interface BinInt.
@@ -388,7 +389,6 @@ Ltac straightline_call_noex :=
   | |- LeakageWeakestPrecondition.call ?functions ?callee _ _ _ _ _ =>
     let callee_spec := lazymatch constr:(_:spec_of callee) with ?s => s end in
     let Hcall := lazymatch goal with H: callee_spec functions |- _ => H end in
-    repeat destruct Hcall as [?f Hcall]; 
     eapply LeakageWeakestPreconditionProperties.Proper_call; cycle -1;
       [ eapply Hcall | try eabstract (solve [Morphisms.solve_proper]) .. ];
       [ .. | intros ? ? ? ?]
@@ -406,8 +406,19 @@ Ltac straightline_call_ex :=
         [ .. | intros ? ? ? ? ]
   end.
 
+(*for use when the spec of callee has been written using Semantics, not LeakageSemantics*)
+Ltac straightline_call_from_plain :=
+  lazymatch goal with
+  | |- LeakageWeakestPrecondition.call ?functions ?callee _ _ _ _ _ =>
+    let callee_spec := lazymatch constr:(_:spec_of callee) with ?s => s end in
+    let Hcall := lazymatch goal with H: callee_spec functions |- _ => H end in
+    eapply LeakageWeakestPreconditionProperties.Proper_call; cycle -1;
+      [ eapply leakage_to_plain_call; eapply Hcall | try eabstract (solve [Morphisms.solve_proper]) .. ];
+      [ .. | intros ? ? ? ?]
+  end.
+
 (* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
-Ltac straightline_call := straightline_call_noex || straightline_call_ex.
+Ltac straightline_call := straightline_call_noex || straightline_call_ex || straightline_call_from_plain.
 
 Ltac current_trace_mem_locals :=
   lazymatch goal with
