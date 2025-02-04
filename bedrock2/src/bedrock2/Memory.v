@@ -10,6 +10,7 @@ Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndianList.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Byte.
 Require Import coqutil.Map.OfListWord.
+Export OfListWord.
 
 Open Scope Z_scope.
 
@@ -83,8 +84,22 @@ Module WithoutTuples. Section Memory.
 
   Import Word.Properties.
   Context {mem_ok: map.ok mem} {word_ok: word.ok word}.
+
+  Lemma unchecked_store_bytes_unchecked_store_bytes m a bs1 bs2 :
+    length bs1 = length bs2 ->
+    unchecked_store_bytes (unchecked_store_bytes m a bs1) a bs2 =
+    unchecked_store_bytes m a bs2.
+  Proof.
+    cbv [unchecked_store_bytes]; intros.
+    eapply map.map_ext; intros.
+    erewrite !map.get_putmany_dec, !map.get_of_list_word_at;
+      repeat (destruct_one_match; trivial).
+    epose proof proj1 (List.nth_error_Some bs1 (BinInt.Z.to_nat (word.unsigned (word.sub k a)))) ltac:(congruence).
+    rewrite H in H0.
+    eapply List.nth_error_Some in E; intuition idtac.
+  Qed.
+
   Local Infix "$+" := map.putmany (at level 70).
-  Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
   Lemma load_bytes_of_putmany_bytes_at bs a mR n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
     : load_bytes (mR $+ bs$@a) a n = Some bs.
   Proof.
@@ -114,10 +129,6 @@ Section Memory.
 
   Definition ftprint(a: word)(n: Z): list word :=
     List.unfoldn (fun w => word.add w (word.of_Z 1)) (Z.to_nat n) a.
-
-  Definition anybytes(a: word)(n: Z)(m: mem): Prop :=
-    0 <= n <= 2^width /\ 
-    exists bytes, Z.of_nat (length bytes) = n /\ m = map.of_list_word_at a bytes.
 
   Definition footprint(a: word)(sz: nat): tuple word sz :=
     tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.
@@ -192,18 +203,4 @@ Section Memory.
       eapply map.putmany_of_tuple_preserves_domain;
       eassumption.
   Qed.
-
-  Lemma anybytes_unique_domain: forall a n m1 m2,
-      anybytes a n m1 ->
-      anybytes a n m2 ->
-      map.same_domain m1 m2.
-  Proof.
-    unfold anybytes. intros.
-    destruct H as [vs1 [? []] ]. destruct H0 as [vs2 [? []] ]. subst.
-    cbv [map.same_domain map.sub_domain]; setoid_rewrite map.get_of_list_word_at.
-    split; intros ? ? ?%nth_error_Some_bound_index;
-      eexists; eapply List.nth_error_nth'; Lia.lia.
-    Unshelve. all : exact Byte.x00.
-  Qed.
-
 End Memory.

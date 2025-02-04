@@ -4705,17 +4705,12 @@ Qed.
 Lemma no_shared_uintptr : forall a m,
   ~<{ * (EX v, uintptr v a) * (EX v, uintptr v a) * (fun _ => True) }> m.
 Proof.
-  intros. intro. steps.
-  unfold uintptr, scalar, truncated_word, truncated_scalar, littleendian, ptsto_bytes,
-         ptsto in *.
-  do 2 match goal with
-       | H: context [ Array.array ] |- _ => simpl in H
-       end.
-  match goal with
-  | H1: context [ byte.of_Z \[ ?v1 ] ], H2: context [ byte.of_Z \[ ?v2 ] ] |- _ =>
-        apply (no_shared_byte (byte.of_Z \[v1]) (byte.of_Z \[v2]) a m)
-  end.
-  steps.
+  intros. intro.
+  extract_ex1_and_emp_in H.
+  cbv [uintptr scalar truncated_word truncated_scalar littleendian ptsto_bytes] in *.
+  simpl Array.array in *.
+  eapply sep_ptsto_same_framed with (m:=m).
+  ecancel_assumption.
 Qed.
 
 Lemma array_max_len : forall n l a m,

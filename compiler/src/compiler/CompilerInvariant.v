@@ -147,7 +147,7 @@ Section Pipeline1.
         rewrite map.get_putmany_dec in H1.
         destr (map.get mq a0). 1: congruence.
         exfalso.
-        unfold ptsto in *. subst mp.
+        unfold ptsto, exact in *. subst mp.
         rewrite map.get_put_dec in H1.
         destr (word.eqb start a0).
         * apply E. congruence.

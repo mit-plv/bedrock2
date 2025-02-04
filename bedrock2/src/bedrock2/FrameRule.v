@@ -152,7 +152,7 @@ Section semantics.
       intros.
       rename mCombined into mCombinedBig.
       specialize H1 with (1 := H3).
-      specialize (H1 (mmap.force (mmap.du (mmap.Def mSmall) (mmap.Def mStack)))).
+      specialize (H1 a (mmap.force (mmap.du (mmap.Def mSmall) (mmap.Def (map.of_list_word_at a stack))))).
       eapply map.split_alt in H4. pose proof H4 as D0. unfold mmap.split in D0.
       rewrite H2 in D0.
       rewrite (mmap.du_comm (mmap.Def mSmall) (mmap.Def mAdd)) in D0.
@@ -174,13 +174,13 @@ Section semantics.
                  move F at bottom
              end.
       rewrite D1 in D2. clear D1 mBig. rewrite D4 in D3. clear D4 mSmall'.
-      rewrite mmap.du_assoc in D3. rewrite (mmap.du_comm mStack') in D3.
+      rewrite mmap.du_assoc in D3. rewrite (mmap.du_comm (map.of_list_word_at a stack')) in D3.
       rewrite <- mmap.du_assoc in D3.
-      eexists (mmap.force (mmap.du mSmall'0 mAdd)). exists mStack'. ssplit.
-      1: eassumption.
+      eexists (mmap.force (mmap.du mSmall'0 mAdd)). exists stack'. ssplit.
       { simpl. eapply map.split_alt. unfold mmap.split.
         rewrite D3. f_equal. unfold mmap.du at 1 in D3. fwd. simpl in E0. rewrite E0.
         reflexivity. }
+      1: trivial.
       eexists; split. 2: eassumption.
       unfold mmap.split. simpl.
       unfold mmap.du at 1 in D3. fwd. simpl in E0. rewrite E0. reflexivity. }

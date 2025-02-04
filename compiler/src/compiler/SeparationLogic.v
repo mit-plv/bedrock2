@@ -7,8 +7,9 @@ Require Import coqutil.Tactics.rewr coqutil.Tactics.Tactics.
 Require Export coqutil.Z.Lia.
 Require Export coqutil.Datatypes.PropSet.
 Require Export bedrock2.Lift1Prop.
-Require Export bedrock2.Map.Separation.
-Require Export bedrock2.Map.SeparationLogic.
+Require Export coqutil.Map.Separation.
+Require Export coqutil.Map.SeparationLogic.
+Require Export bedrock2.anybytes.
 Require Export bedrock2.Array.
 Require Export bedrock2.Scalars.
 Require Export bedrock2.ptsto_bytes.
@@ -268,7 +269,7 @@ Section ptstos.
       exists mTraded,
         (eq (map.putmany mH mTraded) * R)%sep mL /\
         map.disjoint mH mTraded /\
-        Memory.anybytes addr (Z.of_nat (List.length bs)) mTraded.
+        anybytes.anybytes addr (Z.of_nat (List.length bs)) mTraded.
   Proof.
     unfold sep, map.split.
     intros.
@@ -280,7 +281,7 @@ Section ptstos.
 
   Lemma hl_mem_to_ll_mem: forall mH mHSmall mTraded mL (addr: word) n R,
       map.split mH mHSmall mTraded ->
-      Memory.anybytes addr n mTraded ->
+      anybytes.anybytes addr n mTraded ->
       (eq mH * R)%sep mL ->
       exists bs,
         List.length bs = Z.to_nat n /\
@@ -536,7 +537,7 @@ Section MoreSepLog.
         destr (key_eqb k k0); reflexivity.
       + unfold map.disjoint. intros. rewrite map.get_put_dec in H1.
         rewrite map.get_empty in H1. destr (key_eqb k k0); congruence.
-    - destruct H0 as (? & ? & (? & ?) & ? & ?).  subst.
+    - cbv [Separation.ptsto Separation.exact] in *. destruct H0 as (? & ? & (? & ?) & ? & ?). subst.
       apply map.map_ext. intros.
       rewrite map.get_put_dec, map.get_putmany_dec, map.get_put_dec, map.get_empty.
       destr (key_eqb k k0); reflexivity.
@@ -547,10 +548,7 @@ Section MoreSepLog.
       iff1 Q (ptsto k v1 * ptsto k v2 * R)%sep ->
       False.
   Proof.
-    intros. seprewrite_in H0 H. apply sep_emp_r in H. apply proj1 in H.
-    unfold sep, map.split, ptsto, map.disjoint in H.
-    decompose [Logic.and ex] H. clear H. subst.
-    specialize (H7 k). rewrite ?map.get_put_same in H7. eauto.
+    intros * H H0. eapply H0, sep_ptsto_same_framed  in H; exact H.
   Qed.
 
   Lemma get_Some_to_ptsto: forall k v (m: map),
@@ -567,7 +565,7 @@ Section MoreSepLog.
       + unfold map.disjoint. intros.
         rewrite map.get_remove_dec in H0. rewrite map.get_put_dec, map.get_empty in H1.
         destr (key_eqb k k0); congruence.
-    - unfold ptsto in H0. decompose [Logic.and ex] H0. subst.
+    - unfold ptsto, exact in H0. decompose [Logic.and ex] H0. subst.
       apply map.map_ext. intros.
         rewrite map.get_putmany_dec, map.get_put_dec, map.get_remove_dec, map.get_empty.
         destr (key_eqb k k0); congruence.
@@ -588,7 +586,7 @@ Section MoreSepLog.
       v0 = v1.
   Proof.
     intros. apply sep_comm in H. apply sep_comm in H0.
-    unfold sep, map.split, ptsto in *.
+    unfold sep, map.split, ptsto, exact in *.
     decompose [Logic.and ex] H. decompose [Logic.and ex] H0. subst.
     apply (f_equal (fun m => map.get m k)) in H6.
     rewrite ?map.get_putmany_dec, ?map.get_put_same in H6.

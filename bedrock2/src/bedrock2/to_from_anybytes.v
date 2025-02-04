@@ -5,6 +5,7 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwi
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Datatypes.ZList. Import ZList.List.ZIndexNotations.
+Require Import bedrock2.anybytes.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.sepapp.
@@ -139,7 +140,7 @@ Section WithMem.
 
   Lemma sepapps_nil_contiguous: contiguous (sepapps nil) 0.
   Proof.
-    unfold contiguous, sepapps, anyval, Memory.anybytes, impl1.
+    unfold contiguous, sepapps, anyval, anybytes.anybytes, impl1.
     simpl. intros *. intros [? _]. subst.
     exists nil. unfold array.
     eapply sep_emp_l. split; [reflexivity| ].
@@ -164,7 +165,7 @@ Section WithMem.
   Lemma uintptr_contiguous: forall v, contiguous (uintptr v) (Memory.bytes_per_word width).
   Proof.
     unfold contiguous, impl1, uintptr. intros.
-    eapply Scalars.scalar_to_anybytes in H.
+    eapply scalar_to_anybytes in H.
     eapply anybytes_from_alt.
     1: destruct width_cases as [E|E]; rewrite E; cbv; discriminate.
     assumption.
@@ -178,7 +179,7 @@ Section WithMem.
     unfold uint in H. eapply sep_emp_l in H. apply proj2 in H.
     unfold Scalars.littleendian, ptsto_bytes.ptsto_bytes in H.
     rewrite HList.tuple.to_list_of_list in H.
-    eapply Array.array_1_to_anybytes in H.
+    eapply array_1_to_anybytes in H.
     rewrite LittleEndianList.length_le_split in H.
     rewrite Z2Nat.id in H by apply nbits_to_nbytes_nonneg.
     exact H.

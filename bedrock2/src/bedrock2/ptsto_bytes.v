@@ -160,7 +160,7 @@ Section Scalars.
       + match goal with
         | |- sep ?BS (sep ?P ?Q) ?m => assert (sep (sep P BS) Q m); [|ecancel_assumption]
         end.
-        unfold sep, ptsto, footprint in *. eauto 10.
+        unfold sep, ptsto, exact, footprint in *. eauto 10.
   Qed.
 
   (* The side condition is actually needed: If n was bigger than 2^width,

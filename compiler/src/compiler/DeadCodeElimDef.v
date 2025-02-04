@@ -466,7 +466,7 @@ Section WithArguments1.
     | SStackalloc x n body =>
         SStackalloc x n (dce body u)
         (* The below optimization probably can be made to work;
-           on past attempt, got stuck at goals about `Memory.anybytes n a map.empty` *)
+           on past attempt, got stuck at goals about `anybytes.anybytes n a map.empty` *)
         (* if (existsb (eqb x) (live body u)) then
           SStackalloc x n (dce body u)
         else

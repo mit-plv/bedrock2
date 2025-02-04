@@ -5,19 +5,18 @@ Require Import bedrock2.Syntax.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.Loops.
-Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
+Require Import coqutil.Map.Separation coqutil.Map.SeparationLogic bedrock2.Scalars.
+Require Import coqutil.Map.OfListWord.
 
 Definition spec_of (procname:String.string) := Semantics.env -> Prop.
 Existing Class spec_of.
 
 Module Import Coercions.
-  Import Map.Interface Word.Interface BinInt.
+  Export Separation.Coercions.
+  Notation sepclause_of_map := Separation.exact (only parsing).
+  Import Word.Interface BinInt.
   Coercion Z.of_nat : nat >-> Z.
   Coercion word.unsigned : word.rep >-> Z.
-
-  Definition sepclause_of_map {key value map} (m : @map.rep key value map)
-    : map.rep -> Prop := Logic.eq m.
-  Coercion sepclause_of_map : Interface.map.rep >-> Funclass.
 End Coercions.
 
 Goal True.
@@ -159,49 +158,28 @@ Import WeakestPrecondition.
 Import coqutil.Map.Interface.
 
 Ltac straightline_stackalloc :=
-  match goal with Hanybytes: Memory.anybytes ?a ?n ?mStack |- _ =>
-  let m := match goal with H : map.split ?mCobined ?m mStack |- _ => m end in
-  let mCombined := match goal with H : map.split ?mCobined ?m mStack |- _ => mCobined end in
-  let Hsplit := match goal with H : map.split ?mCobined ?m mStack |- _ => H end in
-  let Hm := multimatch goal with H : _ m |- _ => H end in
-  let Hm' := fresh Hm in
-  let Htmp := fresh in
-  let Pm := match type of Hm with ?P m => P end in
-  assert_fails (assert (Separation.sep Pm (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a _) mCombined) as _ by ecancel_assumption);
-  rename Hm into Hm';
-  let stack := fresh "stack" in
-  let stack_length := fresh "length_" stack in (* MUST remain in context for deallocation *)
-  destruct (Array.anybytes_to_array_1 mStack a n Hanybytes) as (stack&Htmp&stack_length);
-  epose proof (ex_intro _ m (ex_intro _ mStack (conj Hsplit (conj Hm' Htmp)))
-  : Separation.sep _ (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a _) mCombined) as Hm;
-  clear Htmp; (* note: we could clear more here if we assumed only one separation-logic description of each memory is present *)
-  try (let m' := fresh m in rename m into m'); rename mCombined into m;
-  ( assert (BinInt.Z.of_nat (Datatypes.length stack) = n)
-  by (rewrite stack_length; apply (ZifyInst.of_nat_to_nat_eq n))
-  || fail 2 "negative stackalloc of size" n )
+  match goal with Hsplit : map.split ?M ?m (OfListWord.map.of_list_word_at ?a ?stack) |- _ =>
+    repeat match goal with Hm : _ m |- _ =>
+      let Hm' := fresh Hm in rename Hm into Hm';
+        unique pose proof ((ex_intro _ m (ex_intro _ _ (conj Hsplit (conj Hm' eq_refl))))
+      : sep _ (Separation.exact (OfListWord.map.of_list_word_at a stack)) M) as Hm
+    end;
+    change (id (map.split M m (OfListWord.map.of_list_word_at a stack))) in Hsplit
   end.
 
 Ltac straightline_stackdealloc :=
-  lazymatch goal with |- exists _ _, Memory.anybytes ?a ?n _ /\ map.split ?m _ _ /\ _ =>
-  let Hm := multimatch goal with Hm : _ m |- _ => Hm end in
-  let stack := match type of Hm with context [Array.array Separation.ptsto _ a ?stack] => stack end in
-  let length_stack := match goal with H : Datatypes.length stack = _ |- _ => H end in
-  let Hm' := fresh Hm in
-  pose proof Hm as Hm';
-  let Psep := match type of Hm with ?P _ => P end in
-  let Htmp := fresh "Htmp" in
-  eassert (Lift1Prop.iff1 Psep (Separation.sep _ (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a stack))) as Htmp
-  by ecancel || fail "failed to find stack frame in" Psep "using ecancel";
-  eapply (fun m => proj1 (Htmp m)) in Hm;
-  let m' := fresh m in
-  rename m into m';
-  let mStack := fresh in
-  destruct Hm as (m&mStack&Hsplit&Hm&Harray1); move Hm at bottom;
-  pose proof Array.array_1_to_anybytes _ _ _ Harray1 as Hanybytes;
-  rewrite length_stack in Hanybytes;
-  refine (ex_intro _ m (ex_intro _ mStack (conj Hanybytes (conj Hsplit _))));
-  clear Htmp Hsplit mStack Harray1 Hanybytes
-  end.
+  lazymatch goal with |- exists _ _, map.split ?m _ (_$@?a) /\ BinIntDef.Z.of_nat (length _) = ?n /\ _ =>
+    match goal with Hm : _ m |- _ =>
+    let stack := match type of Hm with context [?stack$@a] => stack end in
+    let length_stack := match goal with H : BinIntDef.Z.of_nat (Datatypes.length stack) = _ |- _ => H end in
+    let Pm := match type of Hm with ?P _ => P end in
+    let Hm' := fresh Hm in eassert (Lift1Prop.impl1 Pm (sep _ (_$@a))) as Hm'
+      by ecancel || fail "failed to find stack frame in" Pm "using ecancel";
+    specialize (Hm' m Hm);
+    let m' := fresh m in rename m into m';
+    let Hsplit := fresh in case Hm' as (m&?&Hsplit&Hm'&<-); move Hm' at bottom;
+    refine (ex_intro _ m (ex_intro _ stack (conj Hsplit (conj length_stack  _)))); clear Hsplit
+  end end.
 
 Ltac rename_to_different H :=
   idtac;
@@ -243,6 +221,7 @@ Ltac fwd_uniq := repeat fwd_uniq_step.
 Ltac straightline :=
   match goal with
   | _ => straightline_cleanup
+  | |- _ => straightline_stackalloc
   | |- program_logic_goal_for ?f _ =>
     enter f; intros;
     match goal with
@@ -343,7 +322,6 @@ Ltac straightline :=
       lazymatch Coq.setoid_ring.InitialRing.isZcst z with
       | true => split; [exact eq_refl|]
       end
-  | |- _ => straightline_stackalloc
   | |- _ => straightline_stackdealloc
   | |- context[sep (sep _ _) _] => progress (flatten_seps_in_goal; cbn [seps])
   | H : context[sep (sep _ _) _] |- _ => progress (flatten_seps_in H; cbn [seps] in H)

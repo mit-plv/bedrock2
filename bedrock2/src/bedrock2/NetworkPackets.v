@@ -92,7 +92,7 @@ Section BigEndian.
     unfold nbits_to_nbytes.
     replace ((Z.max 0 (Z.of_nat (length bs) * 8) + 7) / 8) with (Z.of_nat (length bs))
       by (Z.div_mod_to_equations; Lia.lia).
-    unfold Memory.anybytes. split; [Lia.lia|]. eauto with arith.
+    unfold anybytes.anybytes. split; [Lia.lia|]. eauto with arith.
   Qed.
 
 End BigEndian.

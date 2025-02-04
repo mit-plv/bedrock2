@@ -379,6 +379,8 @@ Section WithParameters.
         length s = n :> Z /\ length d = n :> Z /\ n <= 2^(width-1);
       ensures t' m := m =* s$@dst * R /\ t=t' }.
 
+  Import bedrock2.Array.
+
   Lemma memmove_ok_array : program_logic_goal_for_function! memmove.
   Proof.
     cbv [program_logic_goal_for spec_of_memmove_array]; intros.
@@ -386,11 +388,12 @@ Section WithParameters.
         cbv [sepclause_of_map] in *.
     { eassumption. }
     { intuition idtac.
-      - seprewrite_in_by @ptsto_bytes.array1_iff_eq_of_list_word_at H0 ZnWords; eassumption.
-      - seprewrite_in_by @ptsto_bytes.array1_iff_eq_of_list_word_at H ZnWords; eassumption.
+      - seprewrite_in_by @array1_iff_eq_of_list_word_at H0 ZnWords; eassumption.
+      - seprewrite_in_by @array1_iff_eq_of_list_word_at H ZnWords; eassumption.
       - trivial.
       - trivial. }
     { intros ? ? ? ?. intuition idtac.
-      seprewrite_in_by (symmetry! @ptsto_bytes.array1_iff_eq_of_list_word_at) H2 ZnWords; eassumption. }
+      change (((map.of_list_word_at dst s) ⋆ R)%sep a0) in H2.
+      seprewrite_in_by (symmetry! @array1_iff_eq_of_list_word_at) H2 ZnWords; eassumption. }
   Qed.
 End WithParameters.

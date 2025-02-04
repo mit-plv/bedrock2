@@ -400,7 +400,7 @@ Section Go.
       subset (footpr (ptsto a v)) (of_list xAddrs) ->
       isXAddr1 a xAddrs.
   Proof.
-    unfold subset, footpr, footprint_underapprox, ptsto, elem_of, of_list, isXAddr1.
+    unfold subset, footpr, footprint_underapprox, ptsto, exact, elem_of, of_list, isXAddr1.
     intros.
     eapply H.
     intros.
@@ -507,7 +507,7 @@ Section Go.
         specialize (Hx _ H0p2).
         destruct Hx as [w Hx].
         rename H0p1p1p1 into B.
-        unfold ptsto in B.
+        unfold ptsto, exact in B.
         subst.
         unfold map.disjoint in *.
         eapply H0p0p1. 2: exact Hx.

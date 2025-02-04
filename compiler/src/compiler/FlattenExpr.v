@@ -747,9 +747,12 @@ Section FlattenExpr1.
     - (* exec.stackalloc *)
       eapply @FlatImp.exec.stackalloc. 1: eassumption.
       intros. rename H2 into IHexec.
+      repeat match goal with H : anybytes.anybytes _ _ _ |- _ => destruct H as (?&?&?&?) end.
+      subst mStack. subst n.
       eapply @FlatImp.exec.weaken.
       { eapply IHexec; try reflexivity; try eassumption; maps. }
       { intros. simpl in *. simp. do 2 eexists. ssplit; try eassumption.
+        { cbv [anybytes.anybytes]; split; trivial. eexists; split; eauto. }
         do 2 eexists. ssplit; try eassumption; try solve_MetricLog; try maps. cost_hammer. }
 
     - (* if_true *)

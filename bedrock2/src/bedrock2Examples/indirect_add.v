@@ -18,7 +18,7 @@ Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 
 Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
-Require Import bedrock2.ProgramLogic bedrock2.Scalars.
+Require Import bedrock2.ProgramLogic bedrock2.Scalars bedrock2.Memory.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
@@ -102,6 +102,8 @@ Section WithParameters.
     (* note: we want to introduce only one variable for stack contents
      * and use it in a all separation-logic facts in the symbolic state *)
 
+    Import coqutil.Macros.symmetry.
+    seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at) H4 shelve.
     repeat match goal with
            | H : _ |- _ =>
                seprewrite_in_by scalar_of_bytes H
@@ -109,7 +111,6 @@ Section WithParameters.
                  let x := fresh "x" in
                  set (word.of_Z _) as x in H; clearbody x; move x at top
            end.
-    clear dependent mStack.
 
     (*
 H1 : (scalar a0 x ⋆ (scalar out vout ⋆ R))%sep m2
@@ -118,21 +119,20 @@ H3 : (scalar a0 x1 ⋆ (scalar b vb ⋆ Rb))%sep m2
 H4 : (scalar a0 x2 ⋆ (scalar c vc ⋆ Rc))%sep m2
      *)
 
-    straightline_call.
-    { split; [exact H1|split]; ecancel_assumption. }
+    straightline_call. { Tactics.ssplit; ecancel_assumption. }
 
     repeat straightline.
     (*
-H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
+H13 : (scalar a0 (word.add va vb) ⋆ (scalar c vc ⋆ Rc))%sep a2
      *)
-    (* H15 is an updated version of H1,
-       but we really wanted to carry over H2,H3, and H4 as well *)
+    (* H13 is an updated version of H4
+       but we really wanted to carry over H2,H3, and H1 as well *)
   Abort.
 
   (* trying again with non-separating conjunction *)
   Lemma indirect_add_three'_ok : program_logic_goal_for_function! indirect_add_three'.
   Proof.
-    do 12 straightline.
+    do 8 straightline.
 
     assert (
       id (fun m => (scalar out vout ⋆ R)%sep m /\ (scalar a va ⋆ Ra)%sep m /\  (scalar b vb ⋆ Rb)%sep m /\  (scalar c vc ⋆ Rc)%sep m) m) by (cbv [id]; eauto); clear H1 H2 H3 H4.
@@ -142,14 +142,14 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
     (* note: we want to introduce only one variable for stack contents
      * and use it in a all separation-logic facts in the symbolic state *)
 
+
     repeat match goal with
            | H : _ |- _ =>
-               seprewrite_in_by scalar_of_bytes H
-                 ltac:(Lia.lia);
+               seprewrite_in_by (symmetry! @Array.bytarray_as_bytes) H Lia.lia;
+               seprewrite_in_by scalar_of_bytes H Lia.lia;
                  let x := fresh "x" in
                  set (word.of_Z _) as x in H; clearbody x; move x at top
            end.
-    clear dependent mStack.
 
     cbv [id] in *.
     (*
@@ -170,7 +170,7 @@ H7 : (scalar a0 x
     repeat straightline.
 
     (*
-H9 : (scalar a0 (word.add va vb)
+H10 : (scalar a0 (word.add va vb)
       ⋆ (fun m : mem =>
          (scalar out vout ⋆ R) m /\
          (scalar a va ⋆ Ra) m /\ (scalar b vb ⋆ Rb) m /\ (scalar c vc ⋆ Rc) m))%sep
@@ -178,20 +178,25 @@ H9 : (scalar a0 (word.add va vb)
      *)
     rename m into m'.
     rename a2 into m.
-    eapply sep_and_r_fwd in H9; destruct H9 as [? H9].
-    eapply sep_and_r_fwd in H9; destruct H9 as [? H9].
-    eapply sep_and_r_fwd in H9; destruct H9 as [? H9].
+    eapply sep_and_r_fwd in H10; destruct H10 as [? H10].
+    eapply sep_and_r_fwd in H10; destruct H10 as [? H10].
+    eapply sep_and_r_fwd in H10; destruct H10 as [? H10].
 
     straightline_call.
     { split; [>|split]; try ecancel_assumption. }
     repeat straightline.
+    
+    unfold scalar at 2 in H21.
+    cbv [truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in H21.
+    seprewrite_in (@Array.bytarray_as_bytes) H21.
+    { rewrite ?HList.tuple.length_to_list, ?LittleEndianList.length_le_split; cbv; inversion 1. }
 
     (* casting scalar to bytes for stack deallocation *)
     cbv [scalar truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in *.
     rewrite !HList.tuple.to_list_of_list.
     repeat match goal with H : _ |- _ => rewrite !HList.tuple.to_list_of_list in H end.
     set ((LittleEndianList.le_split (bytes_per access_size.word) (word.unsigned (word.add va vb)))) as stackbytes in *.
-    assert (Datatypes.length stackbytes = 4%nat) by exact eq_refl.
+    assert (Z.of_nat (Datatypes.length stackbytes) = 4%Z) by exact eq_refl.
     repeat straightline; eauto.
   Qed.
 
@@ -229,26 +234,27 @@ H9 : (scalar a0 (word.add va vb)
 
     repeat match goal with
            | H : _ |- _ =>
+               seprewrite_in_by (symmetry! @Array.bytarray_as_bytes) H Lia.lia;
                seprewrite_in_by scalar_of_bytes H
                  ltac:(Lia.lia);
                  let x := fresh "x" in
                  set (word.of_Z _) as x in H; clearbody x; move x at top
            end.
-    clear dependent mStack.
+    clear dependent m.
 
     straightline_call.
     { split; [exact H1|split]; ecancel_assumption. }
     repeat straightline.
     rename a2 into m.
     (*
-H15 : forall (va0 : word) (Ra : mem -> Prop),
+H8 : forall (va0 : word) (Ra : mem -> Prop),
       (scalar a0 va0 ⋆ Ra)%sep m2 -> (scalar a0 (word.add va vb) ⋆ Ra)%sep m
      *)
-    eapply H15 in H1.
-    eapply H15 in H2.
-    eapply H15 in H3.
-    eapply H15 in H4.
-    clear H15.
+    eapply H8 in H1.
+    eapply H8 in H2.
+    eapply H8 in H3.
+    eapply H8 in H4.
+    clear H8.
 
     straightline_call.
     { split; [>|split]; try ecancel_assumption. }
@@ -259,7 +265,7 @@ H15 : forall (va0 : word) (Ra : mem -> Prop),
       (scalar out va0 ⋆ Ra)%sep m ->
       (scalar out (word.add (word.add va vb) vc) ⋆ Ra)%sep m'
      *)
-    specialize (H15 _ _ ltac:(ecancel_assumption)).
+    specialize (H8 _ _ ltac:(ecancel_assumption)).
 
     (* unrelated: stack deallocation proof, would need scalar-to-bytes lemma *)
   Abort.

@@ -5,6 +5,7 @@ Require Import bedrock2.MetricLogging.
 Require Import bedrock2.MetricCosts.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
+Require Import bedrock2.anybytes.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.

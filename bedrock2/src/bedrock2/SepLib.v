@@ -7,6 +7,7 @@ Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.Separatio
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.is_emp.
 Require Export bedrock2.anyval.
+Require Export bedrock2.anybytes.
 Require Import bedrock2.Array bedrock2.Scalars.
 
 (* PredTp equals `word -> mem -> Prop` if the predicate takes any number of values
@@ -348,7 +349,7 @@ Section WithMem.
   Qed.
 
   Lemma anybytes_from_alt: forall addr n m,
-      0 <= n -> Memory.anybytes addr n m -> (array (uint 8) n ? addr) m.
+      0 <= n -> anybytes addr n m -> (array (uint 8) n ? addr) m.
   Proof.
     unfold anyval. intros * B H.
     eapply anybytes_to_array_1 in H. destruct H as (bs & Hm & Hl).
@@ -361,7 +362,7 @@ Section WithMem.
   Qed.
 
   Lemma anybytes_to_alt: forall addr n m,
-      (array (uint 8) n ? addr) m -> Memory.anybytes addr n m.
+      (array (uint 8) n ? addr) m -> anybytes addr n m.
   Proof.
     unfold anyval. intros. destruct H as (bs & H).
     unfold array in H. eapply sep_emp_l in H. destruct H as (? & H). subst n.

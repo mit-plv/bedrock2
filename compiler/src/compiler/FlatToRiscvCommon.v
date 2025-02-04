@@ -772,7 +772,7 @@ Section FlatToRiscv1.
     - unfold OfListWord.map.of_list_word_at, OfListWord.map.of_list_word. simpl in *.
       unfold emp, MapKeys.map.map_keys in *. simp. rewrite map.fold_empty. reflexivity.
     - simpl in *. unfold sep in H. simp.
-      specialize (IHl _ _ Hp2). unfold map.split in *. unfold ptsto in Hp1.
+      specialize (IHl _ _ Hp2). unfold map.split in *. unfold ptsto, exact in Hp1.
       subst. simp.
       apply map.map_ext. intro k.
       rewrite OfListWord.map.get_of_list_word_at.

@@ -155,14 +155,14 @@ Module exec. Section WithParams.
       exec (cmd.store sz ea ev) t m l post
   | stackalloc: forall x n body t mSmall l post,
       Z.modulo n (bytes_per_word width) = 0 ->
-      (forall a mStack mCombined,
-        anybytes a n mStack ->
-        map.split mCombined mSmall mStack ->
+      (forall a stack mCombined,
+        Z.of_nat (length stack) = n ->
+        map.split mCombined mSmall (map.of_list_word_at a stack) ->
         exec body t mCombined (map.put l x a)
           (fun t' mCombined' l' =>
-            exists mSmall' mStack',
-              anybytes a n mStack' /\
-              map.split mCombined' mSmall' mStack' /\
+            exists mSmall' (stack' : list byte),
+              map.split mCombined' mSmall' (map.of_list_word_at a stack') /\
+              Z.of_nat (length stack') = n /\
               post t' mSmall' l')) ->
       exec (cmd.stackalloc x n body) t mSmall l post
   | if_true: forall t m l e c1 c2 post v,
@@ -290,7 +290,10 @@ Module exec. Section WithParams.
         specialize @map.split_diff with (4 := A) (5 := B) as P
       end.
       edestruct P; try typeclasses eauto. 2: subst; eauto 10.
-      eapply anybytes_unique_domain; eassumption.
+      { (* same_domain_of_list_word_at *)
+        cbv [map.same_domain map.sub_domain]; setoid_rewrite map.get_of_list_word_at.
+        split; intros ? ? ?%List.nth_error_Some_bound_index;
+        eexists; unshelve eapply List.nth_error_nth'; try Lia.lia; try constructor. }
     - econstructor.
       + eapply IHexec. exact H5. (* not H *)
       + simpl. intros *. intros [? ?]. eauto.

@@ -154,15 +154,7 @@ Section WithParameters.
   Lemma ptsto_nonaliasing: forall addr b1 b2 m (R: mem -> Prop),
       (ptsto addr b1 * ptsto addr b2 * R)%sep m ->
       False.
-  Proof.
-    intros. unfold ptsto, sep, map.split, map.disjoint in *.
-    repeat match goal with
-           | H: exists _, _ |- _ => destruct H
-           | H: _ /\ _ |- _ => destruct H
-           end.
-    subst.
-    specialize (H4 addr b1 b2). rewrite ?map.get_put_same in H4. auto.
-  Qed.
+  Proof. intros. apply sep_ptsto_same_framed in H. exact H. Qed.
 
   (* TODO generalize *)
   Lemma array_scalar32_max_size: forall addr xs (R: mem -> Prop) m,

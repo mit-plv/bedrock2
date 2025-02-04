@@ -89,13 +89,15 @@ Section WeakestPrecondition.
        post t m l (cost_store isRegStr UNK UNK mc''))
       | cmd.stackalloc x n c =>
         Z.modulo n (bytes_per_word width) = 0 /\
-        forall a mStack mCombined,
-          anybytes a n mStack -> map.split mCombined m mStack ->
+        forall a stack mCombined,
+          Z.of_nat (length stack) = n ->
+          map.split mCombined m (map.of_list_word_at a stack) ->
           dlet! l := map.put l x a in
           rec c t mCombined l (cost_stackalloc isRegStr x mc)
           (fun t' mCombined' l' mc' =>
-          exists m' mStack',
-          anybytes a n mStack' /\ map.split mCombined' m' mStack' /\
+          exists m' stack',
+          map.split mCombined' m' (map.of_list_word_at a stack') /\
+          Z.of_nat (length stack') = n /\
           post t' m' l' mc')
      | cmd.cond br ct cf =>
         exists v mc', dexpr m l br mc (v, mc') /\

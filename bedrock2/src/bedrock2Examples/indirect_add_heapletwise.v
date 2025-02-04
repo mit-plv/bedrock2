@@ -123,20 +123,24 @@ Section WithParameters.
         m =* scalar c vc * Rc;
       ensures t' m' := t=t' /\ m' =* scalar out (g va vb vc) * R }.
 
+  Require Import coqutil.Tactics.Tactics.
   Lemma indirect_add_three'_ok : program_logic_goal_for_function! indirect_add_three'.
   Proof.
     repeat straightline.
+
     (* note: we want to introduce only one variable for stack contents
      * and use it in a all separation-logic facts in the symbolic state *)
 
+    Import symmetry.
     repeat match goal with
            | H : _ |- _ =>
+               seprewrite_in_by (symmetry! @Array.bytarray_as_bytes) H Lia.lia;
                seprewrite_in_by scalar_of_bytes H
                  ltac:(Lia.lia);
                  let x := fresh "x" in
                  set (word.of_Z _) as x in H; clearbody x; move x at top
            end.
-    clear dependent mStack.
+    clear dependent m.
 
     (*
 H1 : (scalar a0 x ⋆ (scalar out vout ⋆ R))%sep m2
@@ -158,6 +162,7 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
        but we really wanted to carry over H2,H3, and H4 as well *)
   Abort.
 
+  (*
   Lemma anybytes4_to_scalar: forall a (m: mem),
       anybytes a 4 m -> exists v, with_mem m (scalar a v).
   Proof.
@@ -340,4 +345,5 @@ H15 : forall (va0 : word) (Ra : mem -> Prop),
     *)
   Abort.
 
+    *)
 End WithParameters.

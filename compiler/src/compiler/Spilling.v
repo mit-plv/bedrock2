@@ -425,7 +425,7 @@ Section Spilling.
     - apply map.put_putmany_commute.
     - unfold sep, map.split in Ap1. fwd. unfold map.disjoint in *.
       intros. rewrite map.get_put_dec in H2. rewrite map.get_putmany_dec in H.
-      unfold ptsto in *. subst.
+      unfold ptsto, exact in *. subst.
       setoid_rewrite map.get_put_dec in Ap1p0p1. setoid_rewrite map.get_empty in Ap1p0p1.
       setoid_rewrite <- map.put_putmany_commute in Ap0p1.
       setoid_rewrite map.putmany_empty_r in Ap0p1.
@@ -699,7 +699,7 @@ Section Spilling.
         spec (sep_eq_put lRegs l2) as A. 1,3: ecancel_assumption.
         unfold arg_regs, sep, map.split, spill_tmp, fp, a0, a7 in *.
         intros. fwd.
-        unfold ptsto, map.disjoint in *. subst.
+        unfold ptsto, exact, map.disjoint in *. subst.
         rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty in H1.
         repeat destruct_one_match_hyp; subst; fwd; try congruence; try blia.
         specialize H0p8 with (1 := H1). blia.
@@ -804,7 +804,7 @@ Section Spilling.
         spec (sep_eq_put lRegs l2) as A. 1,3: ecancel_assumption.
         unfold arg_regs, sep, map.split, spill_tmp, fp, a0, a7 in *.
         intros. fwd.
-        unfold ptsto, map.disjoint in *. subst.
+        unfold ptsto, exact, map.disjoint in *. subst.
         rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty in H0.
         repeat destruct_one_match_hyp; subst; fwd; try congruence; try blia.
         specialize Hp8 with (1 := H0). blia.
@@ -842,7 +842,7 @@ Section Spilling.
       10 <= k < 18 ->
       (arg_regs * R)%sep l.
   Proof.
-    unfold arg_regs, sep, ptsto, map.split. intros. fwd.
+    unfold arg_regs, sep, ptsto, exact, map.split. intros. fwd.
     exists (map.putmany mp0 (map.put map.empty k v)), mq. ssplit; auto.
     intros. rewrite map.get_putmany_dec, map.get_put_dec, map.get_empty in H.
     destr (k =? k0); subst; fwd; eauto.
@@ -944,7 +944,7 @@ Section Spilling.
             intros lStack' w ? G. subst lStack'.
             match goal with H: _ |- _ => specialize H with (1 := G) end. blia. }
           { apply sep_assoc. eapply sep_eq_put. 1: ecancel_assumption.
-            unfold ptsto, arg_regs.
+            unfold ptsto, exact, arg_regs.
             intros l w (l_arg_regs & l_fpval & (? & ?) & ? & ?) G. subst.
           rewrite map.get_putmany_dec, map.get_put_dec, map.get_empty in G.
           destr (fp =? a). 1: unfold fp; blia.
@@ -1221,7 +1221,7 @@ Section Spilling.
       (n <= 8)%nat ->
       (eq lRegs * arg_regs * ptsto fp fpval)%sep l'.
   Proof.
-    unfold sep, map.split, ptsto. intros.
+    unfold sep, map.split, ptsto, exact. intros.
     destruct H0 as (mp & mq & (? & ?) & (lRegs' & mA & (? & ?) & ? & ?) & ?).
     subst l lRegs' mp mq.
     pose proof H1 as PM.
@@ -1369,7 +1369,6 @@ Section Spilling.
     destruct (anybytes_to_array_1 (mem_ok := mem_ok) _ _ _ A) as (bytes & Pt & L).
     edestruct (byte_list_to_word_list_array bytes) as (words & L' & F). {
       rewrite L.
-      unfold Memory.ftprint.
       rewrite Z2Nat.id by blia.
       destr (0 <=? (maxvar' - 31)).
       - rewrite Z2Nat.id by assumption. rewrite Z.mul_comm. apply Z_mod_mult.
@@ -1469,8 +1468,8 @@ Section Spilling.
       eapply cast_word_array_to_bytes in M2.
       eapply array_1_to_anybytes in M2.
       match goal with
-      | H: Memory.anybytes a ?LEN1 mStack' |-
-        Memory.anybytes a ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
+      | H: anybytes.anybytes a ?LEN1 mStack' |-
+        anybytes.anybytes a ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
       end.
       erewrite List.flat_map_const_length. 2: {
         intros w. rewrite LittleEndianList.length_le_split; trivial.
@@ -1651,7 +1650,6 @@ Section Spilling.
       destruct (anybytes_to_array_1 (mem_ok := mem_ok) _ _ _ A) as (bytes & Pt & L).
       edestruct (byte_list_to_word_list_array bytes) as (words & L' & F). {
         rewrite L.
-        unfold Memory.ftprint.
         rewrite Z2Nat.id by blia.
         destr (0 <=? (maxvar' - 31)).
         - rewrite Z2Nat.id by assumption. rewrite Z.mul_comm. apply Z_mod_mult.
@@ -1764,8 +1762,8 @@ Section Spilling.
         eapply cast_word_array_to_bytes in M2.
         eapply array_1_to_anybytes in M2.
         match goal with
-        | H: Memory.anybytes a ?LEN1 mStack' |-
-          Memory.anybytes a ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
+        | H: anybytes.anybytes a ?LEN1 mStack' |-
+          anybytes.anybytes a ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
         end.
         erewrite List.flat_map_const_length. 2: {
           intros w. rewrite LittleEndianList.length_le_split; trivial.

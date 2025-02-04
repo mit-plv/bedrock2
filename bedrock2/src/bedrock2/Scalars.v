@@ -238,11 +238,10 @@ Section Scalars.
   Proof. destruct width_cases; lia. Qed.
 
   Local Infix "$+" := map.putmany (at level 70).
-  Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
   Local Infix "*" := sep : type_scope.
   Local Open Scope sep_scope.
   Import Syntax.
-  Lemma load_four_bytes_of_sep_at{BW: Bitwidth width} bs a R m (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat):
+  Lemma load_four_bytes_of_sep_at{BW: Bitwidth width} bs a R m (Hsep: (bs$@a * R) m) (Hl : length bs = 4%nat):
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof.
     seprewrite_in (symmetry! (array1_iff_eq_of_list_word_at(map:=mem))) Hsep.
@@ -262,12 +261,12 @@ Section Scalars.
   Qed.
 
   Lemma uncurried_load_four_bytes_of_sep_at{BW: Bitwidth width} bs a R (m : mem)
-    (H: (eq(bs$@a)*R) m /\ length bs = 4%nat) :
+    (H: (bs$@a * R) m /\ length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply load_four_bytes_of_sep_at; eapply H. Qed.
 
   Lemma Z_uncurried_load_four_bytes_of_sep_at{BW: Bitwidth width} bs a R (m : mem)
-    (H: (eq(bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
+    (H: (bs$@a * R) m /\ Z.of_nat (length bs) = 4) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply load_four_bytes_of_sep_at; try eapply H; blia. Qed.
 
@@ -417,30 +416,6 @@ Section Scalars.
     clear -BW word_ok.
     pose proof word.width_pos.
     apply bytes_per_width_bytes_per_word'; lia.
-  Qed.
-
-  Lemma scalar_to_anybytes px x:
-    Lift1Prop.impl1 (T := mem)
-      (scalar px x)
-      (Memory.anybytes px (Memory.bytes_per_word width)).
-  Proof.
-    intros m H; evar (bs: list byte);
-      assert (array ptsto (word.of_Z 1) px bs m) by
-        (subst bs; simple apply H).
-    subst bs. erewrite <- bytes_per_width_bytes_per_word, <- split_bytes_per_len.
-    rewrite HList.tuple.to_list_of_list in H0.
-    eapply array_1_to_anybytes; eauto.
-  Qed.
-
-  Lemma anybytes_to_scalar px:
-    Lift1Prop.impl1 (T := mem)
-      (Memory.anybytes px (Memory.bytes_per_word width))
-      (Lift1Prop.ex1 (scalar px)).
-  Proof.
-    intros m (bs & Harray & Hlen)%anybytes_to_array_1.
-    apply scalar_of_bytes in Harray.
-    - eexists; eassumption.
-    - rewrite Hlen. clear H. destruct width_cases; subst; reflexivity || lia.
   Qed.
 
 End Scalars.

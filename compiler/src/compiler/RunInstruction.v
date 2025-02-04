@@ -415,14 +415,7 @@ Section Run.
   Lemma sep_ptsto_to_addr_neq: forall a1 v1 a2 v2 (m : mem) R,
       (ptsto a1 v1 * ptsto a2 v2 * R)%sep m ->
       a1 <> a2.
-  Proof.
-    intros. intro E. subst a2. unfold ptsto in *.
-    destruct H as (? & ? & ? & (? & ? & ? & ? & ?) & ?).
-    subst.
-    destruct H0 as [? D].
-    unfold map.disjoint in D.
-    eapply D; apply map.get_put_same.
-  Qed.
+  Proof. intros ** ->; eapply sep_ptsto_same_framed; eauto. Qed.
 
   Local Arguments invalidateWrittenXAddrs: simpl never.
 

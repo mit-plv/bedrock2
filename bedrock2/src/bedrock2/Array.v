@@ -159,20 +159,20 @@ Section WithWord.
   Lemma list_word_at_app_of_adjacent_eq (a b : word) (xs ys : list value)
     (Hl: word.unsigned (word.sub b a) = Z.of_nat (length xs))
     (Htotal : length xs + length ys <= 2^width)
-    : Lift1Prop.iff1 (eq(xs$@a)*eq(ys$@b)) (eq((xs++ys)$@a)).
+    : Lift1Prop.iff1 (xs$@a* ys$@b) ((xs++ys)$@a).
   Proof.
     etransitivity.
     2:symmetry; eapply sep_eq_of_list_word_at_app; trivial.
     do 3 Morphisms.f_equiv. rewrite <-Hl, word.of_Z_unsigned. ring.
   Qed.
 
-  Lemma array1_iff_eq_of_list_word_at (a : word) (bs : list value)
+  Lemma bytarray_as_bytes (a : word) (bs : list value)
     (H : length bs <= 2 ^ width) :
-    iff1 (array ptsto (word.of_Z 1) a bs) (eq(bs$@a)).
+    iff1 (array ptsto (word.of_Z 1) a bs) (bs$@a).
   Proof.
     symmetry.
     revert H; revert a; induction bs; cbn [array]; intros.
-    { rewrite map.of_list_word_nil; cbv [emp iff1]; intuition auto. }
+    { rewrite map.of_list_word_nil; cbv [emp iff1 exact]; intuition auto. }
     { etransitivity.
       2: eapply Proper_sep_iff1.
       3: eapply IHbs.
@@ -189,6 +189,7 @@ Section WithWord.
       cbv [ptsto iff1]; intuition auto. }
   Qed.
 End WithWord.
+Notation array1_iff_eq_of_list_word_at := bytarray_as_bytes (only parsing).
 
 Require Import Ring.
 
@@ -294,40 +295,6 @@ Section ByteArray.
   Import Map.Properties Znat.
   Local Arguments Z.of_nat: simpl never.
 
-  Lemma array_1_to_of_disjoint_list_zip: forall bs m (addr: word),
-      array  addr bs m ->
-      map.of_disjoint_list_zip (Memory.ftprint addr (Z.of_nat (List.length bs))) bs = Some m.
-  Proof.
-    unfold map.of_disjoint_list_zip.
-    induction bs; intros.
-    - simpl in *. unfold emp in *. intuition congruence.
-    - simpl in *. unfold sep in *. destruct H as (?&?&(?&Hlr)&?&?).
-      specialize IHbs with (1 := ltac:(eassumption)). subst.
-      match goal with H:ptsto _ _ ?x |- _ => unfold ptsto in H; subst x end.
-      unfold Memory.ftprint in *. rewrite Nat2Z.id in *. simpl.
-      rewrite IHbs.
-      destruct (map.get _ addr) eqn:?.
-      + unfold map.disjoint in *. specialize (Hlr addr).
-        rewrite map.get_put_same in Hlr.
-        exfalso. eapply Hlr; eauto.
-      + f_equal.
-        rewrite map.putmany_comm by assumption.
-        rewrite <- map.put_putmany_commute.
-        f_equal.
-        symmetry. apply map.putmany_empty_r.
-  Qed.
-
-  Lemma sep_ptsto_same [key value] {map : map.map key value} {map_ok : map.ok map}
-    a b c (m : map) : (ptsto a b * ptsto a c)%sep m -> False.
-  Proof.
-    cbv [ptsto]; intros (?&?&[]&?&?); subst.
-    eapply H0; erewrite ?map.get_put_same; eauto.
-  Qed.
-
-  Lemma sep_ptsto_same_framed [key value] {map : map.map key value} {map_ok : map.ok map}
-    a b c R (m : map) : (ptsto a b * ptsto a c * R)%sep m -> False.
-  Proof. intros (?&?&?&?&?). eapply sep_ptsto_same; eauto. Qed.
-
   Lemma bytearray_fits_in_address_space bs m addr (H : array addr bs m) :
     Z.of_nat (length bs) <= 2 ^ width.
   Proof.
@@ -343,23 +310,5 @@ Section ByteArray.
       rewrite firstn_length in *; cbn [length] in *; Lia.lia. }
     cbn [array] in H.
     eapply sep_ptsto_same_framed; try exact _; ecancel_assumption.
-  Qed.
-
-  Lemma array_1_to_anybytes: forall bs m (addr: word),
-      array addr bs m ->
-      Memory.anybytes addr (Z.of_nat (List.length bs)) m.
-  Proof.
-    cbv [Memory.anybytes]; intros.
-    split; eauto using Nat2Z.is_nonneg, bytearray_fits_in_address_space; [].
-    eapply array1_iff_eq_of_list_word_at in H; eauto.
-    eauto using bytearray_fits_in_address_space.
-  Qed.
-
-  Lemma anybytes_to_array_1: forall m (addr: word) n,
-      Memory.anybytes addr n m ->
-      exists bs, array  addr bs m /\ List.length bs = Z.to_nat n.
-  Proof.
-    cbv [Memory.anybytes]; intros ? ? ? ([]&?&?&?); subst; eexists; split;
-      try eapply array1_iff_eq_of_list_word_at; eauto using Nat2Z.id.
   Qed.
 End ByteArray.

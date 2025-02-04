@@ -422,7 +422,7 @@ Section ExprImp2.
         exec env s t m l mc (fun t' m' l' mc' => post1 t' m' l' mc' /\ post2 t' m' l' mc').
   Proof. intros. eapply exec.intersect; eassumption. Qed.
 
-  (* As we see, one can prove this lemma as is, but the proof is a bit cumbersome because
+  (* As we see in git history, one can prove this lemma as is, but the proof is a bit cumbersome because
      the seq and while case have to instantiate mid with the intersection, and use
      intersect_exec to prove it.
      And it turns out that users of this lemma will encounter the same problem:
@@ -443,7 +443,7 @@ Section ExprImp2.
         * eapply H0; eassumption.
         * eapply H1; eassumption.
       + simpl. intros. simp.
-        do 2 eexists. split; [eassumption|]. split; [eassumption|]. map_solver locals_ok.
+        do 2 eexists. split; [eassumption|]. split; [trivial|]. map_solver locals_ok.
     - eapply exec.if_true; try eassumption.
       eapply weaken_exec; [eassumption|].
       simpl; intros. map_solver locals_ok.
@@ -488,7 +488,7 @@ Section ExprImp2.
     - eapply exec.stackalloc. 1: assumption.
       intros. eapply weaken_exec. 1: eapply H1; eassumption.
       simpl. intros. simp.
-      eexists. eexists. split; [eassumption|]. split; [eassumption|].
+      eexists. eexists. split; [eassumption|]. split; [trivial|].
       split; [|eassumption]. map_solver locals_ok.
     - eapply exec.if_true; try eassumption.
       eapply weaken_exec; [eassumption|].
