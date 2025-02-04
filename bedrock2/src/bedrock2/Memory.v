@@ -116,7 +116,8 @@ Section Memory.
     List.unfoldn (fun w => word.add w (word.of_Z 1)) (Z.to_nat n) a.
 
   Definition anybytes(a: word)(n: Z)(m: mem): Prop :=
-    exists bytes: list byte, map.of_disjoint_list_zip (ftprint a n) bytes = Some m.
+    0 <= n <= 2^width /\ 
+    exists bytes, Z.of_nat (length bytes) = n /\ m = map.of_list_word_at a bytes.
 
   Definition footprint(a: word)(sz: nat): tuple word sz :=
     tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.
@@ -198,8 +199,11 @@ Section Memory.
       map.same_domain m1 m2.
   Proof.
     unfold anybytes. intros.
-    destruct H as [vs1 ?]. destruct H0 as [vs2 ?].
-    eapply map.of_disjoint_list_zip_same_domain; eassumption.
+    destruct H as [vs1 [? []] ]. destruct H0 as [vs2 [? []] ]. subst.
+    cbv [map.same_domain map.sub_domain]; setoid_rewrite map.get_of_list_word_at.
+    split; intros ? ? ?%nth_error_Some_bound_index;
+      eexists; eapply List.nth_error_nth'; Lia.lia.
+    Unshelve. all : exact Byte.x00.
   Qed.
 
 End Memory.

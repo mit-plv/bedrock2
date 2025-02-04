@@ -58,6 +58,7 @@ Require Import bedrock2.SepLib.
 Require Import bedrock2.to_from_anybytes.
 Require Import bedrock2.RecordPredicates.
 Require Import coqutil.Tactics.fwd.
+Import OfListWord.
 
 Section BigEndian.
   Local Open Scope Z_scope.
@@ -66,12 +67,7 @@ Section BigEndian.
           {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
 
   Definition byte_list_pred_at(P: list Byte.byte -> Prop)(addr: word)(m: mem): Prop :=
-    exists bs, map.of_disjoint_list_zip (Memory.ftprint addr (Z.of_nat (length bs))) bs
-               = Some m /\ P bs.
-    (* Note: this alternative definition is bad because it allows bs that are longer
-       than 2^width and the map.of_list_word_at just silently overrides the elements at
-       indices >=2^width with elements at indices <2^width:
-    exists bs, m = map.of_list_word_at addr bs /\ P bs. *)
+    exists bs, 0 <= Z.of_nat (length bs) < 2^width /\ m = map.of_list_word_at addr bs /\ P bs.
 
   Definition be_uint_bytes(nbits val: Z)(bs: list Byte.byte): Prop :=
     Z.of_nat (List.length bs) * 8 = nbits /\ LittleEndianList.le_combine (List.rev bs) = val.
@@ -82,7 +78,7 @@ Section BigEndian.
   Lemma purify_be_uint nbits v a: PurifySep.purify (be_uint nbits v a) (0 <= v < 2 ^ nbits).
   Proof.
     unfold PurifySep.purify, be_uint, byte_list_pred_at, be_uint_bytes.
-    intros. destruct H as (bs & ? & ? & ?).
+    intros. destruct H as (bs & ? & ? & ? & ?).
     subst. rewrite Z.mul_comm.
     rewrite <- List.rev_length. apply LittleEndianList.le_combine_bound.
   Qed.
@@ -96,7 +92,7 @@ Section BigEndian.
     unfold nbits_to_nbytes.
     replace ((Z.max 0 (Z.of_nat (length bs) * 8) + 7) / 8) with (Z.of_nat (length bs))
       by (Z.div_mod_to_equations; Lia.lia).
-    unfold Memory.anybytes. exists bs. assumption.
+    unfold Memory.anybytes. split; [Lia.lia|]. eauto with arith.
   Qed.
 
 End BigEndian.
