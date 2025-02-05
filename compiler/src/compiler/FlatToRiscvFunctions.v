@@ -1647,19 +1647,26 @@ Section Proofs.
 
     - idtac "Case compile_stmt_correct/SLoad".
       progress unfold Memory.load, Memory.load_Z in *. fwd.
+      rewrite <-Memory.to_list_load_bytes in *; cbv [option_map] in *; fwd.
       subst_load_bytes_for_eq.
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
       inline_iff1.
-      run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
+
+      eapply runsTo_det_step_with_valid_machine; [ assumption | simulate' | ].
+      { unfold Memory.load, Memory.load_Z in *; simpl_MetricRiscvMachine_mem.
+        erewrite <-Memory.to_list_load_bytes, load_bytes_of_sep; [ reflexivity | ecancel_assumption ]. }
+      1:reflexivity.
+      intros. clear H0. (* <-- TODO this should not be needed *) run1done.
 
 
     - idtac "Case compile_stmt_correct/SStore".
       inline_iff1.
       simpl_MetricRiscvMachine_get_set.
       unfold Memory.store, Memory.store_Z in *.
+      setoid_rewrite <-HList.tuple.to_list_of_list in H1; setoid_rewrite <-Memory.store_bytes_correct in H1.
       change Memory.store_bytes with (Platform.Memory.store_bytes(word:=word)) in *.
       match goal with
       | H: Platform.Memory.store_bytes _ _ _ _ = _ |- _ =>
@@ -1673,7 +1680,13 @@ Section Proofs.
       unfold Platform.Memory.store_bytes, Memory.store_Z, Memory.store_bytes in A. fwd.
       destruct (eq_sym (LittleEndianList.length_le_split (Memory.bytes_per(width:=width) sz) (word.unsigned val))) in t0, E.
       subst_load_bytes_for_eq.
-      run1det. run1done.
+      eapply runsTo_det_step_with_valid_machine; [ assumption | simulate' | ].
+      { unfold Memory.store, Memory.store_Z.
+        setoid_rewrite <-HList.tuple.to_list_of_list; setoid_rewrite <-Memory.store_bytes_correct.
+        eassumption. }
+      1:reflexivity.
+      intros.
+      run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.
       ecancel_assumption.
 

@@ -112,27 +112,6 @@ End Memory. End WithoutTuples.
 Section Memory.
   Context {width: Z} {word: word width} {mem: map.map word byte}.
 
-  Definition ftprint(a: word)(n: Z): list word :=
-    List.unfoldn (fun w => word.add w (word.of_Z 1)) (Z.to_nat n) a.
-
-  Definition anybytes(a: word)(n: Z)(m: mem): Prop :=
-    exists bytes: list byte, map.of_disjoint_list_zip (ftprint a n) bytes = Some m.
-
-  Definition footprint(a: word)(sz: nat): tuple word sz :=
-    tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.
-
-  Definition load_bytes(sz: nat)(m: mem)(addr: word): option (tuple byte sz) :=
-    map.getmany_of_tuple m (footprint addr sz).
-
-  Definition unchecked_store_bytes(sz: nat)(m: mem)(a: word)(bs: tuple byte sz): mem :=
-    map.putmany_of_tuple (footprint a sz) bs m.
-
-  Definition store_bytes(sz: nat)(m: mem)(a: word)(v: tuple byte sz): option mem :=
-    match load_bytes sz m a with
-    | Some _ => Some (unchecked_store_bytes sz m a v)
-    | None => None (* some addresses were invalid *)
-    end.
-
   Definition bytes_per sz :=
     match sz with
       | access_size.one => 1 | access_size.two => 2 | access_size.four => 4
@@ -140,13 +119,13 @@ Section Memory.
     end%nat.
 
   Definition load_Z(sz: access_size)(m: mem)(a: word): option Z :=
-    match load_bytes (bytes_per sz) m a with
-    | Some bs => Some (LittleEndianList.le_combine (tuple.to_list bs))
+    match WithoutTuples.load_bytes m a (bytes_per sz) with
+    | Some bs => Some (LittleEndianList.le_combine bs)
     | None => None
     end.
 
   Definition store_Z(sz: access_size)(m: mem)(a: word)(v: Z): option mem :=
-    store_bytes _ m a (tuple.of_list (LittleEndianList.le_split (bytes_per sz) v)).
+    WithoutTuples.store_bytes m a (LittleEndianList.le_split (bytes_per sz) v).
 
   Definition load(sz: access_size)(m: mem)(a: word): option word :=
     match load_Z sz m a with
@@ -157,39 +136,42 @@ Section Memory.
   Definition store(sz: access_size)(m: mem)(a: word)(v: word): option mem :=
     store_Z sz m a (word.unsigned v).
 
-  Lemma load_None: forall sz m a,
-      8 <= width -> (* note: [0 < width] is sufficient *)
-      map.get m a = None ->
-      load sz m a = None.
-  Proof.
-    intros. destruct sz; cbv [load load_Z load_bytes map.getmany_of_tuple footprint bytes_per bytes_per_word tuple.option_all tuple.map tuple.unfoldn];
-    try solve [ rewrite H0; reflexivity].
-    destruct (Z.to_nat ((width + 7) / 8)) eqn: E.
-    - exfalso.
-      assert (0 < (width + 7) / 8) as A. {
-        apply Z.div_str_pos. blia.
-      }
-      change O with (Z.to_nat 0) in E.
-      apply Z2Nat.inj in E; blia.
-    - cbv [tuple.option_all tuple.map tuple.unfoldn].
-      rewrite H0.
-      reflexivity.
-  Qed.
+
+  Section Deprecated. (* The below functions needlessly use tuples for what can be done with lists *)
+
+
+  (* deprecated since 2025 *)
+  Definition footprint(a: word)(sz: nat): tuple word sz :=
+    tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.
+
+  (* deprecated since 2025 *)
+  Definition load_bytes(sz: nat)(m: mem)(addr: word): option (tuple byte sz) :=
+    map.getmany_of_tuple m (footprint addr sz).
+
+  (* deprecated since 2025 *)
+  Definition unchecked_store_bytes(sz: nat)(m: mem)(a: word)(bs: tuple byte sz): mem :=
+    map.putmany_of_tuple (footprint a sz) bs m.
+
+  (* deprecated since 2025 *)
+  Definition store_bytes(sz: nat)(m: mem)(a: word)(v: tuple byte sz): option mem :=
+    match load_bytes sz m a with
+    | Some _ => Some (unchecked_store_bytes sz m a v)
+    | None => None (* some addresses were invalid *)
+    end.
 
   Context {mem_ok: map.ok mem}.
   Context {word_ok: word.ok word}.
 
-  Lemma store_preserves_domain: forall sz m a v m',
-      store sz m a v = Some m' -> map.same_domain m m'.
+  Lemma to_list_footprint a sz :
+    tuple.to_list (footprint a sz) = WithoutTuples.footprint a sz.
   Proof.
-    destruct sz;
-      cbv [store store_Z store_bytes bytes_per load_bytes unchecked_store_bytes];
-      intros;
-      (destruct_one_match_hyp; [|discriminate]);
-      inversion_option;
-      subst;
-      eapply map.putmany_of_tuple_preserves_domain;
-      eassumption.
+    revert a; induction sz; cbn; intros; f_equal.
+    { rewrite Properties.word.add_0_r; trivial. }
+    { cbv [footprint] in IHsz. rewrite IHsz, <-List.seq_shift, List.map_map.
+      eapply List.map_ext; intros.
+      rewrite Nat2Z.inj_succ; cbv [BinInt.Z.succ]; rewrite Properties.word.ring_morph_add.
+      rewrite <-!Properties.word.add_assoc; f_equal.
+      rewrite Properties.word.add_comm; f_equal. }
   Qed.
 
   Lemma anybytes_unique_domain: forall a n m1 m2,
@@ -202,4 +184,37 @@ Section Memory.
     eapply map.of_disjoint_list_zip_same_domain; eassumption.
   Qed.
 
+  Lemma to_list_getmany_of_tuple [key value] [map : map.map key value] sz ks (m : map) :
+    option_map tuple.to_list (map.getmany_of_tuple m (sz:=sz) ks) =
+    option_all (List.map (map.get m) (tuple.to_list ks)).
+  Proof.
+    induction sz; cbn; trivial.
+    case map.get; trivial; intros.
+    erewrite <-IHsz; clear IHsz. cbv [map.getmany_of_tuple].
+    case tuple.option_all; trivial.
+  Qed.
+
+  Lemma to_list_load_bytes sz m a :
+    option_map tuple.to_list (load_bytes sz m a) = WithoutTuples.load_bytes m a sz.
+  Proof.
+    cbv [load_bytes]. rewrite to_list_getmany_of_tuple, to_list_footprint; trivial.
+  Qed.
+
+  Lemma unchecked_store_bytes_correct sz m a bs :
+    unchecked_store_bytes sz m a bs = WithoutTuples.unchecked_store_bytes m a (tuple.to_list bs).
+  Proof.
+    cbv [unchecked_store_bytes WithoutTuples.unchecked_store_bytes].
+    revert a; induction sz; cbn; intros; rewrite ?map.of_list_word_nil, ?map.putmany_empty_r; trivial.
+    rewrite map.of_list_word_at_cons, <-map.put_putmany_commute; f_equal.
+    erewrite <-IHsz; trivial.
+  Qed.
+
+  Lemma store_bytes_correct sz m a bs :
+    store_bytes sz m a bs = WithoutTuples.store_bytes m a (tuple.to_list bs).
+  Proof.
+    cbv [store_bytes WithoutTuples.store_bytes].
+    rewrite <-to_list_load_bytes, tuple.length_to_list; case load_bytes as []; cbn; trivial.
+    rewrite unchecked_store_bytes_correct; trivial.
+  Qed.
+  End Deprecated.
 End Memory.

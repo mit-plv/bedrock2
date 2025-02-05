@@ -1811,12 +1811,14 @@ Section Spilling.
       intros.
       eapply exec.seq_cps.
       pose proof H2 as A. unfold related in A. fwd.
-      unfold Memory.load, Memory.load_Z, Memory.load_bytes in *. fwd.
+      unfold Memory.load, Memory.load_Z in *. fwd.
+      erewrite <-Memory.to_list_load_bytes in E0; cbv [option_map Memory.load_bytes ] in E0. fwd.
       eapply exec.load. {
         rewrite map.get_put_same. reflexivity. }
       { edestruct (@sep_def _ _ _ m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
         1: ecancel_assumption. unfold map.split in Sp. subst. fwd.
-        unfold Memory.load, Memory.load_Z, Memory.load_bytes.
+        unfold Memory.load, Memory.load_Z.
+        erewrite <-Memory.to_list_load_bytes; cbv [option_map Memory.load_bytes ].
         erewrite map.getmany_of_tuple_in_disjoint_putmany; eauto. }
       eapply save_ires_reg_correct.
       + eassumption.
@@ -1827,13 +1829,17 @@ Section Spilling.
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
       pose proof H5 as A. unfold related in A. fwd.
-      unfold Memory.store, Memory.store_Z, Memory.store_bytes in *. fwd.
+      unfold Memory.store, Memory.store_Z in *.
+      setoid_rewrite <-HList.tuple.to_list_of_list in H1; setoid_rewrite <-Memory.store_bytes_correct in H1.
+      cbv [Memory.store_bytes] in *. fwd.
       edestruct (@sep_def _ _ _ m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
       1: ecancel_assumption. unfold map.split in Sp. subst. fwd.
       eapply exec.store.
       1: eapply get_iarg_reg_1; eauto with zarith.
       1: apply map.get_put_same.
-      { unfold Memory.store, Memory.store_Z, Memory.store_bytes.
+      { unfold Memory.store, Memory.store_Z.
+        setoid_rewrite <-HList.tuple.to_list_of_list; setoid_rewrite <-Memory.store_bytes_correct.
+        cbv [Memory.store_bytes]. fwd.
         unfold Memory.load_bytes in *.
         erewrite map.getmany_of_tuple_in_disjoint_putmany; eauto. }
       do 4 eexists. split. 2: split. 2: eassumption.

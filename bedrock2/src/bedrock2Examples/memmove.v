@@ -166,13 +166,15 @@ Section WithParameters.
           rewrite map.get_of_list_word_at in H14.
           progress replace (Z.to_nat (word.sub src0 src0)) with O in H14 by ZnWords;
             cbn in H14; case H14 as [[? ?]|[? ?]]; try discriminate.
+          rewrite Properties.word.add_0_r.
           rewrite H14. split. { rewrite LittleEndianList.le_combine_1. trivial. }
 
-          cbv [WeakestPrecondition.store load load_Z load_bytes store store_Z store_bytes unchecked_store_bytes LittleEndianList.le_split]; cbn.
+          cbv [WeakestPrecondition.store load load_Z WithoutTuples.load_bytes store store_Z WithoutTuples.store_bytes WithoutTuples.unchecked_store_bytes LittleEndianList.le_split]; cbn.
           pose proof map.get_split dst0 _ _ _ H8.
           rewrite map.get_of_list_word_at in H16.
           progress replace (Z.to_nat (word.sub dst0 dst0)) with O in H16 by ZnWords;
             cbn in H16; case H16 as [[? ?]|[? ?]]; try discriminate.
+          rewrite Properties.word.add_0_r.
           eexists. rewrite H16. split.
           { rewrite word.unsigned_of_Z, Scalars.wrap_byte_unsigned.
             rewrite byte.of_Z_unsigned; trivial. }
@@ -210,8 +212,8 @@ Section WithParameters.
               repeat (destruct String.eqb; trivial). } }
           eexists _, _, _, _, (length s0); split; ssplit.
           { ZnWords. }
-          { eassumption. }
-          { eassumption. }
+          { rewrite map.of_list_word_singleton, <-map.put_putmany_commute, map.putmany_empty_r; eassumption. }
+          { rewrite map.of_list_word_singleton, <-map.put_putmany_commute, map.putmany_empty_r; eassumption. }
           { ZnWords. }
           { cbn in *; ZnWords. }
           { cbn in *; ZnWords. }
@@ -306,14 +308,16 @@ Section WithParameters.
           match goal with H : context[List.nth_error [_] ?i = None] |- _ =>
               replace i with O in H by ZnWords; cbn [List.nth_error] in H end.
           cbn in H14; case H14 as [[? ?]|[? ?]]; try discriminate.
+          rewrite Properties.word.add_0_r.
           rewrite H14. split. { rewrite LittleEndianList.le_combine_1. trivial. }
 
-          cbv [WeakestPrecondition.store load load_Z load_bytes store store_Z store_bytes unchecked_store_bytes LittleEndianList.le_split]; cbn.
+          cbv [WeakestPrecondition.store load load_Z WithoutTuples.load_bytes store store_Z WithoutTuples.store_bytes WithoutTuples.unchecked_store_bytes LittleEndianList.le_split]; cbn.
           pose proof map.get_split dst0 _ _ _ H8.
           rewrite !map.get_of_list_word_at, !List.nth_error_app2 in H16 by ZnWords.
           match goal with H : context[List.nth_error [_] ?i = None] |- _ =>
               replace i with O in H by ZnWords; cbn [List.nth_error] in H end.
           case H16 as [[? ?]|[? ?]]; try discriminate.
+          rewrite Properties.word.add_0_r.
           eexists. rewrite H16. split.
           { rewrite word.unsigned_of_Z, Scalars.wrap_byte_unsigned.
             rewrite byte.of_Z_unsigned; trivial. }
@@ -353,10 +357,10 @@ Section WithParameters.
           { ZnWords. }
           { replace (word.sub (word.sub src0 (word.of_Z 1))(word.sub (word.sub n0 (word.of_Z 1)) (word.of_Z 1)))
               with (word.sub src0 (word.sub n0 (word.of_Z 1))) by ZnWords.
-            eassumption. }
+            rewrite map.of_list_word_singleton, <-map.put_putmany_commute, map.putmany_empty_r; eassumption. }
           { replace (word.sub (word.sub dst0 (word.of_Z 1)) (word.sub (word.sub n0 (word.of_Z 1)) (word.of_Z 1)))
               with (word.sub dst0 (word.sub n0 (word.of_Z 1))) by ZnWords.
-            eassumption. }
+            rewrite map.of_list_word_singleton, <-map.put_putmany_commute, map.putmany_empty_r; eassumption. }
           { ZnWords. }
           { cbn in *; ZnWords. }
           { cbn in *; ZnWords. }

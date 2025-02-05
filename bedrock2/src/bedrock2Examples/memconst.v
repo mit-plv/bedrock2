@@ -135,7 +135,7 @@ Section WithParameters.
       rewrite word.unsigned_of_Z_nowrap, byte.of_Z_unsigned in H9 by ZnWords.
       replace (Z.to_nat v0) with (1 + (Z.to_nat i0))%nat in H9 by ZnWords.
       rewrite <-List.skipn_skipn in H9.
-      rewrite List.nth_error_as_skipn in Heqo.
+      rewrite List.nth_error_as_skipn, Properties.word.add_0_r  in Heqo.
       remember (List.skipn (Z.to_nat i0) bs) as ts in *.
       destruct ts in *; cbn [List.skipn List.hd_error Array.array] in *; [discriminate|].
       subst v.
