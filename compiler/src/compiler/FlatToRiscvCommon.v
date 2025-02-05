@@ -448,6 +448,7 @@ Section FlatToRiscv1.
       mcomp_sat (Bind (execute (compile_load iset sz x a ofs)) f) initialL post.
   Proof using word_ok PR BWM.
     unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per, Memory.bytes_per_word.
+    setoid_rewrite <-Memory.to_list_load_bytes; cbv [option_map].
     rewrite bitwidth_matches.
     destruct width_cases as [E | E];
       (* note: "rewrite E" does not work because "width" also appears in the type of "word",
@@ -498,8 +499,9 @@ Section FlatToRiscv1.
                                       (getXAddrs initialL))
                        (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
       mcomp_sat (Bind (execute (compile_store iset sz a x ofs)) f) initialL post.
-  Proof using PR BWM.
+  Proof using PR BWM mem_ok word_ok.
     unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per, Memory.bytes_per_word.
+    setoid_rewrite <-HList.tuple.to_list_of_list; setoid_rewrite <-Memory.store_bytes_correct; setoid_rewrite HList.tuple.to_list_of_list.
     rewrite bitwidth_matches.
     destruct width_cases as [E | E];
       (* note: "rewrite E" does not work because "width" also appears in the type of "word",
@@ -939,7 +941,10 @@ Section FlatToRiscv1.
     intros *. intros L M0.
     destruct (program_compile_byte_list table addr) as [Padding P].
     apply (Proper_sep_impl1 _ _ P R R) in M0; [|reflexivity]; clear P.
-    unfold Memory.load, Memory.load_Z in *. simp.
+    revert L.
+    unfold Memory.load, Memory.load_Z.
+    setoid_rewrite <-Memory.to_list_load_bytes; cbv [option_map]; intros.
+    simp. rename E1 into E0.
     eapply shift_load_bytes_in_of_list_word in E0.
     pose proof @subst_load_bytes_for_eq as P. cbv zeta in P.
     specialize P with (1 := E0) (2 := M0).

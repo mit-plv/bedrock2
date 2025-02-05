@@ -41,12 +41,14 @@ Section Scalars.
 
   Lemma load_Z_of_sep sz addr (value: Z) R m
     (Hsep : sep (truncated_scalar sz addr value) R m)
-    : Memory.load_Z sz m addr = Some (truncate_Z (bytes_per (width:=width) sz) value).
+    : Memory.load_Z m addr (Memory.bytes_per (width:=width) sz) = Some (truncate_Z (bytes_per (width:=width) sz) value).
   Proof.
-    cbv [truncate_Z load scalar littleendian load_Z] in *.
+    cbv [truncate_Z load scalar littleendian Memory.load_Z] in *.
+    rewrite <-to_list_load_bytes.
     unshelve erewrite (_ : bytes_per sz = _); shelve_unifiable; cycle 1.
     1:erewrite load_bytes_of_sep by eassumption.
     2:rewrite length_le_split; trivial.
+    cbv [option_map].
     rewrite tuple.to_list_of_list, LittleEndianList.le_combine_split.
     set (x := (Z.of_nat (bytes_per sz) * 8)%Z).
     assert ((0 <= x)%Z) by (subst x; destruct sz; blia).
@@ -57,10 +59,12 @@ Section Scalars.
   Lemma store_Z_of_sep sz addr (oldvalue value: Z) R m (post:_->Prop)
     (Hsep : sep (truncated_scalar sz addr oldvalue) R m)
     (Hpost : forall m, sep (truncated_scalar sz addr value) R m -> post m)
-    : exists m1, Memory.store_Z sz m addr value = Some m1 /\ post m1.
+    : exists m1, Memory.store_Z m addr (Memory.bytes_per (width:=width) sz) value = Some m1 /\ post m1.
   Proof.
     assert (length (le_split (bytes_per(width:=width) sz) oldvalue) = length (le_split (bytes_per(width:=width) sz) value)) as pf
       by (rewrite 2LittleEndianList.length_le_split; trivial).
+    cbv [store_Z].
+    setoid_rewrite <-tuple.to_list_of_list; setoid_rewrite <-store_bytes_correct.
     unshelve eapply store_bytes_of_sep; [..|eapply Hpost]; destruct pf; [|eassumption].
   Qed.
 
@@ -69,7 +73,7 @@ Section Scalars.
     : Memory.load sz m addr = Some (truncate_word sz value).
   Proof.
     cbv [load truncate_word truncated_word] in *.
-    erewrite load_Z_of_sep; eauto.
+    erewrite load_Z_of_sep; cbv [option_map]; eauto.
   Qed.
 
   Lemma store_of_sep sz addr (oldvalue value: word) R m (post:_->Prop)
@@ -85,8 +89,9 @@ Section Scalars.
     (Hsep : sep (scalar8 addr value) R m)
     : Memory.load Syntax.access_size.one m addr = Some (word.of_Z (byte.unsigned value)).
   Proof.
-    cbv [load load_Z load_bytes bytes_per footprint tuple.unfoldn map.getmany_of_tuple tuple.option_all tuple.map tuple.to_list].
-    erewrite get_sep, le_combine_1 by exact Hsep; repeat f_equal.
+    cbv [load load_Z Map.Memory.load_bytes bytes_per Map.Memory.footprint List.map List.seq option_all].
+    erewrite get_sep, le_combine_1; trivial.
+    rewrite Properties.word.add_0_r; eauto.
   Qed.
 
   Lemma load_two_of_sep addr value R m
@@ -149,6 +154,8 @@ Section Scalars.
     (Hpost : forall m, sep (scalar8 addr (byte.of_Z (word.unsigned value))) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.one m addr value = Some m1 /\ post m1.
   Proof.
+    cbv [store store_Z].
+    setoid_rewrite <-tuple.to_list_of_list; setoid_rewrite <-store_bytes_correct.
     eapply (store_bytes_of_sep _ 1 (PrimitivePair.pair.mk _ tt)); cbn; [ecancel_assumption|].
     cbv [LittleEndianList.le_split PrimitivePair.pair._1 tuple.of_list].
     intros; eapply Hpost; ecancel_assumption.
@@ -170,19 +177,26 @@ Section Scalars.
     (Hsep : sep (scalar16 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar16 addr value) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.two m addr value = Some m1 /\ post m1.
-  Proof. eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost]. Qed.
+  Proof.
+    cbv [store store_Z]; setoid_rewrite <-tuple.to_list_of_list; setoid_rewrite <-store_bytes_correct.
+    eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost].
+  Qed.
 
   Lemma store_four_of_sep addr (oldvalue : word) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar32 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar32 addr value) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.four m addr value = Some m1 /\ post m1.
-  Proof. eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost]. Qed.
+  Proof.
+    cbv [store store_Z]; setoid_rewrite <-tuple.to_list_of_list; setoid_rewrite <-store_bytes_correct.
+    eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost].
+  Qed.
 
   Lemma store_word_of_sep addr (oldvalue value: word) R m (post:_->Prop)
     (Hsep : sep (scalar addr oldvalue) R m)
     (Hpost : forall m, sep (scalar addr value) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.word m addr value = Some m1 /\ post m1.
   Proof.
+    cbv [store store_Z]; setoid_rewrite <-tuple.to_list_of_list; setoid_rewrite <-store_bytes_correct.
     let sz := Syntax.access_size.word in
     assert (length (le_split (bytes_per(width:=width) sz) (word.unsigned oldvalue)) = length (le_split (bytes_per(width:=width) sz) (word.unsigned value))) as pf
       by (rewrite 2LittleEndianList.length_le_split; trivial).

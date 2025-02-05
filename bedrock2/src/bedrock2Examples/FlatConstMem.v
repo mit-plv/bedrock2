@@ -321,7 +321,7 @@ Section WithParameters.
       end.
 
   Section __.
-    Import WithoutTuples.
+    Import coqutil.Map.Memory.
     Lemma load_bytes_of_putmany_bytes_at bs a (mR:mem) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^32)
       : load_bytes (mR $+ bs$@a) a n = Some bs.
     Proof.

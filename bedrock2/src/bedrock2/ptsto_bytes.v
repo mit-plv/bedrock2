@@ -10,60 +10,6 @@ Require Import Coq.ZArith.ZArith.
 
 Open Scope Z_scope.
 
-Require Import coqutil.Map.OfListWord.
-Require Import Ring_tac.
-Section WithWord.
-  Local Coercion Z.of_nat : nat >-> Z.
-  Local Infix "$+" := map.putmany (at level 70).
-  Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
-  Local Open Scope sep_scope.
-  Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
-  Context [value] [map : map.map word value] {ok : map.ok map}.
-  Add Ring __wring: (@word.ring_theory width word word_ok).
-  Lemma sep_eq_of_list_word_at_app (a : word) (xs ys : list value)
-    lxs (Hlxs : Z.of_nat (length xs) = lxs) (Htotal : length xs + length ys <= 2^width)
-    : Lift1Prop.iff1 ((xs ++ ys)$@a) (sep (xs$@a) (ys$@(word.add a (word.of_Z lxs)))).
-  Proof.
-    etransitivity.
-    2: eapply sep_comm.
-    etransitivity.
-    2: eapply sep_eq_putmany, map.adjacent_arrays_disjoint_n; trivial.
-    erewrite map.of_list_word_at_app_n by eauto; reflexivity.
-  Qed.
-
-  Lemma list_word_at_app_of_adjacent_eq (a b : word) (xs ys : list value)
-    (Hl: word.unsigned (word.sub b a) = Z.of_nat (length xs))
-    (Htotal : length xs + length ys <= 2^width)
-    : Lift1Prop.iff1 (xs$@a*ys$@b) ((xs++ys)$@a).
-  Proof.
-    etransitivity.
-    2:symmetry; eapply sep_eq_of_list_word_at_app; trivial.
-    do 3 Morphisms.f_equiv. rewrite <-Hl, word.of_Z_unsigned. ring.
-  Qed.
-
-  Lemma array1_iff_eq_of_list_word_at (a : word) (bs : list value)
-    (H : length bs <= 2 ^ width) : iff1 (array ptsto (word.of_Z 1) a bs) (bs$@a).
-  Proof.
-    symmetry.
-    revert H; revert a; induction bs; cbn [array]; intros.
-    { rewrite map.of_list_word_nil; cbv [emp iff1 sepclause_of_map]; intuition auto. }
-    { etransitivity.
-      2: eapply Proper_sep_iff1.
-      3: eapply IHbs.
-      2: reflexivity.
-      2: cbn [length] in H; blia.
-      change (a::bs) with (cons a nil++bs).
-      rewrite map.of_list_word_at_app.
-      etransitivity.
-      1: eapply sep_eq_putmany, map.adjacent_arrays_disjoint; cbn [length] in *; blia.
-      etransitivity.
-      2:eapply sep_comm.
-      Morphisms.f_equiv.
-      rewrite map.of_list_word_singleton; try exact _.
-      cbv [ptsto iff1 sepclause_of_map]; intuition auto. }
-  Qed.
-End WithWord.
-
 Section Scalars.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
 

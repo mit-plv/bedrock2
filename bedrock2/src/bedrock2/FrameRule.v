@@ -24,12 +24,15 @@ Section semantics.
       load a mSmall r = Some v ->
       load a mBig r = Some v.
   Proof.
-    unfold load, load_Z. intros. fwd. eapply sep_of_load_bytes in E0.
+    unfold load, load_Z. intros.
+    rewrite <-to_list_load_bytes in *.
+    cbv [option_map] in *; fwd.
+    eapply sep_of_load_bytes in E.
     2: destruct a; simpl; destruct width_cases as [W | W]; rewrite W; cbv; discriminate.
-    fwd. unfold sep in E0. fwd.
-    eapply map.split_alt in E0p0.
+    fwd. unfold sep in E. fwd.
+    eapply map.split_alt in Ep0.
     unfold mmap.split in *.
-    rewrite E0p0 in H.
+    rewrite Ep0 in H.
     rewrite mmap.du_assoc in H. unfold mmap.du in H at 1. fwd.
     erewrite load_bytes_of_sep. 1: reflexivity.
     unfold sep. do 2 eexists.
@@ -97,7 +100,11 @@ Section semantics.
       store sz mSmall a v = Some mSmall' ->
       exists mBig', mmap.split mBig' mSmall' mAdd /\ store sz mBig a v = Some mBig'.
   Proof.
-    intros. eapply (store_bytes_frame (F := eq mAdd)) in H0.
+    intros *.
+    cbv [store store_Z].
+    setoid_rewrite <-tuple.to_list_of_list; setoid_rewrite <-store_bytes_correct.
+    intros.
+    eapply (store_bytes_frame (F := eq mAdd)) in H0.
     2: {
       unfold sep. do 2 eexists. ssplit. 2,3: reflexivity. eapply map.split_alt; exact H.
     }

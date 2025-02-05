@@ -15,7 +15,7 @@ Section WithMem.
 
   Definition unchecked_load_uint8s(m: mem)(addr: word)(n: Z): list Z :=
     List.map Byte.byte.unsigned
-      (Option.force (Memory.WithoutTuples.load_bytes m addr (Z.to_nat n))).
+      (Option.force (coqutil.Map.Memory.load_bytes m addr (Z.to_nat n))).
 
   Lemma array_to_load_bytes: forall n bs addr m,
       array (uint 8) n bs addr m ->
