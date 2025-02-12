@@ -269,13 +269,12 @@ Section WithWord.
                 seprewrite_in (@array_index_nat_inbounds _ _ _ _ _ _ _ scalar16 (word.of_Z 2) (word.of_Z 0) x5 x8 (Z.to_nat (word.unsigned n))) H11.
                 2: { repeat straightline. use_sep_assumption. cancel.
                      cancel_seps_at_indices 1%nat 0%nat.
-                     { f_equal. f_equal. subst v1 n. Fail Timeout 1 ZnWords.
+                     { f_equal. f_equal. subst v1 n.
                        rewrite Z2Nat.id.
                        2: { assert (Hnonneg:= word.unsigned_range (word.add (word.mul v2 x1) x6)).
                             blia. }
                        ZnWords. }
                      ecancel_done. }
-                Fail Timeout 1 ZnWords.
                 subst. subst v1. subst v0. subst v2.
                 assert (Hnonneg := word.unsigned_range (word.add (word.mul (word.of_Z 8) x1) x6)).
                 enough ((word.unsigned (word.add (word.mul (word.of_Z 8) x1) x6)) < KYBER_N).
