@@ -8,7 +8,9 @@ Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Z.Lia.
 
-Import BinInt String List.ListNotations.
+Require Import ZArith.BinInt.
+From coqutil Require Import Datatypes.String.
+Import List.ListNotations.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
 
 Local Notation MMIOWRITE := "MMIOWRITE".
