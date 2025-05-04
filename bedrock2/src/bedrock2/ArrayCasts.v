@@ -6,6 +6,7 @@ Require Import coqutil.Byte.
 Require Import Coq.Arith.PeanoNat.
 Require Import coqutil.Word.LittleEndianList.
 Require Import bedrock2.Array bedrock2.Scalars.
+Require Znumtheory.
 
 Section with_parameters.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.

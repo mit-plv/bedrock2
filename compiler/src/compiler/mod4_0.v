@@ -1,6 +1,7 @@
 (*the library would generalize over 4, and have good enough automation to not require these specialized lemmas*)
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import coqutil.Z.Lia.
+Require Znumtheory.
 
 Lemma mod4_0_add: forall (x y: Z),
     x mod 4 = 0 ->
