@@ -2,6 +2,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.BitOps.
 Require Import coqutil.Z.bitblast.
+Require Znumtheory.
 
 Local Open Scope Z_scope.
 Local Open Scope bool_scope.

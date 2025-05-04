@@ -50,6 +50,7 @@ Require Import compiler.FitsStack.
 Require Import compiler.Pipeline.
 Require Import compiler.LowerPipeline.
 Require Import compiler.ExprImpEventLoopSpec.
+Require Znumtheory.
 
 Global Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
