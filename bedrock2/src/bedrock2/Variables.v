@@ -9,6 +9,7 @@ Module expr. Import Syntax.expr.
     | var x => cons x nil
     | load _ ea => vars ea
     | inlinetable _ _ index => vars index
+    | op1 _ e1 => vars e1
     | op _ e1 e2 => List.app (vars e1) (vars e2)
     | ite c e1 e2 => List.app (vars c) (List.app (vars e1) (vars e2))
     end.

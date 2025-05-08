@@ -25,6 +25,9 @@ Section WeakestPrecondition.
         literal v post
       | expr.var x =>
         get l x post
+      | expr.op1 op e =>
+        rec e (fun v =>
+        post (interp_op1 op v))
       | expr.op op e1 e2 =>
         rec e1 (fun v1 =>
         rec e2 (fun v2 =>

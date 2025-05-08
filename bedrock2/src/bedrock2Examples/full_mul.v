@@ -13,17 +13,21 @@ Local Open Scope string_scope.
 Local Open Scope Z_scope.
 Local Open Scope list_scope.
 
+Local Definition wmask : expr.expr := bedrock_expr:((-$1>>$27)&$63).
+Local Definition wsize : expr.expr := bedrock_expr:($wmask+$1).
+
 (* Return the high word of the integer multiplication a * b. *)
 Definition full_mul :=
   func! (a, b) ~> (low, high) {
-      M = $1 << $32 - $1;
+      n = $wsize >> $1;
+      M = $1 << n - $1;
       ll = (a & M) * (b & M);
-      lh = (a & M) * (b >> $32);
-      hl = (a >> $32) * (b & M);
-      hh = (a >> $32) * (b >> $32);
-      second_halfword_w_oflow = (ll >> $32) + (lh & M) + (hl & M);
-      high = hh + (lh >> $32) + (hl >> $32) + (second_halfword_w_oflow >> $32);
-      low = (second_halfword_w_oflow << $32) + (ll & M)
+      lh = (a & M) * (b >> n);
+      hl = (a >> n) * (b & M);
+      hh = (a >> n) * (b >> n);
+      second_halfword_w_oflow = (ll >> n) + (lh & M) + (hl & M);
+      high = hh + (lh >> n) + (hl >> n) + (second_halfword_w_oflow >> n);
+      low = (second_halfword_w_oflow << n) + (ll & M)
     }.
 
 Local Instance spec_of_full_mul : spec_of "full_mul" :=
@@ -91,6 +95,10 @@ Qed.
 Lemma full_mul_ok : program_logic_goal_for_function! full_mul.
 Proof.
   repeat straightline.
+
+  change n with (match word.of_Z 32 return BasicC64Semantics.word with x => x end) in *.
+  clear n.
+
   specialize (mask_is_mod a).
   specialize (mask_is_mod b).
   specialize (mask_is_mod ll).
@@ -109,4 +117,3 @@ Proof.
     (mul32_ub (word.sru a (word.of_Z 32)) (word.sru b (word.of_Z 32))).
   Time ZnWords.
 Qed.
-

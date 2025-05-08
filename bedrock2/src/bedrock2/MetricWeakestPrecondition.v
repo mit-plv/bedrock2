@@ -32,6 +32,9 @@ Section WeakestPrecondition.
         literal v mc post
       | expr.var x =>
         get l x mc post
+      | expr.op1 op e =>
+        rec e mc (fun '(v1, mc') =>
+        post (interp_op1 op v1, cost_op1 isRegStr UNK UNK mc'))
       | expr.op op e1 e2 =>
         rec e1 mc (fun '(v1, mc') =>
         rec e2 mc' (fun '(v2, mc'') =>

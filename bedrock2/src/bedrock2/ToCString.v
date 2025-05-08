@@ -77,6 +77,12 @@ Definition c_fun := @id string.
 Definition c_lit w := "(uintptr_t)(UINTMAX_C(" ++ DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "))".
 Definition c_byte_withoutcast b := DecimalString.NilZero.string_of_uint (BinNatDef.N.to_uint (Byte.to_N b)).
 
+Definition c_op1 op e :=
+  match op with
+  | op1.not => "~"++e
+  | op1.opp => "-"++e
+  end%string.
+
 Definition c_bop e1 op e2 :=
   match op with
   | add => e1++"+"++e2
@@ -110,6 +116,7 @@ Fixpoint c_expr (e : expr) : string :=
   | expr.var x => c_var x
   | expr.load s ea => "_br2_load(" ++ c_expr ea ++ ", " ++ c_size s++ ")"
   | expr.inlinetable s t index => "({ static const uint8_t _inlinetable["++c_lit (Z.of_nat (List.length t))++"] = {"++concat ", " (List.map c_byte_withoutcast t)++"}; _br2_load((uintptr_t)&_inlinetable["++c_expr index++"], "++c_size s++"); })"
+  | expr.op1 op e1 => c_op1 op ("(" ++ c_expr e1 ++ ")")
   | expr.op op e1 e2 => c_bop ("(" ++ c_expr e1 ++ ")") op ("(" ++ c_expr e2 ++ ")")
   | expr.lazy_and e1 e2 => "(" ++ c_expr e1 ++ ") && (" ++ c_expr e2 ++ ")"
   | expr.lazy_or e1 e2 => "(" ++ c_expr e1 ++ ") || (" ++ c_expr e2 ++ ")"

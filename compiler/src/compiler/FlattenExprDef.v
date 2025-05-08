@@ -55,6 +55,15 @@ Section FlattenExpr1.
         let '(s1, r1, ngs'') := flattenExpr ngs' (Some r1) index in
         let '(x, ngs''') := genFresh_if_needed resVar ngs'' in
         (FlatImp.SSeq s1 (FlatImp.SInlinetable sz x t r1), x, ngs''')
+    | Syntax.expr.op1 op e =>
+        let '(s1, r1, ngs') := flattenExpr ngs None e in
+        let '(x, ngs'') := genFresh_if_needed resVar ngs' in
+        (FlatImp.SSeq s1
+        match op with
+        | op1.not => FlatImp.SOp x bopname.xor r1 (FlatImp.Const (-1))
+        | op1.opp => FlatImp.SOp x bopname.mul r1 (FlatImp.Const (-1))
+        (* translating op to sub would make more sense but only 2nd operand of FlatImp.SOp can be a constant *)
+        end, x, ngs'')
     | Syntax.expr.op op e1 e2 =>
         let '(s1, r1, ngs') := flattenExpr ngs None e1 in
         let '(s2, r2, ngs'') := flattenExpr ngs' None e2 in
