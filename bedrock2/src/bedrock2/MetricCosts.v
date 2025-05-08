@@ -65,6 +65,14 @@ Section FlatImpExec.
     |  true => mkMetricLog 8 0 8 0
     end + mc.
 
+  Definition cost_op1 x z mc :=
+    match (isReg x, isReg z) with
+    | (false, false) => mkMetricLog 5 1 7 0
+    | (false,  true) => mkMetricLog 3 1 3 0
+    | ( true, false) => mkMetricLog 4 0 6 0
+    | ( true,  true) => mkMetricLog 2 0 2 0
+    end + mc.
+
   Definition cost_op x y z mc :=
     match (isReg x, isReg y, isReg z) with
     | (false, false, false)                         => mkMetricLog 5 1 7 0
@@ -125,6 +133,7 @@ Ltac cost_unfold :=
              | H : context[cost_stackalloc] |- _ => H
              | H : context[cost_lit] |- _ => H
              | H : context[cost_op] |- _ => H
+             | H : context[cost_op1] |- _ => H
              | H : context[cost_set] |- _ => H
              | H : context[cost_if] |- _ => H
              | H : context[cost_loop_true] |- _ => H
@@ -133,12 +142,12 @@ Ltac cost_unfold :=
     let t := type of H in
     let t' := eval cbv [cost_interact cost_call cost_load cost_store
       cost_inlinetable cost_stackalloc cost_lit cost_op cost_set
-      cost_if cost_loop_true cost_loop_false] in t in
+      cost_if cost_loop_true cost_loop_false cost_op1] in t in
     replace t with t' in H by (exact (eq_refl t'))
   );
   cbv [cost_interact cost_call cost_load cost_store cost_inlinetable
   cost_stackalloc cost_lit cost_op cost_set cost_if cost_loop_true
-  cost_loop_false];
+  cost_loop_false cost_op1];
   unfold EmptyMetricLog in *.
 
 Ltac cost_destr :=

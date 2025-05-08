@@ -94,6 +94,7 @@ Section ExprImp1.
       | expr.load _ e => expr_size e + 1
       | expr.inlinetable _ t i => (Z.of_nat (length t) + 3) / 4 + expr_size i + 3
       | expr.var _ => 1
+      | expr.op1 op e => expr_size e + 2
       | expr.op op e1 e2 => expr_size e1 + expr_size e2 + 2
       | expr.ite c e1 e2 => expr_size c + expr_size e1 + expr_size e2 + 2
       end.
@@ -228,6 +229,7 @@ Section ExprImp1.
     | expr.var x => [x]
     | expr.load nbytes e => allVars_expr_as_list e
     | expr.inlinetable sz t i => allVars_expr_as_list i
+    | expr.op1 op e => (allVars_expr_as_list e)
     | expr.op op e1 e2 => (allVars_expr_as_list e1) ++ (allVars_expr_as_list e2)
     | expr.ite c e1 e2 => (allVars_expr_as_list c)
                             ++ (allVars_expr_as_list e1) ++ (allVars_expr_as_list e2)
@@ -256,6 +258,7 @@ Section ExprImp1.
     | expr.var x => singleton_set x
     | expr.load nbytes e => allVars_expr e
     | expr.inlinetable sz t i => allVars_expr i
+    | expr.op1 op e => allVars_expr e
     | expr.op op e1 e2 => union (allVars_expr e1) (allVars_expr e2)
     | expr.ite c e1 e2 => union (allVars_expr c) (union (allVars_expr e1) (allVars_expr e2))
     end.

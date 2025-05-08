@@ -40,6 +40,9 @@ Section semantics.
           '(a', mc') <- eval_expr a mc;
           'v <- load aSize m a';
           Some (v, cost_load isRegStr UNK UNK mc')
+      | expr.op1 op e1 =>
+          '(v1, mc') <- eval_expr e1 mc;
+          Some (interp_op1 op v1, cost_op1 isRegStr UNK UNK mc')
       | expr.op op e1 e2 =>
           '(v1, mc') <- eval_expr e1 mc;
           '(v2, mc'') <- eval_expr e2 mc';
