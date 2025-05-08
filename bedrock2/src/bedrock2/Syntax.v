@@ -2,6 +2,11 @@ Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique.
 Require Coq.Strings.String.
 Require Import Coq.Numbers.BinNums.
 
+Module Import op1.
+  Inductive op1 : Set := not | opp.
+End op1.
+Notation op1:= op1.op1.
+
 Module Import bopname.
   Inductive bopname: Set := add | sub | mul | mulhuu | divu | remu | and | or | xor | sru | slu | srs | lts | ltu | eq.
 End bopname.
@@ -18,6 +23,7 @@ Module expr.
   | var (x: String.string)
   | load (_ : access_size) (addr:expr)
   | inlinetable (_ : access_size) (table: list Byte.byte) (index: expr)
+  | op1 (op: op1) (e : expr)
   | op (op: bopname) (e1 e2: expr)
   | ite (c e1 e2: expr). (* if-then-else expression ("ternary if") *)
 

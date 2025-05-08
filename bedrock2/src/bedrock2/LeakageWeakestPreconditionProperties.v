@@ -56,6 +56,7 @@ Section WeakestPrecondition.
       cbv [pointwise_relation Basics.impl]. auto. }
     { eapply IHa2; eauto; intuition idtac. eapply Proper_load; eauto using Proper_load.
       cbv [pointwise_relation Basics.impl]. auto. }
+    { eapply IHa2; eauto; intuition idtac. eauto. }
     { eapply IHa2_1; eauto; intuition idtac.
       eapply IHa2_2; eauto; intuition idtac. eauto. }
     { eapply IHa2_1; eauto; intuition idtac.
@@ -184,6 +185,7 @@ Section WeakestPrecondition.
     { destruct H. destruct H. eexists. eexists. rewrite H. eauto. }
     { eapply IHe in H; t. cbv [LeakageWeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe in H; t. cbv [LeakageWeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
+    { eapply IHe in H; t. rewrite H; eauto. }
     { eapply IHe1 in H; t. eapply IHe2 in H0; t. rewrite H, H0; eauto. }
     { eapply IHe1 in H; t. rewrite H. Tactics.destruct_one_match.
       { eapply IHe3 in H0; t. }
@@ -208,6 +210,11 @@ Section WeakestPrecondition.
       inversion H. subst. eapply Proper_expr.
       2: { eapply IHe. eassumption. }
       intros addr ? (?&?). subst. unfold LeakageWeakestPrecondition.load. eauto.
+    - repeat (destruct_one_match_hyp; try discriminate; []).
+      inversion H. subst. eapply Proper_expr.
+      2: { eapply IHe. eassumption. }
+      intros v1 ? (?&?). subst.
+      auto.
     - repeat (destruct_one_match_hyp; try discriminate; []).
       inversion H. subst. eapply Proper_expr.
       2: { eapply IHe1. eassumption. }
@@ -383,6 +390,13 @@ Section WeakestPrecondition.
       unfold Morphisms.pointwise_relation, Basics.impl.
       unfold load. intros. decompose [and ex] H1. assert (x0 = x) by congruence. subst. eauto.
     - eapply Proper_expr.
+      2: eapply IHe.
+      2: eapply H.
+      2: eapply H0.
+      unfold Morphisms.pointwise_relation, Basics.impl.
+      unfold load. intros. decompose [and ex] H1.
+      eassumption.
+    - eapply Proper_expr.
       2: eapply IHe1.
       2: eapply H.
       2: eapply H0.
@@ -416,6 +430,13 @@ Section WeakestPrecondition.
       eapply Proper_expr; [|eauto].
       intros ? ? (?&?); subst.
       eexists; eauto. }
+    { intros k P H.
+      case (IHe _ _ H) as (?&?&?&H');
+      clear IHe H.
+      cbv [LeakageWeakestPrecondition.dexpr] in *.
+      eexists; eexists; split; [|eassumption].
+      eapply Proper_expr; [|eauto]; intros ? ? []. subst.
+      auto. }
     { intros k P H.
       case (IHe1 _ _ H) as (?&?&?&H'); case (IHe2 _ _ H') as (?&?&?&?);
       clear IHe1 IHe2 H H'.
