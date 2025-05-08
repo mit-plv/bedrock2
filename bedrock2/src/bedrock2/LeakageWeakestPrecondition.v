@@ -26,6 +26,9 @@ Section WeakestPrecondition.
         literal v (post k)
       | expr.var x =>
         get l x (post k)
+      | expr.op1 op e1 =>
+        rec k e1 (fun k' v1 =>
+        post (leak_op1 op v1 ++ k') (interp_op1 op v1))
       | expr.op op e1 e2 =>
         rec k e1 (fun k' v1 =>
         rec k' e2 (fun k'' v2 =>

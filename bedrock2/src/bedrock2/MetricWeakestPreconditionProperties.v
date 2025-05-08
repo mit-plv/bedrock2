@@ -54,6 +54,7 @@ Section MetricWeakestPrecondition.
     { eapply Proper_get; eauto. }
     { eapply IHa1; eauto; intuition idtac. destruct a4. eapply Proper_load; eauto using Proper_load. }
     { eapply IHa1; eauto; intuition idtac. destruct a4. eapply Proper_load; eauto using Proper_load. }
+    { eapply IHa1; eauto. intros []; eauto. }
     { eapply IHa1_1; eauto. destruct a1. eapply IHa1_2; eauto. destruct a1. eauto. }
     {eapply IHa1_1; eauto; intuition idtac. destruct a1. Tactics.destruct_one_match; eauto using Proper_load . }
   Qed.
@@ -178,6 +179,7 @@ locals_ok mem mem_ok width word word_ok.
     { eapply IHe in H; t. cbv [MetricWeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe in H; t. cbv [MetricWeakestPrecondition.load] in H0; t. rewrite H. rewrite H0.
       eexists. eexists. split; eauto. }
+    { eapply IHe in H; t. rewrite H; eauto. }
     { eapply IHe1 in H; t. eapply IHe2 in H0; t. rewrite H, H0; eauto. }
     { eapply IHe1 in H; t. rewrite H. Tactics.destruct_one_match.
       { apply IHe3; t. }
@@ -205,6 +207,11 @@ locals_ok mem mem_ok width word word_ok.
       intros (addr, oldmc) ?. apply pair_equal_spec in H0; destruct H0.
       subst r m0. unfold MetricWeakestPrecondition.load. eexists; split; eauto.
       apply Option.eq_of_eq_Some in H; auto.
+    - repeat (destruct_one_match_hyp; try discriminate; []).
+      eapply Proper_expr.
+      2:{ eapply IHe. rewrite E; eauto. }
+      intros (v1, oldmc1) ?. apply pair_equal_spec in H0; destruct H0.
+      congruence.
     - repeat (destruct_one_match_hyp; try discriminate; []).
       eapply Proper_expr.
       2: { eapply IHe1. rewrite E. reflexivity. }

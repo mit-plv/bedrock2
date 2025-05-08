@@ -56,6 +56,7 @@ Section FlattenExpr1.
   Proof.
     induction e; intros; destruct oResVar;
       try match goal with
+        | op: op1 |- _ => destruct op eqn:Eop1
         | op: bopname |- _ => destruct op eqn:Eop
         end;
     simpl in *; simp; simpl;
@@ -191,7 +192,7 @@ Section FlattenExpr1.
       flattenExpr ngs (Some resVar1) e = (s, resVar2, ngs') ->
       resVar2 = resVar1.
   Proof.
-    induction e; intros; simpl in *; simp; reflexivity.
+    induction e; intros; simpl in *; simp; try reflexivity.
   Qed.
 
   Lemma flattenExpr_valid_resVar: forall e s oResVar ngs ngs' resVar,
@@ -199,7 +200,7 @@ Section FlattenExpr1.
       disjoint (union (ExprImp.allVars_expr e) (of_option oResVar)) (allFreshVars ngs) ->
       ~ resVar \in (allFreshVars ngs').
   Proof.
-    destruct e; intros; destruct oResVar; simp; simpl in *; simp;
+    destruct e; intros; destruct oResVar; try case (op:Syntax.op1) in *; simp; simpl in *; simp;
       repeat match goal with
           | H: _ |- _ => apply genFresh_spec in H; simp
           | H: flattenExpr _ _ _ = _ |- _ => apply flattenExpr_freshVarUsage in H
@@ -413,6 +414,19 @@ Section FlattenExpr1.
         * cbn in *. simp. set_solver.
         * cbn in *. apply_in_hyps genFresh_spec. simp. pose_flatten_var_ineqs. set_solver.
 
+    - (* expr.op1 *)
+      eapply seq_with_modVars; intros.
+      { eapply IHe. 1: eassumption. 4: eassumption. 1,2: eassumption.
+        clear -D. set_solver. }
+      cbv beta in *; case (op : Syntax.op1) in *; simp.
+      { econstructor; t_safe; cbv [FlatImp.exec.lookup_op_locals Semantics.interp_op1 Semantics.interp_binop];
+          rewrite ?map.get_put_same; eauto.
+        { rewrite word.xor_comm, (word.ring_morph_opp 1), word.xor_m1_l; trivial. }
+        { FlatImp.scost_solve. } }
+      { econstructor; t_safe; cbv [FlatImp.exec.lookup_op_locals Semantics.interp_op1 Semantics.interp_binop];
+          rewrite ?map.get_put_same; eauto.
+        { rewrite (word.ring_morph_opp 1), word.mul_m1_r; trivial. }
+        { FlatImp.scost_solve. } }
     - (* expr.op *)
       eapply seq_with_modVars.
       + eapply IHe1. 1: eassumption. 4: eassumption. 1,2: eassumption.
@@ -610,7 +624,7 @@ Section FlattenExpr1.
   Proof.
     destruct e; intros *; intros F Ex U D Ev; unfold flattenExprAsBoolExpr in F.
 
-    1, 2, 3, 4, 6: solve [simp; default_flattenBooleanExpr].
+    1, 2, 3, 4, 5, 7: solve [simp; default_flattenBooleanExpr].
 
     simp.
     pose proof E  as N1. eapply flattenExpr_valid_resVar in N1; [|maps].
