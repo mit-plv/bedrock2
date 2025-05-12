@@ -15,6 +15,9 @@ Notation "$ e"                := e%string%Z (in custom bedrock_expr at level 0, 
 Notation  "( e )" := e             (in custom bedrock_expr).
 Notation "x" := (ident_to_string! x) (in custom bedrock_expr, x ident, only parsing).
 
+Notation "- e"   := (expr.op1 op1.opp e) (in custom bedrock_expr at level 1).
+Notation "~ e"   := (expr.op1 op1.not e) (in custom bedrock_expr at level 1).
+
 Infix  "<<" := (expr.op slu)  (in custom bedrock_expr at level 3, left associativity). (* DRAFT level *)
 Infix  ">>" := (expr.op sru)  (in custom bedrock_expr at level 3, left associativity). (* DRAFT level *)
 Infix ".>>" := (expr.op srs)  (in custom bedrock_expr at level 3, left associativity). (* DRAFT *)
@@ -208,6 +211,8 @@ Module test.
   Local Open Scope string_scope.
 
   Goal True.
+
+  pose (func! (x,y) ~> (z,t) { x = ~x }).
 
   pose (func! (x,y) ~> (z,t) { /*skip*/ }).
   pose (func! (x,y) ~> z { /*skip*/ }).
