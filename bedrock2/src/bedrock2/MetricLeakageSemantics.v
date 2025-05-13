@@ -41,6 +41,9 @@ Section semantics.
           '(a', k', mc') <- eval_expr a k mc;
           'v <- load aSize m a';
           Some (v, leak_word a' :: k', cost_load isRegStr UNK UNK mc')
+      | expr.op1 op e1 =>
+          '(v1, k', mc') <- eval_expr e1 k mc;
+          Some (interp_op1 op v1, leak_op1 op v1 ++ k', cost_op1 isRegStr UNK UNK mc')
       | expr.op op e1 e2 =>
           '(v1, k', mc') <- eval_expr e1 k mc;
           '(v2, k'', mc'') <- eval_expr e2 k' mc';
@@ -281,6 +284,7 @@ Module exec. Section WithParams.
     - eexists. align_trace.
     - specialize IHe0 with (1 := Heqo). fwd. eexists. align_trace.
     - specialize IHe0 with (1 := Heqo). fwd. eexists. align_trace.
+    - specialize IHe0 with (1 := Heqo). fwd. eexists. align_trace.
     - specialize IHe0_1 with (1 := Heqo). specialize IHe0_2 with (1 := Heqo0). fwd.
       eexists. align_trace.
     - specialize IHe0_1 with (1 := Heqo). destruct (word.eqb _ _).
@@ -322,6 +326,13 @@ Module exec. Section WithParams.
       destruct v0. destruct p. destruct (load _ _ _) as [v0|] eqn:E2; [|congruence].
       inversion H1; subst; clear H1. eapply IHa in E1. destruct E1 as [k'' [E1 E3] ]. subst.
       eexists (_ :: _). intuition. simpl. rewrite E3. rewrite E2. reflexivity.
+    - destruct (eval_expr _ _ a _ _) as [ [ [v0 mc0] p0]|] eqn:E1; [|congruence].
+      inversion H1; subst; clear H1.
+      eapply IHa in E1. destruct E1 as [k''1 [H1 H2] ].
+      subst.
+      eexists (_ ++ _). repeat rewrite <- (app_assoc _ _ k1). intuition.
+      simpl. rewrite H2. f_equal. f_equal. repeat rewrite <- (app_assoc _ _ k2).
+      reflexivity.
     - destruct (eval_expr _ _ a1 _ _) as [ [ [v0 mc0] p0]|] eqn:E1; [|congruence].
       destruct (eval_expr _ _ a2 _ _) as [ [ [v1 mc1] p1]|] eqn:E2; [|congruence].
       inversion H1; subst; clear H1.

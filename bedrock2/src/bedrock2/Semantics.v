@@ -56,8 +56,14 @@ Module ext_spec.
 End ext_spec.
 Arguments ext_spec.ok {_ _ _ _} _.
 
-Section binops.
+Section operators.
   Context {width : Z} {word : Word.Interface.word width}.
+  Definition interp_op1 (op : op1) : word -> word :=
+    match op with
+    | op1.not => word.not
+    | op1.opp => word.opp
+    end.
+
   Definition interp_binop (bop : bopname) : word -> word -> word :=
     match bop with
     | bopname.add => word.add
@@ -79,7 +85,7 @@ Section binops.
     | bopname.eq => fun a b =>
       if word.eqb a b then word.of_Z 1 else word.of_Z 0
     end.
-End binops.
+End operators.
 
 Definition env: map.map String.string Syntax.func := SortedListString.map _.
 #[export] Instance env_ok: map.ok env := SortedListString.ok _.
@@ -106,6 +112,9 @@ Section semantics.
       | expr.load aSize a =>
           a' <- eval_expr a;
           load aSize m a'
+      | expr.op1 op e =>
+          v <- eval_expr e;
+          Some (interp_op1 op v)
       | expr.op op e1 e2 =>
           v1 <- eval_expr e1;
           v2 <- eval_expr e2;
