@@ -25,6 +25,8 @@ Makefile.coq*
 /bedrock2/special/stacknondet
 /bedrock2/special/stacknondet.c
 /bedrock2/special/TypecheckExprToCString.c
+/bedrock2/special/ToCStringTest
+/bedrock2/special/ToCStringTest.c
 
 /processor/integration/program.hex
 

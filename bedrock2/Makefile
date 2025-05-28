@@ -71,7 +71,7 @@ ex: Makefile.coq.ex $(VS_EX) noex
 	$(MAKE) --no-print-directory -f Makefile.coq.ex
 
 all: noex ex test
-test: special/BytedumpTest.out special/stackloop.out special/stacknondet.out special/TypecheckExprToCString.out # special/TypecheckExprToCString-32.out special/TypecheckExprToCString-64.out
+test: special/BytedumpTest.out special/stackloop.out special/stacknondet.out special/ToCStringTest.out special/TypecheckExprToCString.out # special/TypecheckExprToCString-32.out special/TypecheckExprToCString-64.out
 
 COQ_MAKEFILE := $(COQBIN)coq_makefile -docroot bedrock2 $(COQMF_ARGS)
 
@@ -84,7 +84,6 @@ Makefile.coq.ex: _CoqProject
 BYTEDUMP_DEPS := $(SRCDIR)/PrintListByte.vo ../etc/bytedump.py
 BYTEDUMP := COQFLAGS="$(ALLDEPFLAGS)" ../etc/bytedump.py
 
-$(SRCDIR)/PrintListByte.vo: | noex
 special/BytedumpTest.out: special/BytedumpTest.golden.bin $(BYTEDUMP_DEPS)
 	$(BYTEDUMP) bedrock2.PrintListByte.allBytes > special/BytedumpTest.out.tmp
 	hexdump < /dev/null && \
@@ -97,29 +96,37 @@ special/BytedumpTest.out: special/BytedumpTest.golden.bin $(BYTEDUMP_DEPS)
 
 $(SRCDIR)/ToCStringStackallocLoopTest.vo: | noex
 special/stackloop.c: $(SRCDIR)/ToCStringStackallocLoopTest.vo $(BYTEDUMP_DEPS)
-	$(BYTEDUMP) bedrock2.ToCStringStackallocLoopTest.main_cbytes > special/stackloop.c
+	$(BYTEDUMP) bedrock2.ToCStringStackallocLoopTest.main_cbytes > $@
 special/stackloop: special/stackloop.c
-	$(CC) -O0 special/stackloop.c -o special/stackloop
+	$(CC) -O0 $< -o $@
 special/stackloop.out: special/stackloop
 	special/stackloop > $@
 
 $(EXDIR)/stackalloc.vo: | ex
 special/stacknondet.c: $(EXDIR)/stackalloc.vo $(BYTEDUMP_DEPS)
-	$(BYTEDUMP) bedrock2Examples.stackalloc.stacknondet_c > special/stacknondet.c
+	$(BYTEDUMP) bedrock2Examples.stackalloc.stacknondet_c > $@
 special/stacknondet: special/stacknondet.c
-	$(CC) special/stacknondet.c -o special/stacknondet
+	$(CC) $< -o $@
 special/stacknondet.out: special/stacknondet
-	special/stacknondet > $@
+	$< > $@
 
-$(SRCDIR)/ToCStringExprTypecheckingTest.vo: | noex
+$(EXDIR)/ToCStringTest.vo: | noex
+special/ToCStringTest.c: $(SRCDIR)/ToCStringTest.vo $(BYTEDUMP_DEPS)
+	$(BYTEDUMP) bedrock2.ToCStringTest.test > $@
+special/ToCStringTest: special/ToCStringTest.c
+	$(CC) $< -o $@
+special/ToCStringTest.out: special/ToCStringTest
+	$< > $@
+
+$(SRCDIR)/ToCStringExprTypecheckingTest.vo : | noex
 special/TypecheckExprToCString.c: $(SRCDIR)/ToCStringExprTypecheckingTest.vo $(BYTEDUMP_DEPS)
-	$(BYTEDUMP) bedrock2.ToCStringExprTypecheckingTest.test > special/TypecheckExprToCString.c
+	$(BYTEDUMP) bedrock2.ToCStringExprTypecheckingTest.test > $@
 special/TypecheckExprToCString.out: special/TypecheckExprToCString.c
-	$(CC) -fsyntax-only special/TypecheckExprToCString.c > $@
+	$(CC) -fsyntax-only $< > $@
 special/TypecheckExprToCString-64.out: special/TypecheckExprToCString.c
-	$(CC) -m64 -fsyntax-only special/TypecheckExprToCString.c > $@
+	$(CC) -m64 -fsyntax-only $< > $@
 special/TypecheckExprToCString-32.out: special/TypecheckExprToCString.c
-	$(CC) -m32 -fsyntax-only special/TypecheckExprToCString.c > $@
+	$(CC) -m32 -fsyntax-only $< > $@
 
 force:
 
