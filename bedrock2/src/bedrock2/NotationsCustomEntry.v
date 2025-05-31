@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.BinIntDef Coq.Strings.String.
+Require Import Coq.ZArith.BinInt Coq.Strings.String.
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 Require Import coqutil.Macros.ident_to_string.
 
