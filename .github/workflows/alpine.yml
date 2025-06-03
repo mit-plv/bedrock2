@@ -1,0 +1,41 @@
+name: CI (Alpine)
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 1 * *'
+
+jobs:
+  alpine:
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - alpine: 'edge'
+#        - alpine: 'latest-stable'
+
+    runs-on: ubuntu-latest
+    name: alpine-${{ matrix.alpine }}
+
+    concurrency:
+      group: ${{ github.workflow }}-alpine-${{ matrix.alpine }}-${{ github.head_ref || github.run_id }}
+      cancel-in-progress: true
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: jirutka/setup-alpine@v1
+      with:
+        branch: ${{ matrix.alpine }}
+        extra-repositories: https://dl-cdn.alpinelinux.org/alpine/edge/testing
+        packages: git make rocq rocq-stdlib bash python3 gcc libc-dev doas-sudo-shim
+    - name: TIMED=1 make -j "$(nproc)" -k
+      shell: alpine.sh {0}
+      run: TIMED=1 make -j "$(nproc)" -k
