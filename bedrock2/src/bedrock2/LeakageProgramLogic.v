@@ -66,7 +66,8 @@ Ltac assuming_correctness_of_in callees functions P :=
     let f_spec := lazymatch constr:(_:spec_of f) with ?x => x end in
     constr:(f_spec functions -> ltac:(let t := assuming_correctness_of_in callees functions P in exact t))
   end.
-Require Import String List coqutil.Macros.ident_to_string.
+From Coq Require Import String List.
+Require Import coqutil.Macros.ident_to_string.
 
 Ltac program_logic_goal_for_function proc :=
   let __ := constr:(proc : Syntax.func) in

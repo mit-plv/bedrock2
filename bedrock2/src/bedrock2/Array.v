@@ -133,7 +133,7 @@ Section Array.
 
 End Array.
 
-Require Import Ring.
+From Coq Require Import Ring.
 
 Section DifferentElemPredicates.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
