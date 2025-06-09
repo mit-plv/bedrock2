@@ -5,7 +5,7 @@ Local Open Scope string_scope.
 Local Open Scope Z_scope.
 Local Open Scope list_scope.
 
-Definition add_with_carry :=
+Definition full_add :=
   func! (x, y, carry) ~> (sum, carry_out) {
       x = x + carry;
       carry_out = x < carry;
@@ -17,10 +17,10 @@ From bedrock2 Require Import WeakestPrecondition ProgramLogic BasicC64Semantics.
 Import coqutil.Word.Interface.
 Require Import bedrock2.ZnWords.
 
-Local Instance spec_of_add_with_carry : spec_of "add_with_carry" :=
-  fnspec! "add_with_carry" x y carry ~> sum carry_out,
+Local Instance spec_of_full_add : spec_of "full_add" :=
+  fnspec! "full_add" x y carry ~> sum carry_out,
     { (* The required upper bound on `carry` isn't necessary for the
-         current `add_with_carry` to support the `ensures` clause, but
+         current `full_add` to support the `ensures` clause, but
          it does formalize an expected condition that future
          implementations should be free to leverage. *)
       requires t m := word.unsigned carry < 2;
@@ -45,7 +45,7 @@ Qed.
 
 Require Import ZArith.
 
-Lemma full_adder_ok : program_logic_goal_for_function! add_with_carry.
+Lemma full_add_ok : program_logic_goal_for_function! full_add.
 Proof.
   repeat straightline. 
   
