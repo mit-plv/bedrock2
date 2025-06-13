@@ -2003,6 +2003,7 @@ Section Proofs.
       match goal with
       | op: Syntax.bopname.bopname |- _ => destr op
       end.
+      Local Arguments Z.eqb : simpl never.
       all: scost_unfold; match goal with
            | y: operand, H: context[Syntax.bopname.eq] |- _ =>
                destr y; simpl in *;
@@ -2021,6 +2022,14 @@ Section Proofs.
                  eauto 8 with map_hints
                | try fwd; try eauto 8 with map_hints ]
            end.
+
+      all : match goal with (* x * -1  --> -x *)
+       |- context[Z.eqb (-1) ?c] => destruct (Z.eqb_spec (-1) c) as [<-|] in *; simpl in *
+       | _ =>  shelve end.
+      { run1det; run1done. change (-1) with (Z.opp 1).
+        rewrite word.ring_morph_opp, word.mul_m1_r, word.sub_0_l; eauto with map_hints. }
+      all: [> ]. Unshelve.
+
       all: match goal with
            | H: context[InvalidInstruction (-1)] |- _ =>  assert (Encode.verify (InvalidInstruction (-1)) iset \/
                   valid_InvalidInstruction (InvalidInstruction (-1))) by (eapply invert_ptsto_instr; ecancel_assumption)

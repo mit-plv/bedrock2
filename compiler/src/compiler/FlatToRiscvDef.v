@@ -141,6 +141,10 @@ Section FlatToRiscv1.
     | Syntax.bopname.srs => [[Srai rd rs1 c2]]
     | Syntax.bopname.lts => [[Slti rd rs1 c2]]
     | Syntax.bopname.ltu => [[Sltiu rd rs1 c2]]
+    | Syntax.bopname.mul => (* op1.opp *)
+        if Z.eqb (-1) c2
+        then [[Neg rd rs1]]
+        else [[InvalidInstruction (-1)]]
     | _ => [InvalidInstruction (-1)]
     end.
 
@@ -165,6 +169,7 @@ Section FlatToRiscv1.
     | Syntax.bopname.srs => [leak_Srai]
     | Syntax.bopname.lts => [leak_Slti]
     | Syntax.bopname.ltu => [leak_Sltiu]
+    | Syntax.bopname.mul => [ILeakage Sub_leakage] (* op1.opp *)
     | _ => []
     end.
 
