@@ -14,10 +14,13 @@ Require Import Coq.Lists.List.
 
 Local Notation UNK := String.EmptyString.
 
-Inductive AEP :=
-| AEP_A : (nat -> AEP) -> AEP
-| AEP_E : (nat -> AEP) -> AEP
-| AEP_P : Prop -> AEP.
+Section aep.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Inductive AEP :=
+  | AEP_A : (nat -> AEP) -> AEP
+  | AEP_E : (nat -> AEP) -> AEP
+  | AEP_P : (trace -> Prop) -> AEP.
+End aep.
 
 Section semantics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
@@ -183,6 +186,13 @@ Module exec. Section WithParams.
   .
 
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
+
+  Lemma seq_cps {pick_sp: PickSp} : forall s1 s2 aep k t m (l: locals) mc post,
+      exec s1 true aep k t m l mc (fun q' aep' k' t' m' l' mc' => exec s2 q' aep' k' t' m' l' mc' post) ->
+      exec (cmd.seq s1 s2) true aep k t m l mc post.
+  Proof.
+    intros. eapply seq. 1: eassumption. simpl. clear. auto.
+  Qed.
 
   Lemma weaken {pick_sp: PickSp} : forall s q aep k t m l mc post1,
       exec s q aep k t m l mc post1 ->
@@ -573,3 +583,119 @@ Section WithParams.
     - eapply exec.extend_env; eassumption.
   Qed.
 End WithParams.
+
+
+Require Import coqutil.Word.SimplWordExpr.
+From Coq Require Import ZArith.
+From Coq Require Import Lia.
+
+Section WithParams.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {locals: map.map String.string word}.
+  Context {word_ok : word.ok word} {mem_ok: map.ok mem}.
+  Context {pick_sp: PickSp}.
+
+  Instance ext_spec : ExtSpec := fun t m action args post =>
+                                   post map.empty nil nil.
+
+  Require Import Strings.String.
+  Open Scope string_scope.
+  
+  Definition one_printer :=
+    (cmd.while (expr.literal 1) (cmd.interact nil "1" nil)).
+
+  Definition countdown :=
+    (cmd.while (expr.var "x")
+       (cmd.seq
+          (cmd.interact nil "0" nil)
+          (cmd.set "x" (expr.op bopname.sub (expr.var "x") (expr.literal 1))))).
+  
+  Definition eventual_one_printer :=
+    cmd.seq (cmd.stackalloc "x" 0 cmd.skip)
+      (cmd.seq countdown one_printer).
+
+  Context {locals_ok: map.ok locals}.
+
+  Lemma countdown_terminates e aep k t m l mc xval :
+    map.get l "x" = Some (word.of_Z xval) ->
+    Z.le 0 xval ->
+    exec e countdown true aep k t m l mc (fun q' _ _ _ _ _ _=> q' = true).
+  Proof.
+    intros. replace xval with (Z.of_nat (Z.to_nat xval)) in * by lia. clear H0.
+    remember (Z.to_nat xval) as xval'.
+    clear Heqxval' xval.
+    remember xval' as upper_bound.
+    rewrite Hequpper_bound in H.
+    assert (xval' <= upper_bound)%nat  by lia. clear Hequpper_bound. revert xval' H0 H.
+    revert aep k t m l mc.
+    induction upper_bound; intros.
+    - eapply exec.while_false.
+      + simpl. rewrite H. reflexivity.
+      + rewrite word.unsigned_of_Z. replace xval' with 0%nat by lia. reflexivity.
+      + reflexivity.
+    - assert (word.wrap (Z.of_nat xval') <> 0 \/ word.wrap (Z.of_nat xval') = 0) by lia.
+      destruct H1.
+      + eapply exec.while_true.
+        -- simpl. rewrite H. reflexivity.
+        -- rewrite word.unsigned_of_Z. assumption.
+        -- eapply exec.seq_cps.
+           ++ eapply exec.interact.
+              --- apply map.split_empty_r. reflexivity.
+              --- reflexivity. 
+              --- cbv [ext_spec]. instantiate (1 := fun m l1 l2 => m = map.empty /\ l1 = nil /\ l2 = nil).
+                  simpl. auto.
+              --- simpl. intros. fwd. eexists. intuition eauto.
+                  econstructor.
+                  { simpl. rewrite H. reflexivity. }
+                  instantiate (1 := fun q' _ _ _ _ l' _ => q' = true /\ map.get l' "x" = Some (*(word.of_Z (Z.of_nat xval'))*)_).
+                  simpl. intuition. rewrite map.get_put_same. auto.
+        -- simpl. intros. fwd. eapply IHupper_bound.
+           2: { rewrite H2p1. f_equal.
+                instantiate (1 := Z.to_nat (word.unsigned _)). rewrite Z2Nat.id.
+                2: { epose proof Properties.word.unsigned_range _ as H2. apply H2. }
+                rewrite word.of_Z_unsigned. reflexivity. }
+           enough (word.unsigned (word := word) (word.sub (word.of_Z (Z.of_nat xval')) (word.of_Z 1)) <= Z.of_nat upper_bound) by lia.
+           pose proof Properties.word.decrement_nonzero_lt as H2.
+           specialize (H2 (word.of_Z (Z.of_nat xval'))).
+           rewrite word.unsigned_of_Z in H2. specialize (H2 H1).
+           remember (word.unsigned _) as blah. clear Heqblah. enough (word.wrap (Z.of_nat xval') <= 1 + (Z.of_nat upper_bound)) by lia.
+           clear H2 blah. cbv [word.wrap].
+           pose proof Z.mod_le (Z.of_nat xval') (2 ^ width) as H2.
+           specialize (H2 ltac:(lia)). eassert _ as blah. 2: specialize (H2 blah); lia.
+           assert (2 ^ 0 <= 2 ^ width).
+           { apply Z.pow_le_mono_r; try lia. destruct word_ok; clear - width_pos.
+             lia. }
+           lia.
+      + eapply exec.while_false.
+        -- simpl. rewrite H. reflexivity.
+        -- rewrite word.unsigned_of_Z. assumption.
+        -- reflexivity.
+  Qed.
+
+  Lemma one_printer_prints_ones n e aep k t m l mc :
+    exec e one_printer true aep k t m l mc
+      (fun q' aep' k' t' m' l' mc' => q' = false /\ t' = repeat one n ++ t)%nat%list.
+  Proof.
+    revert aep k t m l mc. induction n; intros aep k t m l mc.
+    - apply exec.quit. simpl. auto.
+    - eapply exec.while_true.
+      + reflexivity.
+      + apply one_not_zero.
+      + eapply exec.interact.
+        -- apply map.split_empty_r. reflexivity.
+        -- reflexivity.
+        -- cbv [ext_spec].
+           instantiate (1 := fun m l1 l2 => m = map.empty /\ l1 = nil /\ l2 = nil).
+           simpl. auto.
+        -- simpl. intros. fwd. eexists. intuition eauto.
+           instantiate (1 := fun q' aep' k' t' _ _ _ => q' = true /\ t' = one :: t).
+           simpl. auto.
+      + simpl. intros. fwd. eapply exec.weaken. 1: apply IHn. simpl. intros.
+        fwd. intuition auto.
+        replace (repeat one n ++ one :: t)%list with (repeat one (S n) ++ t)%list.
+        -- reflexivity.
+        -- replace (S n) with (n + 1)%nat by lia. rewrite repeat_app.
+           rewrite <- app_assoc. reflexivity.
+  Qed.
+
+  Lemma eventual_one_printer_eventually_
