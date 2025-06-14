@@ -619,7 +619,7 @@ Section WithParams.
   Lemma countdown_terminates e aep k t m l mc xval :
     map.get l "x" = Some (word.of_Z xval) ->
     Z.le 0 xval ->
-    exec e countdown true aep k t m l mc (fun q' _ _ _ _ _ _=> q' = true).
+    exec e countdown true aep k t m l mc (fun q' aep' _ _ _ _ _=> q' = true /\ aep' = aep).
   Proof.
     intros. replace xval with (Z.of_nat (Z.to_nat xval)) in * by lia. clear H0.
     remember (Z.to_nat xval) as xval'.
@@ -632,7 +632,7 @@ Section WithParams.
     - eapply exec.while_false.
       + simpl. rewrite H. reflexivity.
       + rewrite word.unsigned_of_Z. replace xval' with 0%nat by lia. reflexivity.
-      + reflexivity.
+      + auto.
     - assert (word.wrap (Z.of_nat xval') <> 0 \/ word.wrap (Z.of_nat xval') = 0) by lia.
       destruct H1.
       + eapply exec.while_true.
@@ -647,10 +647,10 @@ Section WithParams.
               --- simpl. intros. fwd. eexists. intuition eauto.
                   econstructor.
                   { simpl. rewrite H. reflexivity. }
-                  instantiate (1 := fun q' _ _ _ _ l' _ => q' = true /\ map.get l' "x" = Some (*(word.of_Z (Z.of_nat xval'))*)_).
+                  instantiate (1 := fun q' aep' _ _ _ l' _ => q' = true /\ aep' = aep /\ map.get l' "x" = Some (*(word.of_Z (Z.of_nat xval'))*)_).
                   simpl. intuition. rewrite map.get_put_same. auto.
         -- simpl. intros. fwd. eapply IHupper_bound.
-           2: { rewrite H2p1. f_equal.
+           2: { rewrite H2p2. f_equal.
                 instantiate (1 := Z.to_nat (word.unsigned _)). rewrite Z2Nat.id.
                 2: { epose proof Properties.word.unsigned_range _ as H2. apply H2. }
                 rewrite word.of_Z_unsigned. reflexivity. }
@@ -669,12 +669,12 @@ Section WithParams.
       + eapply exec.while_false.
         -- simpl. rewrite H. reflexivity.
         -- rewrite word.unsigned_of_Z. assumption.
-        -- reflexivity.
+        -- auto.
   Qed.
 
   Lemma one_printer_prints_ones n e aep k t m l mc :
     exec e one_printer true aep k t m l mc
-      (fun q' aep' k' t' m' l' mc' => q' = false /\ t' = repeat one n ++ t)%nat%list.
+      (fun q' aep' k' t' m' l' mc' => q' = false /\ aep' = aep /\ t' = repeat one n ++ t)%nat%list.
   Proof.
     revert aep k t m l mc. induction n; intros aep k t m l mc.
     - apply exec.quit. simpl. auto.
@@ -688,7 +688,7 @@ Section WithParams.
            instantiate (1 := fun m l1 l2 => m = map.empty /\ l1 = nil /\ l2 = nil).
            simpl. auto.
         -- simpl. intros. fwd. eexists. intuition eauto.
-           instantiate (1 := fun q' aep' k' t' _ _ _ => q' = true /\ t' = one :: t).
+           instantiate (1 := fun q' aep' k' t' _ _ _ => q' = true /\ aep' = aep /\ t' = one :: t).
            simpl. auto.
       + simpl. intros. fwd. eapply exec.weaken. 1: apply IHn. simpl. intros.
         fwd. intuition auto.
@@ -698,4 +698,30 @@ Section WithParams.
            rewrite <- app_assoc. reflexivity.
   Qed.
 
-  Lemma eventual_one_printer_eventually_
+  Definition eventually_print_ones : AEP :=
+    AEP_E (fun n1 => AEP_A (fun n2 => AEP_P (fun t => exists t1, List.length t1 = n1 /\ (t = repeat one n2 ++ t1)%list))).
+  
+  Lemma eventual_one_printer_eventually_prints_ones e k t m l mc :
+    exec e eventual_one_printer true eventually_print_ones k t m l mc
+      (fun _ aep _ t _ _ _ =>
+         match aep with
+         | AEP_P P => P t
+         | _ => False
+         end).
+  Proof.
+    cbv [eventual_one_printer]. eapply exec.seq_cps.
+    econstructor.
+    { reflexivity. }
+    intros. constructor. do 2 eexists. intuition eauto.
+    eapply exec.seq. 1: eapply countdown_terminates.
+    { rewrite map.get_put_same. instantiate (1 := word.unsigned _).
+      rewrite word.of_Z_unsigned. reflexivity. }
+    { Search word.unsigned. pose proof (Properties.word.unsigned_range a) as blah.
+      destruct blah. assumption. }
+    simpl. intros. fwd.
+    apply exec.exec_E with (x := List.length t').
+    apply exec.exec_A. intros.
+    eapply exec.weaken. 1: apply one_printer_prints_ones.
+    simpl. intros. fwd. eexists. split; [reflexivity|]. reflexivity.
+  Qed.
+End WithParams.
