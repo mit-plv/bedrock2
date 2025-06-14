@@ -672,6 +672,21 @@ Section WithParams.
         -- auto.
   Qed.
 
+  Print LogItem.
+  Definition one : LogItem := ((map.empty, "1", nil), (map.empty, nil)).
+
+  Lemma one_not_zero : word.unsigned (word := word) (word.of_Z 1) <> 0.
+  Proof.
+    rewrite word.unsigned_of_Z. cbv [word.wrap]. 
+    destruct word_ok. clear - width_pos.
+    assert (2 ^ 1 <= 2 ^ width).
+    { Search (_ ^ _ <= _ ^ _).  apply Z.pow_le_mono_r; lia. }
+    replace (2 ^ 1) with 2 in H by reflexivity.
+    remember (2 ^ width) as blah. clear Heqblah.
+    Fail Z.div_mod_to_equations; lia. (*?*)
+    rewrite Z.mod_small by lia. lia.
+  Qed.
+  
   Lemma one_printer_prints_ones n e aep k t m l mc :
     exec e one_printer true aep k t m l mc
       (fun q' aep' k' t' m' l' mc' => q' = false /\ aep' = aep /\ t' = repeat one n ++ t)%nat%list.
