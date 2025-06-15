@@ -436,21 +436,27 @@ Module exec.
          only appear under forall and ->, but not under exists, /\, \/, to make sure the
          auto-generated induction principle contains an IH for all recursive uses. *)
         exec body1 true aep k t m l mc mid1 ->
-        (forall q' aep' k' t' m' l' mc',
-            mid1 q' aep' k' t' m' l' mc' ->
+        (forall aep' k' t' m' l' mc',
+            mid1 true aep' k' t' m' l' mc' ->
             eval_bcond l' cond <> None) ->
-        (forall q' aep' k' t' m' l' mc',
-            mid1 q' aep' k' t' m' l' mc' ->
+        (forall aep' k' t' m' l' mc',
+            mid1 true aep' k' t' m' l' mc' ->
             eval_bcond l' cond = Some false ->
-            post q' aep' (leak_bool false :: k') t' m' l' (cost_SLoop_false cond mc')) ->
-        (forall q' aep' k' t' m' l' mc',
-            mid1 q' aep' k' t' m' l' mc' ->
+            post true aep' (leak_bool false :: k') t' m' l' (cost_SLoop_false cond mc')) ->
+        (forall aep' k' t' m' l' mc',
+            mid1 true aep' k' t' m' l' mc' ->
             eval_bcond l' cond = Some true ->
-            exec body2 q' aep' (leak_bool true :: k') t' m' l' mc' mid2) ->
-        (forall q'' aep'' k'' t'' m'' l'' mc'',
-            mid2 q'' aep'' k'' t'' m'' l'' mc'' ->
-            exec (SLoop body1 cond body2) q'' aep'' k'' t'' m'' l''
-                 (cost_SLoop_true cond mc'') post) ->
+            exec body2 true aep' (leak_bool true :: k') t' m' l' mc' mid2) ->
+        (forall aep' k' t' m' l' mc',
+            mid1 false aep' k' t' m' l' mc' ->
+            post false aep' k' t' m' l' mc') ->
+        (forall aep'' k'' t'' m'' l'' mc'',
+            mid2 true aep'' k'' t'' m'' l'' mc'' ->
+            exec (SLoop body1 cond body2) true aep'' k'' t'' m'' l''
+              (cost_SLoop_true cond mc'') post) ->
+        (forall aep'' k'' t'' m'' l'' mc'',
+            mid2 false aep'' k'' t'' m'' l'' mc'' ->
+            post false aep'' k'' t'' m'' l'' mc'') ->
         exec (SLoop body1 cond body2) true aep k t m l mc post
     | seq: forall aep k t m l mc s1 s2 mid post,
         exec s1 true aep k t m l mc mid ->
@@ -506,12 +512,18 @@ Module exec.
     Qed.
 
     Lemma loop_cps {pick_sp: PickSp} : forall body1 cond body2 aep k t m l mc post,
-      exec body1 true aep k t m l mc (fun q aep k t m l mc => exists b,
-        eval_bcond l cond = Some b /\
-        (b = false -> post q aep (leak_bool false :: k) t m l (cost_SLoop_false cond mc)) /\
-        (b = true -> exec body2 q aep (leak_bool true :: k) t m l mc (fun q aep k t m l mc =>
-           exec (SLoop body1 cond body2) q aep k t m l
-                (cost_SLoop_true cond mc) post))) ->
+        exec body1 true aep k t m l mc
+          (fun q aep k t m l mc => exists b,
+               eval_bcond l cond = Some b /\
+               if q then                             
+                 (b = false -> post q aep (leak_bool false :: k) t m l (cost_SLoop_false cond mc)) /\
+                   (b = true -> 
+                    exec body2 q aep (leak_bool true :: k) t m l mc
+                      (fun q aep k t m l mc =>
+                         if q then exec (SLoop body1 cond body2) q aep k t m l
+                                     (cost_SLoop_true cond mc) post
+                         else post q aep k t m l mc))
+               else post q aep k t m l mc) ->
       exec (SLoop body1 cond body2) true aep k t m l mc post.
     Proof.
       intros. eapply loop. 1: eapply H. all: cbv beta; intros; simp.
@@ -519,6 +531,8 @@ Module exec.
       - replace b with false in * by congruence. clear b. eauto. 
       - replace b with true in * by congruence. clear b. eauto.
       - assumption.
+      - simpl in *. assumption.
+      - simpl in *. assumption.
     Qed.
 
     Lemma weaken {pick_sp: PickSp} : forall s q aep k t m l mc post1,
@@ -675,13 +689,19 @@ Module exec.
         simpl. intros. fwd. intuition eauto. eexists. align_trace.
       - eapply if_false; intuition eauto. eapply weaken. 1: eapply IHexec.
         simpl. intros. fwd. intuition eauto. eexists. align_trace.
-      - clear H2 H4. econstructor; intuition eauto; fwd; eauto.
+      - clear H2 H5. apply loop_cps. eapply weaken. 1: exact IHexec.
+        simpl. intros. fwd. destruct q'.
+
+        repeat match goal with | H: _ |- _ => specialize H with (1 := H2p0); move H at bottom end. apply H2p0 in 
+        + simpl. intros. fwd. intuition eauto.
+        + simpl. intros. fwd. intuition eauto. eexists. align_trace.
+        + simpl. intros. fwd. eapply H3; eauto. fwd; eauto.
         { eexists. align_trace. }
-        { eapply weaken. 1: eapply H3; eauto. simpl. intros. fwd.
+        { eapply weaken. 1: eapply H3; eauto. simpl. intros. fwd. Search post. auto.
           instantiate (1 := fun q'0 aep'0 k'0 t'0 m'0 l'0 mc'0 =>
                               mid2 q'0 aep'0 k'0 t'0 m'0 l'0 mc'0 /\ exists k'', k'0 = k'' ++ k).
           simpl. intuition. eexists. align_trace. }
-        simpl in *. fwd. eapply weaken. 1: eapply H5; eauto.
+        simpl in *. fwd. eapply weaken. 1: eapply H6; eauto.
         simpl. intros. fwd. intuition. eexists. align_trace.
       - econstructor; intuition eauto. fwd. eapply weaken. 1: eapply H1; eauto.
         simpl. intros. fwd. intuition eauto. eexists. align_trace.
@@ -708,7 +728,7 @@ Module exec.
         intros. rewrite associate_one_left. repeat rewrite app_assoc. auto.
       - eapply if_false; intuition eauto. eapply IHexec.
         intros. rewrite associate_one_left. repeat rewrite app_assoc. auto.
-      - clear H2 H4. eapply loop. 1: eapply exec_extends_trace. all: intuition eauto; fwd; eauto.
+      - clear H2 H5. eapply loop. 1: eapply exec_extends_trace. all: intuition eauto; fwd; eauto.
         { eapply weaken. 1: eapply exec_extends_trace.
           { eapply H3; eauto.
             intros. rewrite associate_one_left. repeat rewrite app_assoc. auto. }
@@ -716,7 +736,7 @@ Module exec.
           instantiate (1 := fun q'0 aep'0 k'0 t'0 m'0 l'0 mc'0 =>
                               mid2 q'0 aep'0 k'0 t'0 m'0 l'0 mc'0 /\ exists k'', k'0 = k'' ++ k).
           simpl. intuition eauto. eexists. align_trace. }
-        simpl in *. fwd. eapply H5; eauto. intros.
+        simpl in *. fwd. eapply H6; eauto. intros.
         repeat (rewrite app_assoc || rewrite (app_one_l _ (_ ++ k))). auto.
       - econstructor. 1: eapply exec_extends_trace; eauto. simpl. intros. fwd.
         eapply H0; eauto. intros. repeat rewrite app_assoc. apply H2.      
@@ -782,7 +802,7 @@ Module exec.
             repeat rewrite <- app_assoc. simpl. auto. }
           solve_picksps_equal. }
         simpl in *. fwd. eapply exec_ext with (pick_sp1 := _).
-        { eapply weaken. 1: eapply H5; eauto. simpl. intros. fwd.
+        { eapply weaken. 1: eapply H6; eauto. simpl. intros. fwd.
           eexists. split; [align_trace|].
           repeat rewrite <- app_assoc. auto. }
         solve_picksps_equal.
@@ -853,11 +873,14 @@ Section FlatImp2.
     - eapply exec.if_false; try eassumption.
       eapply exec.weaken; [eassumption|].
       simpl; intros. intuition auto. map_solver locals_ok.
-    - eapply @exec.loop with
-          (mid1 := fun q' aep' k' t' m' l' mc' => mid1 q' aep' k' t' m' l' mc' /\
-                                                 (q' = true -> map.only_differ l (modVars body1) l'))
-          (mid2 := fun q' aep' k' t' m' l' mc' => mid2 q' aep' k' t' m' l' mc' /\
-                                   (q' = true -> map.only_differ l (modVars (SLoop body1 cond body2)) l')).
+    - clear H. apply exec.loop_cps. eapply exec.weaken. 1: eassumption.
+      simpl. intros. fwd. destruct q'. 
+      + repeat match goal with | H : _ |- _ => specialize H with (1 := Hp0); move H at bottom end.
+        destruct (eval_bcond l' cond); try congruence. exists b. split; [reflexivity|]. split.
+        -- intros. subst. intuition auto. map_solver locals_ok.
+        -- intros. subst. eapply exec.weaken. 1: eapply H3; auto. simpl. intros.
+           fwd. Search mid2. apply H6 in Hp2. eapply exec.weaken. 1: eapply Hp2.
+           Search q'. simpl. intros. fwd. intuition auto. Search l'. map_solver locals_ok. maps. Search post.
       + eassumption.
       + intros. simp. eauto.
       + intros. simp. simpl. intuition auto. map_solver locals_ok.
@@ -865,10 +888,10 @@ Section FlatImp2.
         eapply exec.weaken.
         * eapply H3; eassumption.
         * simpl. intros. intuition auto. map_solver locals_ok.
-      + intros. simp. simpl in *.
-        eapply exec.weaken.
+      + intros. simp. simpl in *. intuition. congruence.
+      + simpl. intros. fwd. eapply exec.weaken.
         * eapply H5; eassumption.
-        * simpl. intros. intuition auto. map_solver locals_ok.
+        * simpl. intros. Search l''. Search mid2. apply intuition auto. map_solver locals_ok.
     - eapply exec.seq.
       + eassumption.
       + simpl; intros. simp.

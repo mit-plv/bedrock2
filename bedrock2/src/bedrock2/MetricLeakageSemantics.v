@@ -458,8 +458,9 @@ Module exec. Section WithParams.
     - eapply while_true. 1,2: eassumption.
       + eapply exec_extends_trace. eapply IHexec. subst_exprs.
         intros. simpl. rewrite associate_one_left. rewrite app_assoc. apply H5.
-      + simpl in *. fwd. eapply H5; eauto. intros. subst_exprs.
-      rewrite associate_one_left. repeat rewrite app_assoc. auto.
+      + simpl in *. intros. fwd. eapply H3; eauto. intros. subst_exprs.
+        rewrite associate_one_left. repeat rewrite app_assoc. auto.
+      + simpl. intros. fwd. auto.
     - econstructor. 4: eapply exec_extends_trace. all: intuition eauto.
       { eapply IHexec. subst_exprs. intros.
         rewrite associate_one_left. repeat rewrite app_assoc. auto. }
@@ -520,12 +521,13 @@ Module exec. Section WithParams.
     - apply expr_to_other_trace in H. fwd. eapply while_false; intuition.
       eexists (_ :: _). intuition.
     - apply expr_to_other_trace in H. fwd. eapply while_true; intuition.
-      { eapply exec_ext with (pick_sp1 := _). 1: eapply IHexec. solve_picksps_equal. }
-      cbv beta in *. fwd. eapply weaken.
-      { eapply exec_ext with (pick_sp1 := _). 1: eapply H3; eauto. solve_picksps_equal. }
-      simpl. intros. fwd. eexists (_ ++ _ ++ _ :: _).
-      repeat rewrite <- (app_assoc _ _ k2). repeat rewrite <- (app_assoc _ _ k).
-      intuition.
+      + eapply exec_ext with (pick_sp1 := _). 1: eapply IHexec. solve_picksps_equal.
+      + cbv beta in *. fwd. eapply weaken.
+        { eapply exec_ext with (pick_sp1 := _). 1: eapply H3; eauto. solve_picksps_equal. }
+        simpl. intros. fwd. eexists (_ ++ _ ++ _ :: _).
+        repeat rewrite <- (app_assoc _ _ k2). repeat rewrite <- (app_assoc _ _ k).
+        intuition.
+      + simpl in *. fwd. eexists. split; [align_trace|]. rewrite <- app_assoc. auto.
     - apply call_args_to_other_trace in H0.
       fwd. econstructor; intuition eauto.
       { eapply exec_ext with (pick_sp1 := _). 1: eapply IHexec; eauto. solve_picksps_equal. }
@@ -676,6 +678,7 @@ Section WithParams.
            { apply Z.pow_le_mono_r; try lia. destruct word_ok; clear - width_pos.
              lia. }
            lia.
+        -- simpl. intros. fwd. auto.
       + eapply exec.while_false.
         -- simpl. rewrite H. reflexivity.
         -- rewrite word.unsigned_of_Z. assumption.
@@ -721,6 +724,7 @@ Section WithParams.
         -- reflexivity.
         -- replace (S n) with (n + 1)%nat by lia. rewrite repeat_app.
            rewrite <- app_assoc. reflexivity.
+      + simpl. intros. fwd. congruence.
   Qed.
 
   Definition eventually_print_ones : AEP :=
