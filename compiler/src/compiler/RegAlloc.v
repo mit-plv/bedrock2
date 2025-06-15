@@ -1194,16 +1194,16 @@ Section CheckerCorrect.
 
   Ltac b := unfold assert_in, assignment, check_regs in *; cost_hammer.
 
-  Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s k t m lH mcH post,
+  Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s q aep k t m lH mcH post,
       check_funcs e e' = Success tt ->
-      exec PreSpill isRegStr e s k t m lH mcH post ->
+      exec PreSpill isRegStr e s q aep k t m lH mcH post ->
       forall lL corresp corresp' s' mcL,
       check corresp s s' = Success corresp' ->
       states_compat lH (precond corresp s s') lL ->
-      exec PreSpill isRegZ e' s' k t m lL mcL (fun k' t' m' lL' mcL' =>
-        exists lH' mcH', states_compat lH' corresp' lL' /\
+      exec PreSpill isRegZ e' s' q aep k t m lL mcL (fun q' aep' k' t' m' lL' mcL' =>
+        exists lH' mcH', (states_compat lH' corresp' lL' \/ q' = false) /\
                     (mcL' - mcL <= mcH' - mcH)%metricsH /\
-                    post k' t' m' lH' mcH').
+                    post q' aep' k' t' m' lH' mcH').
   Proof.
     induction 2; intros;
       match goal with
@@ -1302,13 +1302,13 @@ Section CheckerCorrect.
       unfold loop_inv in SC.
       rewrite E in SC.
       eapply exec.loop with
-        (mid2 := (fun k'0 t'0 m'0 lL' mcL' =>
+        (mid2 := (fun q'0 aep'0 k'0 t'0 m'0 lL' mcL' =>
            exists (lH' : srcLocals) (mcH' : MetricLog),
              states_compat lH' a1 lL' /\
                (exists mcHmid mcLmid,
                mcLmid - mcL <= mcHmid - mc /\
                mcL' - mcLmid <= mcH' - mcHmid)%metricsH /\
-             mid2 k'0 t'0 m'0 lH' mcH')).
+             mid2 q'0 aep'0 k'0 t'0 m'0 lH' mcH')).
       + eapply IH1. 1: eassumption. eapply states_compat_precond. exact SC.
       + cbv beta. intros. fwd. eauto using states_compat_eval_bcond_None.
       + cbv beta. intros. fwd. eexists. eexists. (* exists (exec.cost_SLoop_false isRegStr cond mcH'). *)
@@ -1343,13 +1343,14 @@ Section CheckerCorrect.
       eapply exec.seq.
       + eapply IH1. 1: eassumption.
         eapply states_compat_precond. assumption.
-      + cbv beta. intros k' t' m' l' mcblah ?. fwd.
+      + cbv beta. intros ? ? k' t' m' l' mcblah ?. fwd.
         eapply IH2 in H2p2. 2,3: eauto using states_compat_precond.
         eapply exec.weaken; eauto.
         cbv beta. intros. fwd. exists lH'0. exists mcH'0. split. 2:split. 1,3: eauto.
         b.
     - (* case exec.skip *)
       a. b.
+    - apply exec.quit. do 2 eexists. intuition eauto.
   Qed.
 
 End CheckerCorrect.

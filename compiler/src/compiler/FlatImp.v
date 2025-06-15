@@ -371,12 +371,14 @@ Module exec.
         map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list_zip params argvs map.empty = Some st0 ->
         exec fbody true aep (leak_unit :: k) t m st0 mc outcome ->
-        (forall q' aep' k' t' m' mc' st1,
+        (forall q' aep' k' t' m' st1 mc',
             outcome q' aep' k' t' m' st1 mc' ->
-            exists retvs l',
-              map.getmany_of_list st1 rets = Some retvs /\
-              map.putmany_of_list_zip binds retvs l = Some l' /\
-              post q' aep' k' t' m' l' (cost_call phase mc')) ->
+            if q' then
+              exists retvs l',
+                map.getmany_of_list st1 rets = Some retvs /\
+                  map.putmany_of_list_zip binds retvs l = Some l' /\
+                  post q' aep' k' t' m' l' (cost_call phase mc')
+            else post q' aep' k' t' m' st1 mc') ->
         exec (SCall binds fname args) true aep k t m l mc post
     | load: forall aep k t m l mc sz x a o v addr post,
         map.get l a = Some addr ->
@@ -491,14 +493,16 @@ Module exec.
         map.putmany_of_list_zip params argvs map.empty = Some st ->
         exec fbody true aep (leak_unit :: k) t m st mc
              (fun q' aep' k' t' m' st' mc' =>
-                exists retvs l',
+                if q' then
+                  exists retvs l',
                   map.getmany_of_list st' rets = Some retvs /\
                     map.putmany_of_list_zip binds retvs l = Some l' /\
-                    post q' aep' k' t' m' l' (cost_call phase mc')) ->
+                    post q' aep' k' t' m' l' (cost_call phase mc')
+             else post q' aep' k' t' m' st' mc') ->
       exec (SCall binds fname args) true aep k t m l mc post.
     Proof.
       intros. eapply call; try eassumption.
-      cbv beta. intros *. exact id.
+      cbv beta. intros * ?. destruct q'; [|solve[auto]]. fwd. eauto.
     Qed.
 
     Lemma loop_cps {pick_sp: PickSp} : forall body1 cond body2 aep k t m l mc post,
@@ -533,6 +537,7 @@ Module exec.
         all: eauto.
         intros. simp.
         specialize H3 with (1 := H5).
+        destruct q'; [|solve[auto]].
         simp. eauto 10.
       - eapply stackalloc. 1: assumption.
         intros.
@@ -661,8 +666,9 @@ Module exec.
       - econstructor; intuition eauto. specialize H2 with (1 := H3). fwd.
         eexists. intuition eauto. eexists. align_trace.
       - econstructor; intuition eauto. fwd. specialize H3 with (1 := H4p0). fwd.
-        eexists. intuition eauto. eexists. intuition eauto.
-        eexists. align_trace.
+        destruct q'.
+        + fwd. eexists. eexists. intuition eauto. eexists. align_trace.
+        + intuition. eexists. align_trace.
       - econstructor; intuition eauto. intros. eapply weaken. 1: eapply H1; eauto.
         simpl. intros. fwd. eexists. eexists. intuition eauto. eexists. align_trace.
       - eapply if_true; intuition eauto. eapply weaken. 1: eapply IHexec.
@@ -739,9 +745,10 @@ Module exec.
         auto.
       - econstructor; intuition eauto.
         { eapply exec_ext with (pick_sp1 := _). 1: eapply IHexec; eauto. solve_picksps_equal. }
-        cbv beta in *. fwd. apply H3 in H4p1.
-        fwd. eexists. intuition eauto. eexists. intuition eauto. eexists.
-        split; [align_trace|]. repeat rewrite <- app_assoc. auto.
+        cbv beta in *. fwd. apply H3 in H4p1. destruct q'.
+        + fwd. eexists. intuition eauto. eexists. intuition eauto. eexists.
+          split; [align_trace|]. repeat rewrite <- app_assoc. auto.
+        + eexists. split; [align_trace|]. rewrite <- app_assoc. assumption.
       - econstructor; intuition eauto. eexists. split; [align_trace|]. auto.
       - econstructor; intuition eauto. eexists. split; [align_trace|]. auto.
       - econstructor; intuition eauto. eexists. split; [align_trace|]. auto.
@@ -818,7 +825,7 @@ Section FlatImp2.
   Lemma modVarsSound: forall e s initialQ initialAEP initialK initialT initialSt initialM initialMc post,
       exec phase isReg e s initialQ initialAEP initialK initialT initialM initialSt initialMc post ->
       exec phase isReg e s initialQ initialAEP initialK initialT initialM initialSt initialMc
-        (fun finalQ finalAEP finalK finalT finalM finalSt finalMc => post finalQ finalAEP finalK finalT finalM finalSt finalMc /\ map.only_differ initialSt (modVars s) finalSt).
+        (fun finalQ finalAEP finalK finalT finalM finalSt finalMc => post finalQ finalAEP finalK finalT finalM finalSt finalMc /\ (finalQ = true -> map.only_differ initialSt (modVars s) finalSt)).
   Proof.
     induction 1;
       try solve [ econstructor; [eassumption..|intuition auto; simpl; map_solver locals_ok] ].
@@ -830,11 +837,9 @@ Section FlatImp2.
       intros.
       eapply map.only_differ_putmany. eassumption.
     - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
-      intros; simpl in *; simp.
-      edestruct H3; try eassumption. simp.
-      do 2 eexists; split; [|split]; try eassumption.
-      intuition auto.
-      eapply map.only_differ_putmany. eassumption.
+      intros; simpl in *; simp. apply H3 in H4. destruct q'.
+      + fwd. do 2 eexists; intuition eauto. eapply map.only_differ_putmany. eassumption.
+      + intuition congruence.
     - eapply exec.stackalloc; try eassumption.
       intros.
       eapply exec.weaken.
@@ -850,9 +855,9 @@ Section FlatImp2.
       simpl; intros. intuition auto. map_solver locals_ok.
     - eapply @exec.loop with
           (mid1 := fun q' aep' k' t' m' l' mc' => mid1 q' aep' k' t' m' l' mc' /\
-                                                 map.only_differ l (modVars body1) l')
+                                                 (q' = true -> map.only_differ l (modVars body1) l'))
           (mid2 := fun q' aep' k' t' m' l' mc' => mid2 q' aep' k' t' m' l' mc' /\
-                                   map.only_differ l (modVars (SLoop body1 cond body2)) l').
+                                   (q' = true -> map.only_differ l (modVars (SLoop body1 cond body2)) l')).
       + eassumption.
       + intros. simp. eauto.
       + intros. simp. simpl. intuition auto. map_solver locals_ok.

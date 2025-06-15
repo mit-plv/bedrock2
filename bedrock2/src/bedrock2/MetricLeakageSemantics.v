@@ -149,8 +149,10 @@ Module exec. Section WithParams.
       v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
       (_ : word.unsigned v <> 0)
       mid (_ : exec c true aep (leak_bool true :: k') t m l mc' mid)
-      (_ : forall q' aep' k'' t' m' l' mc'', mid q' aep' k'' t' m' l' mc'' ->
-                                 exec (cmd.while e c) q' aep' k'' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc'') post)
+      (_ : forall aep' k'' t' m' l' mc'',
+          mid true aep' k'' t' m' l' mc'' ->
+          exec (cmd.while e c) true aep' k'' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc'') post)
+      (_ : forall aep' k'' t' m' l' mc'', mid false aep' k'' t' m' l' mc'' -> post false aep' k'' t' m' l' mc'')
     : exec (cmd.while e c) true aep k t m l mc post
   | call binds fname arges
       aep k t m l mc post
@@ -158,10 +160,13 @@ Module exec. Section WithParams.
       args k' mc' (_ : eval_call_args m l arges k mc = Some (args, k', mc'))
       lf (_ : map.of_list_zip params args = Some lf)
       mid (_ : exec fbody true aep (leak_unit :: k') t m lf mc' mid)
-      (_ : forall q' aep' k'' t' m' st1 mc'', mid q' aep' k'' t' m' st1 mc'' ->
-          exists retvs, map.getmany_of_list st1 rets = Some retvs /\
-          exists l', map.putmany_of_list_zip binds retvs l = Some l' /\
-          post q' aep' k'' t' m' l'  (cost_call PreSpill mc''))
+      (_ : forall q' aep' k'' t' m' st1 mc'',
+          mid q' aep' k'' t' m' st1 mc'' ->
+          if q' then
+            exists retvs, map.getmany_of_list st1 rets = Some retvs /\
+                       exists l', map.putmany_of_list_zip binds retvs l = Some l' /\
+                               post true aep' k'' t' m' l'  (cost_call PreSpill mc'')
+          else post q' aep' k'' t' m' st1 mc'')
     : exec (cmd.call binds fname arges) true aep k t m l mc post
   | interact binds action arges
       aep k t m l mc post
@@ -208,9 +213,8 @@ Module exec. Section WithParams.
     - eapply call.
       4: eapply IHexec.
       all: eauto.
-      intros.
-      edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
-      eauto 10.
+      intros. apply H3 in H5. destruct q'; [|auto].
+      edestruct H5 as (? & ? & ? & ? & ?). eexists. eauto.
     - eapply interact; try eassumption.
       intros.
       edestruct H2 as (? & ? & ?); [eassumption|].
@@ -418,11 +422,16 @@ Module exec. Section WithParams.
       simpl. intros. fwd. intuition eauto. subst_exprs. eexists. align_trace.
     - econstructor; intuition eauto. fwd. eapply weaken. 1: eapply H1; eauto.
       simpl. intros. fwd. intuition eauto. eexists. align_trace.
-    - eapply while_true; eauto. simpl. intros. fwd. eapply weaken. 1: eapply H3; eauto.
-      simpl. intros. fwd. intuition eauto. subst_exprs. eexists. align_trace.
-    - econstructor; intuition eauto. fwd. specialize H3 with (1 := H4p0). fwd.
-      eexists. intuition eauto. eexists. intuition eauto. subst_exprs.
-      eexists. align_trace.
+    - eapply while_true; eauto; subst_exprs.
+      + simpl. intros. fwd. eapply weaken. 1: eapply H3; eauto.
+        simpl. intros. fwd. intuition eauto. eexists. align_trace.
+      + simpl. intros. fwd. intuition. eexists. align_trace.
+    - econstructor; intuition eauto. fwd. specialize H3 with (1 := H4p0).
+      subst_exprs.
+      destruct q'.
+      + fwd. eexists. intuition eauto. eexists. intuition eauto. 
+        eexists. align_trace.
+      + intuition auto. eexists. align_trace.
     - econstructor; intuition eauto. specialize H2 with (1 := H3). fwd.
       eexists. intuition eauto. subst_exprs. eexists. align_trace.
   Qed.
@@ -446,10 +455,10 @@ Module exec. Section WithParams.
       intros. eassert (H2' := H2 (_ ++ _ :: _)). rewrite <- app_assoc in H2'. eapply H2'.
     - econstructor. 1: eapply exec_extends_trace; eauto. simpl. intros. fwd.
       eapply H0; eauto. intros. repeat rewrite app_assoc. apply H2.
-    - eapply while_true; intuition eauto.
-      { eapply exec_extends_trace. eapply IHexec. subst_exprs.
-        intros. simpl. rewrite associate_one_left. rewrite app_assoc. apply H4. }
-      simpl in *. fwd. eapply H3; eauto. intros. subst_exprs.
+    - eapply while_true. 1,2: eassumption.
+      + eapply exec_extends_trace. eapply IHexec. subst_exprs.
+        intros. simpl. rewrite associate_one_left. rewrite app_assoc. apply H5.
+      + simpl in *. fwd. eapply H5; eauto. intros. subst_exprs.
       rewrite associate_one_left. repeat rewrite app_assoc. auto.
     - econstructor. 4: eapply exec_extends_trace. all: intuition eauto.
       { eapply IHexec. subst_exprs. intros.
@@ -520,10 +529,11 @@ Module exec. Section WithParams.
     - apply call_args_to_other_trace in H0.
       fwd. econstructor; intuition eauto.
       { eapply exec_ext with (pick_sp1 := _). 1: eapply IHexec; eauto. solve_picksps_equal. }
-      cbv beta in *. fwd. apply H3 in H0p2.
-      fwd. exists retvs. intuition. exists l'. intuition. eexists (_ ++ _ :: _).
-      repeat rewrite <- (app_assoc _ _ k2). repeat rewrite <- (app_assoc _ _ k).
-      intuition.
+      cbv beta in *. fwd. apply H3 in H0p2. destruct q'.
+      + fwd. exists retvs. intuition. exists l'. intuition. eexists (_ ++ _ :: _).
+        repeat rewrite <- (app_assoc _ _ k2). repeat rewrite <- (app_assoc _ _ k).
+        intuition.
+      + eexists. split; [align_trace|]. rewrite <- app_assoc. assumption.
     - apply call_args_to_other_trace in H0. fwd. econstructor; intuition eauto.
       apply H2 in H0. fwd. exists l'. intuition. eexists (_ :: _).
       intuition.
