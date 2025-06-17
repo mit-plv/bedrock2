@@ -1,6 +1,6 @@
+From Coq Require Import String List.
 From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
-Require Import coqutil.Map.Interface.
-Require coqutil.Datatypes.ListSet.
+From coqutil Require Import Macros.ident_to_string Map.Interface Datatypes.ListSet.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
@@ -11,13 +11,10 @@ Definition spec_of (procname:String.string) := Semantics.env -> Prop.
 Existing Class spec_of.
 
 Module Import Coercions.
+  Export coqutil.Map.Separation.
   Import Map.Interface Word.Interface BinInt.
   Coercion Z.of_nat : nat >-> Z.
   Coercion word.unsigned : word.rep >-> Z.
-
-  Definition sepclause_of_map {key value map} (m : @map.rep key value map)
-    : map.rep -> Prop := Logic.eq m.
-  Coercion sepclause_of_map : Interface.map.rep >-> Funclass.
 End Coercions.
 
 Goal True.
@@ -65,7 +62,7 @@ Ltac assuming_correctness_of_in callees functions P :=
     let f_spec := lazymatch constr:(_:spec_of f) with ?x => x end in
     constr:(f_spec functions -> ltac:(let t := assuming_correctness_of_in callees functions P in exact t))
   end.
-Require Import String List coqutil.Macros.ident_to_string.
+Import String List coqutil.Macros.ident_to_string.
 
 Ltac program_logic_goal_for_function proc :=
   let __ := constr:(proc : Syntax.func) in

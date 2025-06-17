@@ -242,7 +242,7 @@ Section Scalars.
   Local Infix "*" := sep : type_scope.
   Local Open Scope sep_scope.
   Import Syntax.
-  Lemma load_four_bytes_of_sep_at{BW: Bitwidth width} bs a R m (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat):
+  Lemma load_four_bytes_of_sep_at{BW: Bitwidth width} bs a R m (Hsep: m =* (bs$@a)*R) (Hl : length bs = 4%nat):
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof.
     seprewrite_in (symmetry! (array1_iff_eq_of_list_word_at(map:=mem))) Hsep.
@@ -262,12 +262,12 @@ Section Scalars.
   Qed.
 
   Lemma uncurried_load_four_bytes_of_sep_at{BW: Bitwidth width} bs a R (m : mem)
-    (H: (eq(bs$@a)*R) m /\ length bs = 4%nat) :
+    (H: m =* (bs$@a)*R /\ length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply load_four_bytes_of_sep_at; eapply H. Qed.
 
   Lemma Z_uncurried_load_four_bytes_of_sep_at{BW: Bitwidth width} bs a R (m : mem)
-    (H: (eq(bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
+    (H: m =* (bs$@a)*R /\ Z.of_nat (length bs) = 4) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply load_four_bytes_of_sep_at; try eapply H; blia. Qed.
 

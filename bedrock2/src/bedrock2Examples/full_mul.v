@@ -4,7 +4,7 @@ Require Import bedrock2.NotationsCustomEntry.
 Require Import coqutil.Macros.ident_to_string.
 From bedrock2 Require Import WeakestPrecondition ProgramLogic BasicC64Semantics.
 Require Import bedrock2.ZnWords.
-Require Import Lia ZArith.
+From Coq Require Import Lia ZArith.
 
 Import Syntax BinInt String List.ListNotations.
 Import coqutil.Word.Interface coqutil.Word.Properties.

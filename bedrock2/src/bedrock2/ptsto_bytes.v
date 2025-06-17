@@ -16,15 +16,13 @@ Section WithWord.
   Local Coercion Z.of_nat : nat >-> Z.
   Local Infix "$+" := map.putmany (at level 70).
   Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
-  Local Infix "*" := sep : type_scope.
   Local Open Scope sep_scope.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
   Context [value] [map : map.map word value] {ok : map.ok map}.
   Add Ring __wring: (@word.ring_theory width word word_ok).
   Lemma sep_eq_of_list_word_at_app (a : word) (xs ys : list value)
     lxs (Hlxs : Z.of_nat (length xs) = lxs) (Htotal : length xs + length ys <= 2^width)
-    : Lift1Prop.iff1 (eq ((xs ++ ys)$@a))
-      (sep (eq (xs$@a)) (eq (ys$@(word.add a (word.of_Z lxs))))).
+    : Lift1Prop.iff1 ((xs ++ ys)$@a) (sep (xs$@a) (ys$@(word.add a (word.of_Z lxs)))).
   Proof.
     etransitivity.
     2: eapply sep_comm.
@@ -36,7 +34,7 @@ Section WithWord.
   Lemma list_word_at_app_of_adjacent_eq (a b : word) (xs ys : list value)
     (Hl: word.unsigned (word.sub b a) = Z.of_nat (length xs))
     (Htotal : length xs + length ys <= 2^width)
-    : Lift1Prop.iff1 (eq(xs$@a)*eq(ys$@b)) (eq((xs++ys)$@a)).
+    : Lift1Prop.iff1 (xs$@a*ys$@b) ((xs++ys)$@a).
   Proof.
     etransitivity.
     2:symmetry; eapply sep_eq_of_list_word_at_app; trivial.
@@ -44,12 +42,11 @@ Section WithWord.
   Qed.
 
   Lemma array1_iff_eq_of_list_word_at (a : word) (bs : list value)
-    (H : length bs <= 2 ^ width) :
-    iff1 (array ptsto (word.of_Z 1) a bs) (eq(bs$@a)).
+    (H : length bs <= 2 ^ width) : iff1 (array ptsto (word.of_Z 1) a bs) (bs$@a).
   Proof.
     symmetry.
     revert H; revert a; induction bs; cbn [array]; intros.
-    { rewrite map.of_list_word_nil; cbv [emp iff1]; intuition auto. }
+    { rewrite map.of_list_word_nil; cbv [emp iff1 sepclause_of_map]; intuition auto. }
     { etransitivity.
       2: eapply Proper_sep_iff1.
       3: eapply IHbs.
@@ -63,7 +60,7 @@ Section WithWord.
       2:eapply sep_comm.
       Morphisms.f_equiv.
       rewrite map.of_list_word_singleton; try exact _.
-      cbv [ptsto iff1]; intuition auto. }
+      cbv [ptsto iff1 sepclause_of_map]; intuition auto. }
   Qed.
 End WithWord.
 
@@ -78,7 +75,7 @@ Section Scalars.
   Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
   Lemma ptsto_bytes_iff_eq_of_list_word_at (n : nat) (addr : word) (value : tuple byte n)
     (H : (Z.of_nat n <= 2 ^ width)%Z) :
-    iff1 (ptsto_bytes n addr value) (eq(tuple.to_list value$@addr)).
+    iff1 (ptsto_bytes n addr value) (tuple.to_list value$@addr).
   Proof. eapply array1_iff_eq_of_list_word_at; rewrite ?tuple.length_to_list; trivial. Qed.
 
   Lemma load_bytes_of_sep a n bs R m
