@@ -382,8 +382,7 @@ Section WithParameters.
   Lemma memmove_ok_array : program_logic_goal_for_function! memmove.
   Proof.
     cbv [program_logic_goal_for spec_of_memmove_array]; intros.
-    eapply WeakestPreconditionProperties.Proper_call; cycle 1; [eapply memmove_ok|];
-        cbv [sepclause_of_map] in *.
+    eapply WeakestPreconditionProperties.Proper_call; cycle 1; [eapply memmove_ok|].
     { eassumption. }
     { intuition idtac.
       - seprewrite_in_by @ptsto_bytes.array1_iff_eq_of_list_word_at H0 ZnWords; eassumption.

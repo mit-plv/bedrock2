@@ -12,13 +12,10 @@ Require Import bedrock2.SemanticsRelations.
 Notation spec_of := bedrock2.ProgramLogic.spec_of.
 
 Module Import Coercions.
+  Export coqutil.Map.Separation.
   Import Map.Interface Word.Interface BinInt.
   Coercion Z.of_nat : nat >-> Z.
   Coercion word.unsigned : word.rep >-> Z.
-
-  Definition sepclause_of_map {key value map} (m : @map.rep key value map)
-    : map.rep -> Prop := Logic.eq m.
-  Coercion sepclause_of_map : Interface.map.rep >-> Funclass.
 End Coercions.
 
 Goal True.
@@ -66,7 +63,8 @@ Ltac assuming_correctness_of_in callees functions P :=
     let f_spec := lazymatch constr:(_:spec_of f) with ?x => x end in
     constr:(f_spec functions -> ltac:(let t := assuming_correctness_of_in callees functions P in exact t))
   end.
-Require Import String List coqutil.Macros.ident_to_string.
+From Coq Require Import String List.
+Require Import coqutil.Macros.ident_to_string.
 
 Ltac program_logic_goal_for_function proc :=
   let __ := constr:(proc : Syntax.func) in

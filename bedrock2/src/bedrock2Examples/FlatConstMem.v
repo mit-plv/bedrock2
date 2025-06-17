@@ -37,7 +37,7 @@ Section WithParameters.
 
   Local Instance spec_of_silly1 : spec_of "silly1" := fun functions =>
       forall t m a bs R, Z.of_nat (length bs) = 32 ->
-      (sep (eq (map.of_list_word_at a bs)) R) m ->
+      (sep ((map.of_list_word_at a bs)) R) m ->
       WeakestPrecondition.call functions "silly1" t m [a]
       (fun T M rets => True).
 
@@ -215,9 +215,9 @@ Section WithParameters.
       Local Notation "a * b" := (sep a%type b%type) : type_scope.
       Local Open Scope word_scope.
 
-  Lemma sep_eq_putmany [key value] [map : map.map key value] (a b : map) (H : disjoint a b) : Lift1Prop.iff1 (eq (a $+ b)) (sep (eq a) (eq b)).
+  Lemma sep_eq_putmany [key value] [map : map.map key value] (a b : map) (H : disjoint a b) : Lift1Prop.iff1 ((a $+ b)) (sep (a) (b)).
   Proof.
-    split.
+    cbv [sepclause_of_map]; split.
     { intros; subst. eexists _, _; eauto using Properties.map.split_disjoint_putmany. }
     { intros (?&?&(?&?)&?&?); subst; trivial. }
   Qed.
@@ -225,8 +225,8 @@ Section WithParameters.
   Lemma sep_eq_of_list_word_at_app [value] [map : map.map word value] {ok : map.ok map}
     (a : word) (xs ys : list value)
     lxs (Hlxs : Z.of_nat (length xs) = lxs) (Htotal : length xs + length ys <= 2^32)
-    : Lift1Prop.iff1 (eq (map.of_list_word_at a (xs ++ ys)))
-      (sep (eq (map.of_list_word_at a xs)) (eq (map.of_list_word_at (word.add a (word.of_Z lxs)) ys))).
+    : Lift1Prop.iff1 ((map.of_list_word_at a (xs ++ ys)))
+      (sep ((map.of_list_word_at a xs)) ((map.of_list_word_at (word.add a (word.of_Z lxs)) ys))).
   Proof.
     etransitivity.
     2: eapply sep_comm.
@@ -240,8 +240,8 @@ Section WithParameters.
     (Hl: word.unsigned (word.sub b a) = Z.of_nat (length xs))
     (Htotal : length xs + length ys <= 2^32)
     : Lift1Prop.iff1
-        (sep (eq (map.of_list_word_at a xs)) (eq (map.of_list_word_at b ys)) )
-        (eq (map.of_list_word_at a (xs ++ ys))).
+        (sep ((map.of_list_word_at a xs)) ((map.of_list_word_at b ys)) )
+        ((map.of_list_word_at a (xs ++ ys))).
   Proof.
     etransitivity.
     2:symmetry; eapply sep_eq_of_list_word_at_app; trivial.
@@ -267,10 +267,10 @@ Section WithParameters.
   Lemma eq_of_list_word_iff_array1 [value] [map : map.map word value] {ok : map.ok map}
     (a : word) (bs : list value)
     (H : length bs <= 2 ^ 32) :
-    iff1 (eq (bs$@a)) (array ptsto (word.of_Z 1) a bs).
+    iff1 ((bs$@a)) (array ptsto (word.of_Z 1) a bs).
   Proof.
     revert H; revert a; induction bs; cbn [array]; intros.
-    { rewrite of_list_word_nil; cbv [emp iff1]; intuition auto. }
+    { rewrite of_list_word_nil; cbv [emp iff1 sepclause_of_map]; intuition auto. }
     { etransitivity.
       2: eapply Proper_sep_iff1.
       3: eapply IHbs.
@@ -284,7 +284,7 @@ Section WithParameters.
       2:eapply sep_comm.
       f_equiv.
       rewrite of_list_word_singleton; try exact _.
-      cbv [ptsto iff1]; intuition auto. }
+      cbv [ptsto iff1 sepclause_of_map]; intuition auto. }
   Qed.
 
   Ltac ring_simplify_address_in H :=
@@ -345,28 +345,29 @@ Section WithParameters.
       congruence.
     Qed.
 
-    Lemma load_bytes_of_sep_bytes_at bs a R (m:mem) (Hsep: (eq(bs$@a)*R) m) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^32)
+    Lemma load_bytes_of_sep_bytes_at bs a R (m:mem) (Hsep: ((bs$@a)*R) m) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^32)
       : load_bytes m a n = Some bs.
     Proof.
+      cbv [sepclause_of_map] in *.
       eapply sep_comm in Hsep.
       destruct Hsep as (mR&?&(?&?)&?&?); subst.
       eapply load_bytes_of_putmany_bytes_at; eauto.
     Qed.
   End __.
 
-  Lemma load_four_bytes_of_sep_at bs a R (m:mem) (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat) :
+  Lemma load_four_bytes_of_sep_at bs a R (m:mem) (Hsep: ((bs$@a)*R) m) (Hl : length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof.
     eapply Scalars.load_four_bytes_of_sep_at; try eassumption.
   Qed.
 
   Lemma uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
-    (H: (eq(bs$@a)*R) m /\ length bs = 4%nat) :
+    (H: ((bs$@a)*R) m /\ length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply Scalars.uncurried_load_four_bytes_of_sep_at; try eassumption. Qed.
 
   Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
-    (H: (eq(bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
+    (H: ((bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply Scalars.Z_uncurried_load_four_bytes_of_sep_at; try eassumption. Qed.
 

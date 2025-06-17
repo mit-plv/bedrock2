@@ -1,4 +1,4 @@
-Require Import ZArith Ring.
+From Coq Require Import ZArith Ring.
 Require Import coqutil.Tactics.rdelta.
 
 Ltac is_ground_const e :=
