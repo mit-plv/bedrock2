@@ -11,7 +11,6 @@ Require Import bedrock2.ZnWords.
 Import Coq.Init.Byte coqutil.Byte.
 Local Notation string := String.string.
 
-(*Require Import bedrock2.ptsto_bytes.*)
 Require Import coqutil.Map.OfListWord.
 Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
 

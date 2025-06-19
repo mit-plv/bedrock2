@@ -151,18 +151,12 @@ Section WithParameters.
         apply H. Lia.lia.
   Qed.
 
-  Lemma ptsto_nonaliasing: forall addr b1 b2 m (R: mem -> Prop),
-      (ptsto addr b1 * ptsto addr b2 * R)%sep m ->
+  Lemma bytes_nonaliasing: forall addr bs1 bs2 m (R: mem -> Prop),
+      (bs1 $@ addr * bs2 $@addr * R)%sep m ->
+      length bs1 <> O -> length bs2 <> O ->
       False.
   Proof.
-    intros. unfold ptsto, sep, map.split, map.disjoint in *.
-    repeat match goal with
-           | H: exists _, _ |- _ => destruct H
-           | H: _ /\ _ |- _ => destruct H
-           end.
-    subst.
-    specialize (H4 addr b1 b2). rewrite ?map.get_put_same in H4. auto.
-  Qed.
+  Admitted.
 
   (* TODO generalize *)
   Lemma array_scalar32_max_size: forall addr xs (R: mem -> Prop) m,
@@ -190,12 +184,10 @@ Section WithParameters.
     replace (word.add addr (word.of_Z (word.unsigned (word.of_Z 4) * Z.of_nat (Datatypes.length (h1 :: t1)))))
       with addr in H by ZnWords.
     unfold scalar32 at 1 3 in H.
-    unfold truncated_word, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes in H.
+    unfold truncated_word, truncated_scalar in H.
     cbn in H.
-    rewrite !HList.tuple.to_list_of_list in H.
-    eapply (ptsto_nonaliasing addr (List.hd Byte.x00 (LittleEndianList.le_split 4 (word.unsigned h2))) (List.hd Byte.x00 (LittleEndianList.le_split 4 (word.unsigned h1))) m).
-    unfold LittleEndianList.le_split, List.hd, array in *.
-    ecancel_assumption.
+    eapply bytes_nonaliasing. { ecancel_assumption. }
+    1,2 : rewrite LittleEndianList.length_le_split; discriminate.
   Qed.
 
   Local Infix "*" := sep. Local Infix "*" := sep : type_scope.

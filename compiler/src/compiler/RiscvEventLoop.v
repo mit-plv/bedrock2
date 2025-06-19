@@ -18,7 +18,6 @@ Require Import riscv.Spec.Execute.
 Require Import riscv.Proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.SeparationLogic.
-Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Proofs.EncodeBound.

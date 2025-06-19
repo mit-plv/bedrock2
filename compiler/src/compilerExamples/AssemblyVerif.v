@@ -21,7 +21,6 @@ Require Import compiler.FlatToRiscvDef.
 Require Export coqutil.Word.SimplWordExpr.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
-Require Import bedrock2.ptsto_bytes.
 Require Import coqutil.Tactics.Simp.
 Import Utility Decode.
 
@@ -49,6 +48,11 @@ asm_prog_1 ++ [[
   Sw Register0 x2 output_ptr
 ]].
 
+Import Separation.
+Local Notation ptsto_bytes :=
+  (fun n addr v => OfListWord.map.of_list_word_at addr (HList.tuple.to_list (n:=n) v))
+  (only parsing).
+
 Section Verif.
 
   Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
@@ -70,8 +74,8 @@ Section Verif.
        constants [word_cst]).
 
   Ltac simulate'_step :=
-    first [ eapply go_loadWord_sep ; simpl in *; simpl_word_exprs word_ok; [sidecondition..|]
-          | eapply go_storeWord_sep; simpl in *; simpl_word_exprs word_ok; [sidecondition..|intros]
+    first [ eapply go_loadWord_sep ; simpl in *; simpl_word_exprs word_ok; [ecancel_assumption||sidecondition..|]
+          | eapply go_storeWord_sep; simpl in *; simpl_word_exprs word_ok; [ecancel_assumption||sidecondition..|intros]
           | simulate_step ].
 
   Ltac simulate' := repeat simulate'_step.
@@ -143,9 +147,9 @@ Section Verif.
       subset (footpr (program iset initial.(getPc) asm_prog_2 * Rexec)%sep)
              (of_list initial.(getXAddrs)) ->
       (program iset initial.(getPc) asm_prog_2 * Rexec *
-       ptsto_bytes 4 (word.of_Z input_ptr) v1 *
-       ptsto_bytes 4 (word.of_Z (input_ptr+4)) v2 *
-       ptsto_bytes 4 (word.of_Z output_ptr) dummy * R)%sep initial.(getMem) ->
+       ptsto_bytes 4%nat (word.of_Z input_ptr) v1 *
+       ptsto_bytes 4%nat (word.of_Z (input_ptr+4)) v2 *
+       ptsto_bytes 4%nat (word.of_Z output_ptr) dummy * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo (mcomp_sat (run1 iset)) initial
              (fun final =>
@@ -165,6 +169,7 @@ Section Verif.
     unfold program in *.
     subst.
     simpl.
+
     run1det.
     run1det.
 
@@ -194,10 +199,6 @@ Ltac sidecondition ::=
   (* but we don't have a general "eassumption" branch, only "assumption": *)
   | |- _ => solve [auto using valid_FlatImp_var_implies_valid_register,
                               valid_FlatImp_vars_bcond_implies_valid_registers_bcond]
-  | |- Memory.load ?sz ?m ?addr = Some ?v =>
-    unfold Memory.load, Memory.load_Z in *;
-    simpl_MetricRiscvMachine_mem;
-    erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ]
   | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
   | |- _ => sidecondition_hook
   end.

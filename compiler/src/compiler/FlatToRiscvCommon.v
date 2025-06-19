@@ -1,3 +1,4 @@
+From coqutil Require Import HList Memory SeparationMemory LittleEndianList.
 Require Import riscv.Utility.Monads. Require Import riscv.Utility.MonadNotations.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.LeakageSemantics.
@@ -447,25 +448,21 @@ Section FlatToRiscv1.
                 (withRegs (map.put initialL.(getRegs) x v) (updateMetrics (addMetricLoads 1) initialL)) post ->
       mcomp_sat (Bind (execute (compile_load iset sz x a ofs)) f) initialL post.
   Proof using word_ok PR BWM.
-    unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per, Memory.bytes_per_word.
-    setoid_rewrite <-Memory.to_list_load_bytes; cbv [option_map].
-    rewrite bitwidth_matches.
-    destruct width_cases as [E | E];
-      (* note: "rewrite E" does not work because "width" also appears in the type of "word",
-         but we don't need to rewrite in the type of word, only in the type of the tuple,
-         which works if we do it before intro'ing it *)
-      (destruct (width =? 32) eqn: E'; [apply Z.eqb_eq in E' | apply Z.eqb_neq in E']);
-      try congruence;
-      clear E';
-      [set (nBytes := 4%nat) | set (nBytes := 8%nat)];
-      replace (Z.to_nat ((width + 7) / 8)) with nBytes by (subst nBytes; rewrite E; reflexivity);
-      subst nBytes;
-      intros; destruct sz;
-      try solve [
-        unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
-        Memory.load, Memory.load_Z in *;
-        simp; simulate''; simpl; simpl_word_exprs word_ok; destruct initialL;
-          try eassumption].
+    clear word_riscv_ok mem_ok locals_ok leak_ext_call ext_spec.
+    cbv [compile_load Memory.bytes_per Memory.bytes_per_word Memory.load]; intros *.
+    destruct load_Z eqn:E; inversion_clear 4; intros Hpost.
+    rewrite bitwidth_matches; destruct sz, width_cases as [-> | -> ]; intros; simulate'';
+      cbv [MachineWidth_XLEN loadByte uInt8ToReg loadHalf uInt16ToReg loadWord uInt32ToReg int32ToReg loadDouble int64ToReg];
+      try change (Z.to_nat ((32 + 7) / 8)) with 4%nat in *;
+      try change (Z.to_nat ((64 + 7) / 8)) with 8%nat in *;
+      rewrite ?E; trivial;
+      try setoid_rewrite (tuple.to_list_of_list (le_split 1 z));
+      try setoid_rewrite (tuple.to_list_of_list (le_split 2 z));
+      try setoid_rewrite (tuple.to_list_of_list (le_split 4 z));
+      try setoid_rewrite (tuple.to_list_of_list (le_split 8 z));
+      rewrite ?LittleEndianList.le_combine_split; simpl_word_exprs word_ok;
+      destruct initialL; eqapply Hpost; f_equal; f_equal.
+      all: rewrite Z.mod_small; trivial; eapply load_Z_bound in E; blia.
   Qed.
 
   Lemma go_leak_load: forall sz (x a ofs: Z) (addr: word) (initialL: RiscvMachineL) post (f : option LeakageEvent -> M unit),
@@ -488,35 +485,33 @@ Section FlatToRiscv1.
 
   Arguments invalidateWrittenXAddrs: simpl never.
 
+  Local Arguments HList.tuple.to_list : simpl never.
+  Local Arguments HList.tuple.of_list : simpl never.
+  Local Arguments LittleEndianList.le_split : simpl never.
   Lemma go_store: forall sz (x a ofs: Z) (addr v: word) (initialL: RiscvMachineL) m' post f,
       valid_register x ->
       valid_register a ->
       map.get initialL.(getRegs) x = Some v ->
       map.get initialL.(getRegs) a = Some addr ->
-      Memory.store sz (getMem initialL) (word.add addr (word.of_Z ofs)) v = Some m' ->
+      bedrock2.Memory.store sz (getMem initialL) (word.add addr (word.of_Z ofs)) v = Some m' ->
       mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs
                                       (@Memory.bytes_per width sz) (word.add addr (word.of_Z ofs))
                                       (getXAddrs initialL))
                        (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
       mcomp_sat (Bind (execute (compile_store iset sz a x ofs)) f) initialL post.
   Proof using PR BWM mem_ok word_ok.
-    unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per, Memory.bytes_per_word.
-    setoid_rewrite <-HList.tuple.to_list_of_list; setoid_rewrite <-Memory.store_bytes_correct; setoid_rewrite HList.tuple.to_list_of_list.
-    rewrite bitwidth_matches.
-    destruct width_cases as [E | E];
-      (* note: "rewrite E" does not work because "width" also appears in the type of "word",
-         but we don't need to rewrite in the type of word, only in the type of the tuple,
-         which works if we do it before intro'ing it *)
-      (destruct (width =? 32) eqn: E'; [apply Z.eqb_eq in E' | apply Z.eqb_neq in E']);
-      try congruence;
-      clear E';
-      [set (nBytes := 4%nat) | set (nBytes := 8%nat)];
-      replace (Z.to_nat ((width + 7) / 8)) with nBytes by (subst nBytes; rewrite E; reflexivity);
-      subst nBytes;
-      intros; destruct sz;
-        unfold execute, ExecuteI.execute, ExecuteI64.execute, translate, DefaultRiscvState,
-        Memory.store, Memory.store_Z in *;
-        simp; simulate''; simpl; simpl_word_exprs word_ok; try eassumption.
+    clear -PR BWM mem_ok word_ok.
+    cbv [compile_store Memory.bytes_per Memory.bytes_per_word bedrock2.Memory.store store_Z]; intros *.
+    destruct coqutil.Map.Memory.store_bytes eqn:E; inversion 5; subst m'; intros Hpost.
+    rewrite bitwidth_matches; destruct sz, width_cases as [-> | -> ]; intros; simulate'';
+      cbv [MachineWidth_XLEN storeByte storeHalf storeWord storeDouble store_bytes];
+      try change (Z.to_nat ((32 + 7) / 8)) with 4%nat in *;
+      try change (Z.to_nat ((64 + 7) / 8)) with 8%nat in *; first
+      [ setoid_rewrite (tuple.to_list_of_list (le_split 1 (word.unsigned v)))
+      | setoid_rewrite (tuple.to_list_of_list (le_split 2 (word.unsigned v)))
+      | setoid_rewrite (tuple.to_list_of_list (le_split 4 (word.unsigned v)))
+      | setoid_rewrite (tuple.to_list_of_list (le_split 8 (word.unsigned v))) | idtac ];
+      rewrite ?E; trivial.
   Qed.
 
   Lemma go_leak_store: forall sz (x a ofs: Z) (addr: word) (initialL: RiscvMachineL) post f,
@@ -592,22 +587,29 @@ Section FlatToRiscv1.
             getTrace finalL = option_map (cons (executeInstr (compile_load iset Syntax.access_size.word rd rs ofs) (leak_load iset Syntax.access_size.word base))) (option_map (cons (fetchInstr initialL.(getPc))) initialL.(getTrace)) /\
             valid_machine finalL).
   Proof using word_ok mem_ok PR BWM.
-    intros.
-    eassert (_ = Memory.bytes_per(width:=width) Syntax.access_size.word) as pf; cycle 1.
-    1:eapply mcomp_sat_weaken; cycle 1.
-    - eapply (run_compile_load Syntax.access_size.word); cycle -3; try eassumption.
-      instantiate (2:=ltac:(destruct pf)); destruct pf; eassumption.
-    - cbv beta. intros. simp. repeat split; try assumption.
-      + etransitivity. 1: eassumption.
-        unfold id.
-        rewrite LittleEndian.combine_of_list, LittleEndianList.le_combine_split.
-        replace (BinInt.Z.of_nat (Memory.bytes_per Syntax.access_size.word) * 8) with width. 
-        * rewrite word.wrap_unsigned. rewrite word.of_Z_unsigned. reflexivity.
-        * clear -BW. destruct width_cases as [E | E]; rewrite E; reflexivity.
-      + rewrite H8p7. cbv [final_trace concrete_leakage_of_instr compile_load leak_load].
-        destruct (getTrace initialL); [|repeat Tactics.destruct_one_match || reflexivity].
-        destruct (bitwidth iset =? 32); simpl; rewrite Z.eqb_refl; reflexivity.
-    - eapply LittleEndianList.length_le_split.
+    clear word_riscv_ok locals_ok leak_ext_call ext_spec.
+    cbv [compile_load scalar truncated_word truncated_scalar]; rewrite bitwidth_matches; case BW as [ [ -> | -> ] ];
+      try change (Z.eqb _ _) with true; try change (Z.eqb _ _) with false;
+      try change (bytes_per _) with 4%nat; try change (bytes_per _) with 8%nat;
+      cbv match; intros.
+    { eapply mcomp_sat_weaken; cycle 1.
+      1: eapply run_Lw_unsigned; cycle -3. { etransitivity. 1:eassumption. ecancel. }
+      all : eassumption||trivial.
+      1:erewrite (tuple.to_list_of_list (le_split 4 _)); ecancel_assumption.
+      cbv beta. intros. simp. repeat split; try assumption.
+      + etransitivity. 1: eassumption. unfold id.
+        erewrite (tuple.to_list_of_list (le_split 4 _)), le_combine_split, word.wrap_unsigned, word.of_Z_unsigned; trivial.
+      + etransitivity. 1: eassumption. cbv [final_trace concrete_leakage_of_instr compile_load leak_load].
+        rewrite bitwidth_matches; simpl. rewrite Z.eqb_refl. reflexivity. }
+    { eapply mcomp_sat_weaken; cycle 1.
+      1: eapply run_Ld_unsigned; cycle -3. { etransitivity. 1:eassumption. ecancel. }
+      all : eassumption||trivial.
+      1:erewrite (tuple.to_list_of_list (le_split 8 _)); ecancel_assumption.
+      cbv beta. intros. simp. repeat split; try assumption.
+      + etransitivity. 1: eassumption. unfold id.
+        erewrite (tuple.to_list_of_list (le_split 8 _)), le_combine_split, word.wrap_unsigned, word.of_Z_unsigned; trivial.
+      + etransitivity. 1: eassumption. cbv [final_trace concrete_leakage_of_instr compile_load leak_load].
+        rewrite bitwidth_matches; simpl. rewrite Z.eqb_refl. reflexivity. }
   Qed.
 
   (* almost the same as run_compile_store, but not using tuples nor ptsto_bytes or
@@ -637,21 +639,27 @@ Section FlatToRiscv1.
            getTrace finalL = option_map (cons (executeInstr (compile_store iset Syntax.access_size.word rs1 rs2 ofs) (leak_store iset Syntax.access_size.word base))) (option_map (cons (fetchInstr initialL.(getPc))) initialL.(getTrace)) /\  
            valid_machine finalL).
   Proof using word_ok mem_ok PR BWM.
-    intros.
-    eassert (_ = Memory.bytes_per(width:=width) Syntax.access_size.word) as pf; cycle 1.
-    1:eapply mcomp_sat_weaken; cycle 1.
-    - eapply (run_compile_store Syntax.access_size.word); cycle -3; try eassumption.
-      instantiate (2:=ltac:(destruct pf)); destruct pf; eassumption.
-    - cbv beta. intros. simp. repeat split; try assumption.
-      + unfold scalar, truncated_word, truncated_scalar, littleendian, ptsto_bytes in *.
-        rewrite HList.tuple.to_list_of_list.
-        rewrite LittleEndian.to_list_split in *.
-        eassumption.
-      + rewrite H9p7.
-        cbv [final_trace concrete_leakage_of_instr compile_store leak_store].
-        destruct (getTrace initialL); [|repeat Tactics.destruct_one_match || reflexivity].
-        destruct (bitwidth iset =? 32); simpl; rewrite Z.eqb_refl; reflexivity.
-    - eapply LittleEndianList.length_le_split.
+    clear word_riscv_ok locals_ok leak_ext_call ext_spec.
+    cbv [compile_store scalar truncated_word truncated_scalar]; rewrite bitwidth_matches; case BW as [ [ -> | -> ] ];
+      try change (Z.eqb _ _) with true; try change (Z.eqb _ _) with false;
+      try change (bytes_per _) with 4%nat; try change (bytes_per _) with 8%nat;
+      cbv match; intros.
+    { eapply mcomp_sat_weaken; cycle 1.
+      1: eapply run_Sw; cycle -3. { etransitivity. 1:eassumption. ecancel. }
+      all : eassumption||trivial.
+      1:erewrite (tuple.to_list_of_list (le_split 4 _)); ecancel_assumption.
+      cbv beta. intros. simp. repeat split; try assumption.
+      etransitivity. 1: eassumption.
+      cbv [final_trace concrete_leakage_of_instr compile_load leak_store].
+      rewrite bitwidth_matches; simpl. rewrite Z.eqb_refl. reflexivity. }
+    { eapply mcomp_sat_weaken; cycle 1.
+      1: eapply run_Sd; cycle -3. { etransitivity. 1:eassumption. ecancel. }
+      all : eassumption||trivial.
+      1:erewrite (tuple.to_list_of_list (le_split 8 _)); ecancel_assumption.
+      cbv beta. intros. simp. repeat split; try assumption.
+      etransitivity. 1: eassumption.
+      cbv [final_trace concrete_leakage_of_instr compile_load leak_store].
+      rewrite bitwidth_matches; simpl. rewrite Z.eqb_refl. reflexivity. }
   Qed.
 
   Lemma one_step: forall initialL P,
@@ -677,33 +685,11 @@ Section FlatToRiscv1.
     - intros ? (? & ?). subst. eapply H1. assumption.
   Qed.
 
-  Lemma disjoint_putmany_preserves_store_bytes: forall n a vs (m1 m1' mq: mem),
-      store_bytes n m1 a vs = Some m1' ->
-      map.disjoint m1 mq ->
-      store_bytes n (map.putmany m1 mq) a vs = Some (map.putmany m1' mq).
-  Proof using word_ok mem_ok.
-    intros.
-    unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
-    erewrite map.getmany_of_tuple_in_disjoint_putmany by eassumption.
-    f_equal.
-    set (ks := (footprint a n)) in *.
-    rename mq into m2.
-    rewrite map.putmany_of_tuple_to_putmany.
-    rewrite (map.putmany_of_tuple_to_putmany n m1 ks vs).
-    apply map.disjoint_putmany_commutes.
-    pose proof map.getmany_of_tuple_to_sub_domain _ _ _ _ E as P.
-    apply map.sub_domain_value_indep with (vs2 := vs) in P.
-    set (mp := (map.putmany_of_tuple ks vs map.empty)) in *.
-    apply map.disjoint_comm.
-    eapply map.sub_domain_disjoint; eassumption.
-  Qed.
-
   Lemma store_bytes_preserves_footprint: forall n a v (m m': mem),
-      Memory.store_bytes n m a v = Some m' ->
+      riscv.Platform.Memory.store_bytes n m a v = Some m' ->
       map.same_domain m m'.
   Proof using word_ok mem_ok.
-    intros. unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
-    eapply map.putmany_of_tuple_preserves_domain; eauto.
+    intros; eapply riscv.Platform.Memory.store_bytes_preserves_domain; eauto.
   Qed.
 
   Lemma seplog_subst_eq{A B R: mem -> Prop} {mL mH: mem}
@@ -719,68 +705,28 @@ Section FlatToRiscv1.
     destruct P1 as (mR & mH' & P11 & P12 & P13). subst mH'. eauto.
   Qed.
 
-  Lemma subst_load_bytes_for_eq {sz} {mH mL: mem} {addr: word} {bs P R}:
-      let n := @Memory.bytes_per width sz in
-      bedrock2.Memory.load_bytes n mH addr = Some bs ->
-      (P * eq mH * R)%sep mL ->
-      exists Q, (P * ptsto_bytes n addr bs * Q * R)%sep mL.
-  Proof using word_ok mem_ok BW.
-    intros n H H0.
-    apply sep_of_load_bytes in H; cycle 1. {
-      subst n. clear -BW. destruct sz; destruct width_cases as [C | C]; rewrite C; cbv; discriminate.
-    }
-    destruct H as [Q A]. exists Q.
-    assert (((ptsto_bytes n addr bs * Q) * (P * R))%sep mL); [|ecancel_assumption].
-    eapply seplog_subst_eq; [exact H0|..|exact A]. ecancel.
-  Qed.
-
-  Lemma store_bytes_frame: forall {n: nat} {m1 m1' m: mem} {a: word} {v: HList.tuple byte n} {F},
-      Memory.store_bytes n m1 a v = Some m1' ->
-      (eq m1 * F)%sep m ->
-      exists m', (eq m1' * F)%sep m' /\ Memory.store_bytes n m a v = Some m'.
-  Proof using word_ok mem_ok.
-    intros.
-    unfold sep in H0.
-    destruct H0 as (mp & mq & A & B & C).
-    subst mp.
-    unfold map.split in A. destruct A as [A1 A2].
-    eexists (map.putmany m1' mq).
-    split.
-    - unfold sep.
-      exists m1', mq. repeat split; trivial.
-      apply store_bytes_preserves_footprint in H.
-      clear -H A2.
-      unfold map.disjoint, map.same_domain, map.sub_domain in *. destruct H as [P Q].
-      intros.
-      edestruct Q; eauto.
-    - subst m.
-      eauto using disjoint_putmany_preserves_store_bytes.
-  Qed.
-
   Lemma ptsto_instr_compile4bytes: forall l addr,
       word.unsigned addr mod 4 = 0 ->
       iff1 (ptsto_instr iset addr (compile4bytes l))
            (array ptsto (word.of_Z 1) addr
                   [nth 0 l Byte.x00; nth 1 l Byte.x00; nth 2 l Byte.x00; nth 3 l Byte.x00]).
-  Proof using word_ok mem_ok.
-    intros. unfold compile4bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.
-    rewrite HList.tuple.to_list_of_list.
+  Proof using BW word_ok mem_ok.
+    clear - BW word_ok mem_ok.
+    intros. unfold compile4bytes, ptsto_instr, truncated_scalar.
     change 4%nat with (length [nth 0 l Byte.x00; nth 1 l Byte.x00; nth 2 l Byte.x00; nth 3 l Byte.x00]).
     rewrite LittleEndian.combine_of_list.
     cbn.
     unfold Encode.encode_Invalid.
     rewrite bitSlice_all_nonneg. 2: cbv; discriminate. 2: apply LittleEndianList.le_combine_bound.
-    change 4%nat with (length [nth 0 l Byte.x00; nth 1 l Byte.x00; nth 2 l Byte.x00; nth 3 l Byte.x00]).
-    rewrite LittleEndianList.split_le_combine.
-    simpl.
+    rewrite LittleEndianList.split_le_combine' by trivial.
+    rewrite <-array1_iff_eq_of_list_word_at; trivial.
+    2: { destruct BW as [ [ -> | -> ] ]; cbv; discriminate. }
+    cbn.
     wcancel.
     cbn [seps].
-    rewrite sep_emp_emp.
-    apply RunInstruction.iff1_emp.
-    split. 1: auto.
-    intros _.
+    rewrite !sep_emp_emp.
+    apply RunInstruction.iff1_emp; intuition idtac.
     unfold valid_InvalidInstruction.
-    split. 2: assumption.
     right.
     eexists. split. 2: reflexivity.
     apply LittleEndianList.le_combine_bound.
@@ -792,7 +738,8 @@ Section FlatToRiscv1.
       exists padding,
         iff1 (program iset addr instrs)
              (array ptsto (word.of_Z 1) addr (table ++ padding)).
-  Proof using word_ok mem_ok.
+  Proof using BW word_ok mem_ok.
+    clear -BW word_ok mem_ok.
     induction instrs; intros.
     - exists []. simpl. repeat (destruct table; try discriminate). reflexivity.
     - rename a into inst0.
@@ -881,8 +828,10 @@ Section FlatToRiscv1.
   Lemma program_compile_byte_list: forall table addr,
       exists Padding,
         impl1 (program iset addr (compile_byte_list table))
-              (Padding * eq (OfListWord.map.of_list_word_at addr table)).
-  Proof using word_ok mem_ok.
+              (Padding * (table$@addr)).
+  Proof using BW word_ok mem_ok.
+    clear - BW word_ok mem_ok.
+    cbv [sepclause_of_map] in *.
     intros. destruct table as [|b0 bs].
     - simpl. exists (emp True).
       unfold OfListWord.map.of_list_word_at, OfListWord.map.of_list_word, MapKeys.map.map_keys.
@@ -917,20 +866,17 @@ Section FlatToRiscv1.
   Qed.
 
   Lemma shift_load_bytes_in_of_list_word: forall l (addr: word) n t index,
-      Memory.load_bytes n (OfListWord.map.of_list_word l) index = Some t ->
-      Memory.load_bytes n (OfListWord.map.of_list_word_at addr l) (word.add addr index) = Some t.
+      coqutil.Map.Memory.load_bytes (map.of_list_word l) index n = Some t ->
+      coqutil.Map.Memory.load_bytes (map.of_list_word_at addr l) (word.add addr index) n = Some t.
   Proof using word_ok mem_ok.
-    induction n; intros.
-    - cbv in t. destruct t. etransitivity. 2: eassumption. reflexivity.
-    - unfold Memory.load_bytes in *.
-      eapply map.invert_getmany_of_tuple_Some in H. simp.
-      eapply map.build_getmany_of_tuple_Some.
-      + simpl in *.
-        rewrite OfListWord.map.get_of_list_word_at.
-        rewrite OfListWord.map.get_of_list_word in Hp0.
-        etransitivity. 2: exact Hp0. do 3 f_equal. solve_word_eq word_ok.
-      + simpl in *. specialize (IHn _ _ Hp1).
-        etransitivity. 2: exact IHn. do 2 f_equal. solve_word_eq word_ok.
+    cbv [coqutil.Map.Memory.load_bytes map.of_list_word_at Map.Memory.footprint]; intros.
+    rewrite map_map in *; erewrite map_ext; [eassumption|].
+    intros i; cbv beta.
+    rewrite <-word.add_assoc, MapKeys.map.get_map_keys_always_invertible; trivial.
+    intros k k' Hk.
+    assert (word.sub (word.add addr k) addr = word.sub (word.add addr k') addr) as HH
+      by (f_equal; assumption).
+    ring_simplify in HH; exact HH.
   Qed.
 
   Lemma load_from_compile_byte_list: forall sz table index v R m addr,
@@ -943,14 +889,10 @@ Section FlatToRiscv1.
     apply (Proper_sep_impl1 _ _ P R R) in M0; [|reflexivity]; clear P.
     revert L.
     unfold Memory.load, Memory.load_Z.
-    setoid_rewrite <-Memory.to_list_load_bytes; cbv [option_map]; intros.
-    simp. rename E1 into E0.
-    eapply shift_load_bytes_in_of_list_word in E0.
-    pose proof @subst_load_bytes_for_eq as P. cbv zeta in P.
-    specialize P with (1 := E0) (2 := M0).
-    destruct P as [Q P].
-    erewrite load_bytes_of_sep. 1: reflexivity.
-    wcancel_assumption.
+    destruct coqutil.Map.Memory.load_bytes eqn:E; inversion 1; subst.
+    eapply shift_load_bytes_in_of_list_word in E.
+    erewrite load_bytes_in_sep with (P:=(table$@addr)); try ecancel_assumption; trivial.
+    intros ? <-; eassumption.
   Qed.
 
 End FlatToRiscv1.
@@ -961,16 +903,6 @@ Ltac solve_valid_machine wordOk :=
     eqexact H; f_equal; f_equal
   end;
   solve_word_eq wordOk.
-
-Ltac subst_load_bytes_for_eq :=
-  lazymatch goal with
-  | Load: ?LB _ _ _ _ ?m _ = _ |- _ =>
-    unify LB @Memory.load_bytes;
-    let P := fresh "P" in
-    epose proof (subst_load_bytes_for_eq Load) as P;
-    let Q := fresh "Q" in
-    edestruct P as [Q ?]; clear P; [ecancel_assumption|]
-  end.
 
 Global Hint Resolve
      valid_FlatImp_var_implies_valid_register

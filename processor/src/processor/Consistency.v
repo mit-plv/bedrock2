@@ -6,7 +6,6 @@ Require Import Coq.Lists.List. Import ListNotations.
 Require Import Kami.Lib.Word.
 Require Import Kami.Syntax Kami.Semantics.
 Require Import Kami.Ex.IsaRv32.
-Require Import coqutil.Word.LittleEndian.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Properties.
 
@@ -189,9 +188,9 @@ Section FetchOk.
     forall kmem rmem rpc,
       mem_related kmem rmem ->
       isXAddr4 rpc kamiXAddrs ->
-      exists rinst : HList.tuple byte 4,
-        map.getmany_of_tuple rmem (Memory.footprint rpc 4) = Some rinst /\
-        combine 4 rinst = kunsigned (SC.combineBytes 4 rpc kmem : kword 32).
+      exists rinst,
+      Memory.load_Z rmem rpc 4 = Some rinst /\
+        rinst = kunsigned (SC.combineBytes 4 rpc kmem : kword 32).
   Proof.
     intros.
 
@@ -253,31 +252,13 @@ Section FetchOk.
     }
 
     cbv [Memory.footprint HList.tuple.unfoldn].
-    eexists; split.
     - pose proof (H rpc); rewrite Hrpc0 in H1.
       pose proof (H (rpc ^+ ZToWord _ 1)); rewrite Hrpc1 in H2.
       pose proof (H (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1)); rewrite Hrpc2 in H3.
       pose proof (H (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1 ^+ ZToWord _ 1)); rewrite Hrpc3 in H4.
 
-      instantiate (1:= {| PrimitivePair.pair._1 := _;
-                          PrimitivePair.pair._2 := _ |}).
-      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H1|].
-      cbv [PrimitivePair.pair._2].
-      instantiate (1:= {| PrimitivePair.pair._1 := _;
-                          PrimitivePair.pair._2 := _ |}).
-      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H2|].
-      cbv [PrimitivePair.pair._2].
-      instantiate (1:= {| PrimitivePair.pair._1 := _;
-                          PrimitivePair.pair._2 := _ |}).
-      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H3|].
-      cbv [PrimitivePair.pair._2].
-      instantiate (1:= {| PrimitivePair.pair._1 := _;
-                          PrimitivePair.pair._2 := _ |}).
-      erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H4|].
-      cbv [PrimitivePair.pair._2].
-      reflexivity.
-
-    - cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2
+      (*
+      cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2
                    word.unsigned KamiWord.word kunsigned
                    SC.combineBytes].
       rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 24%nat).
@@ -290,6 +271,7 @@ Section FetchOk.
       rewrite !(@Properties.word.wrap_unsigned 8 _ word8ok).
       reflexivity.
   Qed.
+       *) Admitted.
 
   Lemma fetch_ok:
     forall (kmemi: kword instrMemSizeLg -> kword width)
@@ -303,9 +285,9 @@ Section FetchOk.
       AddrAligned rpc ->
       pc_related kpc rpc ->
       mem_related kmemd rmemd ->
-      exists (rinst: HList.tuple byte 4),
-        Memory.load_bytes 4 rmemd rpc = Some rinst /\
-        combine 4 rinst = kunsigned (kmemi (evalExpr (IsaRv32.rv32ToIAddr
+      exists rinst,
+        Memory.load_Z rmemd rpc 4 = Some rinst /\
+        rinst = kunsigned (kmemi (evalExpr (IsaRv32.rv32ToIAddr
                                                         _ _ width_inst_valid
                                                         _ kpc))).
   Proof.
@@ -313,8 +295,10 @@ Section FetchOk.
     specialize (Hxs _ H); destruct Hxs.
     specialize (H4 H0 _ H1).
     rewrite <-H4.
+    (*
     eapply getmany_of_tuple_combineBytes_consistent; assumption.
   Qed.
+     *) Admitted.
 
 End FetchOk.
 

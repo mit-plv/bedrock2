@@ -7,7 +7,7 @@ Require Import bedrock2.Syntax.
 Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import bedrock2.MetricLogging.
-Require Import bedrock2.Memory bedrock2.ptsto_bytes bedrock2.Map.Separation.
+Require Import coqutil.Map.SeparationMemory coqutil.Map.Separation.
 Require Import bedrock2.Semantics bedrock2.MetricSemantics.
 Require Import bedrock2.Map.DisjointUnion bedrock2.Map.split_alt.
 
@@ -19,80 +19,14 @@ Section semantics.
   Context {ext_spec: ExtSpec}.
   Context {mem_ok: map.ok mem} {word_ok: word.ok word}.
 
-  Lemma frame_load: forall mSmall mBig mAdd a r (v: word),
+  Lemma frame_load: forall mSmall mBig mAdd sz r (v: word),
       mmap.split mBig mSmall mAdd ->
-      load a mSmall r = Some v ->
-      load a mBig r = Some v.
+      load sz mSmall r = Some v ->
+      load sz mBig r = Some v.
   Proof.
-    unfold load, load_Z. intros.
-    rewrite <-to_list_load_bytes in *.
-    cbv [option_map] in *; fwd.
-    eapply sep_of_load_bytes in E.
-    2: destruct a; simpl; destruct width_cases as [W | W]; rewrite W; cbv; discriminate.
-    fwd. unfold sep in E. fwd.
-    eapply map.split_alt in Ep0.
-    unfold mmap.split in *.
-    rewrite Ep0 in H.
-    rewrite mmap.du_assoc in H. unfold mmap.du in H at 1. fwd.
-    erewrite load_bytes_of_sep. 1: reflexivity.
-    unfold sep. do 2 eexists.
-    rewrite map.split_alt.
-    unfold mmap.split.
-    ssplit. 2: eassumption. all: simpl; exact H.
-  Qed.
-
-  (* TODO share with FlatToRiscvCommon *)
-
-  Lemma store_bytes_preserves_footprint: forall n a v (m m': mem),
-      Memory.store_bytes n m a v = Some m' ->
-      map.same_domain m m'.
-  Proof using word_ok mem_ok.
-    intros. unfold store_bytes, load_bytes, unchecked_store_bytes in *. fwd.
-    eapply map.putmany_of_tuple_preserves_domain; eauto.
-  Qed.
-
-  Lemma disjoint_putmany_preserves_store_bytes: forall n a vs (m1 m1' mq: mem),
-      store_bytes n m1 a vs = Some m1' ->
-      map.disjoint m1 mq ->
-      store_bytes n (map.putmany m1 mq) a vs = Some (map.putmany m1' mq).
-  Proof using word_ok mem_ok.
-    intros.
-    unfold store_bytes, load_bytes, unchecked_store_bytes in *. fwd.
-    erewrite map.getmany_of_tuple_in_disjoint_putmany by eassumption.
-    f_equal.
-    set (ks := (footprint a n)) in *.
-    rename mq into m2.
-    rewrite map.putmany_of_tuple_to_putmany.
-    rewrite (map.putmany_of_tuple_to_putmany n m1 ks vs).
-    apply map.disjoint_putmany_commutes.
-    pose proof map.getmany_of_tuple_to_sub_domain _ _ _ _ E as P.
-    apply map.sub_domain_value_indep with (vs2 := vs) in P.
-    set (mp := (map.putmany_of_tuple ks vs map.empty)) in *.
-    apply map.disjoint_comm.
-    eapply map.sub_domain_disjoint; eassumption.
-  Qed.
-
-  Lemma store_bytes_frame: forall {n: nat} {m1 m1' m: mem} {a: word} {v: HList.tuple byte n} {F},
-      Memory.store_bytes n m1 a v = Some m1' ->
-      (eq m1 * F)%sep m ->
-      exists m', (eq m1' * F)%sep m' /\ Memory.store_bytes n m a v = Some m'.
-  Proof using word_ok mem_ok.
-    intros.
-    unfold sep in H0.
-    destruct H0 as (mp & mq & A & B & C).
-    subst mp.
-    unfold map.split in A. destruct A as [A1 A2].
-    eexists (map.putmany m1' mq).
-    split.
-    - unfold sep.
-      exists m1', mq. repeat split; trivial.
-      apply store_bytes_preserves_footprint in H.
-      clear -H A2.
-      unfold map.disjoint, map.same_domain, map.sub_domain in *. destruct H as [P Q].
-      intros.
-      edestruct Q; eauto.
-    - subst m.
-      eauto using disjoint_putmany_preserves_store_bytes.
+    cbv [load load_Z option_map]; intros; fwd.
+    eapply map.split_alt in H; apply map.split_comm in H; destruct H; subst.
+    erewrite load_bytes_putmany_right; eauto.
   Qed.
 
   Lemma frame_store: forall sz (mSmall mSmall' mBig mAdd: mem) a v,
@@ -100,16 +34,12 @@ Section semantics.
       store sz mSmall a v = Some mSmall' ->
       exists mBig', mmap.split mBig' mSmall' mAdd /\ store sz mBig a v = Some mBig'.
   Proof.
-    intros *.
-    cbv [store store_Z].
-    setoid_rewrite <-tuple.to_list_of_list; setoid_rewrite <-store_bytes_correct.
-    intros.
-    eapply (store_bytes_frame (F := eq mAdd)) in H0.
-    2: {
-      unfold sep. do 2 eexists. ssplit. 2,3: reflexivity. eapply map.split_alt; exact H.
-    }
-    fwd. unfold store, store_Z. rewrite H0p1. eexists. split. 2: reflexivity.
-    unfold sep in H0p0. fwd. eapply map.split_alt. assumption.
+    cbv [store store_Z]; setoid_rewrite <-map.split_alt.
+    intros *; intros Hsplit Hstore.
+    eapply SeparationMemory.store_bytes_in_sep with (R:=eq mAdd) in Hstore; try exact _; fwd.
+    2: { eexists _, _; ssplit; cbv [sepclause_of_map]; eauto. }
+    cbv [sepclause_of_map] in *; case Hstorep1 as (?&?&?&?&?); subst.
+    eexists; ssplit; eauto.
   Qed.
 
   Lemma frame_eval_expr: forall l e mSmall mBig mAdd mc (v: word) mc',

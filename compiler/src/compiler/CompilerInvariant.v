@@ -99,20 +99,16 @@ Section Pipeline1.
     induction instrs; intros.
     - reflexivity.
     - simp. unfold program in *. rewrite array_cons.
-      specialize (IHinstrs (word.add p_code (word.of_Z 4))).
-      unfold ptsto_instr at 1.
-      unfold truncated_scalar, littleendian, ptsto_bytes, ptsto_bytes.ptsto_bytes.
-      simpl.
-      simpl.
       rewrite <- IHinstrs; [|DivisibleBy4.solve_divisibleBy4|assumption].
-      wwcancel.
-      cbn [seps].
-      rewrite sep_emp_emp.
-      match goal with
-      | |- iff1 (emp ?P) (emp ?Q) => apply (RunInstruction.iff1_emp P Q)
-      end.
-      split; intros _; try exact I.
-      auto.
+      cbn [instrencode flat_map]; fold (instrencode instrs); rewrite !LittleEndian.to_list_split.
+      cbv [ptsto_bytes]. rewrite array_append'. Morphisms.f_equiv; cycle 1.
+      { rewrite word.mul_1_l, LittleEndianList.length_le_split; Morphisms.f_equiv. }
+      cbv [ptsto_instr truncated_scalar].
+      etransitivity. { eapply array1_iff_eq_of_list_word_at; trivial.
+        rewrite LittleEndianList.length_le_split. case width_cases; intros ->; blia. }
+      rewrite !sep_assoc, !sep_emp_emp, <-sep_emp_True_r; Morphisms.f_equiv; [cancel|].
+      apply RunInstruction.iff1_emp; simpl Memory.bytes_per; intuition auto.
+      all : case width_cases; intros ->; blia.
   Qed.
 
   Lemma ptsto_bytes_range: forall bs (start pastend : word) m a v,

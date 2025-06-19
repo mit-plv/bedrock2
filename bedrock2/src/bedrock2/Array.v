@@ -1,5 +1,6 @@
 From Coq Require Import ZArith Ring Lia.
-Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Memory.
+Require Import coqutil.Map.Interface coqutil.Map.Memory coqutil.Map.Separation coqutil.Map.SeparationMemory coqutil.Map.SeparationLogic coqutil.Lift1Prop.
+Require bedrock2.Memory.
 Require Import Coq.Lists.List Coq.ZArith.BinInt. Local Open Scope Z_scope.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Z.Lia.
@@ -166,6 +167,18 @@ Section WithWord.
     do 3 Morphisms.f_equiv. rewrite <-Hl, word.of_Z_unsigned. ring.
   Qed.
 
+  Lemma length_array_ptsto_1_le (default : value) bs (a : word) (m : map) (Hm : array ptsto (word.of_Z 1) a bs m) : Z.of_nat (length bs) <= 2 ^ width.
+  Proof.
+    pose proof word.width_pos.
+    destruct (Z.leb_spec (Z.of_nat (length bs)) (2^width)); trivial; exfalso.
+    case (@nth_split _ (Z.to_nat (2^width)) bs default ltac:(lia)) as (xs&ys&E&L).
+    rewrite E in Hm;seprewrite_in @array_append Hm.
+    case xs in *; [simpl length in *; lia|].
+    rewrite word.unsigned_of_Z_1, Z.mul_1_l, L, Z2Nat.id in Hm by lia.
+    rewrite (proj2 (word.zero_of_Z_iff (2^width))), word.add_0_r in Hm by (apply Z.mod_same; lia).
+    cbn [array] in Hm. eapply ptsto_nonaliasing; ecancel_assumption.
+  Qed.
+
   Lemma array1_iff_eq_of_list_word_at (a : word) (bs : list value)
     (H : length bs <= 2 ^ width) : iff1 (array ptsto (word.of_Z 1) a bs) (bs$@a).
   Proof.
@@ -244,6 +257,16 @@ Section ByteArray.
   Local Notation array := (array (mem:=mem) ptsto (word.of_Z 1)).
   Local Infix "*" := sep.
 
+  Lemma length_bytearray_le bs (a : word) m (Hm : array a bs m) : Z.of_nat (length bs) <= 2 ^ width.
+  Proof. eauto using length_array_ptsto_1_le, Byte.x00. Qed.
+
+  Lemma bytearray_iff_bytes (a : word) (bs : list byte) :
+    iff1 (array a bs) ((bs$@a) * emp (Z.of_nat (length bs) <= 2 ^ width)).
+  Proof.
+    split; intros; extract_ex1_and_emp_in_hyps; extract_ex1_and_emp_in_goal; ssplit;
+      try eapply array1_iff_eq_of_list_word_at; eauto using length_bytearray_le.
+  Qed.
+
   Lemma bytearray_address_inbounds xs (start : word) a
     (Hlen : word.unsigned (word.sub a start) < Z.of_nat (length xs))
     (i := Z.to_nat (word.unsigned (word.sub a start)))
@@ -291,20 +314,16 @@ Section ByteArray.
   Import Map.Properties Znat.
   Local Arguments Z.of_nat: simpl never.
 
-  Lemma length_bytearray_le bs m (a: word) :
-    array a bs m -> (Z.of_nat (length bs) <= 2 ^ width).
-  Admitted.
-
   Lemma array_1_to_anybytes bs m (a: word) :
-    array a bs m -> Memory.anybytes a (Z.of_nat (List.length bs)) m.
+    array a bs m -> bedrock2.Memory.anybytes a (Z.of_nat (List.length bs)) m.
   Proof.
-    intros H; pose proof length_bytearray_le bs m _ H as Hl.
-    cbv [Memory.anybytes]; intros; exists bs; ssplit; try lia.
+    intros H; pose proof length_bytearray_le bs _ m H as Hl.
+    cbv [bedrock2.Memory.anybytes]; intros; exists bs; ssplit; try lia.
     1:eapply array1_iff_eq_of_list_word_at in H; eauto.
   Qed.
 
   Lemma anybytes_to_array_1 m (addr : word) n :
-      Memory.anybytes addr n m ->
+      bedrock2.Memory.anybytes addr n m ->
       exists bs, array  addr bs m /\ List.length bs = Z.to_nat n.
   Proof.
     intros [bs (?&?&?)]; subst m; subst n; exists bs; split; [|lia].

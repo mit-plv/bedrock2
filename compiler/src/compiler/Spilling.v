@@ -2101,41 +2101,31 @@ Section Spilling.
       eapply exec.seq_cps.
       pose proof H2 as A. unfold related in A. fwd.
       unfold Memory.load, Memory.load_Z in *. fwd.
-      erewrite <-Memory.to_list_load_bytes in E0; cbv [option_map Memory.load_bytes ] in E0. fwd.
-      eapply exec.load. {
-        rewrite map.get_put_same. reflexivity. }
-      { edestruct (@sep_def _ _ _ m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
-        1: ecancel_assumption. unfold map.split in Sp. subst. fwd.
-        unfold Memory.load, Memory.load_Z.
-        erewrite <-Memory.to_list_load_bytes; cbv [option_map Memory.load_bytes ].
-        erewrite map.getmany_of_tuple_in_disjoint_putmany; eauto. }
+      eapply exec.load. { rewrite map.get_put_same. reflexivity. }
+      { cbv [load load_Z] in *.
+       erewrite SeparationMemory.load_bytes_in_sep with (P:=eq m); try ecancel_assumption; trivial.
+        intros ? ->; eassumption. }
       eapply save_ires_reg_correct''; eauto. after_save_ires_reg_correct''.
+
     - (* exec.store *)
+      Import LittleEndianList.
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
       pose proof H6 as A. unfold related in A. fwd.
-      unfold Memory.store, Memory.store_Z in *.
-      setoid_rewrite <-HList.tuple.to_list_of_list in H1. setoid_rewrite <-Memory.store_bytes_correct in H1.
-      cbv [Memory.store_bytes] in *. fwd.
-      edestruct (@sep_def _ _ _ m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
-      1: ecancel_assumption. unfold map.split in Sp. subst. fwd.
+      cbv [store store_Z] in *; fwd.
+      eapply SeparationMemory.store_bytes_in_sep in H1;
+        try exact _; try (cbv [sepclause_of_map]; ecancel_assumption); []; fwd.
       eapply exec.store.
       1: eapply get_iarg_reg_1; eauto with zarith.
       1: apply map.get_put_same.
-      { unfold Memory.store, Memory.store_Z.
-        setoid_rewrite <-HList.tuple.to_list_of_list; setoid_rewrite <-Memory.store_bytes_correct.
-        cbv [Memory.store_bytes]. fwd.
-        unfold Memory.load_bytes in *.
-        erewrite map.getmany_of_tuple_in_disjoint_putmany; eauto. }
+      1: eassumption.
       do 6 eexists. ssplit. 2: eassumption.
-      + unfold related.
+      + unfold related, sepclause_of_map in *.
         repeat match goal with
                | |- exists _, _ => eexists
                | |- _ /\ _ => split
                end.
-        all: try eassumption || reflexivity.
-        spec store_bytes_sep_hi2lo as A. 1: eassumption.
-        all: ecancel_assumption.
+        all: eassumption || reflexivity || ecancel_assumption.
       + irs.
       + align_trace.
       + intros. rewrite sfix_step. simpl. simpl_rev. repeat rewrite <- app_assoc.

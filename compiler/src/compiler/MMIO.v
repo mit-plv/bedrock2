@@ -180,13 +180,12 @@ Section MMIO1.
   Lemma load4bytes_in_MMIO_is_None: forall (m: mem) (addr: word),
       map.undef_on m isMMIOAddr ->
       isMMIOAddr addr ->
-      Memory.load_bytes 4 m addr = None.
+      load_bytes m addr 4 = None.
   Proof.
-    intros. unfold Memory.load_bytes, map.undef_on, map.agree_on, map.getmany_of_tuple in *.
+    intros. unfold load_bytes, map.undef_on, map.agree_on, map.getmany_of_tuple in *.
     simpl.
-    rewrite H by assumption.
-    rewrite map.get_empty.
-    reflexivity.
+    rewrite H, map.get_empty; trivial.
+    rewrite word.add_0_r; assumption.
   Qed.
 
   Lemma loadWord_in_MMIO_is_None: forall (m: mem) (addr: word),
@@ -194,8 +193,8 @@ Section MMIO1.
       isMMIOAddr addr ->
       Memory.loadWord m addr = None.
   Proof.
-    intros. unfold Memory.loadWord.
-    apply load4bytes_in_MMIO_is_None; assumption.
+    intros. unfold Memory.loadWord, load_Z.
+    erewrite load4bytes_in_MMIO_is_None; trivial.
   Qed.
 
   Lemma storeWord_in_MMIO_is_None: forall (m: mem) (addr: word) v,
@@ -203,8 +202,8 @@ Section MMIO1.
       isMMIOAddr addr ->
       Memory.storeWord m addr v = None.
   Proof.
-    unfold Memory.storeWord. intros. unfold Memory.store_bytes.
-    rewrite load4bytes_in_MMIO_is_None; auto.
+    unfold Memory.storeWord. intros. unfold Memory.store_bytes, store_bytes.
+    erewrite load4bytes_in_MMIO_is_None; trivial.
   Qed.
 
   Ltac contrad := contradiction || discriminate || congruence.
@@ -344,16 +343,16 @@ Section MMIO1.
         cbn in *. wwcancel.
       }
 
-      erewrite ptsto_bytes.load_bytes_of_sep; cycle 1.
-      { cbv [program ptsto_instr Scalars.truncated_scalar Scalars.littleendian] in *.
-        cbn [array bytes_per] in *.
-        simpl_MetricRiscvMachine_get_set.
-        wcancel_assumption. }
-      change (@Bind _ _) with (@free.bind MetricMaterializeRiscvProgram.action result) in *.
+      erewrite SeparationMemory.load_Z_of_sep; cycle 1; try exact _.
+      { cbv [ptsto_instr ] in *. ecancel_assumption. }
+      { trivial. }
+      { clear; cbv; discriminate. }
+
+      progress change (@Bind _ _) with (@free.bind MetricMaterializeRiscvProgram.action result) in *.
       unfold free.bind at 1.
 
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split.
-      rewrite Z.mod_small by eapply EncodeBound.encode_range.
+      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, LittleEndianList.le_combine_split, LittleEndianList.length_le_split.
+      rewrite Zmod_mod, Z.mod_small by eapply EncodeBound.encode_range.
       rewrite DecodeEncode.decode_encode; cycle 1. {
         epose proof Registers.arg_range_Forall as HH.
         rewrite E3 in HH.
@@ -382,7 +381,7 @@ Section MMIO1.
       simpl_word_exprs word_ok.
       unfold mmioStoreEvent, signedByteTupleToReg in *.
       unfold regToInt32.
-      rewrite LittleEndian.combine_split.
+      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, LittleEndianList.length_le_split.
       rewrite sextend_width_nop by reflexivity.
       rewrite Z.mod_small by apply word.unsigned_range.
       rewrite word.of_Z_unsigned.
@@ -488,17 +487,17 @@ Section MMIO1.
         unfold program.
         cbn in *. wwcancel.
       }
-      erewrite ptsto_bytes.load_bytes_of_sep; cycle 1.
-      { cbv [program ptsto_instr Scalars.truncated_scalar Scalars.littleendian] in *.
-        cbn [array bytes_per] in *.
-        simpl_MetricRiscvMachine_get_set.
-        wcancel_assumption. }
+
+      erewrite SeparationMemory.load_Z_of_sep; cycle 1; try exact _.
+      { cbv [ptsto_instr ] in *. ecancel_assumption. }
+      { trivial. }
+      { clear; cbv; discriminate. }
 
       change (@Bind _ _) with (@free.bind MetricMaterializeRiscvProgram.action result) in *.
       unfold free.bind at 1.
 
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split.
-      rewrite Z.mod_small by (eapply EncodeBound.encode_range).
+      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, LittleEndianList.le_combine_split, LittleEndianList.length_le_split.
+      rewrite Zmod_mod, Z.mod_small by eapply EncodeBound.encode_range.
       rewrite DecodeEncode.decode_encode; cycle 1. {
         epose proof Registers.arg_range_Forall as HH.
         rewrite E1 in HH.

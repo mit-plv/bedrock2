@@ -1,7 +1,7 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
-Require Import coqutil.Map.Interface.
+Require Import coqutil.Map.Interface coqutil.Map.OfListWord coqutil.Map.Memory coqutil.Word.LittleEndianList.
 Require Import coqutil.Datatypes.ZList. Import ZList.List.ZIndexNotations.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.PurifySep.
@@ -126,7 +126,7 @@ Ltac nbits_to_exact_nbytes nbits :=
 Definition uint{width}{BW: Bitwidth width}{word: word width}{mem: map.map word Byte.byte}
   (nbits: Z)(v: Z)(addr: word): mem -> Prop :=
   sep (emp (0 <= v < 2 ^ nbits))
-      (littleendian (Z.to_nat (nbits_to_nbytes nbits)) addr v).
+      (le_split (Z.to_nat (nbits_to_nbytes nbits)) v $@ addr ).
 
 #[export] Hint Extern 1 (PredicateSize (uint ?nbits)) =>
   nbits_to_exact_nbytes nbits
@@ -334,17 +334,17 @@ Section WithMem.
   Proof.
     intros a b m Hb.
     eapply sep_emp_l. split. 1: eapply Byte.byte.unsigned_range.
-    unfold littleendian, ptsto_bytes.ptsto_bytes. simpl.
-    eapply sep_emp_True_r.
-    rewrite Byte.byte.of_Z_unsigned.
-    exact Hb.
+    change (Z.to_nat _) with 1%nat.
+    cbv [le_split] in *. rewrite Byte.byte.of_Z_unsigned.
+    cbv [sepclause_of_map ptsto] in *. rewrite map.of_list_word_singleton. auto.
   Qed.
 
   Lemma uint8_to_ptsto: forall a b m, uint 8 b a m -> ptsto a (Byte.byte.of_Z b) m.
   Proof.
-    unfold uint. intros a b m Hb. eapply sep_emp_l in Hb. destruct Hb as (B & Hb).
-    unfold littleendian, ptsto_bytes.ptsto_bytes in Hb. simpl in Hb.
-    eapply sep_emp_True_r. exact Hb.
+    intros a b m [Hle Hb]%sep_emp_l; revert Hb.
+    change (Z.to_nat _) with 1%nat.
+    cbv [le_split]. rewrite map.of_list_word_singleton.
+    cbv [sepclause_of_map ptsto]; auto.
   Qed.
 
   Lemma anybytes_from_alt: forall addr n m,

@@ -99,11 +99,13 @@ Module exec.
 
     | stackalloc: forall t mSmall l mc x n body post,
         n mod (bytes_per_word width) = 0 ->
-        (forall (a: word) (oldstackbytes: tuple byte (Z.to_nat n)) (mCombined: mem),
+        (forall (a: word) (oldstackbytes: list byte) (mCombined: mem),
             bytes a oldstackbytes \*/ Some mSmall = Some mCombined ->
+            length oldstackbytes = Z.to_nat n ->
             exec body t mCombined (map.put l x a) (addMetricLoads 1 (addMetricInstructions 1 mc))
                  (fun t' mCombined' l' mc' =>
-                    exists (mSmall': mem) (newstackbytes: tuple byte (Z.to_nat n)),
+                    exists (mSmall': mem) (newstackbytes: list byte),
+                      length newstackbytes = Z.to_nat n /\
                       Some mSmall' \*/ bytes a newstackbytes = Some mCombined' /\
                       post t' mSmall' l' mc')) ->
         exec (SStackalloc x n body) t mSmall l mc post

@@ -101,12 +101,12 @@ Section Riscv.
                          (mRcv, [word.of_Z (LittleEndian.combine n v)]))
            (withMem m' mach))).
 
-  Definition load(n: nat)(ctxid: SourceType) a mach post :=
+  Notation load n := (fun (ctxid: SourceType) a mach post =>
     (ctxid = Fetch -> isXAddr4 a mach.(getXAddrs)) /\
     match Memory.load_bytes n mach.(getMem) a with
     | Some v => post v mach
     | None => nonmem_load n ctxid a mach post
-    end.
+    end) (only parsing).
 
   Definition nonmem_store(n: nat)(ctxid: SourceType)(addr: word)(v: HList.tuple byte n)
                          (mach: RiscvMachine)(post: RiscvMachine -> Prop) :=
@@ -177,16 +177,6 @@ Section Riscv.
 
   Context {ext_calls_ok: MemoryMappedExtCallsOk ext_calls}.
 
-  Lemma load_weaken_post n c a m (post1 post2:_->_->Prop)
-    (H: forall r s, post1 r s -> post2 r s)
-    : load n c a m post1 -> load n c a m post2.
-  Proof.
-    cbv [load nonmem_load].
-    destruct (Memory.load_bytes n (getMem m) a).
-    - intuition eauto.
-    - intros. fwd. eauto using weaken_read_step.
-  Qed.
-
   Lemma store_weaken_post n c a v m (post1 post2:_->Prop)
     (H: forall s, post1 s -> post2 s)
     : store n c a v m post1 -> store n c a v m post2.
@@ -202,8 +192,8 @@ Section Riscv.
     (forall s, postA1 s -> postA2 s) ->
     forall s, interpret_action a s postF1 postA1 -> interpret_action a s postF2 postA2.
   Proof.
-    destruct a; cbn; try solve [intuition eauto].
-    all : eauto using load_weaken_post, store_weaken_post.
+    destruct a; cbn; intros; try solve [intuition eauto using store_weaken_post].
+    all : cbv [nonmem_load] in *; destruct Memory.load_Z; intuition eauto using weaken_read_step.
   Qed.
 
   Definition interp_action(a: (MetricLog -> MetricLog) * riscv_primitive)
@@ -223,7 +213,6 @@ Section Riscv.
     cbv beta. intros. assumption.
   Qed.
 
-  Arguments Memory.load_bytes: simpl never.
   Arguments Memory.store_bytes: simpl never.
   Arguments LittleEndian.combine: simpl never.
 
@@ -256,7 +245,7 @@ Section Riscv.
 
   Context {mem_ok: map.ok mem}.
 
-  Lemma load_nonempty n k a (mach: RiscvMachine) post mc mc':
+  Lemma load1_nonempty (n:=1%nat) k a (mach: RiscvMachine) post mc mc':
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
     load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |}) ->
@@ -264,7 +253,76 @@ Section Riscv.
   Proof.
     unfold valid_machine, primitivesParams.
     intros (HS & mExt & HO & mAll & HA & DM) HI.
-    unfold load in HI. destruct HI as (HF & HI). destruct_one_match_hyp. 1: eauto.
+    destruct HI as (HF & HI). destruct_one_match_hyp. 1: eauto.
+    unfold nonmem_load in HI.
+    eapply read_step_returns_owned_mem in HI. 2: exact HO.
+    pose proof (read_step_nonempty _ _ _ _ HI) as P.
+    destruct P as (v & mRcv & (N1 & N2)).
+    destruct N2 as (mExt' & Sp).
+    destruct mach.
+    eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _ _) _).
+    cbn -[HList.tuple String.append] in *.
+    eapply N1. clear N1 HI.
+    unfold map.split. split. 1: reflexivity.
+    unfold map.split in Sp. destruct Sp as (? & D). subst mExt.
+    apply proj2 in HA. eapply map.disjoint_putmany_r in HA. apply (proj2 HA).
+  Qed.
+
+  Lemma load2_nonempty (n:=2%nat) k a (mach: RiscvMachine) post mc mc':
+    valid_machine {| getMachine := mach; getMetrics := mc |} ->
+    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+          post v {| getMachine := mach'; getMetrics := mc' |}) ->
+    exists v (mach': MetricRiscvMachine), post v mach'.
+  Proof.
+    unfold valid_machine, primitivesParams.
+    intros (HS & mExt & HO & mAll & HA & DM) HI.
+    destruct HI as (HF & HI). destruct_one_match_hyp. 1: eauto.
+    unfold nonmem_load in HI.
+    eapply read_step_returns_owned_mem in HI. 2: exact HO.
+    pose proof (read_step_nonempty _ _ _ _ HI) as P.
+    destruct P as (v & mRcv & (N1 & N2)).
+    destruct N2 as (mExt' & Sp).
+    destruct mach.
+    eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _ _) _).
+    cbn -[HList.tuple String.append] in *.
+    eapply N1. clear N1 HI.
+    unfold map.split. split. 1: reflexivity.
+    unfold map.split in Sp. destruct Sp as (? & D). subst mExt.
+    apply proj2 in HA. eapply map.disjoint_putmany_r in HA. apply (proj2 HA).
+  Qed.
+
+  Lemma load4_nonempty (n:=4%nat) k a (mach: RiscvMachine) post mc mc':
+    valid_machine {| getMachine := mach; getMetrics := mc |} ->
+    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+          post v {| getMachine := mach'; getMetrics := mc' |}) ->
+    exists v (mach': MetricRiscvMachine), post v mach'.
+  Proof.
+    unfold valid_machine, primitivesParams.
+    intros (HS & mExt & HO & mAll & HA & DM) HI.
+    destruct HI as (HF & HI). destruct_one_match_hyp. 1: eauto.
+    unfold nonmem_load in HI.
+    eapply read_step_returns_owned_mem in HI. 2: exact HO.
+    pose proof (read_step_nonempty _ _ _ _ HI) as P.
+    destruct P as (v & mRcv & (N1 & N2)).
+    destruct N2 as (mExt' & Sp).
+    destruct mach.
+    eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _ _) _).
+    cbn -[HList.tuple String.append] in *.
+    eapply N1. clear N1 HI.
+    unfold map.split. split. 1: reflexivity.
+    unfold map.split in Sp. destruct Sp as (? & D). subst mExt.
+    apply proj2 in HA. eapply map.disjoint_putmany_r in HA. apply (proj2 HA).
+  Qed.
+
+  Lemma load8_nonempty (n:=8%nat) k a (mach: RiscvMachine) post mc mc':
+    valid_machine {| getMachine := mach; getMetrics := mc |} ->
+    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+          post v {| getMachine := mach'; getMetrics := mc' |}) ->
+    exists v (mach': MetricRiscvMachine), post v mach'.
+  Proof.
+    unfold valid_machine, primitivesParams.
+    intros (HS & mExt & HO & mAll & HA & DM) HI.
+    destruct HI as (HF & HI). destruct_one_match_hyp. 1: eauto.
     unfold nonmem_load in HI.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
     pose proof (read_step_nonempty _ _ _ _ HI) as P.
@@ -299,11 +357,11 @@ Section Riscv.
     destruct p; cbn -[valid_machine HList.tuple] in *;
     repeat destruct_one_match;
     try solve [intuition eauto].
-    1-4: eapply load_nonempty; eassumption.
+    1-4: (eapply load1_nonempty||eapply load2_nonempty||eapply load4_nonempty||eapply load8_nonempty); eassumption.
     all: exists tt; eapply store_nonempty; eassumption.
   Qed.
 
-  Lemma load_preserves_valid n k a (mach: RiscvMachine) post mc mc':
+  Lemma load1_preserves_valid (n:=1%nat) k a (mach: RiscvMachine) post mc mc':
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
     load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |}) ->
@@ -313,7 +371,7 @@ Section Riscv.
   Proof.
     unfold valid_machine, primitivesParams.
     intros (HS & mExt & HO & mAll & HA & DM) HI.
-    unfold load in *. destruct HI as (HF & HI). split. 1: assumption.
+    destruct HI as (HF & HI). split. 1: assumption.
     destruct mach.
     cbn -[HList.tuple String.append] in *.
     destruct_one_match. 1: eauto 10.
@@ -347,6 +405,137 @@ Section Riscv.
                         PropSet.subset_refl.
   Qed.
 
+  Lemma load2_preserves_valid (n:=2%nat) k a (mach: RiscvMachine) post mc mc':
+    valid_machine {| getMachine := mach; getMetrics := mc |} ->
+    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+          post v {| getMachine := mach'; getMetrics := mc' |}) ->
+    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+          post v {| getMachine := mach'; getMetrics := mc' |} /\
+          valid_machine {| getMachine := mach'; getMetrics := mc' |}).
+  Proof.
+    unfold valid_machine, primitivesParams.
+    intros (HS & mExt & HO & mAll & HA & DM) HI.
+    destruct HI as (HF & HI). split. 1: assumption.
+    destruct mach.
+    cbn -[HList.tuple String.append] in *.
+    destruct_one_match. 1: eauto 10.
+    unfold nonmem_load in *.
+    cbn -[HList.tuple String.append] in *.
+    eapply read_step_returns_owned_mem in HI. 2: exact HO.
+    eapply weaken_read_step. 1: exact HI. clear HI. cbv beta. intros. fwd.
+    rename mExt' into mExtNew.
+    split. 1: solve [eauto].
+    clear Hp0. unfold map.split in H0. destruct H0 as (? & D). subst m'.
+    rewrite map.domain_putmany.
+    split.
+    - eapply PropSet.subset_trans. 1: eassumption.
+      eapply PropSet.subset_union_rl.
+      eapply PropSet.subset_refl.
+    - eexists. split.
+      + eexists. split. 1: exact HO.
+        eexists. split. 1: eapply map.split_empty_r; reflexivity. eassumption.
+      + unfold map.split in *. destruct HA as (? & HA). destruct Hp1 as (? & D1).
+        subst.
+        eexists. ssplit. 1: reflexivity.
+        * eapply map.disjoint_putmany_l.
+          eapply map.disjoint_putmany_r in HA. destruct HA as (HA1 & HA2).
+          split. 2: eapply map.disjoint_comm. 1-2: assumption.
+        * eapply PropSet.disjoint_sameset. 2: eassumption.
+          rewrite ?map.domain_putmany.
+          unfold PropSet.sameset.
+          split;
+            repeat apply PropSet.subset_union_l;
+            eauto using PropSet.subset_union_rl, PropSet.subset_union_rr,
+                        PropSet.subset_refl.
+  Qed.
+
+  Lemma load4_preserves_valid (n:=4%nat) k a (mach: RiscvMachine) post mc mc':
+    valid_machine {| getMachine := mach; getMetrics := mc |} ->
+    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+          post v {| getMachine := mach'; getMetrics := mc' |}) ->
+    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+          post v {| getMachine := mach'; getMetrics := mc' |} /\
+          valid_machine {| getMachine := mach'; getMetrics := mc' |}).
+  Proof.
+    unfold valid_machine, primitivesParams.
+    intros (HS & mExt & HO & mAll & HA & DM) HI.
+    destruct HI as (HF & HI). split. 1: assumption.
+    destruct mach.
+    cbn -[HList.tuple String.append] in *.
+    destruct_one_match. 1: eauto 10.
+    unfold nonmem_load in *.
+    cbn -[HList.tuple String.append] in *.
+    eapply read_step_returns_owned_mem in HI. 2: exact HO.
+    eapply weaken_read_step. 1: exact HI. clear HI. cbv beta. intros. fwd.
+    rename mExt' into mExtNew.
+    split. 1: solve [eauto].
+    clear Hp0. unfold map.split in H0. destruct H0 as (? & D). subst m'.
+    rewrite map.domain_putmany.
+    split.
+    - eapply PropSet.subset_trans. 1: eassumption.
+      eapply PropSet.subset_union_rl.
+      eapply PropSet.subset_refl.
+    - eexists. split.
+      + eexists. split. 1: exact HO.
+        eexists. split. 1: eapply map.split_empty_r; reflexivity. eassumption.
+      + unfold map.split in *. destruct HA as (? & HA). destruct Hp1 as (? & D1).
+        subst.
+        eexists. ssplit. 1: reflexivity.
+        * eapply map.disjoint_putmany_l.
+          eapply map.disjoint_putmany_r in HA. destruct HA as (HA1 & HA2).
+          split. 2: eapply map.disjoint_comm. 1-2: assumption.
+        * eapply PropSet.disjoint_sameset. 2: eassumption.
+          rewrite ?map.domain_putmany.
+          unfold PropSet.sameset.
+          split;
+            repeat apply PropSet.subset_union_l;
+            eauto using PropSet.subset_union_rl, PropSet.subset_union_rr,
+                        PropSet.subset_refl.
+  Qed.
+
+  Lemma load8_preserves_valid (n:=8%nat) k a (mach: RiscvMachine) post mc mc':
+    valid_machine {| getMachine := mach; getMetrics := mc |} ->
+    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+          post v {| getMachine := mach'; getMetrics := mc' |}) ->
+    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+          post v {| getMachine := mach'; getMetrics := mc' |} /\
+          valid_machine {| getMachine := mach'; getMetrics := mc' |}).
+  Proof.
+    unfold valid_machine, primitivesParams.
+    intros (HS & mExt & HO & mAll & HA & DM) HI.
+    destruct HI as (HF & HI). split. 1: assumption.
+    destruct mach.
+    cbn -[HList.tuple String.append] in *.
+    destruct_one_match. 1: eauto 10.
+    unfold nonmem_load in *.
+    cbn -[HList.tuple String.append] in *.
+    eapply read_step_returns_owned_mem in HI. 2: exact HO.
+    eapply weaken_read_step. 1: exact HI. clear HI. cbv beta. intros. fwd.
+    rename mExt' into mExtNew.
+    split. 1: solve [eauto].
+    clear Hp0. unfold map.split in H0. destruct H0 as (? & D). subst m'.
+    rewrite map.domain_putmany.
+    split.
+    - eapply PropSet.subset_trans. 1: eassumption.
+      eapply PropSet.subset_union_rl.
+      eapply PropSet.subset_refl.
+    - eexists. split.
+      + eexists. split. 1: exact HO.
+        eexists. split. 1: eapply map.split_empty_r; reflexivity. eassumption.
+      + unfold map.split in *. destruct HA as (? & HA). destruct Hp1 as (? & D1).
+        subst.
+        eexists. ssplit. 1: reflexivity.
+        * eapply map.disjoint_putmany_l.
+          eapply map.disjoint_putmany_r in HA. destruct HA as (HA1 & HA2).
+          split. 2: eapply map.disjoint_comm. 1-2: assumption.
+        * eapply PropSet.disjoint_sameset. 2: eassumption.
+          rewrite ?map.domain_putmany.
+          unfold PropSet.sameset.
+          split;
+            repeat apply PropSet.subset_union_l;
+            eauto using PropSet.subset_union_rl, PropSet.subset_union_rr,
+                        PropSet.subset_refl.
+  Qed.
   Lemma store_preserves_valid n k a val (mach: RiscvMachine) post mc mc' :
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
     store n k a val mach (fun (mach': RiscvMachine) =>
@@ -416,10 +605,9 @@ Section Riscv.
   Proof.
     unfold mcomp_preserves_valid, mcomp_sat. cbn -[valid_machine].
     intros. destruct a as (f & p). destruct st as [ [ ] ].
-    destruct p; cbn -[valid_machine HList.tuple] in *;
-    repeat destruct_one_match;
-    try solve [intuition eauto].
-    1-4: eapply load_preserves_valid; eassumption.
+    destruct p; 
+    try solve [cbn -[valid_machine HList.tuple] in *;repeat destruct_one_match; intuition eauto].
+    1-4: (eapply load1_preserves_valid||eapply load2_preserves_valid||eapply load4_preserves_valid||eapply load8_preserves_valid); eassumption.
     all: eapply store_preserves_valid; eassumption.
   Qed.
 
@@ -429,7 +617,7 @@ Section Riscv.
     destruct a as (f & p). unfold mcomp_append_only.
     intros [ [ ] ] post V M; destruct p;
       cbn -[footprint_list HList.tuple] in *;
-      cbv [load store nonmem_load nonmem_store] in *;
+      cbv [store nonmem_load nonmem_store] in *;
       cbn -[footprint_list HList.tuple] in *;
       repeat destruct_one_match;
       fwd;
@@ -460,11 +648,11 @@ Section Riscv.
     match goal with
     | _ => progress subst
     | _ => progress fwd_step
-    | _ => progress cbn -[Platform.Memory.load_bytes Platform.Memory.store_bytes
+    | _ => progress cbn -[Platform.Memory.store_bytes
                           HList.tuple invalidateWrittenXAddrs footprint_list
                           LittleEndian.split_deprecated] in *
     | _ => progress cbv
-             [id valid_register is_initial_register_value load store
+             [id valid_register is_initial_register_value store
                 Platform.Memory.loadByte Platform.Memory.loadHalf
                 Platform.Memory.loadWord Platform.Memory.loadDouble
                 Platform.Memory.storeByte Platform.Memory.storeHalf

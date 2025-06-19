@@ -187,12 +187,17 @@ H9 : (scalar a0 (word.add va vb)
     repeat straightline.
 
     (* casting scalar to bytes for stack deallocation *)
-    cbv [scalar truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in *.
-    rewrite !HList.tuple.to_list_of_list.
-    repeat match goal with H : _ |- _ => rewrite !HList.tuple.to_list_of_list in H end.
+    cbv [scalar truncated_word truncated_scalar] in *.
     set ((LittleEndianList.le_split (bytes_per access_size.word) (word.unsigned (word.add va vb)))) as stackbytes in *.
+    extract_ex1_and_emp_in_hyps.
     assert (Datatypes.length stackbytes = 4%nat) by exact eq_refl.
+    Import symmetry.
+    Local Ltac t := rewrite ?LittleEndianList.length_le_split, ?bytes_per_width_bytes_per_word; cbv [bytes_per_word]; trivial; try discriminate.
+    seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at) H16 t.
+    seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at) H16 t.
     repeat straightline; eauto.
+    seprewrite_in_by (@Array.array1_iff_eq_of_list_word_at) H16 t.
+    extract_ex1_and_emp_in_goal; eauto.
   Qed.
 
   (* let's see how this would look like with an alternate spec of [indirect_add] *)

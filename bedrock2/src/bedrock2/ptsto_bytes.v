@@ -26,9 +26,9 @@ Section Scalars.
 
   Lemma load_bytes_of_sep a n bs R m
     (Hsep : sep (ptsto_bytes n a bs) R m)
-    : Memory.load_bytes n m a = Some bs.
+    : Memory.Deprecated.load_bytes n m a = Some bs.
   Proof.
-    cbv [load_bytes footprint].
+    cbv [Memory.Deprecated.load_bytes footprint].
     revert bs m R a Hsep.
     induction n; [solve[cbn; intros []; trivial]|].
     intros [b0 bs] m R a Hsep.
@@ -45,9 +45,9 @@ Section Scalars.
   Lemma invert_getmany_of_tuple_Some_footprint
     (n : nat) (a: word) (vs : tuple byte (S n)) (m : mem)
     (D: Z.of_nat n < 2 ^ width)
-    (H: map.getmany_of_tuple m (footprint a (S n)) = Some vs):
+    (H: map.getmany_of_tuple m (Memory.Deprecated.footprint a (S n)) = Some vs):
     exists m', map.split m (map.put map.empty a (pair._1 vs)) m' /\
-      map.getmany_of_tuple m' (footprint (word.add a (word.of_Z 1)) n) = Some (pair._2 vs).
+      map.getmany_of_tuple m' (Memory.Deprecated.footprint (word.add a (word.of_Z 1)) n) = Some (pair._2 vs).
   Proof.
     apply map.invert_getmany_of_tuple_Some in H. destruct H as [B1 B2].
     exists (map.remove m a).
@@ -120,7 +120,7 @@ Section Scalars.
 
   Lemma sep_of_load_bytes_aux: forall (n: nat) (a: word) (bs: tuple byte n) (m: mem) (Q: mem -> Prop),
       Z.of_nat n <= 2 ^ width ->
-      sep (fun m0 => Memory.load_bytes n m0 a = Some bs) Q m ->
+      sep (fun m0 => Memory.Deprecated.load_bytes n m0 a = Some bs) Q m ->
       exists R, sep (ptsto_bytes n a bs) (sep R Q) m.
   Proof.
     cbv [load_bytes footprint]. unfold ptsto_bytes.
@@ -164,7 +164,7 @@ Section Scalars.
      ptsto_bytes would star together the same address more than once. *)
   Lemma sep_of_load_bytes: forall (n: nat) (a: word) (bs: tuple byte n) (m: mem),
       Z.of_nat n <= 2 ^ width ->
-      Memory.load_bytes n m a = Some bs ->
+      Memory.Deprecated.load_bytes n m a = Some bs ->
       exists R, sep (ptsto_bytes n a bs) R m.
   Proof.
     intros. edestruct sep_of_load_bytes_aux as [R P].
@@ -175,7 +175,7 @@ Section Scalars.
 
   Lemma unchecked_store_bytes_of_sep(a: word)(n: nat)(oldbs bs: tuple byte n)(R: mem -> Prop)(m: mem)
     (Hsep : sep (ptsto_bytes n a oldbs) R m)
-    : sep (ptsto_bytes n a bs) R (Memory.unchecked_store_bytes n m a bs).
+    : sep (ptsto_bytes n a bs) R (Memory.Deprecated.unchecked_store_bytes n m a bs).
   Proof.
     revert oldbs bs m R a Hsep; induction n; [solve[cbn; intros []; trivial]|].
     intros [oldb0 oldbs] [b0 bs] m R a Hsep.
@@ -196,14 +196,14 @@ Section Scalars.
       R1 m ->
       iff1 R1 (sep (ptsto_bytes n a bs1) F) ->
       iff1 R2 (sep (ptsto_bytes n a bs2) F) ->
-      R2 (Memory.unchecked_store_bytes n m a bs2).
+      R2 (Memory.Deprecated.unchecked_store_bytes n m a bs2).
   Proof. intros A B C. eapply C, unchecked_store_bytes_of_sep, B, A. Qed.
 
   Lemma store_bytes_of_sep(a: word)(n: nat)(oldbs bs: tuple byte n)(R post: mem -> Prop)(m: mem)
     (Hsep : sep (ptsto_bytes n a oldbs) R m)
     (Hpost : forall m, sep (ptsto_bytes n a bs) R m -> post m)
-    : exists m1, Memory.store_bytes n m a bs = Some m1 /\ post m1.
+    : exists m1, Memory.Deprecated.store_bytes n m a bs = Some m1 /\ post m1.
   Proof.
-    cbv [store_bytes]. erewrite load_bytes_of_sep; eauto using unchecked_store_bytes_of_sep.
+    cbv [Memory.Deprecated.store_bytes]. erewrite load_bytes_of_sep; eauto using unchecked_store_bytes_of_sep.
   Qed.
 End Scalars.

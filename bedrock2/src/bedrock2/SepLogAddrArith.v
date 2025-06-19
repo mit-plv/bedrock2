@@ -12,7 +12,6 @@ Require Export bedrock2.Map.Separation.
 Require Export bedrock2.Map.SeparationLogic.
 Require Export bedrock2.Array.
 Require Export bedrock2.Scalars.
-Require Export bedrock2.ptsto_bytes.
 Require Export coqutil.Word.SimplWordExpr.
 Require Import coqutil.Tactics.Simp.
 
@@ -80,7 +79,6 @@ Ltac addr P :=
             end in
   lazymatch P with
   | ptsto ?A _ => A
-  | ptsto_bytes _ ?A _ => A
   | ptsto_word ?A _ => A
   | array _ _ ?A _ => A
   | _ => fail "no recognizable address"

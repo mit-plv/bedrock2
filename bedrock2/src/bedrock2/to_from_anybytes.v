@@ -171,17 +171,15 @@ Section WithMem.
   Qed.
 
   Lemma uint_contiguous: forall (nbits v: Z),
+      (nbits_to_nbytes nbits) <= 2^width ->
       contiguous (uint nbits v) (nbits_to_nbytes nbits).
   Proof.
-    unfold contiguous, impl1. intros nbits v addr m H. eapply anybytes_from_alt.
+    unfold contiguous, impl1. intros nbits v Hw addr m H. eapply anybytes_from_alt.
     { apply nbits_to_nbytes_nonneg. }
     unfold uint in H. eapply sep_emp_l in H. apply proj2 in H.
-    unfold Scalars.littleendian, ptsto_bytes.ptsto_bytes in H.
-    rewrite HList.tuple.to_list_of_list in H.
-    eapply Array.array_1_to_anybytes in H.
-    rewrite LittleEndianList.length_le_split in H.
-    rewrite Z2Nat.id in H by apply nbits_to_nbytes_nonneg.
-    exact H.
+    cbv [Memory.anybytes] in *; extract_ex1_and_emp_in_hyps.
+    cbv [sepclause_of_map] in *; subst m; eexists; intuition eauto;
+       rewrite ?LittleEndianList.length_le_split, ?Z2Nat.id in *; trivial using nbits_to_nbytes_nonneg.
   Qed.
 
   Lemma fillable_emp_True(T: Type){inh: Inhabited.inhabited T}:
@@ -227,40 +225,21 @@ Section WithMem.
     Qed.
   End WithT.
 
-  Lemma ptsto_bytes_fillable n:
-    fillable (fun (bs: HList.tuple Byte.byte n) (a: word) =>
-                ptsto_bytes.ptsto_bytes n a bs) (Z.of_nat n).
-  Proof.
-    unfold ptsto_bytes.ptsto_bytes.
-    eapply fillable_transform with (X := list Byte.byte)
-                                   (t := fixed_size_tuple_of_list n).
-    unfold fillable.
-    eexists. intros.
-    unfold array in H. eapply sep_emp_l in H. destruct H as (L & H).
-    eapply (Array.impl1_array _ (fun (a : word) (v : Z) => uint 8 v a)
-              (fun (a : word) (v : Z) => ptsto a (Byte.byte.of_Z v))) in H.
-    2: { unfold impl1. intros. eapply uint8_to_ptsto. assumption. }
-    eapply (Array.array_map _ _ addr bs (word.of_Z 1)) in H.
-    eqapply H. rewrite fixed_size_tuple_of_list_to_list. 1: reflexivity.
-    rewrite List.map_length. apply Nat2Z.inj. exact L.
-  Qed.
-
-  Lemma littleendian_fillable n:
-    fillable (fun (v: Z) (a: word) => Scalars.littleendian n a v) (Z.of_nat n).
-  Proof.
-    unfold Scalars.littleendian.
-    eapply fillable_transform with (X := HList.tuple Byte.byte n)
-      (t := fun v => LittleEndianList.le_combine (HList.tuple.to_list v)).
-    eapply fillable_impl. 2: eapply (ptsto_bytes_fillable n). cbv beta. intros.
-    rewrite LittleEndianList.split_le_combine' by apply HList.tuple.length_to_list.
-    unfold ptsto_bytes.ptsto_bytes in *. rewrite HList.tuple.to_list_of_list. assumption.
-  Qed.
-
   Lemma truncated_scalar_fillable sz:
     fillable (fun (v: Z) (a: word) => Scalars.truncated_scalar sz a v)
       (Z.of_nat (Memory.bytes_per (width := width) sz)).
   Proof.
-    unfold Scalars.truncated_scalar. eapply littleendian_fillable.
+    unfold Scalars.truncated_scalar, fillable, array.
+    exists (fun v => LittleEndianList.le_combine (List.map Byte.byte.of_Z v)); intros.
+    extract_ex1_and_emp_in_hyps.
+    rewrite LittleEndianList.split_le_combine' by (rewrite List.map_length; lia).
+    apply Array.array1_iff_eq_of_list_word_at; try exact _.
+    { rewrite List.map_length; case BW as [ [ -> | -> ] ], sz in *; unfold Memory.bytes_per, Memory.bytes_per_word in *; try (Z.div_mod_to_equations; lia). }
+    eapply Array.array_map, Array.impl1_array, H; cbv [impl1 uint]; intros; cbv beta.
+    extract_ex1_and_emp_in_hyps.
+    progress change (Z.to_nat (nbits_to_nbytes 8)) with 1%nat in *.
+    unfold LittleEndianList.le_split in *; rewrite OfListWord.map.of_list_word_singleton in *.
+    cbv [ptsto sepclause_of_map] in *; subst; reflexivity.
   Qed.
 
   Lemma truncated_word_fillable:
@@ -277,8 +256,7 @@ Section WithMem.
     rewrite <- E.
     eapply fillable_impl. 2: eapply (truncated_scalar_fillable Syntax.access_size.word).
     cbv beta. intros *.
-    unfold Scalars.truncated_scalar, Scalars.littleendian, ptsto_bytes.ptsto_bytes.
-    rewrite 2HList.tuple.to_list_of_list.
+    unfold Scalars.truncated_scalar.
     rewrite LittleEndianList.le_split_mod.
     rewrite word.unsigned_of_Z. unfold word.wrap.
     intro H. eqapply H. f_equal. f_equal. f_equal.
@@ -304,18 +282,16 @@ Section WithMem.
     2: { unfold impl1. intros. eapply uint8_to_ptsto. assumption. }
     eapply (Array.array_map _ _ addr bs (word.of_Z 1)) in Hm.
     eapply sep_emp_l.
-    unfold Scalars.littleendian, ptsto_bytes.ptsto_bytes.
-    rewrite HList.tuple.to_list_of_list.
     split.
     2: {
-      rewrite <- L. eqapply Hm.
+      rewrite <- L. revert Hm.
       rewrite Nat2Z.id.
       instantiate (1 := (fun bs =>
         LittleEndianList.le_combine (List.map Byte.byte.of_Z bs))).
       cbv beta.
       rewrite <- (List.map_length Byte.byte.of_Z bs).
       rewrite LittleEndianList.split_le_combine.
-      reflexivity.
+      intros ?%Array.bytearray_iff_bytes; extract_ex1_and_emp_in_hyps; trivial.
     }
     cbv beta.
     pose proof (LittleEndianList.le_combine_bound (List.map Byte.byte.of_Z bs)) as A.

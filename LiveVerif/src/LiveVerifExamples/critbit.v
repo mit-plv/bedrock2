@@ -4706,16 +4706,17 @@ Lemma no_shared_uintptr : forall a m,
   ~<{ * (EX v, uintptr v a) * (EX v, uintptr v a) * (fun _ => True) }> m.
 Proof.
   intros. intro. steps.
-  unfold uintptr, scalar, truncated_word, truncated_scalar, littleendian, ptsto_bytes,
-         ptsto in *.
-  do 2 match goal with
-       | H: context [ Array.array ] |- _ => simpl in H
-       end.
-  match goal with
-  | H1: context [ byte.of_Z \[ ?v1 ] ], H2: context [ byte.of_Z \[ ?v2 ] ] |- _ =>
-        apply (no_shared_byte (byte.of_Z \[v1]) (byte.of_Z \[v2]) a m)
-  end.
-  steps.
+  unfold uintptr, scalar, truncated_word, truncated_scalar, "|=", sepclause_of_map in *.
+  assert (map.disjoint m0 m2) as Hdisj.
+  { rewrite <- mmap.du_assoc in D.
+    destruct (m0 ||| m2) as [ mcm | ] eqn:E; try discriminate.
+    rewrite <- split_du in E. unfold map.split in E. tauto. }
+  subst; epose proof (Hdisj a) as Hd.
+  erewrite ?map.get_of_list_word_at in Hd.
+  replace (a ^- a) with (word.of_Z 0) in * by ring.
+  rewrite word.unsigned_of_Z_0 in *.
+  set (bytes_per access_size.word) as vv in *; cbv in vv; subst vv.
+  unfold LittleEndianList.le_split, List.nth_error in Hd; cbn in Hd; eauto.
 Qed.
 
 Lemma array_max_len : forall n l a m,

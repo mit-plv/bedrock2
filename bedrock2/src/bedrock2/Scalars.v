@@ -1,4 +1,4 @@
-Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Array coqutil.Word.LittleEndianList.
+Require Import coqutil.Map.Interface coqutil.Map.Memory coqutil.Map.Separation coqutil.Map.SeparationMemory bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Array coqutil.Word.LittleEndianList.
 Require Import bedrock2.Memory.
 Require Import Coq.Lists.List Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface coqutil.Map.Interface. (* coercions word and rep *)
@@ -10,20 +10,16 @@ Require Import coqutil.Z.Lia Coq.micromega.Lia.
 Require Import coqutil.Byte.
 Require Import coqutil.Map.OfListWord.
 Require Import coqutil.Macros.symmetry.
-Require Import bedrock2.ptsto_bytes.
 Import HList List.
 
 Section Scalars.
-  Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
+  Context {width : Z} {BW: Bitwidth width} {word : Word.Interface.word width} {word_ok : word.ok word}.
 
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
   Implicit Types (m : mem).
 
-  Definition littleendian (n : nat) (addr : word) (value : Z) : mem -> Prop :=
-    ptsto_bytes _ addr (tuple.of_list (LittleEndianList.le_split n value)).
-
   Definition truncated_scalar sz addr (value:Z) : mem -> Prop :=
-    littleendian (bytes_per (width:=width) sz) addr value.
+    (le_split (bytes_per (width:=width) sz) value) $@ addr.
 
   Definition truncated_word sz addr (value: word) : mem -> Prop :=
     truncated_scalar sz addr (word.unsigned value).
@@ -41,19 +37,12 @@ Section Scalars.
 
   Lemma load_Z_of_sep sz addr (value: Z) R m
     (Hsep : sep (truncated_scalar sz addr value) R m)
-    : Memory.load_Z m addr (Memory.bytes_per (width:=width) sz) = Some (truncate_Z (bytes_per (width:=width) sz) value).
+    : load_Z m addr (Memory.bytes_per (width:=width) sz) = Some (truncate_Z (bytes_per (width:=width) sz) value).
   Proof.
-    cbv [truncate_Z load scalar littleendian Memory.load_Z] in *.
-    rewrite <-to_list_load_bytes.
-    unshelve erewrite (_ : bytes_per sz = _); shelve_unifiable; cycle 1.
-    1:erewrite load_bytes_of_sep by eassumption.
-    2:rewrite length_le_split; trivial.
-    cbv [option_map].
-    rewrite tuple.to_list_of_list, LittleEndianList.le_combine_split.
-    set (x := (Z.of_nat (bytes_per sz) * 8)%Z).
-    assert ((0 <= x)%Z) by (subst x; destruct sz; blia).
-    rewrite <- Z.land_ones by assumption.
-    rewrite length_le_split; trivial.
+    cbv [truncated_scalar] in *; extract_ex1_and_emp_in_hyps.
+    erewrite load_Z_of_sep; eauto; rewrite ?length_le_split; f_equal.
+    2: case BW as [ [ -> | -> ] ], sz; cbv; discriminate.
+    cbv [truncate_Z]; rewrite le_combine_split, Z.land_ones; trivial; lia.
   Qed.
 
   Lemma store_Z_of_sep sz addr (oldvalue value: Z) R m (post:_->Prop)
@@ -61,11 +50,11 @@ Section Scalars.
     (Hpost : forall m, sep (truncated_scalar sz addr value) R m -> post m)
     : exists m1, Memory.store_Z m addr (Memory.bytes_per (width:=width) sz) value = Some m1 /\ post m1.
   Proof.
-    assert (length (le_split (bytes_per(width:=width) sz) oldvalue) = length (le_split (bytes_per(width:=width) sz) value)) as pf
-      by (rewrite 2LittleEndianList.length_le_split; trivial).
-    cbv [store_Z].
-    setoid_rewrite <-tuple.to_list_of_list; setoid_rewrite <-store_bytes_correct.
-    unshelve eapply store_bytes_of_sep; [..|eapply Hpost]; destruct pf; [|eassumption].
+    cbv [truncated_scalar] in *; extract_ex1_and_emp_in_hyps.
+    edestruct uncurried_store_Z_of_sep; intuition eauto; rewrite ?length_le_split in *; trivial.
+    1: case BW as [ [ -> | -> ] ], sz; cbv; discriminate.
+    eexists; split. { eassumption. }
+    eapply Hpost; extract_ex1_and_emp_in_goal; eauto.
   Qed.
 
   Lemma load_of_sep sz addr (value: word) R m
@@ -154,11 +143,13 @@ Section Scalars.
     (Hpost : forall m, sep (scalar8 addr (byte.of_Z (word.unsigned value))) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.one m addr value = Some m1 /\ post m1.
   Proof.
-    cbv [store store_Z].
-    setoid_rewrite <-tuple.to_list_of_list; setoid_rewrite <-store_bytes_correct.
-    eapply (store_bytes_of_sep _ 1 (PrimitivePair.pair.mk _ tt)); cbn; [ecancel_assumption|].
-    cbv [LittleEndianList.le_split PrimitivePair.pair._1 tuple.of_list].
-    intros; eapply Hpost; ecancel_assumption.
+    cbv [store store_Z bytes_per LittleEndianList.le_split].
+    cbv [store_bytes load_bytes unchecked_store_bytes footprint option_all List.map List.seq List.length].
+    erewrite word.add_0_r, get_sep by eauto.
+    eexists; split; eauto; eapply Hpost.
+    rewrite map.of_list_word_singleton.
+    rewrite <-Properties.map.put_putmany_commute, Properties.map.putmany_empty_r.
+    eapply sep_put; eauto.
   Qed.
 
   Local Ltac byte_bitblast :=
@@ -177,86 +168,77 @@ Section Scalars.
     (Hsep : sep (scalar16 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar16 addr value) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.two m addr value = Some m1 /\ post m1.
-  Proof.
-    cbv [store store_Z]; setoid_rewrite <-tuple.to_list_of_list; setoid_rewrite <-store_bytes_correct.
-    eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost].
-  Qed.
+  Proof. eapply store_Z_of_sep; eauto. Qed.
 
   Lemma store_four_of_sep addr (oldvalue : word) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar32 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar32 addr value) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.four m addr value = Some m1 /\ post m1.
-  Proof.
-    cbv [store store_Z]; setoid_rewrite <-tuple.to_list_of_list; setoid_rewrite <-store_bytes_correct.
-    eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost].
-  Qed.
+  Proof. eapply store_Z_of_sep; eauto. Qed.
 
   Lemma store_word_of_sep addr (oldvalue value: word) R m (post:_->Prop)
     (Hsep : sep (scalar addr oldvalue) R m)
     (Hpost : forall m, sep (scalar addr value) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.word m addr value = Some m1 /\ post m1.
-  Proof.
-    cbv [store store_Z]; setoid_rewrite <-tuple.to_list_of_list; setoid_rewrite <-store_bytes_correct.
-    let sz := Syntax.access_size.word in
-    assert (length (le_split (bytes_per(width:=width) sz) (word.unsigned oldvalue)) = length (le_split (bytes_per(width:=width) sz) (word.unsigned value))) as pf
-      by (rewrite 2LittleEndianList.length_le_split; trivial).
-    unshelve eapply store_bytes_of_sep; [..|eapply Hpost]; destruct pf; [|eassumption].
-  Qed.
+  Proof. eapply store_Z_of_sep; eauto. Qed.
 
-  Lemma scalar16_of_bytes{BW: Bitwidth width} a l (H : List.length l = 2%nat) :
+  Lemma width_at_least_32: 32 <= width.
+  Proof. destruct width_cases; lia. Qed.
+
+  Lemma scalar16_of_bytes a l (H : List.length l = 2%nat) :
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar16 a (word.of_Z (LittleEndianList.le_combine l))).
   Proof.
-    do 2 (destruct l as [|?x l]; [discriminate|]). destruct l; [|discriminate].
-    cbv [scalar16 truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
-    eapply Morphisms.eq_subrelation; [exact _|].
-    f_equal.
-    rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
-    { erewrite tuple.to_list_of_list. setoid_rewrite (split_le_combine (x::x0::nil)). trivial. }
-    epose proof (le_combine_bound (x::x0::nil)); cbn -[Z.pow] in *.
-    eapply shrink_upper_bound; eauto.
-    eapply Z.pow_le_mono_r; destruct width_cases; blia.
+    pose proof width_at_least_32.
+    cbv [scalar16 truncated_word truncated_scalar].
+    rewrite word.unsigned_of_Z_nowrap, split_le_combine'; trivial; cycle 1.
+    { eapply shrink_upper_bound; [eapply le_combine_bound|]; eapply Z.pow_le_mono_r; lia. }
+    split; intros; extract_ex1_and_emp_in_goal; extract_ex1_and_emp_in_hyps.
+    { epose proof length_bytearray_le _ _ _  ltac:(eassumption).
+      apply array1_iff_eq_of_list_word_at; trivial. }
+    { apply array1_iff_eq_of_list_word_at; eauto.
+      case BW as [ [ -> | -> ] ]; blia. }
   Qed.
 
   (*essentially duplicates of the previous lemma...*)
-  Lemma scalar32_of_bytes{BW: Bitwidth width} a l (H : List.length l = 4%nat) :
+  Lemma scalar32_of_bytes a l (H : List.length l = 4%nat) :
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar32 a (word.of_Z (LittleEndianList.le_combine l))).
   Proof.
-    do 4 (destruct l as [|?x l]; [discriminate|]). destruct l; [|discriminate].
-    cbv [scalar32 truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
-    eapply Morphisms.eq_subrelation; [exact _|].
-    f_equal.
-    rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
-    { erewrite tuple.to_list_of_list. setoid_rewrite (split_le_combine (x::x0::x1::x2::nil)). trivial. }
-    epose proof (le_combine_bound (x::x0::x1::x2::nil)); cbn -[Z.pow] in *.
-    eapply shrink_upper_bound; eauto.
-    eapply Z.pow_le_mono_r; destruct width_cases; blia.
+    pose proof width_at_least_32.
+    cbv [scalar32 truncated_word truncated_scalar].
+    rewrite word.unsigned_of_Z_nowrap, split_le_combine'; trivial; cycle 1.
+    { eapply shrink_upper_bound; [eapply le_combine_bound|]; eapply Z.pow_le_mono_r; lia. }
+    split; intros; extract_ex1_and_emp_in_goal; extract_ex1_and_emp_in_hyps.
+    { epose proof length_bytearray_le _ _ _  ltac:(eassumption).
+      apply array1_iff_eq_of_list_word_at; trivial. }
+    { apply array1_iff_eq_of_list_word_at; eauto.
+      case BW as [ [ -> | -> ] ]; blia. }
   Qed.
 
   Lemma scalar_of_bytes a l (H : width = 8 * Z.of_nat (length l)) :
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar a (word.of_Z (LittleEndianList.le_combine l))).
   Proof.
-    cbv [scalar truncated_word truncated_scalar littleendian ptsto_bytes]. subst width.
+    cbv [scalar truncated_word truncated_scalar].
     replace (bytes_per Syntax.access_size.word) with (length l). 2: {
-      unfold bytes_per, bytes_per_word. clear.
+      unfold bytes_per, bytes_per_word. subst width. clear.
       Z.div_mod_to_equations. blia.
     }
     rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
-    2: apply LittleEndianList.le_combine_bound.
-    rewrite tuple.to_list_of_list, split_le_combine; reflexivity.
+    2: subst width; apply LittleEndianList.le_combine_bound.
+    rewrite split_le_combine.
+    split; intros; extract_ex1_and_emp_in_goal; extract_ex1_and_emp_in_hyps.
+    { epose proof length_bytearray_le _ _ _  ltac:(eassumption).
+      apply array1_iff_eq_of_list_word_at; trivial. }
+    { apply array1_iff_eq_of_list_word_at; eauto.
+      case BW as [ [ -> | -> ] ]; blia. }
   Qed.
 
-  Lemma width_at_least_32{BW: Bitwidth width}: 32 <= width.
-  Proof. destruct width_cases; lia. Qed.
-
   Local Infix "$+" := map.putmany (at level 70).
-  Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
-  Local Infix "*" := sep : type_scope.
   Local Open Scope sep_scope.
   Import Syntax.
-  Lemma load_four_bytes_of_sep_at{BW: Bitwidth width} bs a R m (Hsep: m =* (bs$@a)*R) (Hl : length bs = 4%nat):
+  Lemma load_four_bytes_of_sep_at bs a R m (Hsep: m =* (bs$@a)*R) (Hl : length bs = 4%nat):
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof.
     seprewrite_in (symmetry! (array1_iff_eq_of_list_word_at(map:=mem))) Hsep.
@@ -275,12 +257,12 @@ Section Scalars.
     1,2: eapply shrink_upper_bound, Z.pow_le_mono_r; eauto using width_at_least_32; try blia.
   Qed.
 
-  Lemma uncurried_load_four_bytes_of_sep_at{BW: Bitwidth width} bs a R (m : mem)
+  Lemma uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: m =* (bs$@a)*R /\ length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply load_four_bytes_of_sep_at; eapply H. Qed.
 
-  Lemma Z_uncurried_load_four_bytes_of_sep_at{BW: Bitwidth width} bs a R (m : mem)
+  Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: m =* (bs$@a)*R /\ Z.of_nat (length bs) = 4) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply load_four_bytes_of_sep_at; try eapply H; blia. Qed.
@@ -374,8 +356,6 @@ Section Scalars.
 
   Local Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(true).
 
-  Context {BW: Bitwidth width}.
-
   Lemma byte_wrap_range z:
     0 <= byte.wrap z < 2 ^ width.
   Proof using BW.
@@ -438,12 +418,10 @@ Section Scalars.
       (scalar px x)
       (Memory.anybytes px (Memory.bytes_per_word width)).
   Proof.
-    intros m H; evar (bs: list byte);
-      assert (array ptsto (word.of_Z 1) px bs m) by
-        (subst bs; simple apply H).
-    subst bs. erewrite <- bytes_per_width_bytes_per_word, <- split_bytes_per_len.
-    rewrite HList.tuple.to_list_of_list in H0.
-    eapply array_1_to_anybytes; eauto.
+    cbv [scalar truncated_word truncated_scalar anybytes sepclause_of_map];
+      intros ? ?; extract_ex1_and_emp_in_hyps; subst; eexists; split; trivial; []; split;
+      rewrite length_le_split, bytes_per_width_bytes_per_word in *; trivial.
+   case BW as [ [ -> | -> ] ]; cbv; discriminate.
   Qed.
 
   Lemma anybytes_to_scalar px:

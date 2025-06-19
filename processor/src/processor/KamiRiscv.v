@@ -1,4 +1,4 @@
-Require Import String.
+From Coq Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.

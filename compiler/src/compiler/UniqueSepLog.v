@@ -112,7 +112,7 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.Simp.
-Require Import coqutil.Word.LittleEndian.
+Require Import coqutil.Word.LittleEndianList.
 Require Import bedrock2.Memory.
 Require Import bedrock2.Syntax.
 Require Import riscv.Spec.Decode.
@@ -355,8 +355,8 @@ Section SepLog.
 
   Definition one_byte(addr: word)(b: byte): option mem := Some (map.singleton addr b).
 
-  Definition bytes(addr: word){n: nat}(bs: tuple byte n): option mem :=
-    Some (map.of_tuple (Memory.footprint addr n) bs).
+  Definition bytes(addr: word)(bs: list byte): option mem :=
+    Some (bs$@addr).
 
   Definition array{T: Type}(elem: word -> T -> option mem)(size: word): word -> list T -> option mem :=
     fix rec addr ls :=
@@ -366,7 +366,7 @@ Section SepLog.
       end.
 
   Definition one(sz: Syntax.access_size.access_size)(addr value: word): option mem :=
-    bytes addr (LittleEndian.split (@Memory.bytes_per width sz) (word.unsigned value)).
+    bytes addr (LittleEndianList.le_split (@Memory.bytes_per width sz) (word.unsigned value)).
 
   Definition word_array: word -> list word -> option mem :=
     array (one access_size.word) (word.of_Z (bytes_per_word width)).

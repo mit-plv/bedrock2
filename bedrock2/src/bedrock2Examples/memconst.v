@@ -18,7 +18,6 @@ Require Import bedrock2.ZnWords.
 Import Coq.Init.Byte coqutil.Byte.
 Local Notation string := String.string.
 
-(*Require Import bedrock2.ptsto_bytes.*)
 Local Notation "xs $@ a" := (Array.array ptsto (word.of_Z 1) a xs) (at level 10, format "xs $@ a").
 
 Section WithParameters.

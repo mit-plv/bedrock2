@@ -19,7 +19,6 @@ Require Import riscv.Spec.Execute.
 Require Import riscv.Proofs.DecodeEncode.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.SeparationLogic.
-Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Utility.RegisterNames.
@@ -33,7 +32,12 @@ Require Import compiler.DivisibleBy4.
 Require Import compiler.ZLemmas.
 Require Import riscv.Spec.LeakageOfInstr.
 Require Import coqutil.Datatypes.Option.
+From coqutil Require Import HList Memory SeparationMemory LittleEndianList.
 Import Utility.
+
+Local Arguments HList.tuple.to_list : simpl never.
+Local Arguments HList.tuple.of_list : simpl never.
+Local Arguments LittleEndianList.le_split : simpl never.
 
 Notation Register0 := 0%Z (only parsing).
 
@@ -232,11 +236,11 @@ Section Run.
       addr = word.add base (word.of_Z ofs) ->
       subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
       iff1 Exec (program iset initialL.(getPc) [[L rd rs ofs]] * Rexec)%sep ->
-      (Exec * ptsto_bytes n addr v * R)%sep initialL.(getMem) ->
+      (Exec * (tuple.to_list v)$@addr * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd
-                  (word.of_Z (opt_sign_extender (LittleEndian.combine n v))) /\
+                  (word.of_Z (opt_sign_extender (le_combine (tuple.to_list v)))) /\
         finalL.(getLog) = initialL.(getLog) /\
         finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
@@ -258,13 +262,13 @@ Section Run.
       addr = word.add base (word.of_Z ofs) ->
       subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
       iff1 Exec (program iset initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep ->
-      (Exec * ptsto_bytes n addr v_old * R)%sep initialL.(getMem) ->
+      (Exec * (tuple.to_list v_old)$@addr * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
         subset (footpr Exec) (of_list (finalL.(getXAddrs))) /\
-        (Exec * ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
+        (Exec * (le_split n (word.unsigned v_new))$@addr * R)%sep
           finalL.(getMem) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
@@ -368,37 +372,37 @@ Section Run.
   Proof. t. Qed.
 
   Lemma run_Lb: run_Load_spec 1 Lb (signExtend 8).
-  Proof. t. Qed.
+  Proof. t. 1:ecancel. Qed.
 
   Lemma run_Lbu: run_Load_spec 1 Lbu id.
-  Proof. t. Qed.
+  Proof. t. 1:ecancel. f_equal. Qed.
 
   Lemma run_Lh: run_Load_spec 2 Lh (signExtend 16).
-  Proof. t. Qed.
+  Proof. t. 1:ecancel. Qed.
 
   Lemma run_Lhu: run_Load_spec 2 Lhu id.
-  Proof. t. Qed.
+  Proof. t. 1:ecancel. f_equal. Qed.
 
   Lemma run_Lw: run_Load_spec 4 Lw (signExtend 32).
-  Proof. t. Qed.
+  Proof. t. 1:ecancel. Qed.
 
   Lemma run_Lw_unsigned: width = 32 -> run_Load_spec 4 Lw id.
   Proof.
     change width with (id width).
-    t. rewrite sextend_width_nop; [reflexivity|symmetry;assumption].
+    t. 1:ecancel. rewrite sextend_width_nop; [reflexivity|symmetry;assumption].
   Qed.
 
   Lemma run_Lwu: run_Load_spec 4 Lwu id.
-  Proof. t. Qed.
+  Proof. t. 1:ecancel. f_equal. Qed.
 
   Lemma run_Ld: run_Load_spec 8 Ld (signExtend 64).
-  Proof. t. Qed.
+  Proof. t. 1:ecancel. Qed.
 
   (* Note: there's no Ldu instruction, because Ld does the same *)
   Lemma run_Ld_unsigned: width = 64 -> run_Load_spec 8 Ld id.
   Proof.
     change width with (id width).
-    t. rewrite sextend_width_nop; [reflexivity|symmetry;assumption].
+    t. 1:ecancel. rewrite sextend_width_nop; [reflexivity|symmetry;assumption].
   Qed.
 
   Lemma iff1_emp: forall P Q,
@@ -444,15 +448,31 @@ Section Run.
   Local Arguments invalidateWrittenXAddrs: simpl never.
 
   Lemma run_Sb: run_Store_spec 1 Sb.
-  Proof. t. Qed.
+  Proof.
+    t. 1:ecancel.
+    setoid_rewrite (tuple.to_list_of_list (le_split 1 (word.unsigned v_new))) in H4.
+    ecancel_assumption.
+  Qed.
+
 
   Lemma run_Sh: run_Store_spec 2 Sh.
-  Proof. t. Qed.
+  Proof.
+    t. 1:ecancel.
+    setoid_rewrite (tuple.to_list_of_list (le_split 2 (word.unsigned v_new))) in H4.
+    ecancel_assumption.
+  Qed.
 
   Lemma run_Sw: run_Store_spec 4 Sw.
-  Proof. t. Qed.
+  Proof.
+    t. 1:ecancel.
+    setoid_rewrite (tuple.to_list_of_list (le_split 4 (word.unsigned v_new))) in H4.
+    use_sep_assumption; cancel.
+  Qed.
 
   Lemma run_Sd: run_Store_spec 8 Sd.
-  Proof. t. Qed.
-
+  Proof.
+    t. 1:ecancel.
+    setoid_rewrite (tuple.to_list_of_list (le_split 8 (word.unsigned v_new))) in H4.
+    ecancel_assumption.
+  Qed.
 End Run.

@@ -366,8 +366,13 @@ Section with_parameters.
       (array (word := word) ptsto (word.of_Z 1) ptr
              (le_split (Memory.bytes_per (width:=width) sz) a)).
   Proof.
-    unfold truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
-    rewrite HList.tuple.to_list_of_list; reflexivity.
+    assert (Z.of_nat (bytes_per(width:=width) sz) <= 2 ^ width).
+    { pose proof bytes_per_range sz; lia. }
+    cbv [truncated_scalar].
+    symmetry; etransitivity.
+    { eapply array1_iff_eq_of_list_word_at; trivial.
+      rewrite length_le_split; trivial. }
+    split; intros; extract_ex1_and_emp_in_hyps; extract_ex1_and_emp_in_goal; eauto.
   Qed.
 
   Lemma bytes_of_truncated_scalars : forall sz zs ptr,
@@ -445,7 +450,7 @@ Section with_parameters.
       (truncated_scalar (word := word) sz ptr (word.wrap z))
       (truncated_scalar (word := word) sz ptr z).
   Proof.
-    unfold truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
+    unfold truncated_scalar.
     rewrite !le_split_wrap; reflexivity.
   Qed.
 

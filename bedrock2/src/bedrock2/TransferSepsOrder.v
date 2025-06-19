@@ -19,7 +19,7 @@ Require Export bedrock2.Lift1Prop.
 Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.Array.
 Require Export bedrock2.ZnWords.
-Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
+Require Import bedrock2.Scalars.
 Require Export bedrock2.SepClause.
 Import List.ListNotations. Local Open Scope list_scope.
 

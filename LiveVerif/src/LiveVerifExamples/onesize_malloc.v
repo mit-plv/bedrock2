@@ -227,7 +227,6 @@ assert (subrange head 4 p (c * malloc_block_size * 1)). {
   lia.
 
 clear Error.
-Search p.
 
 jj
 *)

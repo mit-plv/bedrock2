@@ -11,7 +11,6 @@ Require Export bedrock2.Map.Separation.
 Require Export bedrock2.Map.SeparationLogic.
 Require Export bedrock2.Array.
 Require Export bedrock2.Scalars.
-Require Export bedrock2.ptsto_bytes.
 Require Export coqutil.Word.SimplWordExpr.
 Require Export bedrock2.SepLogAddrArith.
 Require Import coqutil.Tactics.Simp.
@@ -20,6 +19,7 @@ Require Import riscv.Utility.Encode.
 Require Import riscv.Spec.Decode.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Logic.PropExtensionality.
+From coqutil Require Import Map.Memory LittleEndianList.
 
 Declare Scope sep_scope.
 
@@ -50,7 +50,7 @@ Section ptstos.
   (* contains all the conditions needed to successfully execute instr, except
      that addr needs to be in the set of executable addresses, which is dealt with elsewhere *)
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
-    (truncated_scalar Syntax.access_size.four addr (encode instr) *
+     ((le_split 4 (encode instr) $@ addr) *
      emp (verify instr iset \/ valid_InvalidInstruction instr) *
      emp ((word.unsigned addr) mod 4 = 0))%sep.
 
@@ -87,13 +87,16 @@ Section ptstos.
        (LittleEndianList.le_split (Z.to_nat bytes_per_word) (word.unsigned x)))
           bs)).
   Proof.
+    clear iset.
     revert addr; induction bs; intros; [reflexivity|].
     cbn [array flat_map].
     etransitivity. 1:eapply Proper_sep_iff1; [reflexivity|]. 1:eapply IHbs.
     etransitivity. 2:symmetry; eapply bytearray_append.
     eapply Proper_sep_iff1.
-    { unfold scalar, truncated_word, truncated_scalar, littleendian, ptsto_bytes.
-      rewrite HList.tuple.to_list_of_list. reflexivity. }
+    { unfold scalar, truncated_word, truncated_scalar.
+      rewrite array1_iff_eq_of_list_word_at; try exact _; Morphisms.f_equiv.
+      rewrite length_le_split.
+      clear -BW; case BW as [ [ -> | -> ] ]; cbv; discriminate. }
     assert (0 < bytes_per_word). { (* TODO: deduplicate *)
       unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
     }
@@ -105,93 +108,6 @@ Section ptstos.
     rewrite Z2Nat.id; blia.
   Qed.
 
-  Lemma putmany_of_footprint_None: forall n (vs: HList.tuple byte n) (addr: word) (z: Z) (m: mem),
-      0 < z ->
-      z + Z.of_nat n <= 2 ^ width ->
-      map.get m addr = None ->
-      map.get (map.putmany_of_tuple (Memory.footprint (word.add addr (word.of_Z z)) n) vs m)
-              addr = None.
-  Proof.
-    induction n; intros.
-    - simpl. assumption.
-    - destruct vs as [v vs]. simpl.
-      assert (2 ^ width > 0) as Gz. {
-        destruct width_cases as [E | E]; rewrite E; reflexivity.
-      }
-      rewrite map.get_put_diff; cycle 1. {
-        intro C.
-        apply (f_equal word.unsigned) in C.
-        rewrite word.unsigned_add in C. unfold word.wrap in C.
-        rewrite word.unsigned_of_Z in C. unfold word.wrap in C.
-        pose proof (word.unsigned_range addr) as R.
-        remember (word.unsigned addr) as w.
-        rewrite Z.add_mod_idemp_r in C by blia.
-        rewrite Z.mod_eq in C by blia.
-        assert (z = 2 ^ width * ((w + z) / 2 ^ width)) by blia.
-        remember ((w + z) / 2 ^ width) as k.
-        assert (k < 0 \/ k = 0 \/ 0 < k) as D by blia. destruct D as [D | [D | D]]; Lia.nia.
-      }
-      rewrite <- word.add_assoc.
-      replace ((word.add (word.of_Z (word := word) z) (word.of_Z 1)))
-        with (word.of_Z (word := word) (z + 1)); cycle 1. {
-        apply word.unsigned_inj.
-        rewrite word.unsigned_add.
-        rewrite! word.unsigned_of_Z.
-        apply Z.add_mod.
-        destruct width_cases as [E | E]; rewrite E; cbv; discriminate.
-      }
-      eapply IHn; try blia; assumption.
-  Qed.
-
-  Lemma putmany_of_footprint_None'': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
-      0 < word.unsigned (word.sub a1 a2) ->
-      word.unsigned (word.sub a1 a2) + Z.of_nat n <= 2 ^ width ->
-      map.get m a2 = None ->
-      map.get (map.putmany_of_tuple (Memory.footprint a1 n) vs m) a2 = None.
-  Proof.
-    intros.
-    pose proof putmany_of_footprint_None as P.
-    specialize P with (1 := H) (2 := H0) (3 := H1).
-    specialize (P vs).
-    replace (word.add a2 (word.of_Z (word.unsigned (word.sub a1 a2)))) with a1 in P; [exact P|].
-    apply word.unsigned_inj.
-    rewrite word.unsigned_add. unfold word.wrap.
-    rewrite word.of_Z_unsigned.
-    rewrite word.unsigned_sub. unfold word.wrap.
-    rewrite Z.add_mod_idemp_r by (destruct width_cases as [E | E]; rewrite E; cbv; discriminate).
-    rewrite <- (word.of_Z_unsigned a1) at 1.
-    rewrite word.unsigned_of_Z. unfold word.wrap.
-    f_equal.
-    blia.
-  Qed.
-
-  Lemma putmany_of_footprint_None': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
-      a1 <> a2 ->
-      word.unsigned (word.sub a1 a2) + Z.of_nat n <= 2 ^ width ->
-      map.get m a2 = None ->
-      map.get (map.putmany_of_tuple (Memory.footprint a1 n) vs m) a2 = None.
-  Proof.
-    intros.
-    apply putmany_of_footprint_None''; try assumption.
-    pose proof (word.unsigned_range (word.sub a1 a2)).
-    assert (word.unsigned (word.sub a1 a2) = 0 \/ 0 < word.unsigned (word.sub a1 a2)) as C
-        by blia. destruct C as [C | C].
-    - exfalso. apply H.
-      rewrite word.unsigned_sub in C.
-      apply word.unsigned_inj.
-      apply Z.div_exact in C; [|(destruct width_cases as [E | E]; rewrite E; cbv; discriminate)].
-      remember ((word.unsigned a1 - word.unsigned a2) / 2 ^ width) as k.
-      pose proof (word.unsigned_range a1).
-      pose proof (word.unsigned_range a2).
-      assert (k < 0 \/ k = 0 \/ 0 < k) as D by blia. destruct D as [D | [D | D]]; try Lia.nia.
-      (* LIABUG if primitive projections are on, we need this:
-      rewrite D in C.
-      rewrite Z.mul_0_r in C.
-      blia.
-      *)
-    - assumption.
-  Qed.
-
   Lemma byte_list_to_word_list_array: forall bytes,
     Z.of_nat (length bytes) mod bytes_per_word = 0 ->
     exists word_list : list word,
@@ -201,6 +117,7 @@ Section ptstos.
       iff1 (array ptsto (word.of_Z 1) p bytes)
            (array ptsto_word (word.of_Z bytes_per_word) p word_list).
   Proof.
+    clear iset.
     assert (AA: 0 < bytes_per_word). {
       unfold bytes_per_word.
       simpl.
@@ -232,7 +149,7 @@ Section ptstos.
     clear Hsep.
 
     rewrite <-(List.firstn_skipn (Z.to_nat bytes_per_word) bytes) at 1.
-    unfold ptsto_word, truncated_word, truncated_scalar, littleendian.
+    unfold ptsto_word, truncated_word, truncated_scalar.
 
     rewrite <-bytearray_index_merge.
     1: eapply Proper_sep_iff1; [|reflexivity].
@@ -243,15 +160,17 @@ Section ptstos.
       destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
     }
     2: rewrite List.length_firstn_inbounds; Lia.nia.
-    cbv [ptsto_bytes.ptsto_bytes].
     Morphisms.f_equiv.
-    rewrite HList.tuple.to_list_of_list.
     setoid_rewrite word.unsigned_of_Z.
     setoid_rewrite Z.mod_small.
     1:unshelve erewrite (_:Memory.bytes_per Syntax.access_size.word = length _); shelve_unifiable; cycle 1.
     1:setoid_rewrite LittleEndianList.split_le_combine.
-    1:reflexivity.
-    { rewrite List.length_firstn_inbounds; try Lia.nia. reflexivity. }
+    { rewrite array1_iff_eq_of_list_word_at; try exact _; Morphisms.f_equiv.
+      rewrite List.firstn_length, Nat2Z.inj_min, H1.
+      etransitivity; [eapply Z.le_min_l|].
+      clear -BW; case BW as [ [ -> | -> ] ]; cbv; discriminate. }
+    { rewrite List.length_firstn_inbounds; try Lia.nia.
+        clear -BW; case BW as [ [ -> | -> ] ]; cbv; trivial. }
     intros.
     pose proof (LittleEndianList.le_combine_bound (List.firstn (Z.to_nat bytes_per_word) bytes)).
     split; [blia|].
@@ -362,25 +281,6 @@ Section ptstos.
         replace (j - length l1)%nat with (S (j - length l1 - 1)) in * by blia.
         assumption.
     - rewrite ?List.app_length. reflexivity.
-  Qed.
-
-  Lemma store_bytes_sep_hi2lo: forall (mH mL : mem) R a n v_old v,
-      Memory.load_bytes n mH a = Some v_old ->
-      (eq mH * R)%sep mL ->
-      (eq (Memory.unchecked_store_bytes n mH a v) * R)%sep (Memory.unchecked_store_bytes n mL a v).
-  Proof.
-    intros. apply sep_comm. apply sep_comm in H0.
-    unfold Memory.load_bytes, Memory.unchecked_store_bytes, sep, map.split in *.
-    simp. do 2 eexists. ssplit. 3: eassumption. 3: reflexivity.
-    - rewrite map.putmany_of_tuple_to_putmany.
-      rewrite (map.putmany_of_tuple_to_putmany _ mq).
-      symmetry. apply map.putmany_assoc.
-    - unfold map.disjoint in *.
-      intros.
-      pose proof (map.putmany_of_tuple_preserves_domain (ok := mem_ok) _ _ v_old v _ H) as A.
-      unfold map.same_domain, map.sub_domain in A. apply proj2 in A.
-      edestruct A as [v3 B]. 1: eassumption.
-      eauto.
   Qed.
 End ptstos.
 
@@ -615,7 +515,6 @@ Ltac addr P ::=
             end in
   lazymatch P with
   | ptsto ?A _ => A
-  | ptsto_bytes _ ?A _ => A
   | ptsto_word ?A _ => A
   | ptsto_instr _ ?A _ => A
   | array _ _ ?A _ => A

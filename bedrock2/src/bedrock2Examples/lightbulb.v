@@ -484,14 +484,14 @@ Section WithParameters.
 
         { letexists; repeat split.
           { repeat match goal with x := _ |- _ => is_var x; subst x end; subst.
-            cbv [scalar32 truncated_word truncate_word truncate_Z truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in *.
+            cbv [scalar32 truncated_word truncate_word truncate_Z truncated_scalar] in *; extract_ex1_and_emp_in_hyps.
+            seprewrite_in (symmetry! @array1_iff_eq_of_list_word_at) H25. { cbv; discriminate. }
             progress replace (word.add x9 (word.add x11 (word.of_Z 4))) with
                     (word.add (word.add x9 x11) (word.of_Z 4)) in * by ring.
             SeparationLogic.seprewrite_in (@bytearray_index_merge) H25.
             { rewrite word.unsigned_of_Z; exact eq_refl. } { ecancel_assumption. } }
-          { subst RECV. rewrite List.app_length.
-            rewrite H26. subst x22. rewrite List.length_skipn.
-            unshelve erewrite (_ : length (HList.tuple.to_list _) = 4%nat); [exact eq_refl|].
+          { subst RECV. rewrite List.app_length, LittleEndianList.length_le_split.
+            rewrite H26. subst x22. rewrite List.length_skipn. simpl bytes_per.
             enough ((4 <= length x7)%nat) by blia.
             Z.div_mod_to_equations; blia. }
           cbv [truncate_word truncate_Z] in *.
@@ -500,7 +500,6 @@ Section WithParameters.
           { rewrite List.app_assoc; eauto. }
           eexists; split.
           { eapply List.Forall2_app; eauto.  }
-          rewrite HList.tuple.to_list_of_list.
           destruct H29; [left|right]; repeat (straightline || split || eauto using TracePredicate.any_app_more).
           eapply TracePredicate.concat_app; eauto.
           unshelve erewrite (_ : LittleEndianList.le_combine _ = word.unsigned x10); rewrite ?word.of_Z_unsigned; try solve [intuition idtac].

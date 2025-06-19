@@ -1754,48 +1754,61 @@ Section Proofs.
 
     - idtac "Case compile_stmt_correct/SLoad".
       progress unfold Memory.load, Memory.load_Z in *. fwd.
-      rewrite <-Memory.to_list_load_bytes in *; cbv [option_map] in *; fwd.
-      subst_load_bytes_for_eq.
-      assert (x <> RegisterNames.sp). {
-        unfold valid_FlatImp_var, RegisterNames.sp in *.
-        blia.
-      }
-      inline_iff1.
 
+      let Hl := constr:(SeparationMemory.sep_of_load_bytes _ _ _ _ ltac:(eassumption)) in
+      let m := match type of Hl with _ ?m => m end in
+      let Hm := match goal with H : context[eq m] |- _ => H end in
+      epose proof seplog_subst_eq (mH:=m) Hm ltac:(ecancel) Hl as Hmem.
+      lazymatch goal with H : iff1 allx _ |- _ => seprewrite_in H Hmem end.
+      
       eapply runsTo_det_step_with_valid_machine; [ assumption | simulate' | ].
-      { unfold Memory.load, Memory.load_Z in *; simpl_MetricRiscvMachine_mem.
-        erewrite <-Memory.to_list_load_bytes, load_bytes_of_sep; [ reflexivity | ecancel_assumption ]. }
-      1:reflexivity.
-      intros. clear H0. (* <-- TODO this should not be needed *) run1done.
-
+      { unfold Memory.load, Memory.load_Z in *.
+        erewrite SeparationMemory.load_bytes_of_sep; trivial.
+        { ecancel_assumption. }
+        { erewrite length_load_bytes; eauto. }
+        { case sz, BW as [ [ -> | -> ] ]; cbv; clear; discriminate. } }
+      { trivial. }
+      intros.
+      run1done.
+      rewrite map.get_put_diff; trivial.
+      intro; destruct sp_not_valid_FlatImp_var; congruence.
 
     - idtac "Case compile_stmt_correct/SStore".
       inline_iff1.
       simpl_MetricRiscvMachine_get_set.
-      unfold Memory.store, Memory.store_Z in *.
-      setoid_rewrite <-HList.tuple.to_list_of_list in H1; setoid_rewrite <-Memory.store_bytes_correct in H1.
-      progress change bedrock2.Memory.store_bytes with (Platform.Memory.store_bytes(word:=word)) in *.
-      match goal with
-      | H: Platform.Memory.store_bytes _ _ _ _ = _ |- _ =>
-        unshelve epose proof (store_bytes_frame H _) as P; cycle 2
+      unfold Memory.store, Memory.store_Z, store_bytes in *; fwd.
+
+      let Hl := constr:(SeparationMemory.sep_of_load_bytes _ _ _ _ ltac:(eassumption)) in
+      let m := match type of Hl with _ ?m => m end in
+      let Hm := match goal with H : context[eq m] |- _ => H end in
+      epose proof seplog_subst_eq (mH:=m) Hm ltac:(ecancel) Hl as Hmem.
+
+      match goal with H : context[unchecked_store_bytes ?m ?a ?v] |- _ =>
+          edestruct (fun n _bs R => SeparationMemory.uncurried_store_bytes_of_sep a n _bs v R initialL_mem) as (?&Hstore&?);
+          ssplit; [ecancel_assumption|..]
       end.
-      1: ecancel_assumption.
-      destruct P as (finalML & P1 & P2).
-      match goal with
-      | H: _ = Some m' |- _ => move H at bottom; rename H into A
-      end.
-      unfold Platform.Memory.store_bytes, Memory.store_Z, Memory.store_bytes in A. fwd.
-      destruct (eq_sym (LittleEndianList.length_le_split (Memory.bytes_per(width:=width) sz) (word.unsigned val))) in t0, E.
-      subst_load_bytes_for_eq.
-      eapply runsTo_det_step_with_valid_machine; [ assumption | simulate' | ].
-      { unfold Memory.store, Memory.store_Z.
-        setoid_rewrite <-HList.tuple.to_list_of_list; setoid_rewrite <-Memory.store_bytes_correct.
-        eassumption. }
-      1:reflexivity.
+      { eapply length_load_bytes; eassumption. }
+      { trivial. }
+      { case sz, BW as [ [ -> | -> ] ]; cbv; clear; discriminate. }
+
+      eapply runsTo_det_step_with_valid_machine; [ assumption | simulate' | ]; trivial.
       intros.
       run1done.
-      eapply preserve_subset_of_xAddrs. 1: assumption.
-      ecancel_assumption.
+      { eapply preserve_subset_of_xAddrs; eauto.
+        { ecancel_assumption. } { rewrite LittleEndianList.length_le_split; trivial. }
+        { case sz, BW as [ [ -> | -> ] ]; clear; cbv; trivial. } }
+      { eexists _, _; ssplit; eauto.
+        (* new low-level memory contains exactly new high-level memory *)
+        use_sep_assumption; cancel; cbn [seps].
+        rewrite sep_comm, <-sep_eq_putmany; cbv [unchecked_store_bytes sepclause_of_map].
+        { Morphisms.f_equiv. apply map.map_ext; intros i.
+          rewrite !map.get_putmany_dec; destruct (map.get (_$@_)) eqn:?; trivial.
+          rewrite map.get_remove_many_notin; trivial; intros ?%map.in_keys_inv.
+          erewrite ?map.get_of_list_word_at, ?map.get_of_list_word_at_domain, ?nth_error_None, ?LittleEndianList.length_le_split, ?length_load_bytes in  * by eauto; contradiction. }
+        { intros i ? ? L%map.get_remove_many_Some_notin.
+          rewrite  ?map.get_of_list_word_at; intros ?%nth_error_Some_bound_index.
+          epose proof (fun v H => L (map.in_keys _ i v H)) as Hq; edestruct map.get eqn:Ei in Hq; eauto.
+          erewrite ?map.get_of_list_word_at, ?nth_error_None, ?LittleEndianList.length_le_split, ?length_load_bytes in * by eauto; blia. } }
 
     - idtac "Case compile_stmt_correct/SInlinetable".
       inline_iff1.

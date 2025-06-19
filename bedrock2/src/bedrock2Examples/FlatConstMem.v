@@ -263,7 +263,7 @@ Section WithParameters.
     eapply word.unsigned_inj; rewrite word.unsigned_add; cbv [word.wrap]; rewrite word.unsigned_of_Z_0, Z.add_0_r, Z.mod_small; trivial; eapply word.unsigned_range.
   Qed.
 
-  Import ptsto_bytes Lift1Prop Morphisms.
+  Import Lift1Prop Morphisms.
   Lemma eq_of_list_word_iff_array1 [value] [map : map.map word value] {ok : map.ok map}
     (a : word) (bs : list value)
     (H : length bs <= 2 ^ 32) :

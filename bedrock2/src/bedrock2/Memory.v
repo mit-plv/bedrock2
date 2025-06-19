@@ -52,7 +52,8 @@ Proof.
   all : specialize (HH ltac:(discriminate)); lia.
 Qed.
 
-Section Deprecated. (* The below functions needlessly use tuples for what can be done with lists *)
+Module Deprecated. (* The below functions needlessly use tuples for what can be done with lists *)
+Section Deprecated.
   Context {width: Z} {word: word width} {mem: map.map word byte}.
   (* deprecated since 2025 *)
   Definition footprint(a: word)(sz: nat): tuple word sz :=
@@ -110,4 +111,5 @@ Section Deprecated. (* The below functions needlessly use tuples for what can be
     rewrite <-to_list_load_bytes, tuple.length_to_list; case load_bytes as []; cbn; trivial.
     rewrite unchecked_store_bytes_correct; trivial.
   Qed.
+End Deprecated.
 End Deprecated.
