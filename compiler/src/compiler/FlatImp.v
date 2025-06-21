@@ -406,10 +406,11 @@ Module exec.
             map.split mCombined mSmall mStack ->
             exec body true aep (leak_unit :: k) t mCombined (map.put l x a) mc
              (fun q' aep' k' t' mCombined' l' mc' =>
-              exists mSmall' mStack',
+              if q' then exists mSmall' mStack',
                 anybytes a n mStack' /\
                 map.split mCombined' mSmall' mStack' /\
-                post q' aep' k' t' mSmall' l' (cost_stackalloc isReg x mc'))) ->
+                  post q' aep' k' t' mSmall' l' (cost_stackalloc isReg x mc')
+              else post q' aep' k' t' mCombined' l' mc')) ->
         exec (SStackalloc x n body) true aep k t mSmall l mc post
     | lit: forall aep k t m l mc x v post,
         post true aep k t m (map.put l x (word.of_Z v)) (cost_lit isReg x mc) ->
@@ -553,7 +554,7 @@ Module exec.
       - eapply stackalloc. 1: assumption.
         intros.
         eapply H1; eauto.
-        intros. simp. eauto 10.
+        intros. simp. destruct q'; fwd; eauto 10.
     Qed.
 
     Lemma seq_assoc {pick_sp: PickSp} : forall s1 s2 s3 aep k t m l mc post,
@@ -681,7 +682,9 @@ Module exec.
         + fwd. eexists. eexists. intuition eauto. eexists. align_trace.
         + intuition. eexists. align_trace.
       - econstructor; intuition eauto. intros. eapply weaken. 1: eapply H1; eauto.
-        simpl. intros. fwd. eexists. eexists. intuition eauto. eexists. align_trace.
+        simpl. intros. fwd. destruct q'.
+        + fwd. eexists. eexists. intuition eauto. eexists. align_trace.
+        + intuition. eexists. align_trace.
       - eapply if_true; intuition eauto. eapply weaken. 1: eapply IHexec.
         simpl. intros. fwd. intuition eauto. eexists. align_trace.
       - eapply if_false; intuition eauto. eapply weaken. 1: eapply IHexec.
@@ -770,8 +773,10 @@ Module exec.
         rewrite List.skipn_app_r in * by (rewrite rev_length; reflexivity).
         simpl in *. eapply weaken.
         { eapply exec_ext with (pick_sp1 := _). 1: eapply H1; eauto. solve_picksps_equal. }
-      simpl. intros. fwd. eexists _, _. intuition eauto. eexists (_ ++ _ :: nil).
-      rewrite <- app_assoc. simpl. rewrite <- (app_assoc _ _ k). simpl. eauto.
+        simpl. intros. fwd. destruct q'.
+        + fwd. eexists _, _. intuition eauto. eexists (_ ++ _ :: nil).
+          rewrite <- app_assoc. simpl. rewrite <- (app_assoc _ _ k). simpl. eauto.
+        + eexists. split; [align_trace|]. rewrite <- app_assoc. assumption.
       - econstructor; intuition eauto. eexists. split; [align_trace|]. auto.
       - econstructor; intuition eauto.
       - econstructor; intuition eauto. eexists. split; [align_trace|]. auto.
@@ -858,8 +863,10 @@ Section FlatImp2.
       eapply exec.weaken.
       + eapply H1; eassumption.
       + simpl. intros. simp.
-        do 2 eexists. split; [eassumption|]. split; [eassumption|].
-        intuition auto. map_solver locals_ok.
+        destruct q'.
+        -- specialize (H4p1 eq_refl). fwd. do 2 eexists. split; [eassumption|].
+           split; [eassumption|]. intuition auto. map_solver locals_ok.
+        -- intuition congruence.
     - eapply exec.if_true; try eassumption.
       eapply exec.weaken; [eassumption|].
       simpl; intros. intuition auto. map_solver locals_ok.

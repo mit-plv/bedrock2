@@ -117,10 +117,12 @@ Module exec. Section WithParams.
         map.split mCombined mSmall mStack ->
         exec body true aep (leak_unit :: k) t mCombined (map.put l x a) (cost_stackalloc isRegStr x mc)
           (fun q' aep' k' t' mCombined' l' mc' =>
-            exists mSmall' mStack',
-              anybytes a n mStack' /\
-              map.split mCombined' mSmall' mStack' /\
-              post q' aep' k' t' mSmall' l' mc'))
+             if q' then
+               exists mSmall' mStack',
+                 anybytes a n mStack' /\
+                   map.split mCombined' mSmall' mStack' /\
+                   post q' aep' k' t' mSmall' l' mc'
+             else post q' aep' k' t' mCombined' l' mc'))
      : exec (cmd.stackalloc x n body) true aep k t mSmall l mc post
   | if_true aep k t m l mc e c1 c2 post
     v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
@@ -182,12 +184,12 @@ Module exec. Section WithParams.
   | quit s q aep k t m l mc post
       (_ : post false aep k t m l mc)
     : exec s q aep k t m l mc post
-  | exec_A s q aep k t m l mc post
-      (_ : forall x, exec s q (aep x) k t m l mc post)
-    : exec s q (AEP_A aep) k t m l mc post
-  | exec_E s q aep k t m l mc post x
-      (_ : exec s q (aep x) k t m l mc post)
-    : exec s q (AEP_E aep) k t m l mc post
+  | exec_A s aep k t m l mc post
+      (_ : forall x, exec s true (aep x) k t m l mc post)
+    : exec s true (AEP_A aep) k t m l mc post
+  | exec_E s aep k t m l mc post x
+      (_ : exec s true (aep x) k t m l mc post)
+    : exec s true (AEP_E aep) k t m l mc post
   .
 
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
@@ -209,7 +211,7 @@ Module exec. Section WithParams.
     - eapply stackalloc. 1: assumption.
       intros.
       eapply H1; eauto.
-      intros. fwd. eauto 10.
+      intros. destruct q'; fwd; eauto 10.
     - eapply call.
       4: eapply IHexec.
       all: eauto.
@@ -415,7 +417,9 @@ Module exec. Section WithParams.
   Proof.
     intros H. induction H; try (econstructor; intuition eauto; subst_exprs; eexists; align_trace; fail).
     - econstructor; intuition eauto. intros. eapply weaken. 1: eapply H1; eauto.
-      simpl. intros. fwd. eexists. eexists. intuition eauto. eexists. align_trace.
+      simpl. intros. fwd. destruct q'.
+      + fwd. eexists. eexists. intuition eauto. eexists. align_trace.
+      + intuition. eexists. align_trace.
     - eapply if_true; intuition eauto. eapply weaken. 1: eapply IHexec.
       simpl. intros. fwd. intuition eauto. subst_exprs. eexists. align_trace.
     - eapply if_false; intuition eauto. eapply weaken. 1: eapply IHexec.
@@ -499,8 +503,10 @@ Module exec. Section WithParams.
       rewrite List.skipn_app_r in * by (rewrite rev_length; reflexivity).
       simpl in *. eapply weaken.
       { eapply exec_ext with (pick_sp1 := _). 1: eapply H1; eauto. solve_picksps_equal. }
-      simpl. intros. fwd. eexists _, _. intuition eauto. eexists (_ ++ _ :: nil).
-      rewrite <- app_assoc. simpl. rewrite <- (app_assoc _ _ k). simpl. eauto.
+      simpl. intros. fwd. destruct q'.
+      + fwd. eexists _, _. intuition eauto. eexists (_ ++ _ :: nil).
+        rewrite <- app_assoc. simpl. rewrite <- (app_assoc _ _ k). simpl. eauto.
+      + eexists. split; [align_trace|]. rewrite <- app_assoc. auto.
     - apply expr_to_other_trace in H. fwd. eapply if_true; intuition eauto.
       eapply weaken.
       { eapply exec_ext with (pick_sp1 := _). 1: eapply IHexec. solve_picksps_equal. }

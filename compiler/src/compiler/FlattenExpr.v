@@ -352,13 +352,14 @@ Section FlattenExpr1.
     exec env s1 true aep k t m l mc mid ->
     (forall q' aep' k' t' m' l' mc',
         mid q' aep' k' t' m' l' mc' ->
-        map.only_differ l (FlatImp.modVars s1) l' ->
+        (q' = true -> map.only_differ l (FlatImp.modVars s1) l') ->
         exec env s2 q' aep' k' t' m' l' mc' post) ->
     exec env (FlatImp.SSeq s1 s2) true aep k t m l mc post.
   Proof.
     intros *. intros E1 E2. eapply @FlatImp.exec.seq.
     - eapply FlatImp.modVarsSound; try typeclasses eauto. exact E1.
-    - simpl. intros. simp. eauto.
+    - simpl. intros. simp. eapply E2; eauto. intros H. specialize (Hp1 H).
+      destruct Hp1. assumption.
   Qed.
 
   (* eauto doesn't see through RelationClasses.Transitive *)
@@ -429,11 +430,11 @@ Section FlattenExpr1.
       eapply seq_with_modVars.
       + eapply IHe1. 1: eassumption. 4: eassumption. 1,2: eassumption.
         clear -D. set_solver.
-      + intros. simpl in *. simp.
+      + intros. simpl in *. simp. specialize (H0 eq_refl).
         eapply seq_with_modVars.
         * eapply IHe2. 1: eassumption. 4: eassumption. 1,2: solve [maps].
           clear IHe1 IHe2. pose_flatten_var_ineqs. set_solver.
-        * intros. simpl in *. simp. clear IHe1 IHe2.
+        * intros. simpl in *. simp. specialize (H1 eq_refl). clear IHe1 IHe2.
 
           eapply @FlatImp.exec.op; t_safe; t_safe. 2: FlatImp.scost_hammer.
           eapply flattenExpr_valid_resVar in E1; simpl; maps.
@@ -442,7 +443,7 @@ Section FlattenExpr1.
       eapply seq_with_modVars.
       + eapply IHe1. 1: eassumption. 4: eassumption. 1,2: eassumption.
         clear -D. set_solver.
-      + simpl. intros. simp.
+      + simpl. intros. simp. specialize (H0 eq_refl).
         pose proof flattenExpr_valid_resVar as A.
         specialize A with (1 := E0). cbn [of_option] in *.
         destruct_one_match_hyp.
@@ -555,7 +556,7 @@ Section FlattenExpr1.
       unfold ExprImp.allVars_exprs in D.
       simpl in *.
       set_solver.
-    - intros. simpl in *. simp.
+    - intros. simpl in *. simp. specialize (H0 eq_refl).
       assert (disjoint (ExprImp.allVars_exprs es) (allFreshVars ngs2)). {
         unfold ExprImp.allVars_exprs in D.
         simpl in *.
@@ -656,8 +657,9 @@ Section FlattenExpr1.
        (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH) /\
        map.only_differ initialL (FlatImp.modVars s) finalL (* <-- added *)).
   Proof.
-    intros. rapply FlatImp.modVarsSound.
-    eapply flattenBooleanExpr_correct_aux; eassumption.
+    intros. eapply FlatImp.exec.weaken. 1: rapply FlatImp.modVarsSound.
+    1: eapply flattenBooleanExpr_correct_aux; eassumption.
+    simpl. intros. simp. intuition congruence.
   Qed.
 
   Lemma freshNameGenState_disjoint: forall (sH: cmd),
@@ -706,8 +708,9 @@ Section FlattenExpr1.
       map.undef_on lH (allFreshVars ngs) ->
       disjoint (ExprImp.allVars_cmd sH) (allFreshVars ngs) ->
       exec eL sL q aep k t m lL mcL (fun q' aep' k' t' m' lL' mcL' => exists lH' mcH',
-        post q' aep' k' t' m' lH' mcH' /\ (* <-- put first so that eassumption will instantiate lH' correctly *)
-        map.extends lL' lH' /\
+                                         post q' aep' k' t' m' lH' mcH' /\ (* <-- put first so that eassumption will instantiate lH' correctly *)
+                                           (mcL' - mcL <= mcH' - mcH)%metricsH /\
+        (q' = true -> map.extends lL' lH' /\
         (* this one is a property purely about ExprImp (it's the conclusion of
            ExprImp.modVarsSound). In the previous proof, which was by induction
            on the fuel of the ExprImp execution, we did not need to carry it
@@ -716,8 +719,7 @@ Section FlattenExpr1.
            now we have to make it part of the conclusion in order to get a stronger
            "mid" in that case, because once we're at s2, it's too late to learn/prove
            more things about the (t', m', l') in mid *)
-        map.only_differ lH (ExprImp.modVars sH) lH' /\
-        (mcL' - mcL <= mcH' - mcH)%metricsH).
+        map.only_differ lH (ExprImp.modVars sH) lH')).
   Proof.
     induction 2; intros; simpl in *; subst; simp.
 
@@ -731,14 +733,14 @@ Section FlattenExpr1.
       + simpl. intros. simp.
         repeat eexists; repeat split.
         * eassumption.
+        * cost_hammer.
+        * cost_hammer.
+        * cost_hammer.
+        * cost_hammer.
         * pose proof flattenExpr_uses_Some_resVar as P.
           specialize P with (1 := E). subst.
           maps.
         * maps.
-        * cost_hammer.
-        * cost_hammer.
-        * cost_hammer.
-        * cost_hammer.
 
     - (* exec.unset *)
       eapply @FlatImp.exec.skip.
@@ -760,8 +762,10 @@ Section FlattenExpr1.
       intros. rename H2 into IHexec.
       eapply @FlatImp.exec.weaken.
       { subst a. eapply IHexec; try reflexivity; try eassumption; maps. }
-      { intros. simpl in *. simp. do 2 eexists. ssplit; try eassumption.
-        do 2 eexists. ssplit; try eassumption; try solve_MetricLog; try maps. cost_hammer. }
+      { intros. simpl in *. simp. destruct q'.
+        - specialize (H2p2 eq_refl). simp. do 2 eexists. ssplit; try eassumption.
+          do 2 eexists. ssplit; try eassumption; try cost_hammer. intuition. maps.
+        - eexists. eexists. intuition eauto. 1: cost_hammer. maps. }
 
     - (* if_true *)
       eapply @FlatImp.exec.seq.
@@ -778,7 +782,9 @@ Section FlattenExpr1.
           eapply @FlatImp.exec.weaken.
           { eapply IHexec; try reflexivity; try eassumption; maps. }
           { intros. simpl in *. simp.
-            repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all: FlatImp.scost_hammer. }
+            repeat eexists; repeat (split || eassumption || solve_MetricLog); try solve [maps]. all: FlatImp.scost_hammer.
+            { apply H3p3 in H3. simp. assumption. }
+            { apply H3p3 in H3. simp. maps. } }
 
     - (* if_false *)
       eapply @FlatImp.exec.seq.
@@ -795,7 +801,9 @@ Section FlattenExpr1.
           eapply @FlatImp.exec.weaken.
           { eapply IHexec; try reflexivity; try eassumption; maps. }
           { intros. simpl in *. simp.
-            repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all: FlatImp.scost_hammer. }
+            repeat eexists; repeat (split || eassumption || solve_MetricLog); try solve [maps]. all: FlatImp.scost_hammer.
+            { apply H3p3 in H3. simp. assumption. }
+            { apply H3p3 in H3. simp. maps. } }
 
     - (* seq *)
       eapply seq_with_modVars.
@@ -810,17 +818,23 @@ Section FlattenExpr1.
         rename H2 into IHexec2.
         (* including "map.only_differ lH (ExprImp.modVars sH) lH'" in the conclusion
            requires us to do one more weakening step here than otherwise needed: *)
-        eapply @FlatImp.exec.weaken.
-        * eapply IHexec2; try reflexivity; try eassumption.
-          { pose proof (ExprImp.modVars_subset_allVars c1).
-            (* note: here we need the high-level map.only_differ we were carrying around *)
-            (* Fail (solve [clear H9; maps]). *)
-            solve [maps]. }
-          { maps. }
-        * clear IHexec IHexec2.
-          simpl. intros. simp.
-          repeat eexists; repeat (split || eassumption || solve_MetricLog); maps.
-
+        destruct q'.
+        * specialize (H3p2 eq_refl). specialize (H4 eq_refl). simp.
+          eapply @FlatImp.exec.weaken.
+          -- eapply IHexec2; try reflexivity; try eassumption.
+             { pose proof (ExprImp.modVars_subset_allVars c1).
+               (* note: here we need the high-level map.only_differ we were carrying around *)
+               (* Fail (solve [clear H9; maps]). *)
+               solve [maps]. }
+             { maps. }
+          -- clear IHexec IHexec2.
+             simpl. intros. simp.
+            repeat eexists; repeat (split || eassumption || solve_MetricLog); try solve [maps]. all: FlatImp.scost_hammer.
+            { apply H2p2 in H2. simp. assumption. }
+            { apply H2p2 in H2. simp. maps. }
+        * apply FlatImp.exec.quit. apply H1 in H3p0. inversion H3p0. subst.
+          eexists. eexists. intuition eauto. congruence.
+          
     - (* while_false *)
       eapply @FlatImp.exec.loop;
         [ eapply flattenBooleanExpr_correct_with_modVars; try eassumption
@@ -834,23 +848,13 @@ Section FlattenExpr1.
         end.
         1: simpl in *; congruence.
         apply word.unsigned_inj. rewrite word.unsigned_of_Z. assumption.
+      + congruence.
       + exfalso. exact H3. (* instantiates mid2 to (fun _ _ _ => False) *)
 
     - (* while_true *)
-      (* We instantiate mid2 here to quanitfy the bound over both the loop body
-         and the expression to avoid issues later. This is a modified version of the
-         postcondition offered by IHexec - the metric differences are now between the
-         start and end of the loop rather than after the expression execution and the end
-         of the loop *)
-      eapply @FlatImp.exec.loop with (mid2 := (fun q' aep' k' t' m' lL' mcL' => exists lH' mcH',
-        mid q' aep' k' t' m' lH' mcH' /\
-        map.extends lL' lH' /\
-        map.only_differ l (ExprImp.modVars c) lH' /\
-        (mcL' - mcL <= mcH' - mc)%metricsH));
-        [ eapply flattenBooleanExpr_correct_with_modVars; try eassumption
-        | intros; simpl in *; simp .. ].
-      + maps.
-      + congruence.
+      apply FlatImp.exec.loop_cps. eapply FlatImp.exec.weaken.
+      { eapply flattenBooleanExpr_correct_with_modVars; try eassumption. maps. }
+      intros; simpl in *; simp. eexists. split; [eassumption|]. split; intros.
       + exfalso.
         match goal with
         | H: context [word.eqb _ _] |- _ => rewrite word.eqb_ne in H
@@ -861,18 +865,22 @@ Section FlattenExpr1.
            and for the expression into a bound for both *)
         eapply FlatImp.exec.weaken.
         * eapply IHexec; try eassumption; try reflexivity; maps.
-        * intros. simpl in *. simp. repeat eexists; repeat (split || eassumption || solve_MetricLog).
-      + simpl in *. simp. rename H4 into IH3.
-        match goal with
-        | H: _ |- _ => specialize IH3 with (1 := H)
-        end.
-        eapply FlatImp.exec.weaken.
-        * eapply IH3; try reflexivity.
-          { clear IH3 IHexec. rewrite E. rewrite E0. reflexivity. }
-          1,3: solve [maps].
-          pose proof (ExprImp.modVars_subset_allVars c). maps.
-        * simpl. intros. simp.
-          repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all: FlatImp.scost_hammer.
+        * intros. simpl in *. simp. rename H4 into IH3. destruct q'.
+          -- specialize (H7p2 eq_refl).
+             match goal with
+             | H: _ |- _ => specialize IH3 with (1 := H)
+             end.
+             eapply FlatImp.exec.weaken.
+             ++ eapply IH3; try reflexivity.
+                { clear IH3 IHexec. rewrite E. rewrite E0. reflexivity. }
+                1,3: solve [maps].
+                pose proof (ExprImp.modVars_subset_allVars c). maps.
+             ++ simpl. intros. simp.
+                repeat eexists; repeat (split || eassumption || solve_MetricLog); try solve [maps]. all: FlatImp.scost_hammer.
+            { apply H4p2 in H4. simp. assumption. }
+            { apply H4p2 in H4. simp. maps. }
+          -- apply FlatImp.exec.quit. eexists. eexists. intuition eauto.
+             admit.
 
     - (* call *)
       unfold flattenCall in *. simp.
