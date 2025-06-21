@@ -1201,7 +1201,7 @@ Section CheckerCorrect.
       check corresp s s' = Success corresp' ->
       states_compat lH (precond corresp s s') lL ->
       exec PreSpill isRegZ e' s' q aep k t m lL mcL (fun q' aep' k' t' m' lL' mcL' =>
-        exists lH' mcH', (states_compat lH' corresp' lL' \/ q' = false) /\
+        exists lH' mcH', (q' = true -> states_compat lH' corresp' lL') /\
                     (mcL' - mcL <= mcH' - mcH)%metricsH /\
                     post q' aep' k' t' m' lH' mcH').
   Proof.
@@ -1247,14 +1247,16 @@ Section CheckerCorrect.
         edestruct putmany_of_list_zip_states_compat as [ lLF0 [L SC] ].
         2: exact E3. 2: eapply states_compat_empty. 1: eassumption.
         rewrite L3 in L. apply Option.eq_of_eq_Some in L. subst lLF0. exact SC.
-      + cbv beta. intros. fwd. edestruct H4 as (retvs & lHF' & G & P & Hpost). 1: eassumption.
-        edestruct putmany_of_list_zip_states_compat as (lL' & L4 & SC).
-        1: exact P. 1: exact H5. 1: eassumption.
-        do 2 eexists. ssplit.
-        * eapply states_compat_getmany; eassumption.
-        * exact L4.
-        * repeat eexists. 6: eassumption. 1: exact SC.
-          all: cost_solve.
+      + cbv beta. intros. fwd. specialize H4 with (1 := H7p2). destruct q'.
+        * specialize (H7p0 eq_refl). destruct H4 as (retvs & lHF' & G & P & Hpost).
+          edestruct putmany_of_list_zip_states_compat as (lL' & L4 & SC).
+          1: exact P. 1: exact H5. 1: eassumption.
+          do 2 eexists. ssplit.
+          -- eapply states_compat_getmany; eassumption.
+          -- exact L4.
+          -- repeat eexists. 6: eassumption. 1: intros; exact SC.
+             all: cost_solve.
+        * eexists. eexists. intuition eauto. congruence.
     - (* Case exec.load *)
       a. b.
     - (* Case exec.store *)
@@ -1266,10 +1268,11 @@ Section CheckerCorrect.
       intros. eapply exec.weaken.
       + eapply H2; try eassumption.
         eapply states_compat_precond. eapply states_compat_put; eassumption.
-      + cbv beta. intros. fwd.
-        eexists. eexists. do 2 (split; try eassumption).
-        eexists. eexists. do 2 (split; try eassumption).
-        b.
+      + cbv beta. intros. fwd. destruct q'.
+        -- fwd. eexists. eexists. do 2 (split; try eassumption).
+           eexists. eexists. do 2 (split; try eassumption).
+           b.
+        -- eauto.
     - (* Case exec.lit *)
       a. b.
     - (* Case exec.op *)
@@ -1283,7 +1286,7 @@ Section CheckerCorrect.
       + eapply IHexec. 1: eassumption.
         eapply states_compat_precond. eassumption.
       + cbv beta. intros. fwd. eexists. eexists. split. 2: split. 3: eassumption.
-        1: eapply states_compat_extends. 2: eassumption. 1: eapply extends_intersect_l.
+        1: intros; eapply states_compat_extends; eauto. 1: eapply extends_intersect_l.
         eapply check_regs_cost_SIf; eauto.
     - (* Case exec.if_false *)
       eapply exec.if_false. 1: eauto using states_compat_eval_bcond.
@@ -1291,7 +1294,7 @@ Section CheckerCorrect.
       + eapply IHexec. 1: eassumption.
         eapply states_compat_precond. eassumption.
       + cbv beta. intros. fwd. eexists. eexists. split. 2: split. 3: eassumption.
-        1: eapply states_compat_extends. 2: eassumption. 1: eapply extends_intersect_r.
+        1: intros; eapply states_compat_extends; eauto. 1: eapply extends_intersect_r.
         eapply check_regs_cost_SIf; eauto.
     - (* Case exec.loop *)
       rename H4 into IH2, IHexec into IH1, H6 into IH12.
@@ -1301,56 +1304,72 @@ Section CheckerCorrect.
       pose proof SC as SC0.
       unfold loop_inv in SC.
       rewrite E in SC.
-      eapply exec.loop with
-        (mid2 := (fun q'0 aep'0 k'0 t'0 m'0 lL' mcL' =>
-           exists (lH' : srcLocals) (mcH' : MetricLog),
-             states_compat lH' a1 lL' /\
-               (exists mcHmid mcLmid,
-               mcLmid - mcL <= mcHmid - mc /\
-               mcL' - mcLmid <= mcH' - mcHmid)%metricsH /\
-             mid2 q'0 aep'0 k'0 t'0 m'0 lH' mcH')).
-      + eapply IH1. 1: eassumption. eapply states_compat_precond. exact SC.
-      + cbv beta. intros. fwd. eauto using states_compat_eval_bcond_None.
-      + cbv beta. intros. fwd. eexists. eexists. (* exists (exec.cost_SLoop_false isRegStr cond mcH'). *)
-        split. 2: split. 3: eauto using states_compat_eval_bcond_bw. 1: assumption.
-        eapply check_regs_cost_SLoop_false. 1: apply E0. all: eauto.
-      + cbv beta. intros. fwd. eapply exec.weaken. 1: eapply IH2; eauto using states_compat_eval_bcond_bw.
-        1: eapply states_compat_precond; eassumption.
-        cbv beta. intros. fwd. eexists. eexists. split. 2: split. 1,3: eauto.
-        exists mcH'. exists mc'.
-        split; eauto.
-      + cbv beta. intros. fwd. eapply exec.weaken. 1: eapply IH12. 1: eassumption. 1: eassumption.
-        * eapply states_compat_extends. 2: eassumption.
-          pose proof defuel_loop_inv as P.
-          specialize P with (2 := E0).
-          specialize P with (2 := E2).
-          specialize (P corresp).
-          unfold loop_inv in P|-*.
-          rewrite E in P. rewrite E.
-          specialize (P eq_refl).
-          rewrite P.
-          eapply extends_intersect_r.
-        * cbv beta. intros. fwd. eexists. eexists. split. 2: split. 1: eauto. 2: eauto.
-          intros.
-          repeat (unfold check_bcond, assert_in, assignment in *; fwd).
-          clear -E0 E1 E2 H4p1p0 H4p1p1 H4p1 H4p3.
+      eapply exec.loop_cps. eapply exec.weaken.
+      1: eapply IH1; eauto using states_compat_precond.
+      cbv beta. intros. fwd. destruct q'.
+      + destruct (eval_bcond l' cond0) eqn:Ee.
+        2: { exfalso. eapply states_compat_eval_bcond_None; eauto. }
+        exists b. intuition; subst.
+        -- cbv beta. intros. fwd. eexists. eexists. (* exists (exec.cost_SLoop_false isRegStr cond mcH'). *)
+           split. 2: split. 3: eauto using states_compat_eval_bcond_bw.
+           1: intros; assumption.
+           eapply check_regs_cost_SLoop_false. 1: apply E0. all: eauto.
+        -- cbv beta. intros. fwd. eapply exec.weaken. 1: eapply IH2; eauto using states_compat_eval_bcond_bw.
+           1: eapply states_compat_precond; eauto.
+           cbv beta. intros. fwd. Search mid2. specialize H7 with (1 := H6p2).
+           move H7 at bottom. specialize H7 with (1 := C). simpl in H7.
+           destruct q'.
+           ++ eapply exec.weaken.
+              --- eapply H7. 
+                  eapply states_compat_extends. 2: eauto.
+                  pose proof defuel_loop_inv as P.
+                  specialize P with (2 := E0).
+                  specialize P with (2 := E2).
+                  specialize (P corresp).
+                  unfold loop_inv in P|-*.
+                  rewrite E in P. rewrite E.
+                  specialize (P eq_refl).
+                  rewrite P.
+                  eapply extends_intersect_r.
+              --- cbv beta. intros. fwd. eexists. eexists. split. 2: split. 1: eauto. 2: eauto.
+                  specialize (H6p0 eq_refl).
+                  cbv [states_compat] in H6p0.
+                  repeat (unfold check_bcond, assert_in, assignment in *; fwd).
+                  Print states_compat.
+          (*clear -E0 E1 E2 H4p1p0 H4p1p1 H4p1 H4p3. TODO fix this*)
           intros; unfold check_regs in *; cbn in *; unfold exec.cost_SLoop_true in *; try discr_match_success;
             destr cond; destr cond0; destr (isRegStr x); destr (isRegZ x0); try (destr (isRegStr y)); try (destr (isRegZ y0));
             try discriminate; try discr_match_success.
           all: cost_solve.
+           ++ Search mid2. specialize IH12 with (1 := H6p2). move IH12 at bottom.
+              inversion IH12. subst. apply exec.quit. eexists. eexists. intuition eauto.
+              1: congruence.
+              (*TODO make this faster?*)
+              unfold states_compat in H4.
+              repeat (unfold check_bcond, assert_in, assignment in *; fwd).
+              intros; unfold check_regs in *; cbn in *; unfold exec.cost_SLoop_true in *; try discr_match_success;
+                destr cond; destr cond0; destr (isRegStr x); destr (isRegZ x0); try (destr (isRegStr y)); try (destr (isRegZ y0));
+                try discriminate; try discr_match_success.
+              all: cost_solve.
+      + eauto 10.
+        
     - (* Case exec.seq *)
       rename H2 into IH2, IHexec into IH1.
       eapply exec.seq.
       + eapply IH1. 1: eassumption.
         eapply states_compat_precond. assumption.
-      + cbv beta. intros ? ? k' t' m' l' mcblah ?. fwd.
-        eapply IH2 in H2p2. 2,3: eauto using states_compat_precond.
-        eapply exec.weaken; eauto.
-        cbv beta. intros. fwd. exists lH'0. exists mcH'0. split. 2:split. 1,3: eauto.
-        b.
+      + cbv beta. intros ? ? k' t' m' l' mcblah ?. fwd. destruct q'.
+        -- eapply IH2 in H2p2. 2,3: eauto using states_compat_precond.
+           eapply exec.weaken; eauto.
+           cbv beta. intros. fwd. exists lH'0. exists mcH'0. split. 2:split. 1,3: eauto.
+           b.
+        -- Search mid. apply H1 in H2p2. inversion H2p2. subst. apply exec.quit.
+           eexists. eexists. intuition eauto. congruence.
     - (* case exec.skip *)
       a. b.
-    - apply exec.quit. do 2 eexists. intuition eauto.
+    - apply exec.quit. do 2 eexists. intuition eauto. 1: congruence. cost_hammer.
+    - apply exec.exec_A. eauto.
+    - eapply exec.exec_E. eauto.
   Qed.
 
 End CheckerCorrect.
