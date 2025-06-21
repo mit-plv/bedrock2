@@ -866,7 +866,7 @@ Section FlattenExpr1.
         eapply FlatImp.exec.weaken.
         * eapply IHexec; try eassumption; try reflexivity; maps.
         * intros. simpl in *. simp. rename H4 into IH3. destruct q'.
-          -- specialize (H7p2 eq_refl).
+          -- specialize (H6p2 eq_refl).
              match goal with
              | H: _ |- _ => specialize IH3 with (1 := H)
              end.
@@ -879,8 +879,8 @@ Section FlattenExpr1.
                 repeat eexists; repeat (split || eassumption || solve_MetricLog); try solve [maps]. all: FlatImp.scost_hammer.
             { apply H4p2 in H4. simp. assumption. }
             { apply H4p2 in H4. simp. maps. }
-          -- apply FlatImp.exec.quit. eexists. eexists. intuition eauto.
-             admit.
+          -- apply FlatImp.exec.quit. eexists. eexists. apply H3 in H6p0.
+             inversion H6p0. subst. intuition eauto. FlatImp.scost_hammer.
 
     - (* call *)
       unfold flattenCall in *. simp.

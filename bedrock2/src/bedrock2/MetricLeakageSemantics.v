@@ -16,10 +16,12 @@ Local Notation UNK := String.EmptyString.
 
 Section aep.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Local Notation metrics := MetricLog.
+
   Inductive AEP :=
   | AEP_A : (nat -> AEP) -> AEP
   | AEP_E : (nat -> AEP) -> AEP
-  | AEP_P : (trace -> Prop) -> AEP.
+  | AEP_P : (leakage -> trace -> mem -> metrics -> Prop) -> AEP.
 End aep.
 
 Section semantics.
@@ -151,10 +153,9 @@ Module exec. Section WithParams.
       v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
       (_ : word.unsigned v <> 0)
       mid (_ : exec c true aep (leak_bool true :: k') t m l mc' mid)
-      (_ : forall aep' k'' t' m' l' mc'',
-          mid true aep' k'' t' m' l' mc'' ->
-          exec (cmd.while e c) true aep' k'' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc'') post)
-      (_ : forall aep' k'' t' m' l' mc'', mid false aep' k'' t' m' l' mc'' -> post false aep' k'' t' m' l' mc'')
+      (_ : forall q' aep' k'' t' m' l' mc'',
+          mid q' aep' k'' t' m' l' mc'' ->
+          exec (cmd.while e c) q' aep' k'' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc'') post)
     : exec (cmd.while e c) true aep k t m l mc post
   | call binds fname arges
       aep k t m l mc post
@@ -429,7 +430,6 @@ Module exec. Section WithParams.
     - eapply while_true; eauto; subst_exprs.
       + simpl. intros. fwd. eapply weaken. 1: eapply H3; eauto.
         simpl. intros. fwd. intuition eauto. eexists. align_trace.
-      + simpl. intros. fwd. intuition. eexists. align_trace.
     - econstructor; intuition eauto. fwd. specialize H3 with (1 := H4p0).
       subst_exprs.
       destruct q'.
@@ -461,10 +461,9 @@ Module exec. Section WithParams.
       eapply H0; eauto. intros. repeat rewrite app_assoc. apply H2.
     - eapply while_true. 1,2: eassumption.
       + eapply exec_extends_trace. eapply IHexec. subst_exprs.
-        intros. simpl. rewrite associate_one_left. rewrite app_assoc. apply H5.
+        intros. simpl. rewrite associate_one_left. rewrite app_assoc. apply H4.
       + simpl in *. intros. fwd. eapply H3; eauto. intros. subst_exprs.
         rewrite associate_one_left. repeat rewrite app_assoc. auto.
-      + simpl. intros. fwd. auto.
     - econstructor. 4: eapply exec_extends_trace. all: intuition eauto.
       { eapply IHexec. subst_exprs. intros.
         rewrite associate_one_left. repeat rewrite app_assoc. auto. }
@@ -533,7 +532,6 @@ Module exec. Section WithParams.
         simpl. intros. fwd. eexists (_ ++ _ ++ _ :: _).
         repeat rewrite <- (app_assoc _ _ k2). repeat rewrite <- (app_assoc _ _ k).
         intuition.
-      + simpl in *. fwd. eexists. split; [align_trace|]. rewrite <- app_assoc. auto.
     - apply call_args_to_other_trace in H0.
       fwd. econstructor; intuition eauto.
       { eapply exec_ext with (pick_sp1 := _). 1: eapply IHexec; eauto. solve_picksps_equal. }
@@ -684,7 +682,6 @@ Section WithParams.
            { apply Z.pow_le_mono_r; try lia. destruct word_ok; clear - width_pos.
              lia. }
            lia.
-        -- simpl. intros. fwd. auto.
       + eapply exec.while_false.
         -- simpl. rewrite H. reflexivity.
         -- rewrite word.unsigned_of_Z. assumption.
@@ -730,17 +727,16 @@ Section WithParams.
         -- reflexivity.
         -- replace (S n) with (n + 1)%nat by lia. rewrite repeat_app.
            rewrite <- app_assoc. reflexivity.
-      + simpl. intros. fwd. congruence.
   Qed.
 
   Definition eventually_print_ones : AEP :=
-    AEP_E (fun n1 => AEP_A (fun n2 => AEP_P (fun t => exists t1, List.length t1 = n1 /\ (t = repeat one n2 ++ t1)%list))).
+    AEP_E (fun n1 => AEP_A (fun n2 => AEP_P (fun _ t _ _ => exists t1, List.length t1 = n1 /\ (t = repeat one n2 ++ t1)%list))).
   
   Lemma eventual_one_printer_eventually_prints_ones e k t m l mc :
     exec e eventual_one_printer true eventually_print_ones k t m l mc
-      (fun _ aep _ t _ _ _ =>
+      (fun _ aep k t m l mc =>
          match aep with
-         | AEP_P P => P t
+         | AEP_P P => P k t m mc
          | _ => False
          end).
   Proof.
