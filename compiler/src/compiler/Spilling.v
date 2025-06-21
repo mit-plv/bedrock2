@@ -26,6 +26,7 @@ Section Spilling.
   Notation stmt := (stmt Z).
   Notation execpre pick_sp e := (@exec _ _ _ _ _ _ _ _ PreSpill isRegZ e pick_sp).
   Notation execpost pick_sp e := (@exec _ _ _ _ _ _ _ _ PostSpill isRegZ e pick_sp).
+  Notation AEP := MetricLeakageSemantics.AEP.
 
   Definition zero := 0.
   Definition ra := 1.
@@ -693,7 +694,7 @@ Section Spilling.
            nth_error stackwords (Z.to_nat (r - 32)) = Some v) /\
         length stackwords = Z.to_nat (maxvar - 31).
 
-  Implicit Types post : leakage -> Semantics.trace -> mem -> locals -> MetricLog -> Prop.
+  Implicit Types post : bool -> AEP -> leakage -> Semantics.trace -> mem -> locals -> MetricLog -> Prop.
 
   Lemma put_arg_reg: forall l r v fpval lRegs,
       (eq lRegs * arg_regs * ptsto fp fpval)%sep l ->
@@ -741,14 +742,14 @@ Section Spilling.
     unfold spill_tmp. eapply put_arg_reg; eassumption.
   Qed.
 
-  Lemma load_iarg_reg_correct {pick_sp: PickSp} (i: Z): forall r e2 k2 t1 t2 m1 m2 l1 l2 mc2 fpval post frame maxvar v,
+  Lemma load_iarg_reg_correct {pick_sp: PickSp} (i: Z): forall r e2 aep2 k2 t1 t2 m1 m2 l1 l2 mc2 fpval post frame maxvar v,
       i = 1 \/ i = 2 ->
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < r <= maxvar /\ (r < a0 \/ a7 < r) ->
       map.get l1 r = Some v ->
       (related maxvar frame fpval t1 m1 l1 t2 m2 (map.put l2 (iarg_reg i r) v) ->
-       post (rev (leak_load_iarg_reg fpval r) ++ k2) t2 m2 (map.put l2 (iarg_reg i r) v) (if isRegZ r then mc2 else (mkMetricLog 1 0 2 0 + mc2)%metricsH)) ->
-      execpost pick_sp e2 (load_iarg_reg i r) k2 t2 m2 l2 mc2 post.
+       post true aep2 (rev (leak_load_iarg_reg fpval r) ++ k2) t2 m2 (map.put l2 (iarg_reg i r) v) (if isRegZ r then mc2 else (mkMetricLog 1 0 2 0 + mc2)%metricsH)) ->
+      execpost pick_sp e2 (load_iarg_reg i r) true aep2 k2 t2 m2 l2 mc2 post.
   Proof.
     intros.
     unfold leak_load_iarg_reg, load_iarg_reg, stack_loc, iarg_reg, related in *. fwd.
@@ -842,12 +843,14 @@ Section Spilling.
      when the new postcondition is used as a "mid1" in exec.loop, and body1 is a seq
      in which this lemma was used, t2, m2, l2, mc2 are introduced after the evar "?mid1"
      is created (i.e. after exec.loop is applied), so they are not in the scope of "?mid1". *)
-  Lemma load_iarg_reg_correct'' {pick_sp: PickSp} (i: Z): forall r e2 k2 t1 t2 m1 m2 l1 l2 mc2 frame maxvar v fpval,
+  Lemma load_iarg_reg_correct'' {pick_sp: PickSp} (i: Z): forall r e2 aep2 k2 t1 t2 m1 m2 l1 l2 mc2 frame maxvar v fpval,
       i = 1 \/ i = 2 ->
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < r <= maxvar /\ (r < a0 \/ a7 < r) ->
       map.get l1 r = Some v ->
-      execpost pick_sp e2 (load_iarg_reg i r) k2 t2 m2 l2 mc2 (fun k2' t2' m2' l2' mc2' =>
+      execpost pick_sp e2 (load_iarg_reg i r) true aep2 k2 t2 m2 l2 mc2 (fun q2' aep2' k2' t2' m2' l2' mc2' =>
+        q2' = true /\
+        aep2' = aep2 /\
         k2' = rev (leak_load_iarg_reg fpval r) ++ k2 /\
         t2' = t2 /\ m2' = m2 /\ l2' = map.put l2 (iarg_reg i r) v /\
         related maxvar frame fpval t1 m1 l1 t2' m2' l2' /\
@@ -895,15 +898,16 @@ Section Spilling.
      `related` does not hold: the result is already in l1 and lStack, but not yet in stackwords.
      So we request the `related` that held *before* SOp, i.e. the one where the result is not
      yet in l1 and l2. *)
-  Lemma save_ires_reg_correct {pick_sp: PickSp} : forall e k1 k2 t1 t2 m1 m2 l1 l2 mc1 mc1' mc2 mc2' x v maxvar frame post fpval,
-      post k1 t1 m1 (map.put l1 x v) mc1' ->
+  Lemma save_ires_reg_correct {pick_sp: PickSp} : forall e aep1 aep2 k1 k2 t1 t2 m1 m2 l1 l2 mc1 mc1' mc2 mc2' x v maxvar frame post fpval,
+      post true aep1 k1 t1 m1 (map.put l1 x v) mc1' ->
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < x <= maxvar /\ (x < a0 \/ a7 < x) ->
       (mc2' - mc2 <= mc1' - (if isRegZ x then mc1 else mkMetricLog 1 1 1 0 + mc1))%metricsH ->
-      execpost pick_sp e (save_ires_reg x) k2 t2 m2 (map.put l2 (ires_reg x) v) mc2'
-        (fun k2' t2' m2' l2' mc2'' => exists k1' t1' m1' l1' mc1'',
+      execpost pick_sp e (save_ires_reg x) true aep2 k2 t2 m2 (map.put l2 (ires_reg x) v) mc2'
+        (fun q2' aep2' k2' t2' m2' l2' mc2'' => exists aep1' k1' t1' m1' l1' mc1'',
                 related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
-                post k1' t1' m1' l1' mc1'' /\
+                post true aep1' k1' t1' m1' l1' mc1'' /\
+                q2' = true /\ aep2' = aep2 /\  
                 k2' = rev (leak_save_ires_reg fpval x) ++ k2 /\
                 (mc2'' - mc2 <= mc1'' - mc1)%metricsH).
   Proof.
@@ -950,7 +954,7 @@ Section Spilling.
             - eapply Nj. 1: blia. eauto.
           }
           1: { unfold spill_tmp. eapply put_tmp; eauto. }
-          1: blia. 1: reflexivity.
+          1: blia. 1,2,3: reflexivity.
           unfold cost_store. unfold spill_tmp; cbn.
           destr (isRegZ x); solve_MetricLog.
       }
@@ -992,7 +996,7 @@ Section Spilling.
         repeat destruct_one_match_hyp; subst; fwd; try congruence; try blia.
         specialize H0p8 with (1 := H1). blia.
       }
-      all: try eassumption. 1: reflexivity.
+      all: try eassumption. 1,2,3: reflexivity.
       destr (isRegZ x); solve_MetricLog.
   Qed.
 
@@ -1001,13 +1005,13 @@ Section Spilling.
   (*    `related` does not hold: the result is already in l1 and lStack, but not yet in stackwords. *)
   (*    So we request the `related` that held *before* SOp, i.e. the one where the result is not *)
   (*    yet in l1 and l2. *)
-  Lemma save_ires_reg_correct'' {pick_sp: PickSp} : forall e k2 t1 t2 m1 m2 l1 l2 mc2 x v maxvar frame post fpval,
+  Lemma save_ires_reg_correct'' {pick_sp: PickSp} : forall e aep2 k2 t1 t2 m1 m2 l1 l2 mc2 x v maxvar frame post fpval,
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < x <= maxvar /\ (x < a0 \/ a7 < x) ->
       (forall t2' m2' l2',
           related maxvar frame fpval t1 m1 (map.put l1 x v) t2' m2' l2' ->
-          post (rev (leak_save_ires_reg fpval x) ++ k2) t2' m2' l2' (if isRegZ x then mc2 else mkMetricLog 1 1 1 0 + mc2)%metricsH) ->
-      execpost pick_sp e (save_ires_reg x) k2 t2 m2 (map.put l2 (ires_reg x) v) mc2 post.
+          post true aep2 (rev (leak_save_ires_reg fpval x) ++ k2) t2' m2' l2' (if isRegZ x then mc2 else mkMetricLog 1 1 1 0 + mc2)%metricsH) ->
+      execpost pick_sp e (save_ires_reg x) true aep2 k2 t2 m2 (map.put l2 (ires_reg x) v) mc2 post.
   Proof.
     intros.
     unfold leak_save_ires_reg, save_ires_reg, stack_loc, ires_reg, related in *. fwd.
@@ -1163,7 +1167,7 @@ Section Spilling.
   Qed.
 
   Lemma set_vars_to_reg_range_correct {pick_sp: PickSp} :
-    forall args start argvs e k2 t1 t2 m1 m2 l1 l1' l2 mc2 maxvar frame post fpval,
+    forall args start argvs e aep2 k2 t1 t2 m1 m2 l1 l1' l2 mc2 maxvar frame post fpval,
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       map.putmany_of_list_zip args argvs l1 = Some l1' ->
       map.getmany_of_list l2 (List.unfoldn (Z.add 1) (List.length args) start) = Some argvs ->
@@ -1175,8 +1179,8 @@ Section Spilling.
           related maxvar frame fpval t1 m1 l1' t2 m2' l2' ->
           mc2' = cost_set_vars_to_reg_range args start mc2 ->
           k2' = rev (leak_set_vars_to_reg_range fpval args) ++ k2 ->
-          post k2' t2 m2' l2' mc2') ->
-      execpost pick_sp e (set_vars_to_reg_range args start) k2 t2 m2 l2 mc2 post.
+          post true aep2 k2' t2 m2' l2' mc2') ->
+      execpost pick_sp e (set_vars_to_reg_range args start) true aep2 k2 t2 m2 l2 mc2 post.
   Proof.
     induction args; intros.
     - simpl. eapply exec.skip. fwd. eauto.
@@ -1261,7 +1265,7 @@ Section Spilling.
     end.
 
   Lemma set_reg_range_to_vars_correct {pick_sp: PickSp} :
-    forall args argvs start e k2 t1 t2 m1 m2 l1 l2 mc2 maxvar frame post fpval,
+    forall args argvs start e aep2 k2 t1 t2 m1 m2 l1 l2 mc2 maxvar frame post fpval,
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       (List.length args <= 8)%nat ->
       a0 <= start ->
@@ -1273,8 +1277,8 @@ Section Spilling.
           map.getmany_of_list l2' (List.unfoldn (Z.add 1) (List.length args) start) = Some argvs ->
           mc2' = cost_set_reg_range_to_vars start args mc2 ->
           k2' = rev (leak_set_reg_range_to_vars fpval args) ++ k2 ->
-          post k2' t2 m2 l2' mc2') ->
-      execpost pick_sp e (set_reg_range_to_vars start args) k2 t2 m2 l2 mc2 post.
+          post true aep2 k2' t2 m2 l2' mc2') ->
+      execpost pick_sp e (set_reg_range_to_vars start args) true aep2 k2 t2 m2 l2 mc2 post.
   Proof.
     induction args; intros.
     - simpl. eapply exec.skip. eapply H5; eauto.
@@ -1567,39 +1571,40 @@ Section Spilling.
   Qed.
 
   Definition spilling_correct_for(e1 e2 : env)(s1 : stmt): Prop :=
-      forall pick_sp1 k1 t1 m1 l1 mc1 post,
-        execpre pick_sp1 e1 s1 k1 t1 m1 l1 mc1 post ->
+      forall pick_sp1 q1 aep1 k1 t1 m1 l1 mc1 post,
+        execpre pick_sp1 e1 s1 q1 aep1 k1 t1 m1 l1 mc1 post ->
         forall (frame : mem -> Prop) (maxvar : Z),
           valid_vars_src maxvar s1 ->
-          forall pick_sp2 k2 t2 m2 l2 mc2 fpval f,
+          forall pick_sp2 q2 aep2 k2 t2 m2 l2 mc2 fpval f,
             related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
             (forall k, pick_sp1 (k ++ k1) = snd (stmt_leakage e1 pick_sp2 (s1, rev k, rev k2, fpval, f k))) ->
-            execpost pick_sp2 e2 (spill_stmt s1) k2 t2 m2 l2 mc2
-                 (fun k2' t2' m2' l2' mc2' =>
+            execpost pick_sp2 e2 (spill_stmt s1) q2 aep2 k2 t2 m2 l2 mc2
+                 (fun q2' aep2' k2' t2' m2' l2' mc2' =>
                     exists k1' t1' m1' l1' mc1' k1'',
-                      related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
-                      post k1' t1' m1' l1' mc1' /\
-                      (mc2' - mc2 <= mc1' - mc1)%metricsH /\
-                      k1' = k1'' ++ k1 /\
-                      forall k f, stmt_leakage e1 pick_sp2 (s1, rev k1'' ++ k, rev k2, fpval, f) = f (rev k1'') (rev k2')).
+                      post q2' aep2' k1' t1' m1' l1' mc1' /\
+                        (q2' = true ->
+                         related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
+                           (mc2' - mc2 <= mc1' - mc1)%metricsH /\
+                           k1' = k1'' ++ k1 /\
+                           forall k f, stmt_leakage e1 pick_sp2 (s1, rev k1'' ++ k, rev k2, fpval, f) = f (rev k1'') (rev k2'))).
 
   (* TODO tighter / non-fixed bound *)
   Definition cost_spill_spec mc :=
     (mkMetricLog 100 100 100 100 + mc)%metricsH.
 
   Definition call_spec(e: env) '(argnames, retnames, fbody)
-    pick_sp k t m argvals mc
+    pick_sp q aep k t m argvals mc
     (post : leakage -> Semantics.trace -> mem -> list word -> MetricLog -> Prop) : Prop :=
     forall l, map.of_list_zip argnames argvals = Some l ->
-         execpre pick_sp e fbody k t m l (cost_spill_spec mc) (fun k' t' m' l' mc' =>
+         execpre pick_sp e fbody q aep k t m l (cost_spill_spec mc) (fun q' aep' k' t' m' l' mc' =>
                    exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                                 post k' t' m' retvals mc').
 
   Definition call_spec_spilled(e: env) '(argnames, retnames, fbody)
-    pick_sp k t m argvals mc
+    pick_sp q aep k t m argvals mc
     (post : leakage -> Semantics.trace -> mem -> list word -> MetricLog -> Prop) : Prop :=
     forall l, map.of_list_zip argnames argvals = Some l ->
-         execpost pick_sp e fbody k t m l mc (fun k' t' m' l' mc' =>
+         execpost pick_sp e fbody q aep k t m l mc (fun q' aep' k' t' m' l' mc' =>
                    exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                                 post k' t' m' retvals mc').
 
