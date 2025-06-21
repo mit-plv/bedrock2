@@ -914,19 +914,21 @@ Section FlattenExpr1.
              rewrite map.get_empty in G. destruct G as [G | G]; [|discriminate G]. simp.
              pose ListSet.In_list_union_l; pose ListSet.In_list_union_r; pose nth_error_In; eauto.
           -- eapply freshNameGenState_disjoint_fbody.
-        * cbv beta. intros. simp.
-          edestruct H4 as [resvals ?]. 1: eassumption. simp.
-          pose proof (map.putmany_of_list_zip_extends_exists binds resvals) as R.
-          assert (map.extends lL' lH) as A by maps.
-          edestruct R as [lL'' ?]; [eassumption..|]. simp.
-          do 2 eexists. ssplit.
-          -- eapply map.getmany_of_list_extends; eassumption.
-             (* Automation: Why does "eauto using map.getmany_of_list_extends." not work? *)
-          -- eassumption.
-          -- do 2 eexists. ssplit; try eassumption.
-             ++ simple eapply map.only_differ_putmany; eassumption.
-             ++ FlatImp.scost_hammer.
-
+        * cbv beta. intros. simp. specialize H4 with (1 := H5p3). destruct q'.
+          -- specialize (H5p6 eq_refl). simp.
+             pose proof (map.putmany_of_list_zip_extends_exists binds retvs) as R.
+             assert (map.extends lL' lH) as A by maps.
+             edestruct R as [lL'' ?]; [eassumption..|]. simp.
+             do 2 eexists. ssplit.
+             ++ eapply map.getmany_of_list_extends; eassumption.
+          (* Automation: Why does "eauto using map.getmany_of_list_extends." not work? *)
+             ++ eassumption.
+             ++ do 2 eexists. ssplit; try eassumption.
+                --- FlatImp.scost_hammer.
+                --- intros. split. 2: simple eapply map.only_differ_putmany; eassumption.
+                    assumption.
+          -- eexists. eexists. intuition eauto. 2: congruence. cost_hammer.
+            
     - (* interact *)
       unfold flattenInteract in *. simp.
       eapply @FlatImp.exec.seq.
@@ -944,10 +946,9 @@ Section FlattenExpr1.
         intros.
         do 2 eexists.
         split; eauto.
-        simple apply conj; [eassumption|].
-        split; [simple eapply map.only_differ_putmany; eassumption|].
-        cost_hammer.
-    - apply FlatImp.exec.quit. do 2 eexists. intuition eauto. 1: maps. cost_hammer.
+        simple apply conj; [cost_hammer|]. intros.
+        split; [assumption|simple eapply map.only_differ_putmany; eassumption].
+    - apply FlatImp.exec.quit. do 2 eexists. intuition eauto. 2: maps. cost_hammer.
     - apply FlatImp.exec.exec_A. intros. eapply H1; eauto.
     - eapply FlatImp.exec.exec_E. eapply IHexec; eauto.
   Qed.
@@ -959,8 +960,8 @@ Section FlattenExpr1.
       MetricLeakageSemantics.exec eH sH q aep k t m map.empty mc post ->
       exec eL sL q aep k t m lL mc (fun q' aep' k' t' m' lL' mcL' => exists lH' mcH',
         post q' aep' k' t' m' lH' mcH' /\
-        map.extends lL' lH' /\
-        (mcL' - mc <= mcH' - mc)%metricsH).
+          (q' = true -> map.extends lL' lH' /\
+                         (mcL' - mc <= mcH' - mc)%metricsH)).
   Proof.
     intros.
     unfold ExprImp2FlatImp in *.
@@ -971,7 +972,7 @@ Section FlattenExpr1.
     eapply @FlatImp.exec.weaken.
     - eapply flattenStmt_correct_aux; try solve [eassumption | reflexivity | maps].
       eapply freshNameGenState_disjoint.
-    - simpl. intros. simp. eauto.
+    - simpl. intros. simp. eauto. eexists. eexists. intuition eauto.
   Qed.
 
 End FlattenExpr1.
