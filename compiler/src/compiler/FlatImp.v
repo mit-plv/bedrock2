@@ -838,7 +838,7 @@ Section FlatImp2.
   Lemma modVarsSound: forall e s initialQ initialAEP initialK initialT initialSt initialM initialMc post,
       exec phase isReg e s initialQ initialAEP initialK initialT initialM initialSt initialMc post ->
       exec phase isReg e s initialQ initialAEP initialK initialT initialM initialSt initialMc
-        (fun finalQ finalAEP finalK finalT finalM finalSt finalMc => post finalQ finalAEP finalK finalT finalM finalSt finalMc /\ (finalQ = true -> map.only_differ initialSt (modVars s) finalSt)).
+        (fun finalQ finalAEP finalK finalT finalM finalSt finalMc => post finalQ finalAEP finalK finalT finalM finalSt finalMc /\ (finalQ = true -> initialQ = true /\ map.only_differ initialSt (modVars s) finalSt)).
   Proof.
     induction 1;
       try solve [ econstructor; [eassumption..|intuition auto; simpl; map_solver locals_ok] ].
@@ -847,7 +847,7 @@ Section FlatImp2.
       edestruct H2; try eassumption. simp.
       eexists; split; [eassumption|].
       simpl. try split; eauto.
-      intros.
+      intros. intuition.
       eapply map.only_differ_putmany. eassumption.
     - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
       intros; simpl in *; simp. apply H3 in H4. destruct q'.
@@ -872,26 +872,17 @@ Section FlatImp2.
         destruct (eval_bcond l' cond); try congruence. exists b. split; [reflexivity|]. split.
         -- intros. subst. intuition auto. map_solver locals_ok.
         -- intros. subst. eapply exec.weaken. 1: eapply H3; auto. simpl. intros.
-           fwd. Search mid2. apply H6 in Hp2. eapply exec.weaken. 1: eapply Hp2.
-           Search q'. simpl. intros. fwd. intuition auto. Search l'. map_solver locals_ok. maps. Search post.
-      + eassumption.
-      + intros. simp. eauto.
-      + intros. simp. simpl. intuition auto. map_solver locals_ok.
-      + intros. simp. simpl in *.
-        eapply exec.weaken.
-        * eapply H3; eassumption.
-        * simpl. intros. intuition auto. map_solver locals_ok.
-      + intros. simp. simpl in *. intuition. congruence.
-      + simpl. intros. fwd. eapply exec.weaken.
-        * eapply H5; eassumption.
-        * simpl. intros. Search l''. Search mid2. apply intuition auto. map_solver locals_ok.
+           fwd. apply H6 in Hp2. eapply exec.weaken. 1: eapply Hp2.
+           simpl. intros. fwd. intuition auto. map_solver locals_ok.
+      + intuition. congruence.
     - eapply exec.seq.
       + eassumption.
       + simpl; intros. simp.
         eapply exec.weaken; [eapply H1; eauto|].
         simpl; intros. intuition auto.
         map_solver locals_ok.
-    - eapply exec.exec_E. eassumption.
+    - apply exec.quit. intuition congruence.
+    - eapply exec.exec_E. eauto.
   Qed.
 
 End FlatImp2.
