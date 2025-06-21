@@ -450,13 +450,10 @@ Module exec.
         (forall aep' k' t' m' l' mc',
             mid1 false aep' k' t' m' l' mc' ->
             post false aep' k' t' m' l' mc') ->
-        (forall aep'' k'' t'' m'' l'' mc'',
-            mid2 true aep'' k'' t'' m'' l'' mc'' ->
-            exec (SLoop body1 cond body2) true aep'' k'' t'' m'' l''
+        (forall q'' aep'' k'' t'' m'' l'' mc'',
+            mid2 q'' aep'' k'' t'' m'' l'' mc'' ->
+            exec (SLoop body1 cond body2) q'' aep'' k'' t'' m'' l''
               (cost_SLoop_true cond mc'') post) ->
-        (forall aep'' k'' t'' m'' l'' mc'',
-            mid2 false aep'' k'' t'' m'' l'' mc'' ->
-            post false aep'' k'' t'' m'' l'' mc'') ->
         exec (SLoop body1 cond body2) true aep k t m l mc post
     | seq: forall aep k t m l mc s1 s2 mid post,
         exec s1 true aep k t m l mc mid ->
@@ -468,12 +465,12 @@ Module exec.
     | quit s q aep k t m l mc post
         (_ : post false aep k t m l mc)
       : exec s q aep k t m l mc post
-    | exec_A s q aep k t m l mc post
-        (_ : forall x, exec s q (aep x) k t m l mc post)
-      : exec s q (AEP_A aep) k t m l mc post
-    | exec_E s q aep k t m l mc post x
-        (_ : exec s q (aep x) k t m l mc post)
-      : exec s q (AEP_E aep) k t m l mc post.
+    | exec_A s aep k t m l mc post
+        (_ : forall x, exec s true (aep x) k t m l mc post)
+      : exec s true (AEP_A aep) k t m l mc post
+    | exec_E s aep k t m l mc post x
+        (_ : exec s true (aep x) k t m l mc post)
+      : exec s true (AEP_E aep) k t m l mc post.
 
     Lemma det_step {pick_sp: PickSp} : forall aep0 k0 t0 m0 l0 mc0 s1 s2 q1 aep1 k1 t1 m1 l1 mc1 post,
         exec s1 true aep0 k0 t0 m0 l0 mc0 (fun q1' aep1' k1' t1' m1' l1' mc1' => q1' = q1 /\ aep1' = aep1 /\ k1' = k1 /\ t1' = t1 /\ m1' = m1 /\ l1' = l1 /\ mc1 = mc1') ->
@@ -513,16 +510,16 @@ Module exec.
 
     Lemma loop_cps {pick_sp: PickSp} : forall body1 cond body2 aep k t m l mc post,
         exec body1 true aep k t m l mc
-          (fun q aep k t m l mc => exists b,
+          (fun q aep k t m l mc =>
+             if q then
+               exists b,
                eval_bcond l cond = Some b /\
-               if q then                             
                  (b = false -> post q aep (leak_bool false :: k) t m l (cost_SLoop_false cond mc)) /\
                    (b = true -> 
                     exec body2 q aep (leak_bool true :: k) t m l mc
                       (fun q aep k t m l mc =>
-                         if q then exec (SLoop body1 cond body2) q aep k t m l
-                                     (cost_SLoop_true cond mc) post
-                         else post q aep k t m l mc))
+                         exec (SLoop body1 cond body2) q aep k t m l
+                                     (cost_SLoop_true cond mc) post))
                else post q aep k t m l mc) ->
       exec (SLoop body1 cond body2) true aep k t m l mc post.
     Proof.
@@ -531,8 +528,8 @@ Module exec.
       - replace b with false in * by congruence. clear b. eauto. 
       - replace b with true in * by congruence. clear b. eauto.
       - assumption.
-      - simpl in *. assumption.
-      - simpl in *. assumption.
+      - simpl in *. destruct q''; [assumption|]. apply quit. inversion H0. subst.
+        assumption.
     Qed.
 
     Lemma weaken {pick_sp: PickSp} : forall s q aep k t m l mc post1,
@@ -689,20 +686,16 @@ Module exec.
         simpl. intros. fwd. intuition eauto. eexists. align_trace.
       - eapply if_false; intuition eauto. eapply weaken. 1: eapply IHexec.
         simpl. intros. fwd. intuition eauto. eexists. align_trace.
-      - clear H2 H5. apply loop_cps. eapply weaken. 1: exact IHexec.
-        simpl. intros. fwd. destruct q'.
-
-        repeat match goal with | H: _ |- _ => specialize H with (1 := H2p0); move H at bottom end. apply H2p0 in 
-        + simpl. intros. fwd. intuition eauto.
-        + simpl. intros. fwd. intuition eauto. eexists. align_trace.
-        + simpl. intros. fwd. eapply H3; eauto. fwd; eauto.
-        { eexists. align_trace. }
-        { eapply weaken. 1: eapply H3; eauto. simpl. intros. fwd. Search post. auto.
-          instantiate (1 := fun q'0 aep'0 k'0 t'0 m'0 l'0 mc'0 =>
-                              mid2 q'0 aep'0 k'0 t'0 m'0 l'0 mc'0 /\ exists k'', k'0 = k'' ++ k).
-          simpl. intuition. eexists. align_trace. }
-        simpl in *. fwd. eapply weaken. 1: eapply H6; eauto.
-        simpl. intros. fwd. intuition. eexists. align_trace.
+      - clear H2 H5. eapply loop_cps. eapply weaken. 1: exact IHexec. simpl. intros. fwd.
+        destruct q'.
+        + specialize H0 with (1 := H2p0). specialize H1 with (1 := H2p0).
+          specialize H3 with (1 := H2p0). destruct (eval_bcond l' cond); [|congruence].
+          exists b. intuition; subst; auto.
+          -- eexists. align_trace.
+          -- eapply weaken. 1: eapply H3; auto. simpl. intros. fwd.
+             eapply weaken. 1: eapply H6; eauto. simpl. intros. fwd. intuition.
+             eexists. align_trace.
+        + intuition. eexists. align_trace.
       - econstructor; intuition eauto. fwd. eapply weaken. 1: eapply H1; eauto.
         simpl. intros. fwd. intuition eauto. eexists. align_trace.
     Qed.
