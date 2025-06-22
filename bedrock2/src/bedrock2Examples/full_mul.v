@@ -2,7 +2,7 @@
 
 Require Import bedrock2.NotationsCustomEntry.
 Require Import coqutil.Macros.ident_to_string.
-From bedrock2 Require Import WeakestPrecondition ProgramLogic BasicC64Semantics.
+From bedrock2 Require Import WeakestPrecondition ProgramLogic BasicC64Semantics wsize.
 Require Import bedrock2.ZnWords.
 From Coq Require Import Lia ZArith.
 
@@ -12,9 +12,6 @@ Import coqutil.Word.Interface coqutil.Word.Properties.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
 Local Open Scope list_scope.
-
-Local Definition wmask : expr.expr := bedrock_expr:((-$1>>$27)&$63).
-Local Definition wsize : expr.expr := bedrock_expr:($wmask+$1).
 
 (* Return the high word of the integer multiplication a * b. *)
 Definition full_mul :=
