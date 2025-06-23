@@ -169,7 +169,7 @@ Module exec. Section WithParams.
             exists retvs, map.getmany_of_list st1 rets = Some retvs /\
                        exists l', map.putmany_of_list_zip binds retvs l = Some l' /\
                                post true aep' k'' t' m' l'  (cost_call PreSpill mc'')
-          else post q' aep' k'' t' m' st1 mc'')
+          else post q' aep' k'' t' m' st1 (cost_call PreSpill mc''))
     : exec (cmd.call binds fname arges) true aep k t m l mc post
   | interact binds action arges
       aep k t m l mc post

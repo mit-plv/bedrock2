@@ -378,7 +378,7 @@ Module exec.
                 map.getmany_of_list st1 rets = Some retvs /\
                   map.putmany_of_list_zip binds retvs l = Some l' /\
                   post q' aep' k' t' m' l' (cost_call phase mc')
-            else post q' aep' k' t' m' st1 mc') ->
+            else post q' aep' k' t' m' st1 (cost_call phase mc')) ->
         exec (SCall binds fname args) true aep k t m l mc post
     | load: forall aep k t m l mc sz x a o v addr post,
         map.get l a = Some addr ->
@@ -410,7 +410,7 @@ Module exec.
                 anybytes a n mStack' /\
                 map.split mCombined' mSmall' mStack' /\
                   post q' aep' k' t' mSmall' l' (cost_stackalloc isReg x mc')
-              else post q' aep' k' t' mCombined' l' mc')) ->
+              else post q' aep' k' t' mCombined' l' (cost_stackalloc isReg x mc'))) ->
         exec (SStackalloc x n body) true aep k t mSmall l mc post
     | lit: forall aep k t m l mc x v post,
         post true aep k t m (map.put l x (word.of_Z v)) (cost_lit isReg x mc) ->
@@ -502,7 +502,7 @@ Module exec.
                   map.getmany_of_list st' rets = Some retvs /\
                     map.putmany_of_list_zip binds retvs l = Some l' /\
                     post q' aep' k' t' m' l' (cost_call phase mc')
-             else post q' aep' k' t' m' st' mc') ->
+             else post q' aep' k' t' m' st' (cost_call phase mc')) ->
       exec (SCall binds fname args) true aep k t m l mc post.
     Proof.
       intros. eapply call; try eassumption.
