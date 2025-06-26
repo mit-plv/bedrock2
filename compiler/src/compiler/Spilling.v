@@ -443,32 +443,27 @@ Section Spilling.
   Proof. intros. subst. reflexivity. Qed.
   Lemma if_f T (x y : T) b : b = false -> (if b then x else y) = y.
   Proof. intros. subst. reflexivity. Qed.
-  Check stmt_leakage. Print tuple.
+
   Lemma nil_does_something {env: map.map String.string (list Z * list Z * stmt)} e pick_sp s :    
     forall kL w,
-    forall f g, exists extra,
-      (forall b, f nil b = b ++ g b) ->
+    forall f, exists extra,
+      (forall b, f nil b = b ++ skipn (length b) (f nil b)) ->
       stmt_leakage e pick_sp (s, nil, kL, w, f) = kL ++ extra.
   Proof.
-    induction s; intros; rewrite sfix_step; simpl; try solve [eexists; intros H; repeat rewrite H; repeat rewrite <- app_assoc; simpl; try reflexivity; auto; try solve [simpl; rewrite app_nil_r; auto]].
+    induction s; intros; rewrite sfix_step; simpl; try (eexists; intros H; rewrite app_nil_r; reflexivity).
+    all: try (eexists; intros H; rewrite H; rewrite <- app_assoc; reflexivity).
     - eexists (match op with | Syntax.bopname.divu => _ | _ => _ end). simpl. intros H.
       destruct op; try rewrite H; repeat rewrite <- app_assoc; auto.
       all: rewrite app_nil_r; reflexivity.
     - edestruct IHs1. eexists. intros H'. rewrite H; [eauto|]. simpl. cbv [Let_In_pf_nd].
       apply H'.
-    - edestruct IHs2. edestruct IHs1. eexists. intros H'. rewrite H0; [eauto|]. simpl.
-      clear H0 IHs2. intros. rewrite H. 2: apply H'. reflexivity. replace (stmt_leakage _ _ _) with ?x by apply H0. rewrite H0. reflexivity. apply H'. - assert (forall kL f w, exists extra (b : bool), stmt_leakage e pick_sp (s1, [], kL, w, f) = if b then kL ++ extra else f [] (kL ++ extra)).
-      { intros. specialize (IHs1 kL0 f0 w0). destruct IHs1. exists x. destruct H.
-        - exists true. assumption.
-        - exists false. assumption. }
-      edestruct H. edestruct H0. simpl. rewrite H1. clear H1.
-      assert (forall kL f w, exists extra (b : bool), stmt_leakage e pick_sp (s2, [], kL, w, f) = if b then kL ++ extra else f [] (kL ++ extra)).
-      { intros. specialize (IHs2 kL0 f0 w0). destruct IHs2. exists x1. destruct H1.
-        - exists true. assumption.
-        - exists false. assumption. }
-      edestruct H1. edestruct H2. simpl. rewrite H3. clear H3. 
-      eexists (if x0 then _ else _). destruct x0; auto.
-      destruct x2; rewrite <- app_assoc; auto.
+    - edestruct IHs1. eexists. intros H'. rewrite H; [eauto|]. simpl.
+      clear H IHs1. intros. edestruct IHs2.
+      simpl. rewrite H. 2: eassumption.
+      assert (stmt_leakage e pick_sp (s2, [], b, w, fun skip' : list leakage_event => f skip') = b ++ x0).
+      { apply H. assumption. }
+      rewrite List.skipn_app_r by reflexivity. reflexivity.
+    - eexists. intros H. apply H.
   Qed.
     
   Definition max_var_bcond(c: bcond Z): Z :=
@@ -1622,8 +1617,8 @@ Section Spilling.
                        forall k f,
                          stmt_leakage e1 pick_sp2 (s1, rev k1'' ++ k, rev k2, fpval, f) = f (rev k1'') (rev k2')
                      else
-                       forall f g, exists extra,
-                         (forall b, f (rev k1'') b = b ++ g k1'' b) ->
+                       forall f, exists extra,
+                         (forall b, f (rev k1'') b = b ++ skipn (length b) (f (rev k1'') b)) ->
                          stmt_leakage e1 pick_sp2 (s1, rev k1'', rev k2, fpval, f) = rev k2' ++ extra).
 
   (* TODO tighter / non-fixed bound *)
@@ -1802,7 +1797,7 @@ Section Spilling.
          cbv [fun_leakage]. subst.
          rewrite rev_app_distr, rev_involutive in *. simpl in *.
          rewrite <- app_assoc in CT. simpl in *. edestruct CT. rewrite H; eauto.
-         reflexivity. }
+         intros. rewrite List.skipn_app_r by reflexivity. reflexivity. }
     specialize (same eq_refl). fwd.
     eapply set_reg_range_to_vars_correct.
     { eassumption. }
@@ -2100,7 +2095,8 @@ Section Spilling.
            intros. edestruct CT as [? CT']. eexists. 
            intros. rewrite sfix_step. simpl. simpl_rev. rewrite H.
            repeat rewrite <- app_assoc in *. simpl in *. 
-           rewrite CT'; eauto. intros. rewrite H3. rewrite <- app_assoc. instantiate (1 := fun _ _ => _). reflexivity. }
+           rewrite CT'; eauto. intros. rewrite H3. rewrite <- app_assoc.
+           rewrite List.skipn_app_r by reflexivity. reflexivity. }
       specialize (same eq_refl). fwd.
       rename l' into lCH8.
       eapply set_reg_range_to_vars_correct.
@@ -2253,7 +2249,7 @@ Section Spilling.
            split; [eassumption|]. split; [irs|]. split; [align_trace|].
            intros. edestruct H8p5 as [? CT']. eexists.
            intros. rewrite sfix_step. simpl. simpl_rev. repeat rewrite <- app_assoc in *.
-           simpl in CT'. apply CT'; eauto. intros. rewrite H8. instantiate (1 := fun _ _ => _). reflexivity. }
+           simpl in CT'. apply CT'; eauto. } 
       edestruct shrink_related_mem as (mSmall2 & ? & ?). 1,2: eassumption.
       repeat match goal with
              | |- exists _, _ => eexists
@@ -2310,8 +2306,7 @@ Section Spilling.
                 repeat rewrite <- app_assoc in *. rewrite H5p5. reflexivity.
              ++ intros. edestruct H5p5 as [? CT']. eexists. intros. rewrite sfix_step.
                 simpl. simpl_rev. repeat rewrite <- app_assoc in *. apply CT'.
-                intros. rewrite H5. instantiate (1 := fun _ _ => _). reflexivity.
-      + eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
+                intros. rewrite H5. rewrite List.skipn_app_r by reflexivity. reflexivity.     + eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
         eapply exec.if_true. {
           cbn. rewrite map.get_put_same. rewrite word.eqb_ne by assumption. reflexivity.
         }
@@ -2328,7 +2323,7 @@ Section Spilling.
                 repeat rewrite <- app_assoc in *. rewrite H4p5. reflexivity.
              ++ intros. edestruct H4p5 as [? CT']. eexists. intros. rewrite sfix_step.
                 simpl. simpl_rev. repeat rewrite <- app_assoc in *. apply CT'.
-                intros. instantiate (1 := fun _ _ => _). apply H4.
+                intros. apply H4.
              
     - (* exec.if_false *)
       unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; fwd.
@@ -2350,7 +2345,7 @@ Section Spilling.
              ++ intros. rewrite sfix_step. simpl. simpl_rev.
                 repeat rewrite <- app_assoc in *. rewrite H5p5. reflexivity.
              ++ intros. edestruct H5p5 as [? CT']. eexists. intros. rewrite sfix_step.
-                simpl. simpl_rev. repeat rewrite <- app_assoc in *. apply CT'. intros. instantiate (1 := fun _ _ => _). apply H5.
+                simpl. simpl_rev. repeat rewrite <- app_assoc in *. apply CT'. assumption.
       + eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
         eapply exec.if_false. {
           cbn. rewrite map.get_put_same. rewrite word.eqb_eq; reflexivity.
@@ -2367,8 +2362,7 @@ Section Spilling.
              ++ intros. rewrite sfix_step. simpl. simpl_rev.
                 repeat rewrite <- app_assoc in *. rewrite H1p7. reflexivity.
              ++ intros. edestruct H1p7 as [extra CT']. exists extra. intros. rewrite sfix_step.
-                simpl. simpl_rev. repeat rewrite <- app_assoc in *. apply CT'. intros. instantiate (1 := fun _ _ => _). apply H1.
-             
+                simpl. simpl_rev. repeat rewrite <- app_assoc in *. apply CT'. assumption.           
     - (* exec.loop *)
       rename IHexec into IH1, H3 into IH2, H6 into IH12.
       eapply exec.loop_cps.
@@ -2415,12 +2409,16 @@ Section Spilling.
                   { move H5 at bottom. specialize H5 with (1 := H6p2).
                     inversion H5. subst. eassumption. }
                   split; [sirs|]. split; [solve[align_trace]|]. fwd.
-                  intros. edestruct H6p5. eexists. intros. rewrite sfix_step. simpl. simpl_rev. 
+                  intros.
+                  rewrite sfix_step. simpl. simpl_rev. 
                   rewrite <- app_assoc. simpl. rewrite H3p5.
                   rewrite List.skipn_app_r by reflexivity. cbv [Let_In_pf_nd].
-                  repeat rewrite <- app_assoc in *. rewrite H6; eauto.
-                  instantiate (1 := fun _ _ => _). intros. rewrite List.skipn_all_exact.
-                  Search stmt_leakage. apply nil_does_something. reflexivity. }
+                  repeat rewrite <- app_assoc in *. edestruct H6p5. eexists.
+                  intros.
+                  rewrite H6. 1: eauto. intros. rewrite List.skipn_all_exact.
+                  edestruct nil_does_something. rewrite H10.
+                  { rewrite List.skipn_app_r by reflexivity; reflexivity. }
+                  Search f0. intros. rewrite app_nil_r. apply H7. }
              specialize (H6p0 eq_refl). fwd.
              eapply exec.weaken.
              ++ eapply IH12 with (f := fun _ => _); try eassumption.
@@ -2440,16 +2438,19 @@ Section Spilling.
                         rewrite List.skipn_app_r by reflexivity. cbv [Let_In_pf_nd].
                         simpl. rewrite H6p5. rewrite List.skipn_app_r by reflexivity.
                         rewrite H6p9. reflexivity.
-                    +++ fwd. exists extra. intros. rewrite sfix_step. simpl. simpl_rev.
+                    +++ intros. edestruct H6p9. eexists. intros.
+                        rewrite sfix_step. simpl. simpl_rev.
                         repeat rewrite <- app_assoc in *. rewrite H3p5.
                         rewrite List.skipn_app_r by reflexivity. cbv [Let_In_pf_nd].
                         simpl. rewrite H6p5. rewrite List.skipn_app_r by reflexivity.
-                        rewrite H6p9. reflexivity.
+                        rewrite H6. 1: reflexivity. assumption.
       + destruct q'; fwd.
         2: { apply exec.quit. do 9 eexists. split; [intros H'; discriminate H'|].
              split; [eassumption|]. split; [solve[eauto]|]. split; [assumption|].
-             split; [reflexivity|]. exists extra. intros. rewrite sfix_step. simpl.
-             rewrite H3p5. reflexivity. }
+             split; [reflexivity|]. intros. edestruct H3p5. eexists. intros.
+             rewrite sfix_step. simpl.
+             rewrite H3. 1: reflexivity. rewrite List.skipn_all_exact.
+             cbv [Let_In_pf_nd]. assumption. }
         specialize H0 with (1 := H3p2). cbn in H0. fwd.
         eapply exec.weaken. {
           eapply load_iarg_reg_correct''; (blia || eassumption || idtac).
@@ -2477,10 +2478,13 @@ Section Spilling.
                   split; [eassumption|].
                   move H5 at bottom. specialize H5 with (1 := H6p2). inversion H5. subst.
                   split; [eassumption|]. split; [solve[sirs]|]. split; [align_trace|].
-                  exists extra. intros. rewrite sfix_step. simpl. simpl_rev.
+                  intros. edestruct H6p5. eexists. intros. rewrite sfix_step. simpl. simpl_rev.
                   repeat rewrite <- app_assoc in *. rewrite H3p5.
                   rewrite List.skipn_app_r by reflexivity. cbv [Let_In_pf_nd]. simpl.
-                  apply H6p5. }
+                  apply H7. intros. rewrite List.skipn_all_exact.
+                  edestruct nil_does_something. rewrite H11.
+                  - rewrite List.skipn_app_r by reflexivity. reflexivity.
+                  - rewrite app_nil_r. assumption. }
              specialize (H6p0 eq_refl). fwd.
              eapply exec.weaken.
              ++ eapply IH12 with (f := fun _ => _); try eassumption.
@@ -2500,11 +2504,12 @@ Section Spilling.
                         rewrite List.skipn_app_r by reflexivity. cbv [Let_In_pf_nd].
                         simpl. rewrite H6p5. rewrite List.skipn_app_r by reflexivity.
                         rewrite H6p9. reflexivity.
-                    +++ fwd. exists extra. intros. rewrite sfix_step. simpl. simpl_rev.
+                    +++ intros. edestruct H6p9. eexists. intros.
+                        rewrite sfix_step. simpl. simpl_rev.
                         repeat rewrite <- app_assoc in *. rewrite H3p5.
                         rewrite List.skipn_app_r by reflexivity. cbv [Let_In_pf_nd].
                         simpl. rewrite H6p5. rewrite List.skipn_app_r by reflexivity.
-                        rewrite H6p9. reflexivity.
+                        rewrite H6. 1: reflexivity. apply H7.
     - (* exec.seq *)
       cbn in *. fwd.
       rename H1 into IH2, IHexec into IH1.
@@ -2515,7 +2520,10 @@ Section Spilling.
         2: { apply exec.quit. do 9 eexists. split; [intros H'; discriminate H'|].
              intuition eauto.
              { apply H0 in H1p2. inversion H1p2. subst. eassumption. }
-             exists extra. intros. rewrite sfix_step. simpl. apply H1p5. }
+             edestruct H1p5. eexists. intros. rewrite sfix_step. simpl. apply H1.
+             intros. rewrite List.skipn_all_exact. edestruct nil_does_something.
+             rewrite H5. 1: rewrite List.skipn_app_r by reflexivity; reflexivity.
+             rewrite app_nil_r. assumption. }
         specialize (H1p0 eq_refl). fwd.
         eapply exec.weaken.
         * eapply IH2; try eassumption. intros. rewrite app_assoc. rewrite H4.
@@ -2529,9 +2537,9 @@ Section Spilling.
              ++ intros. rewrite sfix_step. simpl. simpl_rev.
                 repeat rewrite <- app_assoc in *. rewrite H1p5.
                 rewrite List.skipn_app_r by reflexivity. rewrite H1p9. reflexivity.
-             ++ fwd. exists extra. intros. rewrite sfix_step. simpl. simpl_rev.
+             ++ intros. edestruct H1p9. eexists. intros. rewrite sfix_step. simpl. simpl_rev.
                 repeat rewrite <- app_assoc in *. rewrite H1p5.
-                rewrite List.skipn_app_r by reflexivity. rewrite H1p9. reflexivity.
+                rewrite List.skipn_app_r by reflexivity. apply H1. assumption.
     - (* exec.skip *)
       eapply exec.skip. eexists _, _, _, _, t, m, l, mc, _. ssplit; try eassumption.
       + auto.
@@ -2542,6 +2550,8 @@ Section Spilling.
       + irs.
       + align_trace.
       + simpl. Search stmt_leakage. apply nil_does_something.
+    - apply exec.exec_A. intros. eapply H0; eauto.
+    - eapply exec.exec_E. intros. eapply IHexec; eauto.
   Qed.
 
   Lemma spill_fun_correct: forall e1 e2 pick_sp2 argnames1 retnames1 body1 argnames2 retnames2 body2,
