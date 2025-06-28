@@ -219,9 +219,8 @@ Section Proofs.
     apply runsToDone;
     simpl_MetricRiscvMachine_get_set;
     simpl in *;
-    repeat match goal with
-           | |- exists _, _ => eexists
-           end; ssplit; simpl_word_exprs word_ok;
+    do 7 eexists; split; [solve [eauto]|]; simpl;
+    ssplit; simpl_word_exprs word_ok;
     match goal with
     | |- _ => solve_word_eq word_ok
     | |- (_ <= _)%metricsL =>
@@ -471,7 +470,10 @@ Section Proofs.
     Platform.MetricLogging.addMetricInstructions 95
     (Platform.MetricLogging.addMetricJumps 95
     (Platform.MetricLogging.addMetricLoads 95
-    (Platform.MetricLogging.addMetricStores 95 mc))).
+       (Platform.MetricLogging.addMetricStores 95 mc))).
+
+  Ltac rewr_picksp := match goal with | H: forall (k : list leakage_event), _ (k ++ _) = _ |- _ => rewrite H end.
+  Ltac rewr_leakage := match goal with | H : forall _ _, stmt_leakage _ _ _ _ _ _ _ = _ |- _ => rewrite H end. 
 
   Lemma compile_function_body_correct: forall (e_impl_full : env) m l (mc : MetricLog) (argvs : list word)
     (st0 : locals) (post outcome : bool -> AEP -> leakage -> Semantics.trace -> mem -> locals -> MetricLog -> Prop)
@@ -504,11 +506,12 @@ Section Proofs.
               (exists kH'' finalKL,
                   finalK = kH'' ++ kH /\
                     finalL.(getTrace) = Some finalKL /\
-                    forall k cont,
+                    if finalQ then
+                      forall k cont,
                       stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
-                        (body, rev kH'' ++ k, rev initialKL0, pos0, g0.(p_sp), (bytes_per_word * rem_framewords g0)%Z, cont) = cont (rev kH'') (rev finalKL)) /\
-              goodMachine finalTrace finalMH finalRegsH g0 finalL))
-    (HOutcome: forall q' aep' kH' t' m' mc' (st1 : locals),
+                        (body, rev kH'' ++ k, rev initialKL0, pos0, g0.(p_sp), (bytes_per_word * rem_framewords g0)%Z, cont) = cont (rev kH'') (rev finalKL) else True) /\
+              (if finalQ then goodMachine finalTrace finalMH finalRegsH g0 finalL else finalL.(getLog) = finalTrace)))
+    (HOutcome: forall q' aep' kH' t' m' (st1 : locals) mc',
         outcome q' aep' kH' t' m' st1 mc' ->
         if q' then
           exists (retvs : list word) (l' : locals),
@@ -880,7 +883,7 @@ Section Proofs.
       (* cost_compile_spec constraint: cost_compile_spec >= (...93...) i think? *)
       blia.
          - eauto.
-         - reflexivity. }
+         - assumption. }
     destruct OC as (retvs & finalRegsH' & ? & ? & ?). fwd.
 
     (* load back the modified vars *)
@@ -1236,7 +1239,7 @@ Section Proofs.
       split; [reflexivity|]. intros. cbv [fun_leakage fun_leakage_helper].
       simpl_rev. rewrite BPW in *. repeat rewrite <- app_assoc in *. cbn [List.app] in *.
       remember (p_sp - _) as new_sp. eassert (Esp: new_sp = _).
-      2: { rewrite Esp in *. rewrite H2p6p2. f_equal. repeat f_equal.
+      2: { rewrite Esp in *. rewr_leakage. f_equal. repeat f_equal.
            cbv [leakage_events_rel]. rewrite leakage_events_app.
            2: { rewrite length_load_regs, length_leak_load_regs. reflexivity. }
            rewrite length_load_regs. simpl. repeat solve_word_eq word_ok || f_equal. }
@@ -1709,44 +1712,87 @@ Section Proofs.
         congruence.
       }
       subst args.
-      let T := type of IHexec in let T' := open_constr:(
-        (forall (g : GhostConsts) (e_impl : env) (e_pos : pos_map)
-             (program_base : word) (insts : list Instruction) (xframe : mem -> Prop)
-             (initialL : RiscvMachineL) (pos : Z) initialKL cont,
-           map.extends e_impl_full e_impl ->
-           good_e_impl e_impl e_pos ->
-           fits_stack (rem_framewords g) (rem_stackwords g) e_impl body ->
-           compile_stmt iset compile_ext_call e_pos pos (bytes_per_word * rem_framewords g) body =
-           insts ->
-           FlatImpConstraints.uses_standard_arg_regs body ->
-           valid_FlatImp_vars body ->
-           pos mod 4 = 0 ->
-           word.unsigned program_base mod 4 = 0 ->
-           getPc initialL = program_base + !pos ->
-           getTrace initialL = Some initialKL ->
-           iff1 (FlatToRiscvCommon.allx g)
-             ((xframe * program iset (program_base + !pos) insts)%sep *
-              functions program_base e_pos e_impl) ->
-           goodMachine mid_log m st0 g initialL ->
-           (forall k0 : list leakage_event,
-               pick_sp1 (k0 ++ leak_unit :: k) =
-                 snd
-                   (stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
-                      (body, rev k0, rev initialKL, pos, FlatToRiscvCommon.p_sp g,
-                        (bytes_per_word * rem_framewords g)%Z, cont k0))) ->
-           runsTo initialL
-             (fun finalL : RiscvMachineL =>
-              exists
-                finalK (finalTrace : Semantics.trace) (finalMH : mem) (finalRegsH : locals)
-              (finalMetricsH : MetricLog),
-                outcome finalK finalTrace finalMH finalRegsH finalMetricsH /\
-                getPc finalL = getPc initialL + !(4 * #(Datatypes.length insts)) /\
-                map.only_differ (getRegs initialL)
-                  (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
-                  (getRegs finalL) /\
-                  _ /\ _ /\
-                goodMachine finalTrace finalMH finalRegsH g finalL))
-        ) in replace T with T' in IHexec.
+      let T := type of IHexec in
+      let T' :=
+        open_constr:(
+                       forall (g : GhostConsts) (e_impl : env) (e_pos : pos_map) 
+      (program_base : word) (insts : list Instruction) (xframe : mem -> Prop)
+      (initialL : RiscvMachineL) (pos : Z) (initialKL : list LeakageEvent)
+      (cont : list leakage_event ->
+              leakage -> list LeakageEvent -> list LeakageEvent * word),
+    map.extends e_impl_full e_impl ->
+    (forall (f : string) (fun_impl : list Z * list Z * stmt Z),
+     map.get e_impl f = Some fun_impl ->
+     (let
+      '(argnames, retnames, body) := fun_impl in
+       argnames = List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg) /\
+       retnames = List.firstn (Datatypes.length retnames) (reg_class.all reg_class.arg) /\
+       valid_FlatImp_vars body /\ FlatImpConstraints.uses_standard_arg_regs body) /\
+     (let
+      '(_, _, _) := fun_impl in
+       exists pos0 : Z, map.get e_pos f = Some pos0 /\ pos0 mod 4 = 0)) ->
+    fits_stack (rem_framewords g) (rem_stackwords g) e_impl body ->
+    compile_stmt iset compile_ext_call e_pos pos (bytes_per_word * rem_framewords g)
+      body = insts ->
+    FlatImpConstraints.uses_standard_arg_regs body ->
+    valid_FlatImp_vars body ->
+    pos mod 4 = 0 ->
+    word.unsigned program_base mod 4 = 0 ->
+    getPc initialL = program_base + !pos ->
+    getTrace initialL = Some initialKL ->
+    iff1 (FlatToRiscvCommon.allx g)
+      ((xframe * program iset (program_base + !pos) insts)%sep *
+       functions program_base e_pos e_impl) ->
+    map.extends (getRegs initialL) st0 /\
+    map.forall_keys valid_FlatImp_var st0 /\
+    map.get (getRegs initialL) RegisterNames.sp = Some (FlatToRiscvCommon.p_sp g) /\
+    regs_initialized (getRegs initialL) /\
+    getNextPc initialL = getPc initialL + !4 /\
+    subset (footpr (FlatToRiscvCommon.allx g)) (of_list (getXAddrs initialL)) /\
+    (exists stack_trash frame_trash : list word,
+       #(Datatypes.length stack_trash) = rem_stackwords g /\
+       #(Datatypes.length frame_trash) = rem_framewords g /\
+       (FlatToRiscvCommon.allx g * FlatToRiscvCommon.dframe g * eq m *
+        word_array (FlatToRiscvCommon.p_sp g - !(bytes_per_word * rem_stackwords g))
+          stack_trash * word_array (FlatToRiscvCommon.p_sp g) frame_trash)%sep
+         (getMem initialL)) /\ getLog initialL = mid_log /\ valid_machine initialL ->
+    (forall k0 : list leakage_event,
+     pick_sp1 (k0 ++ leak_unit :: k) =
+     snd
+       (stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
+          (body, rev k0, rev initialKL, pos, FlatToRiscvCommon.p_sp g,
+           (bytes_per_word * rem_framewords g)%Z, cont k0))) ->
+    runsTo initialL
+      (fun finalL : RiscvMachineL =>
+       exists
+         (finalQ : bool) (finalAEP : AEP) (finalK : leakage) 
+       (finalTrace : Semantics.trace) (finalMH : mem) (finalRegsH : locals) 
+       (finalMetricsH : MetricLog),
+         outcome finalQ finalAEP finalK finalTrace finalMH finalRegsH finalMetricsH /\
+         (if finalQ
+          then
+           getPc finalL = getPc initialL + !(4 * #(Datatypes.length insts)) /\
+           map.only_differ (getRegs initialL)
+             (union (of_list (modVars_as_list Z.eqb body))
+                (singleton_set RegisterNames.ra)) (getRegs finalL)
+          else True) /\
+         (getMetrics finalL - getMetrics initialL <= lowerMetrics (finalMetricsH - mc))%metricsL /\
+         (exists (kH'' : list leakage_event) (finalKL : list LeakageEvent),
+            finalK = kH'' ++ leak_unit :: k /\
+            getTrace finalL = Some finalKL /\
+            (if finalQ
+             then
+              forall (k : list leakage_event)
+                (cont0 : leakage -> list LeakageEvent -> list LeakageEvent * word),
+              stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full
+                program_base
+                (body, rev kH'' ++ k, rev initialKL, pos, FlatToRiscvCommon.p_sp g,
+                 (bytes_per_word * rem_framewords g)%Z, cont0) =
+              cont0 (rev kH'') (rev finalKL)
+             else True)) /\
+         (if finalQ
+          then goodMachine finalTrace finalMH finalRegsH g finalL
+          else getLog finalL = finalTrace))) in replace T with T' in IHexec.
       2: {
         subst. reflexivity.
       }
@@ -1789,9 +1835,9 @@ Section Proofs.
               repeat match goal with
                      | x := _ |- _ => clearbody x
                      end.
-              eapply compile_function_body_correct; try eassumption.
+              eapply compile_function_body_correct; try eassumption. Check OC.
               1: eapply OC.
-              intros. rewrite associate_one_left. rewrite H16.
+              intros. rewrite associate_one_left. rewr_picksp.
               cbv [fun_leakage]. rewrite fix_step. simpl_rev. cbn [stmt_leakage_body].
               rewrite H. rewrite GetPos. repeat rewrite <- app_assoc. f_equal.
               subst g. cbv [FlatToRiscvCommon.p_sp]. rewrite Heqret_addr.
@@ -1799,22 +1845,25 @@ Section Proofs.
               instantiate (1 := fun k0 a b => cont (k0 ++ [leak_unit]) (leak_unit :: a) b).
               repeat rewrite <- app_assoc. reflexivity. }
       subst mach. simpl_MetricRiscvMachine_get_set.
-      intros. fwd. do 5 eexists.
+      intros. fwd. do 7 eexists.
       split; [ eapply H0p0 | ].
-      split; eauto 8 with map_hints.
-      split; eauto 8 with map_hints.
-      split.
-      { (* cost_compile_spec constraint: cost_compile_spec + (1,1,1,0) <= cost_call *)
-        unfold cost_compile_spec, cost_call in *.
-        MetricsToRiscv.solve_MetricLog. }
-      split; [|eassumption]. 
-      do 2 eexists. split; [align_trace|]. split; [eassumption|].
-      intros. simpl_rev. erewrite <- (H0p4p2 _ (fun x => cont0 (leak_unit :: x))).
-      rewrite fix_step. cbv [stmt_leakage_body fun_leakage]. rewrite H. rewrite GetPos.
-      repeat rewrite <- app_assoc. f_equal. subst g. cbv [FlatToRiscvCommon.p_sp].
-      rewrite Heqret_addr. repeat Tactics.destruct_one_match.
-      repeat rewrite <- app_assoc. reflexivity.
-
+      destruct finalQ; fwd.
+      + split; eauto 8 with map_hints.
+        split.
+        { (* cost_compile_spec constraint: cost_compile_spec + (1,1,1,0) <= cost_call *)
+          unfold cost_compile_spec, cost_call in *.
+          MetricsToRiscv.solve_MetricLog. }
+        split; [|eassumption]. 
+        do 2 eexists. split; [align_trace|]. split; [eassumption|].
+        intros. simpl_rev. erewrite <- (H0p3p2 _ (fun x => cont0 (leak_unit :: x))).
+        rewrite fix_step. cbv [stmt_leakage_body fun_leakage]. rewrite H. rewrite GetPos.
+        repeat rewrite <- app_assoc. f_equal. subst g. cbv [FlatToRiscvCommon.p_sp].
+        rewrite Heqret_addr. repeat Tactics.destruct_one_match.
+        repeat rewrite <- app_assoc. reflexivity.
+      + intuition.
+        { unfold cost_compile_spec, cost_call in *.
+          MetricsToRiscv.solve_MetricLog. }
+        do 2 eexists. split; [align_trace|]. split; [eassumption|]. reflexivity.
     - idtac "Case compile_stmt_correct/SLoad".
       progress unfold Memory.load, Memory.load_Z in *. fwd.
 
@@ -1979,7 +2028,7 @@ Section Proofs.
           wcancel_assumption. }
         { reflexivity. }
         { assumption. }
-        { intros. rewrite associate_one_left. rewrite H14.
+        { intros. rewrite associate_one_left. rewr_picksp.
           simpl_rev. rewrite fix_step. simpl. simpl_addrs.
           instantiate (2 := rev _). rewrite rev_involutive. reflexivity. }
         { match goal with
@@ -2015,7 +2064,10 @@ Section Proofs.
         { eauto with map_hints. }
         { eauto with map_hints. }
       + intros. destruct_RiscvMachine middle. fwd.
-        clear B48. rewrite BPW in *. clear BPW. simpl_addrs. run1done.
+        clear B48. rewrite BPW in *. clear BPW. simpl_addrs. destruct finalQ; fwd.
+        2: { run1done. do 2 eexists. ssplit; [align_trace|reflexivity|reflexivity]. }
+             
+        run1done.
         * rewrite ?of_list_list_union in *.
           repeat match goal with
                  | H: (_ * _)%sep _ |- _ => clear H
@@ -2041,8 +2093,8 @@ Section Proofs.
             - simpl. reflexivity.
           }
           eauto with map_hints.
-        * simpl_rev. cbv [leakage_events_rel leakage_events] in H7p6p2. simpl_addrs.
-          rewrite H7p6p2. reflexivity.
+        * simpl_rev. cbv [leakage_events_rel leakage_events] in H7p5p2. simpl_addrs.
+          rewr_leakage. reflexivity.
         * edestruct hl_mem_to_ll_mem with (mL := middle_mem) (mTraded := mStack')
             as (returned_bytes & L & Q).
           1, 2: eassumption.
@@ -2060,7 +2112,12 @@ Section Proofs.
 
     - idtac "Case compile_stmt_correct/SLit".
       inline_iff1.
-      get_runsTo_valid_for_free.
+      Fail get_runsTo_valid_for_free. (* TODO fix this, instead of the thing below *)
+      let R := fresh "R" in
+      evar ( R : RiscvMachineL -> Prop ); eapply runsTo_get_sane with (P := R);
+      [ assumption |  | ]; subst R.
+      2: { intros ? ? V. instantiate (1 := fun mach' => valid_machine mach' -> _).
+           simpl. intros H'. apply H'. assumption. }
       eapply compile_lit_correct_full.
       + sidecondition.
       + safe_sidecond.
@@ -2173,12 +2230,15 @@ Section Proofs.
         * (* jump over else-branch *)
           simpl. intros. destruct_RiscvMachine middle.
           fwd. subst.
+          destruct finalQ; fwd.
+          2: { run1done. 1: finishcost. do 2 eexists.
+               ssplit; [align_trace|reflexivity|reflexivity]. }
           eapply runsToStep.
           { eapply run_Jal0; try safe_sidecond. solve_divisibleBy4. }
           simpl_MetricRiscvMachine_get_set.
 
           intros. destruct_RiscvMachine mid. fwd. run1done. 1: finishcost.
-          intros. simpl. repeat rewrite <- app_assoc in *. rewrite H4p9p2.
+          intros. simpl. repeat rewrite <- app_assoc in *. rewr_leakage.
           repeat solve_word_eq word_ok || f_equal.
 
     - idtac "Case compile_stmt_correct/SIf/Else".
@@ -2208,9 +2268,11 @@ Section Proofs.
             repeat rewrite <- app_assoc. reflexivity. }
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
-          simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
-          1: finishcost.
-          intros. simpl. repeat rewrite <- app_assoc in *. rewrite H4p9p2.
+          simpl. intros. destruct_RiscvMachine middle. fwd. subst.
+          destruct finalQ; fwd; run1done.
+          1,3: finishcost.
+          2: { eexists. eexists. ssplit; [align_trace|reflexivity|reflexivity]. }
+          intros. simpl. repeat rewrite <- app_assoc in *. rewr_leakage.
           rewrite app_nil_r. reflexivity.          
 
     - idtac "Case compile_stmt_correct/SLoop".
@@ -2237,12 +2299,13 @@ Section Proofs.
         all: try safe_sidecond.
         all: try safe_sidecond.
         1: reflexivity.
-        intros. rewrite H18. rewrite fix_step. simpl. reflexivity.
+        intros. rewr_picksp. rewrite fix_step. simpl. reflexivity.
       + simpl in *. simpl. intros. destruct_RiscvMachine middle.
         match goal with
-        | H: exists _ _ _ _ _, _ |- _ => destruct H as [ kH' [ tH' [ mH' [ lH' [ mcH' H ] ] ] ] ]
+        | H: exists _ _ _ _ _ _ _, _ |- _ => destruct H as (qH' & aepH' & kH' & tH' & mH' & lH' & mcH' & H)
         end.
-        fwd.
+        destruct qH'; fwd.
+        2: { run1done. }
         destruct (eval_bcond lH' cond) as [condB|] eqn: E.
         2: exfalso;
            match goal with
@@ -2271,13 +2334,18 @@ Section Proofs.
             all: try safe_sidecond.
             all: try safe_sidecond.
             1: reflexivity.
-            intros. repeat rewrite associate_one_left, app_assoc. rewrite H18.
-            rewrite fix_step. simpl. simpl_rev. rewrite H3p4p2.
+            intros. repeat rewrite associate_one_left, app_assoc. rewr_picksp.
+            rewrite fix_step. simpl. simpl_rev. rewr_leakage.
             rewrite List.skipn_app_r by reflexivity. cbn [FixEq.Let_In_pf_nd].
             simpl_rev. repeat rewrite <- app_assoc.
             cbn [leakage_events_rel leakage_events].
             repeat solve_word_eq word_ok || f_equal. reflexivity. }
           simpl in *. intros. destruct_RiscvMachine middle. fwd.
+          destruct finalQ; fwd.
+          2: { specialize H5 with (1 := H3p1). move H5 at bottom.
+               inversion H5. subst. run1done. 1: finishcost. eexists. eexists.
+               split; [align_trace|eauto]. }
+         
           (* jump back to beginning of loop: *)
           eapply runsToStep.
           { eapply run_Jal0; try safe_sidecond. solve_divisibleBy4. }
@@ -2291,26 +2359,28 @@ Section Proofs.
             all: try safe_sidecond.
             all: try safe_sidecond.
             1: reflexivity.
-            intros. rewrite associate_one_left, 2 app_assoc. rewrite H18.
-            rewrite fix_step. simpl. simpl_rev. rewrite H3p4p2.
+            intros. rewrite associate_one_left, 2 app_assoc. rewr_picksp.
+            rewrite fix_step. simpl. simpl_rev. rewr_leakage.
             rewrite List.skipn_app_r by reflexivity. cbn [FixEq.Let_In_pf_nd].
             simpl_rev. repeat rewrite <- app_assoc.
             cbn [leakage_events_rel leakage_events].
-            eassert (rev finalKL ++ _ = _) as ->. 2: rewrite H3p12p2.
+            eassert (rev finalKL ++ _ = _) as ->. 2: rewr_leakage.
             { repeat rewrite <- app_assoc. simpl. repeat solve_word_eq word_ok || f_equal. }
             rewrite List.skipn_app_r by reflexivity.
             repeat solve_word_eq word_ok || reflexivity || f_equal. }
           (* at end of loop, just prove that computed post satisfies required post *)
-          simpl. intros. destruct_RiscvMachine middle. fwd. run1done. 1: finishcost.
-          intros. rewrite H3p4p2. rewrite List.skipn_app_r by reflexivity.
+          simpl. intros. destruct_RiscvMachine middle. fwd. destruct finalQ; fwd.
+          2: { run1done. 1: finishcost. do 2 eexists. split; [align_trace|eauto]. }
+          run1done. 1: finishcost.
+          intros. rewr_leakage. rewrite List.skipn_app_r by reflexivity.
           cbn [FixEq.Let_In_pf_nd].
           simpl_rev. repeat rewrite <- app_assoc.
             cbn [leakage_events_rel leakage_events].
-            eassert (rev finalKL ++ _ = _) as ->. 2: rewrite H3p12p2.
+            eassert (rev finalKL ++ _ = _) as ->. 2: rewr_leakage.
             { repeat rewrite <- app_assoc. simpl. repeat solve_word_eq word_ok || f_equal. }
             rewrite List.skipn_app_r by reflexivity.
             repeat solve_word_eq word_ok || reflexivity || f_equal.
-            eassert (rev finalKL0 ++ _ = _) as ->. 2: rewrite H3p22p2.
+            eassert (rev finalKL0 ++ _ = _) as ->. 2: rewr_leakage.
             { repeat rewrite <- app_assoc. simpl. repeat solve_word_eq word_ok || f_equal. }
             reflexivity.
 
@@ -2322,7 +2392,7 @@ Section Proofs.
           }
           simpl_MetricRiscvMachine_get_set.
           intros. destruct_RiscvMachine mid. fwd. run1done. 1: finishcost.
-          rewrite H3p4p2. rewrite List.skipn_app_r by reflexivity.
+          rewr_leakage. rewrite List.skipn_app_r by reflexivity.
           cbn [FixEq.Let_In_pf_nd]. repeat solve_word_eq word_ok || f_equal.
 
     - idtac "Case compile_stmt_correct/SSeq".
@@ -2336,8 +2406,11 @@ Section Proofs.
         all: try safe_sidecond.
         all: try safe_sidecond.
         1: reflexivity.
-        intros. rewrite H14. rewrite fix_step. reflexivity.
+        intros. rewr_picksp. rewrite fix_step. reflexivity.
       + simpl. intros. destruct_RiscvMachine middle. fwd.
+        destruct finalQ; fwd.
+        2: { specialize (H0 _ _ _ _ _ _ _ ltac:(eassumption)). move H0 at bottom.
+             inversion H0. subst. run1done. }
         eapply runsTo_trans.
         * match goal with
           | H: iff1 allx ?RHS |- _ =>
@@ -2351,15 +2424,28 @@ Section Proofs.
           all: try safe_sidecond.
           all: try safe_sidecond.
           1: reflexivity.
-          intros. rewrite app_assoc. rewrite H14. rewrite fix_step. simpl.
-          simpl_rev. rewrite H1p4p2. rewrite List.skipn_app_r by reflexivity.
+          intros. rewrite app_assoc. rewr_picksp. rewrite fix_step. simpl.
+          simpl_rev. rewr_leakage. rewrite List.skipn_app_r by reflexivity.
           reflexivity.
-        * simpl. intros. destruct_RiscvMachine middle. fwd. run1done.
-          rewrite H1p4p2. rewrite List.skipn_app_r by reflexivity.
-          rewrite H1p12p2. reflexivity.
+        * simpl. intros. destruct_RiscvMachine middle. fwd. destruct finalQ; fwd.
+          2: { run1done. do 2 eexists. split; [align_trace|eauto]. }
+          run1done. rewr_leakage. rewrite List.skipn_app_r by reflexivity.
+          rewr_leakage. reflexivity.
 
     - idtac "Case compile_stmt_correct/SSkip".
       run1done.
+    - idtac "Case compile_stmt_correct/quit".
+      run1done. do 2 eexists. split; [align_trace|eauto].
+    - idtac "Case compile_stmt_correct/forall".
+      simpl. eapply runsTo_weaken. 1: eapply H0 with (g := {| allx := allx |}); eauto.
+      1: exact O.
+      all: simpl_MetricRiscvMachine_get_set; simpl. 1: solve[intuition eauto].
+      intros. fwd. do 7 eexists. intuition eauto.
+    - idtac "Case compile_stmt_correct/exists".
+      simpl. eapply runsTo_weaken. 1: eapply IHexec with (g := {| allx := allx |}); eauto.
+      all: simpl_MetricRiscvMachine_get_set; simpl. 1: solve[intuition eauto].
+      intros. fwd. do 7 eexists. intuition eauto.
+      
   Qed. (* <-- takes a while *)
 
 
