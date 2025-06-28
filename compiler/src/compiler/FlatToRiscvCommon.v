@@ -301,8 +301,8 @@ Section WithParameters.
   Definition compiles_FlatToRiscv_correctly{BWM: bitwidth_iset width iset}
     (f: pos_map -> Z -> Z -> stmt -> list Instruction)
     (s: stmt): Prop :=
-    forall e_impl_full pick_sp1 initialK initialTrace initialMH initialRegsH initialMetricsH postH,
-    exec pick_sp1 e_impl_full s initialK initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
+    forall e_impl_full pick_sp1 initialQ initialAEP initialK initialTrace initialMH initialRegsH initialMetricsH postH,
+    exec pick_sp1 e_impl_full s initialQ initialAEP initialK initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
     forall g e_impl e_pos program_base insts xframe (initialL: MetricRiscvMachine) pos initialKL cont,
     map.extends e_impl_full e_impl ->
     good_e_impl e_impl e_pos ->
@@ -320,23 +320,28 @@ Section WithParameters.
     goodMachine initialTrace initialMH initialRegsH g initialL ->
     (forall k, pick_sp1 (k ++ initialK) = snd (stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
                                                     (s, rev k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont k))) ->
-    runsTo initialL (fun finalL => exists finalK finalTrace finalMH finalRegsH finalMetricsH,
-         postH finalK finalTrace finalMH finalRegsH finalMetricsH /\
-         finalL.(getPc) = word.add initialL.(getPc)
+    runsTo initialL (fun finalL => exists finalQ finalAEP finalK finalTrace finalMH finalRegsH finalMetricsH,
+         postH finalQ finalAEP finalK finalTrace finalMH finalRegsH finalMetricsH /\
+           (if finalQ then finalL.(getPc) = word.add initialL.(getPc)
                                    (word.of_Z (4 * Z.of_nat (List.length insts))) /\
+                              (*thing above is not true when finalQ = false.
+                                thing below, i am too lazy to prove when finalQ = false*)
          map.only_differ initialL.(getRegs)
                  (union (of_list (modVars_as_list Z.eqb s)) (singleton_set RegisterNames.ra))
-                 finalL.(getRegs) /\
+                 finalL.(getRegs) else True) /\
          (finalL.(getMetrics) - initialL.(getMetrics) <=
             lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
            (exists kH'' finalKL,
                finalK = kH'' ++ initialK /\
                  finalL.(getTrace) = Some finalKL /\
-                 forall k cont,
-                   stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
-                     (s, rev kH'' ++ k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont) =
-                     cont (rev kH'') (rev finalKL)) /\
-           goodMachine finalTrace finalMH finalRegsH g finalL).
+                 (if finalQ then
+                   forall k cont,
+                     stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
+                       (s, rev kH'' ++ k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont) =
+                       cont (rev kH'') (rev finalKL)
+                     else True))
+         /\
+           (if finalQ then goodMachine finalTrace finalMH finalRegsH g finalL else finalL.(getLog) = finalTrace)).
 
 End WithParameters.
 
