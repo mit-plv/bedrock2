@@ -1,3 +1,4 @@
+Require Import compiler.SmallStep.
 Require Import bedrock2.LeakageSemantics.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.rewr.
@@ -473,7 +474,8 @@ Section Proofs.
        (Platform.MetricLogging.addMetricStores 95 mc))).
 
   Ltac rewr_picksp := match goal with | H: forall (k : list leakage_event), _ (k ++ _) = _ |- _ => rewrite H end.
-  Ltac rewr_leakage := match goal with | H : forall _ _, stmt_leakage _ _ _ _ _ _ _ = _ |- _ => rewrite H end. 
+  Ltac rewr_leakage := match goal with | H : forall _ _, stmt_leakage _ _ _ _ _ _ _ = _ |- _ => rewrite H end.
+  Notation MetricLog := bedrock2.MetricLogging.MetricLog.
 
   Lemma compile_function_body_correct: forall (e_impl_full : env) m l (mc : MetricLog) (argvs : list word)
     (st0 : locals) (post outcome : bool -> AEP -> leakage -> Semantics.trace -> mem -> locals -> MetricLog -> Prop)
@@ -495,8 +497,8 @@ Section Proofs.
         goodMachine t m st0 g0 initialL ->
         (forall k, pick_sp1 (k ++ kH) = snd (stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
                                                          (body, rev k, rev initialKL0, pos0, g0.(p_sp), (bytes_per_word * rem_framewords g0)%Z, cont0 k))) ->
-        runsTo initialL (fun finalL =>
-          exists finalQ finalAEP finalK finalTrace finalMH finalRegsH finalMetricsH,
+        runsTo' (initialL, aep) (fun '(finalL, finalAEP) =>
+          exists finalQ finalK finalTrace finalMH finalRegsH finalMetricsH,
             outcome finalQ finalAEP finalK finalTrace finalMH finalRegsH finalMetricsH /\
             (if finalQ then getPc finalL = getPc initialL + !(4 * #(Datatypes.length insts0)) /\
             map.only_differ (getRegs initialL)
@@ -544,8 +546,8 @@ Section Proofs.
       goodMachine t m l g mach ->
       (forall k, pick_sp1 (k ++ kH) = snd (fun_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
                                         (rev k) (rev initialKL) pos g.(p_sp) ret_addr retnames body (cont k))) -> 
-      runsToNonDet.runsTo (mcomp_sat (Run.run1 iset)) mach (fun finalL =>
-        exists finalQ finalAEP finalK finalTrace finalMH finalRegsH finalMetricsH,
+      runsTo' (mach, aep) (fun '(finalL, finalAEP) =>
+        exists finalQ finalK finalTrace finalMH finalRegsH finalMetricsH,
           post finalQ finalAEP finalK finalTrace finalMH finalRegsH finalMetricsH /\
           (if finalQ then getPc finalL = ret_addr /\
           map.only_differ (getRegs mach)
@@ -639,7 +641,7 @@ Section Proofs.
     subst stack_trash.
 
     (* decrease sp *)
-    eapply runsToStep. {
+    eapply runsToStep'_of_step. {
       eapply run_Addi with (rd := RegisterNames.sp) (rs := RegisterNames.sp);
         simpl in *;
         try solve [safe_sidecond | simpl; solve_divisibleBy4 ].
@@ -654,7 +656,7 @@ Section Proofs.
     subst.
 
     (* save ra on stack *)
-    eapply runsToStep. {
+    eapply runsToStep'_of_step. {
       eapply run_store_word with (rs1 := RegisterNames.sp) (rs2 := RegisterNames.ra)
                                  (addr := p_sp - !bytes_per_word);
         try solve [sidecondition | simpl; solve_divisibleBy4]; try solve_word_eq word_ok.
@@ -688,7 +690,7 @@ Section Proofs.
       destruct_one_match; [eexists; reflexivity|].
       eauto.
     }
-    eapply runsTo_trans. {
+    eapply runsTo_trans'_of_step. {
       eapply save_regs_correct with (addr :=
         (p_sp - (!bytes_per_word * !#(List.length
                    (list_diff Z.eqb (modVars_as_list Z.eqb body) retnames))) - !bytes_per_word));
@@ -822,7 +824,7 @@ Section Proofs.
     simpl.
     simpl_MetricRiscvMachine_get_set.
     clear_old_sep_hyps.
-    intros. fwd.
+    intros [middle middleAEP]. intros. fwd.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
            end.
@@ -834,9 +836,9 @@ Section Proofs.
     move OC at bottom.
     
     destruct finalQ.
-    2: { fwd. apply runsToDone. simpl_MetricRiscvMachine_get_set. do 7 eexists.
+    2: { fwd. apply runsToDone. simpl_MetricRiscvMachine_get_set. do 6 eexists.
          split; [eassumption|]. simpl. split; [reflexivity|]. ssplit.
-         - Search middle_metrics. move H2p5 at bottom. cbv [cost_compile_spec].
+         - move H2p5 at bottom. cbv [cost_compile_spec].
            assert ((Datatypes.length (modVars_as_list Z.eqb body)) <= 29)%nat by
         auto using NoDup_valid_FlatImp_vars_bound_length, NoDup_modVars_as_list, modVars_as_list_valid_FlatImp_var.
       assert ((Datatypes.length
@@ -887,7 +889,7 @@ Section Proofs.
     destruct OC as (retvs & finalRegsH' & ? & ? & ?). fwd.
 
     (* load back the modified vars *)
-    eapply runsTo_trans. {
+    eapply runsTo_trans'_of_step. {
       eapply load_regs_correct with (values := newvalues);
         simpl; cycle 1.
       - eapply only_differ_get_unchanged. 2: eassumption.
@@ -921,7 +923,7 @@ Section Proofs.
     subst.
 
     (* load back the return address *)
-    eapply runsToStep. {
+    eapply runsToStep'_of_step. {
       eapply run_load_word; cycle 2; simpl_MetricRiscvMachine_get_set.
       - simpl. solve [sidecondition].
       - simpl.
@@ -962,7 +964,7 @@ Section Proofs.
     clear_old_sep_hyps.
     intros. fwd.
     repeat match goal with
-           | m: _ |- _ => destruct_RiscvMachine m
+           | m: _ |- _ => destruct_RiscvMachine m; idtac m
            end.
     subst.
 
@@ -986,7 +988,7 @@ Section Proofs.
 
 
     (* increase sp *)
-    eapply runsToStep. {
+    eapply runsToStep'_of_step. {
       eapply (run_Addi iset RegisterNames.sp RegisterNames.sp);
         simpl_MetricRiscvMachine_get_set;
         try safe_sidecond.
@@ -1029,7 +1031,7 @@ Section Proofs.
     subst.
 
     (* jump back to caller *)
-    eapply runsToStep. {
+    eapply runsToStep'_of_step. {
       eapply run_Jalr0 with (rs1 := RegisterNames.ra); simpl; try safe_sidecond.
       3: {
         rewrite map.get_put_diff by (clear; cbv; congruence).
@@ -1052,7 +1054,7 @@ Section Proofs.
     (* computed postcondition satisfies required postcondition: *)
     apply runsToDone.
     simpl_MetricRiscvMachine_get_set.
-    do 7 eexists. split; [eassumption|]. simpl.
+    do 6 eexists. split; [eassumption|]. simpl.
     match goal with
     | |- (_ /\ ?ODGoal) /\ _ => assert ODGoal as OD
     end.
@@ -1845,7 +1847,7 @@ Section Proofs.
               instantiate (1 := fun k0 a b => cont (k0 ++ [leak_unit]) (leak_unit :: a) b).
               repeat rewrite <- app_assoc. reflexivity. }
       subst mach. simpl_MetricRiscvMachine_get_set.
-      intros. fwd. do 7 eexists.
+      intros. fwd. do 6 eexists.
       split; [ eapply H0p0 | ].
       destruct finalQ; fwd.
       + split; eauto 8 with map_hints.
@@ -2440,11 +2442,11 @@ Section Proofs.
       simpl. eapply runsTo_weaken. 1: eapply H0 with (g := {| allx := allx |}); eauto.
       1: exact O.
       all: simpl_MetricRiscvMachine_get_set; simpl. 1: solve[intuition eauto].
-      intros. fwd. do 7 eexists. intuition eauto.
+      intros. fwd. do 6 eexists. intuition eauto.
     - idtac "Case compile_stmt_correct/exists".
       simpl. eapply runsTo_weaken. 1: eapply IHexec with (g := {| allx := allx |}); eauto.
       all: simpl_MetricRiscvMachine_get_set; simpl. 1: solve[intuition eauto].
-      intros. fwd. do 7 eexists. intuition eauto.
+      intros. fwd. do 6 eexists. intuition eauto.
       
   Qed. (* <-- takes a while *)
 

@@ -1,4 +1,5 @@
 From coqutil Require Import HList Memory SeparationMemory LittleEndianList.
+Require Import compiler.SmallStep.
 Require Import riscv.Utility.Monads. Require Import riscv.Utility.MonadNotations.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.LeakageSemantics.
@@ -93,8 +94,12 @@ Section WithParameters.
 
   Definition runsTo{BWM: bitwidth_iset width iset}: (* BWM is unused, but makes iset inferrable *)
     MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
-    runsTo (mcomp_sat (run1 iset)).
+    runsToNonDet.runsTo (mcomp_sat (run1 iset)).
 
+  Definition runsTo'{BWM: bitwidth_iset width iset}: (* BWM is unused, but makes iset inferrable *)
+    State' MetricRiscvMachine -> (State' MetricRiscvMachine -> Prop) -> Prop :=
+    runsToNonDet.runsTo (step' _ (mcomp_sat (run1 iset))).
+  
   Definition function{BWM: bitwidth_iset width iset}(base: word)(finfo: pos_map)
              (fname: String.string)(impl : list Z * list Z * stmt Z): mem -> Prop :=
     match map.get finfo fname with
@@ -320,7 +325,7 @@ Section WithParameters.
     goodMachine initialTrace initialMH initialRegsH g initialL ->
     (forall k, pick_sp1 (k ++ initialK) = snd (stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
                                                     (s, rev k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont k))) ->
-    runsTo initialL (fun finalL => exists finalQ finalAEP finalK finalTrace finalMH finalRegsH finalMetricsH,
+    runsTo' (initialL, initialAEP) (fun '(finalL, finalAEP) => exists finalQ finalK finalTrace finalMH finalRegsH finalMetricsH,
          postH finalQ finalAEP finalK finalTrace finalMH finalRegsH finalMetricsH /\
            (if finalQ then finalL.(getPc) = word.add initialL.(getPc)
                                    (word.of_Z (4 * Z.of_nat (List.length insts))) /\

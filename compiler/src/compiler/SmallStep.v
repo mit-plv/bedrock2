@@ -17,13 +17,14 @@ Section step.
                      step' (s, AEP_A aep) P
   | step_E s aep P : (exists x, P (s, aep x)) ->
                      step' (s, AEP_E aep) P.
-
-  Fixpoint post_of aep :=
-    match aep with
-    | AEP_A aep' => fun post => fun s => forall n, runsTo step s (post_of (aep' n) post)
-    | AEP_E aep' => fun post => fun s => exists n, runsTo step s (post_of (aep' n) post)
-    | AEP_P X => fun post => fun s' => post X s'
-    end.
+  Print runsToStep.
+  Lemma runsToStep'_of_step initial aep midset P :
+    step initial midset ->
+    (forall mid, midset mid -> runsTo step' (mid, aep) P) ->
+    runsTo step' (initial, aep) P.
+  Proof.
+    intros. apply runsToStep_cps. eapply step_usual; eauto.
+  Qed.
 
   Lemma step_impl_step' s aep post P :
     runsTo step s post ->
@@ -34,6 +35,21 @@ Section step.
     - intros. apply runsToDone. auto.
     - intros. apply runsToStep_cps. eapply step_usual. 1: eassumption. eauto.
   Qed.
+
+  Lemma runsTo_trans'_of_step initial aep midset P :
+    runsTo step initial midset ->
+    (forall middle, midset middle -> runsTo step' (middle, aep) P) ->
+    runsTo step' (initial, aep) P.
+  Proof.
+    intros. apply runsTo_trans_cps. eapply step_impl_step'; eauto.
+  Qed.
+
+  Fixpoint post_of aep :=
+    match aep with
+    | AEP_A aep' => fun post => fun s => forall n, runsTo step s (post_of (aep' n) post)
+    | AEP_E aep' => fun post => fun s => exists n, runsTo step s (post_of (aep' n) post)
+    | AEP_P X => fun post => fun s' => post X s'
+    end.
   
   Lemma step'_iff_step s aep post : runsTo step' (s, aep)
                                 (fun '(s', aep') =>
@@ -134,30 +150,30 @@ Section step.
     ~ (forall str, possible R str -> nth O str = x -> False) ->
     Acc R x.
   Proof.
-    intros em H. apply (notnot em). intros H'. apply H. intros. clear H. Search excluded_middle. Print GodedlDummett.
-
-  Lemma runsTo_iff_trace_pred {T : Type} (step_ : T -> _ -> Prop) s P :
-    runsTo step_ s P <-> (forall str, possible step_ str ->
-                               nth O str = s ->
-                               exists n, P (nth n str)).
-  Proof.
-    split; intros H.
-    - induction H.
-      + intros. destruct str; inversion H1. subst. exists O. simpl. assumption.
-      + intros. inversion H2. subst. 
-        specialize H4 with (1 := H). specialize H0 with (1 := H4).
-        specialize H1 with (1 := H4). specialize H1 with (1 := H5).
-        specialize (H1 eq_refl). destruct H1 as [n H1]. exists (S n). simpl. assumption.
-    - 
+    intros em H. apply (notnot em). intros H'. apply H. intros. clear H. Search excluded_middle. Abort. 
+  (* Lemma runsTo_iff_trace_pred {T : Type} (step_ : T -> _ -> Prop) s P : *)
+  (*   runsTo step_ s P <-> (forall str, possible step_ str -> *)
+  (*                              nth O str = s -> *)
+  (*                              exists n, P (nth n str)). *)
+  (* Proof. *)
+  (*   split; intros H. *)
+  (*   - induction H. *)
+  (*     + intros. destruct str; inversion H1. subst. exists O. simpl. assumption. *)
+  (*     + intros. inversion H2. subst.  *)
+  (*       specialize H4 with (1 := H). specialize H0 with (1 := H4). *)
+  (*       specialize H1 with (1 := H4). specialize H1 with (1 := H5). *)
+  (*       specialize (H1 eq_refl). destruct H1 as [n H1]. exists (S n). simpl. assumption. *)
+  (*   -  *)
         
-  Lemma step'_iff_trace_pred s aep post :
-    runsTo step' (s, aep)
-      (fun '(s', aep') =>
-         match aep' with
-         | AEP_P P => post P s'
-         | _ => False
-         end) <->
-      (forall str, possible str -> trace_pred_of aep post str).
-  Proof.
-    split; intros H.
-    - intros str Hstr.
+  (* Lemma step'_iff_trace_pred s aep post : *)
+  (*   runsTo step' (s, aep) *)
+  (*     (fun '(s', aep') => *)
+  (*        match aep' with *)
+  (*        | AEP_P P => post P s' *)
+  (*        | _ => False *)
+  (*        end) <-> *)
+  (*     (forall str, possible str -> trace_pred_of aep post str). *)
+  (* Proof. *)
+  (*   split; intros H. *)
+  (*   - intros str Hstr. *)
+End step.
