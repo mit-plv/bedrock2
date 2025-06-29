@@ -2557,14 +2557,22 @@ Section Spilling.
   Lemma spill_fun_correct: forall e1 e2 pick_sp2 argnames1 retnames1 body1 argnames2 retnames2 body2,
       spill_functions e1 = Success e2 ->
       spill_fun (argnames1, retnames1, body1) = Success (argnames2, retnames2, body2) ->
-      forall argvals kH kL t m mcH mcL (post: leakage -> Semantics.trace -> mem -> list word -> MetricLog -> Prop),
-        call_spec e1 (argnames1, retnames1, body1) (fun k => snd (fun_leakage e1 pick_sp2 (argnames1, retnames1, body1) (skipn (length kH) (rev k)) (rev kL))) kH t m argvals mcH post ->
-        call_spec_spilled e2 (argnames2, retnames2, body2) pick_sp2 kL t m argvals mcL
-          (fun kL' t' m' l' mcL' =>
+      forall argvals kH kL aep t m mcH mcL (post : AEP -> leakage -> Semantics.trace -> mem -> list word -> MetricLog -> Prop) mid,
+        call_spec e1 (argnames1, retnames1, body1)
+          (fun k' => pick_sp2 (rev (fun_leakage e1 pick_sp2 (argnames1, retnames1, body1) (skipn (length kH) (rev k')) (rev kL)))) true aep kH t m argvals mcH post mid ->
+        call_spec_spilled e2 (argnames2, retnames2, body2) pick_sp2 true aep kL t m argvals mcL
+          (fun aep' kL' t' m' l' mcL' =>
              exists kH'' mcH',
-               post (kH'' ++ kH) t' m' l' mcH' /\
+               post aep' (kH'' ++ kH) t' m' l' mcH' /\
                  metricsLeq (mcL' - mcL) (mcH' - mcH) /\
-                 fst (fun_leakage e1 pick_sp2 (argnames1, retnames1, body1) (rev kH'') (rev kL)) = rev kL').
+                 fun_leakage e1 pick_sp2 (argnames1, retnames1, body1) (rev kH'') (rev kL) = rev kL')
+          (fun aep' kL' t' m' l' mcL' =>
+             exists maxvar frame fpval tH' mH' lH' kH'' mcH',
+               related maxvar frame fpval tH' mH' lH' t' m' l' /\
+                 mid aep' (kH'' ++ kH) tH' mH' lH' mcH' /\
+                 metricsLeq (mcL' - mcL) (mcH' - mcH) /\
+                 exists extra,
+                   fun_leakage e1 pick_sp2 (argnames1, retnames1, body1) (rev kH'') (rev kL) = rev kL' ++ extra).
   Proof.
     intros. eapply spill_fun_correct_aux; try eassumption.
     apply spilling_correct. assumption.
