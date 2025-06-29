@@ -687,11 +687,22 @@ Section FlatToRiscv1.
       (valid_machine midL -> runsTo midL P) ->
       runsTo initialL P.
   Proof using PR.
- intros.
+    intros.
     eapply runsToStep with (midset := fun m' => m' = midL /\ valid_machine m').
     - eapply run1_get_sane; try eassumption.
       intros. subst. auto.
     - intros ? (? & ?). subst. eapply H1. assumption.
+  Qed.
+
+  Lemma runsTo'_det_step_with_valid_machine: forall initialL aep midL (P : _ -> Prop),
+      valid_machine initialL ->
+      mcomp_sat (Run.run1 iset) initialL (eq midL) ->
+      (valid_machine midL -> runsTo' (midL, aep) P) ->
+      runsTo' (initialL, aep) P.
+  Proof using PR.
+    intros.
+    eapply runsToStep_cps. apply step_usual_cps. eapply run1_get_sane; eauto.
+    intros. subst. apply H1. assumption.
   Qed.
 
   Lemma store_bytes_preserves_footprint: forall n a v (m m': mem),
@@ -940,7 +951,7 @@ Ltac simulate'_step :=
 Ltac simulate' := repeat simulate'_step.
 
 Ltac run1det :=
-  eapply runsTo_det_step_with_valid_machine;
+  eapply runsTo_det_step_with_valid_machine || eapply runsTo'_det_step_with_valid_machine;
   [ assumption
   | simulate';
     match goal with

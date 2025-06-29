@@ -17,7 +17,12 @@ Section step.
                      step' (s, AEP_A aep) P
   | step_E s aep P : (exists x, P (s, aep x)) ->
                      step' (s, AEP_E aep) P.
-  Print runsToStep.
+
+  Lemma step_usual_cps s aep P :
+    step s (fun s' => P (s', aep)) ->
+    step' (s, aep) P.
+  Proof. eauto using step_usual. Qed.
+  
   Lemma runsToStep'_of_step initial aep midset P :
     step initial midset ->
     (forall mid, midset mid -> runsTo step' (mid, aep) P) ->
@@ -35,6 +40,11 @@ Section step.
     - intros. apply runsToDone. auto.
     - intros. apply runsToStep_cps. eapply step_usual. 1: eassumption. eauto.
   Qed.
+
+  Lemma step_impl_step'_cps s aep P :
+    runsTo step s (fun s' => P (s', aep)) ->
+    runsTo step' (s, aep) P.
+  Proof. eauto using step_impl_step'. Qed.
 
   Lemma runsTo_trans'_of_step initial aep midset P :
     runsTo step initial midset ->
