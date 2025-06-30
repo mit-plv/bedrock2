@@ -1256,7 +1256,7 @@ Section CheckerCorrect.
           -- exact L4.
           -- repeat eexists. 6: eassumption. 1: intros; exact SC.
              all: cost_solve.
-        * eexists. eexists. intuition eauto. congruence.
+        * eexists. eexists. intuition eauto. 1: congruence. b.
     - (* Case exec.load *)
       a. b.
     - (* Case exec.store *)
@@ -1272,7 +1272,7 @@ Section CheckerCorrect.
         -- fwd. eexists. eexists. do 2 (split; try eassumption).
            eexists. eexists. do 2 (split; try eassumption).
            b.
-        -- eauto.
+        -- eexists. eexists. ssplit; [congruence| |eassumption]. b.
     - (* Case exec.lit *)
       a. b.
     - (* Case exec.op *)
