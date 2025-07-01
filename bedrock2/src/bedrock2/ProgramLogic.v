@@ -21,16 +21,16 @@ Goal True.
   assert_succeeds epose (fun k v M (m : @Interface.map.rep k v M) => m _).
 Abort.
 
-Section bindcmd.
-  Context {T : Type}.
-  Fixpoint bindcmd (c : Syntax.cmd) (k : Syntax.cmd -> T) {struct c} : T :=
-    match c with
-    | cmd.cond e c1 c2 => bindcmd c1 (fun c1 => bindcmd c2 (fun c2 => let c := cmd.cond e c1 c2 in k c))
-    | cmd.seq c1 c2 => bindcmd c1 (fun c1 => bindcmd c2 (fun c2 => let c := cmd.seq c1 c2 in k c))
-    | cmd.while e c => bindcmd c (fun c => let c := cmd.while e c in k c)
-    | c => k c
-    end.
-End bindcmd.
+Require Import Ltac2.Ltac2.
+Ltac2 rec splitcmd (cmd : constr) : unit :=
+  match! cmd with
+    | cmd.seq ?cmd1 ?cmd2 =>
+        set (cmd.seq $cmd1 $cmd2) in *; splitcmd cmd1; splitcmd cmd2
+    | cmd.cond ?expr ?cmd1 ?cmd2 => set (cmd.cond $expr $cmd1 $cmd2) in *; splitcmd cmd1; splitcmd cmd2
+    | cmd.while ?expr ?cmd => set (cmd.while $expr $cmd) in *; splitcmd cmd
+    | _ => ()
+  end.
+Set Default Proof Mode "Classic".
 
 (* TODO replace callees by callees' to avoid duplicates *)
 
@@ -83,17 +83,17 @@ Notation "program_logic_goal_for_function! proc" := (program_logic_goal_for proc
    in case cbv does more simplification than desired. *)
 Ltac normalize_body_of_function f := eval cbv in f.
 
+(* Splits up the function f and extracts its commands line by line into hypothesis. *)
 Ltac bind_body_of_function f_ :=
   let f := normalize_body_of_function f_ in
-  let fargs := open_constr:(_) in
-  let frets := open_constr:(_) in
   let fbody := open_constr:(_) in
-  let funif := open_constr:((fargs, frets, fbody)) in
+  let funif := open_constr:((_, _, fbody)) in
   unify f funif;
-  let G := lazymatch goal with |- ?G => G end in
-  let P := lazymatch eval pattern f_ in G with ?P _ => P end in
-  change (bindcmd fbody (fun c : Syntax.cmd => P (fargs, frets, c)));
-  cbv beta iota delta [bindcmd]; intros.
+  let go_split := ltac2:(fbody |-
+    let fbody_value := Option.get (Ltac1.to_constr fbody) in
+    splitcmd fbody_value) in
+  change f_ with f;
+  go_split fbody; intros.
 
 (* note: f might have some implicit parameters (eg a record of constants) *)
 Ltac enter f :=
