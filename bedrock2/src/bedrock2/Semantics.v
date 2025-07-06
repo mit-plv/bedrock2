@@ -47,11 +47,10 @@ Module ext_spec.
           (ext_spec t mGive act args);
 
     intersect: forall t mGive a args
-                      (post1 post2: mem -> list word -> Prop),
-        ext_spec t mGive a args post1 ->
-        ext_spec t mGive a args post2 ->
+                 (post : nat -> mem -> list word -> Prop),
+        (forall x : nat, ext_spec t mGive a args (post x)) ->
         ext_spec t mGive a args (fun mReceive resvals =>
-                                   post1 mReceive resvals /\ post2 mReceive resvals);
+                                   forall x, post x mReceive resvals);
   }.
 End ext_spec.
 Arguments ext_spec.ok {_ _ _ _} _.
@@ -259,79 +258,79 @@ Module exec. Section WithParams.
       eauto 10.
   Qed.
 
-  Lemma intersect: forall t l m s post1,
-      exec s t m l post1 ->
-      forall post2,
-        exec s t m l post2 ->
-        exec s t m l (fun t' m' l' => post1 t' m' l' /\ post2 t' m' l').
-  Proof.
-    induction 1;
-      intros;
-      match goal with
-      | H: exec _ _ _ _ _ |- _ => inversion H; subst; clear H
-      end;
-      try match goal with
-      | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
-        replace x2 with x1 in * by congruence;
-          replace y2 with y1 in * by congruence;
-          replace z2 with z1 in * by congruence;
-          clear x2 y2 z2 H2
-      end;
-      repeat match goal with
-             | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-               replace v2 with v1 in * by congruence; clear H2
-             end;
-      repeat match goal with
-             | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-               replace v2 with v1 in * by congruence; clear H2
-             end;
-      try solve [econstructor; eauto | exfalso; congruence].
+  (* Lemma intersect: forall t l m s post1, *)
+  (*     exec s t m l post1 -> *)
+  (*     forall post2, *)
+  (*       exec s t m l post2 -> *)
+  (*       exec s t m l (fun t' m' l' => post1 t' m' l' /\ post2 t' m' l'). *)
+  (* Proof. *)
+  (*   induction 1; *)
+  (*     intros; *)
+  (*     match goal with *)
+  (*     | H: exec _ _ _ _ _ |- _ => inversion H; subst; clear H *)
+  (*     end; *)
+  (*     try match goal with *)
+  (*     | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ => *)
+  (*       replace x2 with x1 in * by congruence; *)
+  (*         replace y2 with y1 in * by congruence; *)
+  (*         replace z2 with z1 in * by congruence; *)
+  (*         clear x2 y2 z2 H2 *)
+  (*     end; *)
+  (*     repeat match goal with *)
+  (*            | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ => *)
+  (*              replace v2 with v1 in * by congruence; clear H2 *)
+  (*            end; *)
+  (*     repeat match goal with *)
+  (*            | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ => *)
+  (*              replace v2 with v1 in * by congruence; clear H2 *)
+  (*            end; *)
+  (*     try solve [econstructor; eauto | exfalso; congruence]. *)
 
-    - econstructor. 1: eassumption.
-      intros.
-      rename H0 into Ex1, H11 into Ex2.
-      eapply weaken. 1: eapply H1. 1,2: eassumption.
-      1: eapply Ex2. 1,2: eassumption.
-      cbv beta.
-      intros. fwd.
-      lazymatch goal with
-      | A: map.split _ _ _, B: map.split _ _ _ |- _ =>
-        specialize @map.split_diff with (4 := A) (5 := B) as P
-      end.
-      edestruct P; try typeclasses eauto. 2: subst; eauto 10.
-      eapply anybytes_unique_domain; eassumption.
-    - econstructor.
-      + eapply IHexec. exact H5. (* not H *)
-      + simpl. intros *. intros [? ?]. eauto.
-    - eapply while_true. 1, 2: eassumption.
-      + eapply IHexec. exact H9. (* not H1 *)
-      + simpl. intros *. intros [? ?]. eauto.
-    - eapply call. 1, 2, 3: eassumption.
-      + eapply IHexec. exact H15. (* not H2 *)
-      + simpl. intros *. intros [? ?].
-        edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
-        edestruct H16 as (? & ? & ? & ? & ?); [eassumption|].
-        repeat match goal with
-               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-                 replace v2 with v1 in * by congruence; clear H2
-               end.
-        eauto 10.
-    - pose proof ext_spec.mGive_unique as P.
-      specialize P with (1 := H) (2 := H7) (3 := H1) (4 := H13).
-      subst mGive0.
-      destruct (map.split_diff (map.same_domain_refl mGive) H H7) as (? & _).
-      subst mKeep0.
-      eapply interact. 1,2: eassumption.
-      + eapply ext_spec.intersect; [ exact H1 | exact H13 ].
-      + simpl. intros *. intros [? ?].
-        edestruct H2 as (? & ? & ?); [eassumption|].
-        edestruct H14 as (? & ? & ?); [eassumption|].
-        repeat match goal with
-               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-                 replace v2 with v1 in * by congruence; clear H2
-               end.
-        eauto 10.
-  Qed.
+  (*   - econstructor. 1: eassumption. *)
+  (*     intros. *)
+  (*     rename H0 into Ex1, H11 into Ex2. *)
+  (*     eapply weaken. 1: eapply H1. 1,2: eassumption. *)
+  (*     1: eapply Ex2. 1,2: eassumption. *)
+  (*     cbv beta. *)
+  (*     intros. fwd. *)
+  (*     lazymatch goal with *)
+  (*     | A: map.split _ _ _, B: map.split _ _ _ |- _ => *)
+  (*       specialize @map.split_diff with (4 := A) (5 := B) as P *)
+  (*     end. *)
+  (*     edestruct P; try typeclasses eauto. 2: subst; eauto 10. *)
+  (*     eapply anybytes_unique_domain; eassumption. *)
+  (*   - econstructor. *)
+  (*     + eapply IHexec. exact H5. (* not H *) *)
+  (*     + simpl. intros *. intros [? ?]. eauto. *)
+  (*   - eapply while_true. 1, 2: eassumption. *)
+  (*     + eapply IHexec. exact H9. (* not H1 *) *)
+  (*     + simpl. intros *. intros [? ?]. eauto. *)
+  (*   - eapply call. 1, 2, 3: eassumption. *)
+  (*     + eapply IHexec. exact H15. (* not H2 *) *)
+  (*     + simpl. intros *. intros [? ?]. *)
+  (*       edestruct H3 as (? & ? & ? & ? & ?); [eassumption|]. *)
+  (*       edestruct H16 as (? & ? & ? & ? & ?); [eassumption|]. *)
+  (*       repeat match goal with *)
+  (*              | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ => *)
+  (*                replace v2 with v1 in * by congruence; clear H2 *)
+  (*              end. *)
+  (*       eauto 10. *)
+  (*   - pose proof ext_spec.mGive_unique as P. *)
+  (*     specialize P with (1 := H) (2 := H7) (3 := H1) (4 := H13). *)
+  (*     subst mGive0. *)
+  (*     destruct (map.split_diff (map.same_domain_refl mGive) H H7) as (? & _). *)
+  (*     subst mKeep0. *)
+  (*     eapply interact. 1,2: eassumption. *)
+  (*     + eapply ext_spec.intersect; [ exact H1 | exact H13 ]. *)
+  (*     + simpl. intros *. intros [? ?]. *)
+  (*       edestruct H2 as (? & ? & ?); [eassumption|]. *)
+  (*       edestruct H14 as (? & ? & ?); [eassumption|]. *)
+  (*       repeat match goal with *)
+  (*              | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ => *)
+  (*                replace v2 with v1 in * by congruence; clear H2 *)
+  (*              end. *)
+  (*       eauto 10. *)
+  (* Qed. *)
 
   End WithEnv.
 

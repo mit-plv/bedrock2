@@ -22,6 +22,20 @@ Section aep.
   | AEP_A : (nat -> AEP) -> AEP
   | AEP_E : (nat -> AEP) -> AEP
   | AEP_P : (leakage -> trace -> mem -> metrics -> Prop) -> AEP.
+
+  Inductive inputs :=
+  | inp_nil
+  | inp_E : nat -> inputs -> inputs
+  | inp_A : (nat -> inputs) -> inputs.
+
+  Inductive goes_to : AEP -> inputs -> AEP -> Prop :=
+  | gt_nil : forall aep, goes_to aep inp_nil aep
+  | gt_A : forall aep inp aep' x,
+      goes_to (aep x) (inp x) aep' ->
+      goes_to (AEP_A aep) (inp_A inp) aep'
+  | gt_E : forall aep inp aep' x,
+      goes_to (aep x) inp aep' ->
+      goes_to (AEP_E aep) (inp_E x inp) aep'.
 End aep.
 
 Section semantics.

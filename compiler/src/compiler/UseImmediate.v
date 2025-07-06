@@ -70,14 +70,16 @@ Section WithArguments.
       mcH' - mc.
   Proof. finish. Qed.
 
+
+
   Lemma useImmediate_correct_aux:
     forall eH eL,
        (useimmediate_functions is5BitImmediate is12BitImmediate) eH = Success eL ->
-       forall sH k t m mcH lH post,
-       exec eH sH k t m lH mcH post ->
+       forall sH aep k t m mcH lH post,
+       exec eH sH true aep k t m lH mcH post ->
        forall mcL,
-       exec eL (useImmediate is5BitImmediate is12BitImmediate sH) k t m lH mcL
-       (fun k' t' m' l' mcL' => exists mcH', metricsLeq (mcL' - mcL) (mcH' - mcH) /\ post k' t' m' l' mcH').
+       exec eL (useImmediate is5BitImmediate is12BitImmediate sH) true aep k t m lH mcL
+       (fun q' aep' k' t' m' l' mcL' => exists mcH', metricsLeq (mcL' - mcL) (mcH' - mcH) /\ post q' aep' k' t' m' l' mcH').
   Proof.
     induction 2; try solve [
       simpl; econstructor; eauto;
@@ -93,7 +95,9 @@ Section WithArguments.
         exact Hmap. }
       cbv beta.
       intros * (?&?&Houtcome).
-      destruct (H4 _ _ _ _ _ Houtcome) as (retvs&l'&Hpost).
+      specialize (H4 _ _ _ _ _ _ _ Houtcome).
+      destruct q'; [|finish].
+      destruct H4 as (retvs&l'&Hpost).
       exists retvs, l'.
       tandem Hpost.
       finish.
@@ -102,8 +106,8 @@ Section WithArguments.
       simpl; econstructor; eauto. simpl in *.
       tandem H2.
       eapply exec.weaken; [eauto|].
-      simpl; intros * (?&?&?&?&?&?&?).
-      finish.
+      simpl; intros * (?&?&?).
+      destruct q'; fwd; finish.
 
     - (* SIf true *)
       simpl; econstructor; eauto.
@@ -122,15 +126,21 @@ Section WithArguments.
       { intros * (?&?&?) **.
         eapply exec.weaken; [eauto|].
         simpl; intros * (?&?&?).
-        instantiate (1 := fun k t m l MC1 => exists MC2, MC1 - mcL <= MC2 - mc /\ mid2 k t m l MC2).
+        instantiate (1 := fun q aep k t m l MC1 => exists MC2, MC1 - mcL <= MC2 - mc /\ mid2 q aep k t m l MC2).
         finish. }
-      { intros * (?&?&?).
-        eapply exec.weaken; [eauto|].
+      { intros * (?&?&?). eauto. }
+      { intros * (?&?&?). eapply exec.weaken; [eauto|].
         finish. }
 
     - (* SSeq *)
       simpl. intro.
-
+      Locate destr. Print coqutil.Tactics.destr.destr.
+      (* match goal with *)
+      (*   | |- context[match ?x with _ => _ end] => *)
+      (*       match goal with *)
+      (*       | H: exec _ x _ _ _ _ _ _ _ _ |- _ => inversion H; subst *)
+      (*       end *)
+      (* end. *)
       repeat (
         match goal with
         | |- context[match ?x with _ => _ end] => destr x
@@ -143,22 +153,25 @@ Section WithArguments.
           finish
         ]
       ).
-
-      all: eapply @exec.seq_cps; eapply @exec.lit.
-
-      all: match goal with
-           | H: exec _ _ _ _ _ _ _ ?mid,
-               H': forall k t m l mc,
-                 ?mid _ _ _ _ _ -> exec ?eL _ _ _ _ _ _ ?post
+      { apply exec.seq_cps. remember (SLit _ _) as s.
+        induction H0; inversion Heqs; subst.
+      all: eapply @exec.seq_cps.
+      
+      eapply @exec.lit; simpl in IHexec.
+      { specialize (IHexec mcL). 
+      1: match goal with
+           | H: exec _ _ _ _ _ _ _ _ _ ?mid,
+               H': forall q aep k t m l mc,
+                 ?mid _ _ _ _ _ _ _ -> exec ?eL _ _ _ _ _ _ _ _ ?post
                  |- _ => inversion H
            end.
 
       all: match goal with
-           | H: ?mid _ _ _ _ _,
-             H0: forall k t m l mc,
-                 ?mid k t m l mc -> forall mcL, exec ?eL _ _ _ _ _ mcL _
-                 |- exec ?eL _ _ _ _ _ _ _
-             => specialize (H0 _ _ _ _ _ H EmptyMetricLog); inversion H0
+           | H: ?mid _ _ _ _ _ _ _,
+             H0: forall q aep k t m l mc,
+                 ?mid q aep k t m l mc -> _(*forall mcL, exec ?eL _ _ _ _ _ _ _ _ mcL _*)
+                 |- exec ?eL _ _ _ _ _ _ _ _ _
+             => idtac end. specialize (H0 _ _ _ _ _ _ _ H EmptyMetricLog); inversion H0
            end.
 
       all: simpl in *;
