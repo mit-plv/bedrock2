@@ -735,10 +735,35 @@ Module exec.
                 2: { inversion H7p1. subst. fwd. congruence. }
                 split; [reflexivity|]. exact H7p1. }
           simpl. intros. fwd. eapply H6; eauto.
-          -- apply (H7p3 O).
+          -- exact (H7p3 O).
           -- exact (fun x => H7p3 (S x)).
-      - 
-        
+      - apply seq_cps. eapply weaken.
+        { apply aep_same. eapply IHexec; eauto.
+          - intros. destruct q'; [reflexivity|]. Search mid. apply H in H2.
+            inversion H2. subst. apply Hpost in H3. congruence.
+          - instantiate (1 := fun x _ _ _ _ _ => match x with | O => _ | _ => _ end).
+            intros x. destruct x.
+            + eapply weaken.
+              { apply aep_same. eauto. }
+              simpl. intros. fwd. destruct q'.
+              -- split; [reflexivity|exact H2p1].
+              -- apply H in H2p1. inversion H2p1. subst. apply Hpost in H2. congruence.
+            + specialize (Hx x). inversion Hx; subst.
+              2: { fwd. congruence. }
+              eapply weaken.
+              { apply aep_same. exact H4. }
+              simpl. intros. fwd. apply H5 in H2p1. destruct q'.
+              -- split; [reflexivity|]. exact H2p1.
+              -- inversion H2p1. subst. fwd. congruence. }
+        simpl. intros. fwd. eapply H1; eauto.
+        + exact (H2p2 O).
+        + exact (fun x => (H2p2 (S x))).
+      - econstructor; eauto. intuition. specialize (Hx x).
+        inversion Hx; subst; [|fwd; congruence]. fwd. stuff. assumption.
+      - apply Hpost in H. congruence.
+      - congruence.
+      - congruence.
+    Qed.        
 
     Lemma det_invert {pick_sp: PickSp} : forall q aep k t m l mc s post,
         is_det s ->
