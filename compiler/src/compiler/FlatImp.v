@@ -614,14 +614,15 @@ Module exec.
     Qed.
         
     Axiom choice : forall x y, FunctionalChoice_on x y.
-   Lemma intersect {pick_sp: PickSp} : forall q blah0 blah k t m l mc s (postx : _ -> _ -> _ -> _ -> _ -> _ -> Prop),
+   Lemma intersect {pick_sp: PickSp} : forall q blah0 k t m l mc s (postx : _ -> _ -> _ -> _ -> _ -> _ -> Prop),
         (forall (x : nat), exec s q (AEP_P blah0) k t m l mc (fun q' aep' k' t' m' l' mc' => q' = true /\ postx x k' t' m' l' mc')) ->
-        exec s q (AEP_P blah) k t m l mc (fun q' aep' k' t' m' l' mc' =>
+        forall blah, exec s q (AEP_P blah) k t m l mc (fun q' aep' k' t' m' l' mc' =>
                                             q' = true /\ forall x, postx x k' t' m' l' mc').
     Proof.
       intros. pose proof (H O) as H0. remember (fun q' aep' k' t' m' l' mc' => _) as post.
-      clear Heqpost. remember (AEP_P blah0) as aep. revert postx Heqaep H.
-      induction H0; intros postx Haep Hx; subst.
+      assert (Hpost: forall q' aep' k' t' m' l' mc', post q' aep' k' t' m' l' mc' -> q' = true) by (subst; intros; fwd; auto).
+      clear Heqpost. remember (AEP_P blah0) as aep. revert Hpost postx Heqaep H.
+      induction H0; intros Hpost postx Haep Hx; subst.
       - eassert (exists f, _) as Hf.
         { apply choice. intros x. specialize (Hx x). inversion Hx; subst.
           2: { fwd. congruence. }
@@ -640,10 +641,12 @@ Module exec.
         intuition. specialize (Hf x). specialize (H3 x).
         fwd. specialize Hfp1 with (1 := H3). fwd. rewrite Hfp1p0 in Hf'2p0.
         inversion Hf'2p0; subst; clear Hf'2p0. edestruct Hfp1p1; fwd; eassumption.
-      - specialize IHexec with (1 := eq_refl). pose proof (Hx O) as HxO.
+      - specialize IHexec with (2 := eq_refl). pose proof (Hx O) as HxO.
         inversion HxO; subst; [|fwd; congruence]. stuff.
         econstructor; eauto.
-        { eapply IHexec. intros. move Hx at bottom. specialize (Hx x).
+        { eapply IHexec.
+          { intros * Hout. apply H3 in Hout. destruct q'; fwd; eauto. }
+          intros. move Hx at bottom. specialize (Hx x).
           inversion Hx; subst; [|fwd; congruence].
           stuff.
           eapply weaken. 1: exact H11. intros * H4. specialize H20 with (1 := H4).
@@ -660,7 +663,9 @@ Module exec.
       - econstructor; eauto. intuition. specialize (Hx x0).
         inversion Hx; subst; [|fwd; congruence]. fwd. stuff. assumption.
       - econstructor; eauto. intros. eapply weaken.
-        { eapply H1; eauto. intros x0. specialize (Hx x0).
+        { eapply H1; eauto.
+          { intros * Hmid. destruct q'; fwd; eauto. }
+          intros x0. specialize (Hx x0).
           inversion Hx; subst; [|fwd; congruence].
           specialize (H15 _ _ ltac:(eassumption) ltac:(eassumption)). eapply weaken.
           1: eapply H15. simpl. intros. destruct q'; [|fwd; congruence]. fwd.
@@ -685,25 +690,54 @@ Module exec.
       - eapply if_false; eauto. apply IHexec; auto. intros x. specialize (Hx x).
         inversion Hx; subst; [congruence| |fwd; congruence]. assumption.
       - apply loop_cps. eapply weaken.
-        { apply aep_same. eapply IHexec; eauto. intros x. specialize (Hx x).
-          inversion Hx; subst; [|fwd; congruence]. eapply weaken.
-          { apply aep_same. exact H10. }
-          simpl. intros. fwd. destruct q'.
-          - split; [reflexivity|]. Search (mid0 true). specialize H11 with (1 := H7p1).
-            Search (mid0 true). specialize H13 with (1 := H7p1). Search (mid0 true).
-            specialize H12 with (1 := H7p1). instantiate (1 := fun _ _ _ _ _ _ => _).
-            simpl. instantiate (1 := exists mid3, _). exists mid3.
-            exact (conj H11 (conj H13 (conj H12 H22))).
-          - Search mid0. apply H14 in H7p1. fwd. congruence. }
-        simpl. intros. fwd. pose proof (H7p2 O) as HO. fwd.
-        destruct (eval_bcond _ _); [|congruence]. eexists. split; [reflexivity|].
+        { apply aep_same. eapply IHexec; eauto.
+          { intros. destruct q' eqn:E; [reflexivity|]. eauto. }
+          intros x. 
+          instantiate (1 := fun x _ _ _ _ _ => match x with | O => _ | _ => _ end).
+          destruct x.
+          - eapply weaken.
+            { apply aep_same. exact H0. }
+            simpl. intros. fwd. destruct q'.
+            + split; [reflexivity|]. exact H7p1.
+            + Search mid1. apply H4 in H7p1. apply Hpost in H7p1. congruence.
+          - specialize (Hx x).
+            inversion Hx; subst; [|fwd; congruence]. eapply weaken.
+            { apply aep_same. Check IHexec. exact H10. }
+            simpl. intros. fwd. destruct q'.
+            + split; [reflexivity|]. Search (mid0 true). specialize H11 with (1 := H7p1).
+              Search (mid0 true). specialize H13 with (1 := H7p1). Search (mid0 true).
+              specialize H12 with (1 := H7p1).
+              simpl. instantiate (1 := exists mid3, _). exists mid3.
+              exact (conj H11 (conj H13 (conj H12 H22))).
+            + Search mid0. apply H14 in H7p1. fwd. congruence. }
+        simpl. intros. fwd. pose proof (H7p2 O) as Hmid1. pose proof (H7p2 (S O)) as HO.
+        simpl in *. fwd.
+        destruct (eval_bcond _ _) eqn:E; [|congruence]. eexists. split; [reflexivity|].
         split; intros; subst.
-        + clear HOp1 HOp0 HOp2 HOp3 mid3. intuition. specialize (H7p2 x). fwd.
-          specialize (H7p2p2 eq_refl). fwd. assumption.
-        + Search body2. eapply weaken. 1: eapply H3; eauto.
-        exfalso. eauto. Search mid0.
-            Search (mid0). specialize H14 with (1 := H7).
-          Search mid1. auto. assumption. econstructor; eauto. 
+        + clear HOp1 HOp0 HOp2 HOp3 mid3. intuition. specialize (H7p2 (S x)).
+          simpl in H7p2. fwd. specialize (H7p2p2 eq_refl). fwd. assumption.
+        + clear HOp1 HOp0 HOp2 HOp3 mid3. eapply weaken.
+          { apply aep_same. eapply H3; eauto.
+            - intros. destruct q'; [reflexivity|]. Search mid2. apply H5 in H7.
+              inversion H7. subst. Search post. apply Hpost in H8. congruence.
+            - instantiate (1 := fun x _ _ _ _ _ => match x with | O => _ | _ => _ end).
+              intros x. destruct x.
+              + eapply weaken.
+                { apply aep_same. eauto. }
+                simpl. intros. fwd. destruct q'.
+                -- split; [reflexivity|]. exact H7p1.
+                -- Search mid2. apply H5 in H7p1. inversion H7p1. subst.
+                   apply Hpost in H7. congruence.
+              + specialize (H7p2 (S x)). simpl in H7p2. fwd. Search mid3.
+                eapply weaken.
+                { apply aep_same. apply H7p2p1. reflexivity. }
+                simpl. intros. fwd. apply H7p2p3 in H7p1. destruct q'.
+                2: { inversion H7p1. subst. fwd. congruence. }
+                split; [reflexivity|]. exact H7p1. }
+          simpl. intros. fwd. eapply H6; eauto.
+          -- apply (H7p3 O).
+          -- exact (fun x => H7p3 (S x)).
+      - 
         
 
     Lemma det_invert {pick_sp: PickSp} : forall q aep k t m l mc s post,
