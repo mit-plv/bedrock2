@@ -153,7 +153,7 @@ Section WithArguments.
           finish
         ]
       ).
-      { apply exec.seq_cps. remember (SLit _ _) as s.
+      { apply exec.seq_cps. apply exec.det_invert in H0; [fwd|reflexivity|]. remember (SLit _ _) as s.
         induction H0; inversion Heqs; subst.
       all: eapply @exec.seq_cps.
       

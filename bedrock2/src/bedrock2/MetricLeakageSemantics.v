@@ -28,6 +28,13 @@ Section aep.
   | inp_E : nat -> inputs -> inputs
   | inp_A : (nat -> inputs) -> inputs.
 
+  Inductive compat : AEP -> inputs -> Prop :=
+  | comp_nil aep : compat aep inp_nil
+  | comp_A aep inp : (forall x, compat (aep x) (inp x)) ->
+                     compat (AEP_A aep) (inp_A inp)
+  | comp_E aep inp x : compat (aep x) inp ->
+                       compat (AEP_E aep) (inp_E x inp).
+
   Inductive goes_to : AEP -> inputs -> AEP -> Prop :=
   | gt_nil : forall aep, goes_to aep inp_nil aep
   | gt_A : forall aep inp aep' x,
@@ -36,6 +43,16 @@ Section aep.
   | gt_E : forall aep inp aep' x,
       goes_to (aep x) inp aep' ->
       goes_to (AEP_E aep) (inp_E x inp) aep'.
+
+  Lemma goes_to_something aep inp :
+    compat aep inp ->
+    exists aep', goes_to aep inp aep'.
+  Proof.
+    intros H. induction H.
+    - eexists; econstructor; eauto.
+    - specialize (H0 O). fwd. eexists. econstructor. eassumption.
+    - fwd. eexists. econstructor. eassumption.
+  Qed.
 End aep.
 
 Section semantics.

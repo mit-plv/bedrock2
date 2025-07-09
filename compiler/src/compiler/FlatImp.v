@@ -763,29 +763,42 @@ Module exec.
       - apply Hpost in H. congruence.
       - congruence.
       - congruence.
-    Qed.        
+    Qed.
 
     Lemma det_invert {pick_sp: PickSp} : forall q aep k t m l mc s post,
         is_det s ->
         exec s q aep k t m l mc post ->
         (forall q' aep' k' t' m' l' mc', post q' aep' k' t' m' l' mc' -> q' = true) ->
-        exists inp, forall blah,
-          exec s q (AEP_P blah) k t m l mc
-            (fun q' _ k' t' m' l' mc' =>
-               forall aep',
-                 goes_to aep inp aep' ->
-                 post q' aep' k' t' m' l' mc').
+        exists inp,
+          compat aep inp /\
+            forall blah,
+              exec s q (AEP_P blah) k t m l mc
+                (fun q' _ k' t' m' l' mc' =>
+                   forall aep',
+                     goes_to aep inp aep' ->
+                     post q' aep' k' t' m' l' mc').
     Proof.
       intros * Hdet Hexec. revert Hdet.
-      induction Hexec; try solve [intros []]; simpl; intros Hdet.
-      all: try (exists inp_nil; intros; econstructor; eauto; intros aep' gt; inversion gt; subst; assumption).
-      - specialize H0 with (1 := Hdet). Print FunctionalChoice_on. eassert (exists f, _).
+      induction Hexec; try solve [intros []]; simpl; intros Hdet Hquit.
+      all: try (exists inp_nil; split; [constructor|]; intros; econstructor; eauto; intros aep' gt; inversion gt; subst; assumption).
+      - specialize H0 with (1 := Hdet) (2 := Hquit). eassert (exists f, _).
         { apply choice. intros x. specialize (H0 x). destruct H0 as [inp H0].
           exists inp. exact H0. }
-        clear H0. simpl in H1. destruct H1 as [f H1]. exists (inp_A f). intros.
-        { destruct H1 as [f H1]. exists (inp_A f). apply H1. }
-        apply choice.
-
+        clear H0. simpl in H1. destruct H1 as [f H1]. exists (inp_A f). split.
+        { constructor. intros x. specialize (H1 x). fwd. assumption. }
+        intros. eapply weaken.
+        { eapply intersect. intros x. specialize (H1 x). fwd.
+          specialize (H1p1 blah). eapply weaken. 1: exact H1p1.
+          simpl. intros. destruct q'.
+          - split; [reflexivity|]. exact H0.
+          - enough (false = true) by congruence. apply goes_to_something in H1p0.
+            fwd. eauto. }
+        simpl. intros. fwd. inversion H2. subst. eauto.
+      - specialize IHHexec with (1 := Hdet) (2 := Hquit). fwd. exists (inp_E x inp).
+        split; [constructor; assumption|]. intros. eapply weaken. 1: apply IHHexecp1.
+        simpl. intros. inversion H0. subst. auto.
+    Qed.
+    
     Lemma seq_assoc {pick_sp: PickSp} : forall s1 s2 s3 aep k t m l mc post,
         exec (SSeq s1 (SSeq s2 s3)) true aep k t m l mc post ->
         exec (SSeq (SSeq s1 s2) s3) true aep k t m l mc post.
