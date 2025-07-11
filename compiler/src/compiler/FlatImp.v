@@ -613,6 +613,7 @@ Module exec.
       - congruence.
     Qed.
         
+    Axiom em : forall (P : Prop), P \/ ~P.
     Axiom choice : forall x y, FunctionalChoice_on x y.
     Lemma intersect {pick_sp: PickSp} : forall q blah0 k t m l mc s (postx : _ -> _ -> _ -> _ -> _ -> _ -> Prop),
         (forall (x : nat), exec s q (AEP_P blah0) k t m l mc (fun q' aep' k' t' m' l' mc' => q' = true /\ postx x k' t' m' l' mc')) ->
@@ -797,6 +798,31 @@ Module exec.
       - exists inp_nil. split; [constructor|]. intros * H *. inversion H. subst.
         inversion Hexec; subst; try destruct Hdet; econstructor; eauto.
     Qed.
+
+    (*explicit indexing was a horrible idea*)
+    Lemma ext_spec_intersect_subset t mGive a args postx H :
+      (exists n, H n) ->
+      (forall x : nat, H x -> ext_spec t mGive a args (postx x)) ->
+      ext_spec t mGive a args
+        (fun (mReceive : mem) (resvals klist : list word) =>
+           forall x : nat, H x -> postx x mReceive resvals klist).
+    Proof.
+      intros He Ha.
+      eassert (exists f, _).
+      { apply choice. intros x0. specialize (Ha x0). assert (Hem := em (H x0)).
+        destruct Hem as [Hem|Hem].
+        - exists (postx x0). instantiate (1 := fun x0 y => (H x0 -> y = postx x0) /\ (~H x0 -> y = fun _ _ _ => True)).
+          simpl. split; [|congruence]. intros _. reflexivity.
+        - simpl. eexists. split; [congruence|]. intros. reflexivity. }
+      destruct H0 as [f H0]. eapply ext_spec.weaken.
+      2: { apply ext_spec.intersect with (post := f). intros x. specialize (H0 x). fwd.
+           assert (Hem := em (H x)). destruct Hem as [Hem|Hem].
+           - specialize (H0p0 Hem). rewrite H0p0. auto.
+           - specialize (H0p1 Hem). rewrite H0p1. eapply ext_spec.weaken.
+             2: eauto. cbv [Morphisms.pointwise_relation Basics.impl]. auto. }
+      cbv [Morphisms.pointwise_relation Basics.impl].
+      intros. specialize (H0 x). fwd. apply H0p0 in H2. rewrite <- H2. auto.
+    Qed.
     
     Lemma intersect_one_step {pick_sp: PickSp} : forall q blah0 k t m l mc s (postx : _ -> _ -> _ -> _ -> _ -> _ -> _ -> Prop),
         one_step s ->
@@ -806,10 +832,41 @@ Module exec.
                                                       postx x false k t m l mc \/
                                                         postx x q' k' t' m' l' mc').
     Proof.
-      (*TODO*) Abort.
+      intros * Hstep Hexec ?. assert (Hem := em (exists n, ~postx n false k t m l mc)).
+      destruct Hem as [ [n Hem]|Hem].
+      2: { apply quit. intros x. assert (Hem' := em (postx x false k t m l mc)).
+           destruct Hem' as [Hem'|Hem']; [left; apply Hem'|]. exfalso. apply Hem.
+           exists x. apply Hem'. }
+      assert (Hn := Hexec n).
+      destruct s; try solve [destruct Hstep].
+      all: inversion Hn; subst; try congruence; cycle -1.
+      { eassert (exists f, _) as Hf.
+        { apply choice. intros x. specialize (Hexec x). inversion Hexec; subst.
+          2: { eexists. instantiate (2 := fun x _ => ~postx x false k t m l mc -> _).
+               simpl. intros H'. congruence. }
+          stuff. pose proof ext_spec.mGive_unique as P.
+          specialize P with (1 := H2) (2 := H4) (3 := H12) (4 := H6). subst mGive0.
+          destruct (map.split_diff (map.same_domain_refl mGive) H2 H4) as (? & _).
+          subst mKeep0.
+          exists outcome0. intros _. exact (conj H6 H16). }
+        destruct Hf as [f Hf]. econstructor. 1,2: eauto.
+        { apply ext_spec_intersect_subset.
+          2: exact (fun x P => match Hf x P with | conj a b => a end). simpl. eauto. }
+        simpl. intros. assert (Hn' := Hf n ltac:(assumption)). fwd.
+        specialize (Hn'p1 _ _ _ ltac:(eauto)). fwd. eexists. split; [eassumption|].
+        intros. specialize Hn'p1p1 with (1 := H0). specialize (Hf x).
+        eassert (Hem' := em _). destruct Hem' as [Hem'|Hem']; [left; exact Hem'|].
+        specialize Hf with (1 := Hem'). fwd. specialize (Hfp1 _ _ _ ltac:(eauto)).
+        fwd. stuff. specialize (Hfp1p1 _ ltac:(eassumption)). auto. }
+      all: econstructor; eauto; cycle -1.
+      all: intros x0.
+      all: specialize (Hexec x) || specialize (Hexec x0).
+      all: inversion Hexec; subst; auto.
+      all: stuff; auto.
+      Unshelve. (*where did this come from*) exact (fun _ _ _ => True).
+    Qed.
 
-
-    Lemma invert_one_step {pick_sp: PickSp} : forall q aep k t m l mc s post,
+    Lemma invert_one_step' {pick_sp: PickSp} : forall q aep k t m l mc s post,
         one_step s ->
         exec s q aep k t m l mc post ->
         exists inp,
@@ -819,7 +876,7 @@ Module exec.
                 (fun q' _ k' t' m' l' mc' =>
                    forall aep',
                      goes_to aep inp aep' ->
-                     post false aep' k' t' m' l' mc' \/
+                     post false aep' k t m l mc \/
                        post q' aep' k' t' m' l' mc').
     Proof.
       intros * Hone_step Hexec. induction aep.
@@ -834,8 +891,43 @@ Module exec.
             destruct H as [inp H]. exists inp. exact H. }
           clear H. simpl in H'. destruct H' as [f H']. exists (inp_A f). split.
           { constructor. intros x. specialize (H' x). fwd. assumption. }
-          intros ?. Abort.
-    
+          intros ?. eapply weaken.
+          { eapply intersect_one_step; auto. intros x. specialize (H' x). fwd.
+            specialize (H'p1 blah). eapply weaken. 1: exact H'p1. simpl. intros.
+            exact H. }
+          simpl. intros. inversion H0. subst. specialize (H x). destruct H as [H|H].
+          -- apply H in H4. auto. destruct H4; auto.
+          -- apply H in H4. assumption.
+      - inversion Hexec; subst; simpl in Hone_step; try solve [destruct Hone_step].
+        all: try (exists inp_nil; split; [solve[constructor]|]; intros ?; econstructor; eauto;
+                    intros * Hgt; inversion Hgt; subst; solve [auto]).
+        + exists inp_nil. split; [solve[constructor]|]; intros ?; econstructor; eauto; intros * Houtcome.
+          specialize H3 with (1 := Houtcome). fwd. eexists; intuition eauto. inversion H4.
+          subst. auto.
+        + specialize (H _ ltac:(eassumption)). fwd. exists (inp_E x inp).
+          split; [constructor; assumption|]. intros. eapply weaken. 1: eauto.
+          simpl. intros. inversion H0. subst. apply H in H6. assumption.
+      - inversion Hexec; subst; simpl in Hone_step; try solve [destruct Hone_step].
+        all: try (exists inp_nil; split; [solve[constructor]|]; intros ?; econstructor; eauto;
+                    intros * Hgt; inversion Hgt; subst; solve [auto]).
+        exists inp_nil. split; [solve[constructor]|]; intros ?; econstructor; eauto; intros * Houtcome.
+          specialize H2 with (1 := Houtcome). fwd. eexists; intuition eauto. inversion H3.
+          subst. auto.
+    Qed.
+
+    Lemma invert_one_step {pick_sp: PickSp} : forall q aep k t m l mc s post,
+        one_step s ->
+        exec s q aep k t m l mc post ->
+        exists inp,
+          compat aep inp /\
+            exec s q (AEP_P (fun _ _ _ _ => True)) k t m l mc
+              (fun q' _ k' t' m' l' mc' =>
+                 forall aep',
+                   goes_to aep inp aep' ->
+                   post false aep' k t m l mc \/
+                     post q' aep' k' t' m' l' mc').
+    Proof. intros. edestruct invert_one_step'; fwd; eauto. Qed.
+
     Lemma seq_assoc {pick_sp: PickSp} : forall s1 s2 s3 aep k t m l mc post,
         exec (SSeq s1 (SSeq s2 s3)) true aep k t m l mc post ->
         exec (SSeq (SSeq s1 s2) s3) true aep k t m l mc post.
