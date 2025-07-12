@@ -792,65 +792,132 @@ Section WithWordAndMem.
     (* combines the above theorem with WeakestPrecondition soundness,
        and makes `map.get (map.of_list finfo) fname` a hyp rather than conclusion because
        in concrete instantiations, users need to lookup that position themselves anyways *)
-    Lemma compiler_correct_wp: forall
+    Lemma compiler_correct_nonterm: forall
         (* input of compilation: *)
-        (fs: list (string * (list string * list string * cmd)))
+        (functions: list (string * (list string * list string * cmd)))
         (* output of compilation: *)
         (instrs: list Instruction) (finfo: list (string * Z)) (req_stack_size: Z)
         (* function we choose to call: *)
-        (fname: string) (p_funcs stack_hi ret_addr : word) (f_rel_pos: Z),
-        valid_src_funs fs = true ->
-        compile fs = Success (instrs, finfo, req_stack_size) ->
-        forall kH kL,
-        exists f pick_sp, forall
+        (fname: string) (p_funcs stack_hi ret_addr : word),
         (* high-level initial state & post on final state: *)
-        (aep: AEP)(t: trace) (mH: mem) (argvals: list word) (mcH : MetricLog) (mcL : MetricLog) (post: _ -> _ -> leakage -> trace -> mem -> list word -> MetricLog -> Prop)
-        (* ghost vars that help describe the low-level machine: *)
-        (stack_lo : word) (Rdata Rexec: mem -> Prop)
-        (* low-level machine on which we're going to run the compiled program: *)
-        (initial: MetricRiscvMachine),
-        NoDup (map fst fs) ->
-        MetricLeakageSemantics.call (pick_sp := pick_sp) (map.of_list fs) fname true aep kH t mH argvals (cost_spill_spec mcH) post ->
-        map.get (map.of_list finfo) fname = Some f_rel_pos ->
-        req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
-        word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
-        initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
-        map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
-        word.unsigned ret_addr mod 4 = 0 ->
-        arg_regs_contain initial.(getRegs) argvals ->
-        initial.(getLog) = t ->
-        initial.(getTrace) = Some kL ->
-        raiseMetrics (cost_compile_spec initial.(getMetrics)) = mcL ->
-        machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
-        runsTo' (initial, aep)
-          (fun '(final, aep') =>
-             exists (q' : bool),
-               if q' then
-                 exists kH' mH' retvals,
-                   arg_regs_contain (getRegs final) retvals /\
-                     (exists mcH' : MetricLog,
-                         ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mcH)%metricsH /\
-                           post true aep' kH' (getLog final) mH' retvals mcH') /\
-                     final.(getTrace) = Some (f kH') /\
-                     map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
-                     final.(getPc) = ret_addr /\
-                     machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final
-               else
-                 exists kH' mH' lH' mcH',
-                   metricsLeq (raiseMetrics final.(getMetrics) - mcL) (mcH' - mcH) /\
-                     post false aep' final.(getLog) mcH').
+        valid_src_funs functions = true ->
+        compile functions = Success (instrs, finfo, req_stack_size) ->
+        forall kH kL,
+        exists pick_sp,
+        forall aep t mH argvals mc mid,
+        (exists (argnames retnames: list string) (fbody: cmd) l,
+            map.get (map.of_list (map := Semantics.env) functions) fname =
+              Some (argnames, retnames, fbody) /\
+            map.of_list_zip argnames argvals = Some l /\
+              MetricLeakageSemantics.exec (pick_sp := pick_sp) (map.of_list functions) fbody true aep kH t mH l
+                (cost_spill_spec mc)
+                (fun q' aep' kH' t' m' l' mc' => q' = false /\
+                                                match aep' with
+                                                | MetricLeakageSemantics.AEP_P P => mid P t' mc'
+                                                | _ => False
+                                                end)) ->
+        forall mcL,
+        exists (f_rel_pos: Z),
+          map.get (map.of_list finfo) fname = Some f_rel_pos /\
+          forall (* low-level machine on which we're going to run the compiled program: *)
+                 (initial: MetricRiscvMachine)
+                 (* ghost vars that help describe the low-level machine: *)
+                 (stack_lo : word) (Rdata Rexec: mem -> Prop),
+            req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
+            word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
+            initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
+            map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
+            word.unsigned ret_addr mod 4 = 0 ->
+            arg_regs_contain initial.(getRegs) argvals ->
+            initial.(getLog) = t ->
+            initial.(getTrace) = Some kL ->
+            raiseMetrics (cost_compile_spec initial.(getMetrics)) = mcL ->
+            machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
+            runsTo initial 
+              (SmallStep.post_of _ (mcomp_sat (run1 iset)) aep
+                 (fun P final =>
+                    exists mcH',
+                      metricsLeq (raiseMetrics final.(getMetrics) - mcL) (mcH' - mc) /\
+                        mid P final.(getLog) mcH')).
     Proof.
       intros.
-      destruct (compiler_correct fs instrs finfo req_stack_size fname p_funcs stack_hi ret_addr H H0 kH kL) as
-        [f [pick_sp compiler_correct'] ].
-      exists f, pick_sp. intros.
-      let H := hyp (MetricLeakageSemantics.call (pick_sp := pick_sp)) in rename H into WP.
-      unfold MetricLeakageSemantics.call in WP. fwd.
-      edestruct compiler_correct' as (f_rel_pos' & G & C).
-      { do 4 eexists. eauto. }
-      rewrite H3 in G. inversion G; subst; clear G.
-      apply C; auto.
+      pose proof compiler_correct as C. edestruct C as (f&pick_sp&C'); eauto.
+      clear C. exists pick_sp. intros. fwd.
+      specialize C' with (mid := fun aep' t' mc' => match aep' with
+                                                 | MetricLeakageSemantics.AEP_P P => mid P t' mc'
+                                                 | _ => False
+                                                 end)
+                         (post := fun _ _ _ _ _ _ => False).
+      edestruct C' as (f_rel_pos&C''); clear C'.
+      { do 4 eexists. intuition eauto. eapply MetricLeakageSemantics.exec.weaken.
+        1: eassumption. simpl. intros. fwd. assumption. }
+      exists f_rel_pos. intuition eauto. apply SmallStep.step'_iff_step.
+      eapply runsToNonDet.runsTo_weaken.
+      { eapply H2; eauto. }
+      simpl. intros. fwd. destruct q'.
+      { fwd. exfalso. assumption. }
+      fwd. eauto.
     Qed.
+    
+    (* Lemma compiler_correct_wp: forall *)
+    (*     (* input of compilation: *) *)
+    (*     (fs: list (string * (list string * list string * cmd))) *)
+    (*     (* output of compilation: *) *)
+    (*     (instrs: list Instruction) (finfo: list (string * Z)) (req_stack_size: Z) *)
+    (*     (* function we choose to call: *) *)
+    (*     (fname: string) (p_funcs stack_hi ret_addr : word) (f_rel_pos: Z), *)
+    (*     valid_src_funs fs = true -> *)
+    (*     compile fs = Success (instrs, finfo, req_stack_size) -> *)
+    (*     forall kH kL, *)
+    (*     exists f pick_sp, forall *)
+    (*     (* high-level initial state & post on final state: *) *)
+    (*     (aep: AEP)(t: trace) (mH: mem) (argvals: list word) (mcH : MetricLog) (mcL : MetricLog) (post: _ -> _ -> leakage -> trace -> mem -> list word -> MetricLog -> Prop) *)
+    (*     (* ghost vars that help describe the low-level machine: *) *)
+    (*     (stack_lo : word) (Rdata Rexec: mem -> Prop) *)
+    (*     (* low-level machine on which we're going to run the compiled program: *) *)
+    (*     (initial: MetricRiscvMachine), *)
+    (*     NoDup (map fst fs) -> *)
+    (*     MetricLeakageSemantics.call (pick_sp := pick_sp) (map.of_list fs) fname true aep kH t mH argvals (cost_spill_spec mcH) post -> *)
+    (*     map.get (map.of_list finfo) fname = Some f_rel_pos -> *)
+    (*     req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word -> *)
+    (*     word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 -> *)
+    (*     initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) -> *)
+    (*     map.get (getRegs initial) RegisterNames.ra = Some ret_addr -> *)
+    (*     word.unsigned ret_addr mod 4 = 0 -> *)
+    (*     arg_regs_contain initial.(getRegs) argvals -> *)
+    (*     initial.(getLog) = t -> *)
+    (*     initial.(getTrace) = Some kL -> *)
+    (*     raiseMetrics (cost_compile_spec initial.(getMetrics)) = mcL -> *)
+    (*     machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial -> *)
+    (*     runsTo' (initial, aep) *)
+    (*       (fun '(final, aep') => *)
+    (*          exists (q' : bool), *)
+    (*            if q' then *)
+    (*              exists kH' mH' retvals, *)
+    (*                arg_regs_contain (getRegs final) retvals /\ *)
+    (*                  (exists mcH' : MetricLog, *)
+    (*                      ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mcH)%metricsH /\ *)
+    (*                        post true aep' kH' (getLog final) mH' retvals mcH') /\ *)
+    (*                  final.(getTrace) = Some (f kH') /\ *)
+    (*                  map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\ *)
+    (*                  final.(getPc) = ret_addr /\ *)
+    (*                  machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final *)
+    (*            else *)
+    (*              exists kH' mH' lH' mcH', *)
+    (*                metricsLeq (raiseMetrics final.(getMetrics) - mcL) (mcH' - mcH) /\ *)
+    (*                  post false aep' final.(getLog) mcH'). *)
+    (* Proof. *)
+    (*   intros. *)
+    (*   destruct (compiler_correct fs instrs finfo req_stack_size fname p_funcs stack_hi ret_addr H H0 kH kL) as *)
+    (*     [f [pick_sp compiler_correct'] ]. *)
+    (*   exists f, pick_sp. intros. *)
+    (*   let H := hyp (MetricLeakageSemantics.call (pick_sp := pick_sp)) in rename H into WP. *)
+    (*   unfold MetricLeakageSemantics.call in WP. fwd. *)
+    (*   edestruct compiler_correct' as (f_rel_pos' & G & C). *)
+    (*   { do 4 eexists. eauto. } *)
+    (*   rewrite H3 in G. inversion G; subst; clear G. *)
+    (*   apply C; auto. *)
+    (* Qed. *)
 
   End WithMoreParams.
 End WithWordAndMem.
