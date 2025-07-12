@@ -928,6 +928,31 @@ Module exec.
                      post q' aep' k' t' m' l' mc').
     Proof. intros. edestruct invert_one_step'; fwd; eauto. Qed.
 
+    Definition weakest_pre {pick_sp: PickSp} s post aep k t m l mc :=
+      match s with
+      | SSeq s1 s2 =>
+          exec s1 true aep k t m l mc
+            (fun q' aep' k' t' m' l' mc' =>
+               exec s2 q' aep' k' t' m' l' mc' post)
+      | _ => True(*TODO*)
+      end.
+
+    (*TODO: a lemma like this one would be more convenient than the invert_one_step lemma.
+     More importantly, it would work even with statements that don't finish in one step.
+     However, I am too lazy to finish it right now.*)
+    Lemma weakest_pre_works {pick_sp: PickSp} aep s k t m l mc post :
+      exec s true aep k t m l mc post ->
+      exists inp,
+        compat aep inp /\
+          forall aep',
+            goes_to aep inp aep' ->
+            post false aep' k t m l mc \/ weakest_pre s post aep' k t m l mc.
+    Proof.
+      intros Hexec. induction aep.
+      3: { inversion Hexec; subst.
+           13: { exists inp_nil; split; [solve[constructor]|]; intros aep' Haep'; inversion Haep'; subst. right. simpl. eapply weaken; eauto. }
+    Abort.
+
     Lemma inp_works {pick_sp: PickSp} inp aep k t m l mc s post :
       compat aep inp ->
       (forall aep',
