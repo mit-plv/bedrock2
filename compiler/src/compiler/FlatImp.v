@@ -928,6 +928,22 @@ Module exec.
                      post q' aep' k' t' m' l' mc').
     Proof. intros. edestruct invert_one_step'; fwd; eauto. Qed.
 
+    Lemma inp_works {pick_sp: PickSp} inp aep k t m l mc s post :
+      compat aep inp ->
+      (forall aep',
+          goes_to aep inp aep' ->
+          exec s true aep' k t m l mc post) ->
+      exec s true aep k t m l mc post.
+    Proof.
+      intros Hcom Haep. revert aep Hcom Haep. induction inp; intros aep Hcom Haep;
+        inversion Hcom; subst.
+      - apply Haep. constructor.
+      - eapply exec_E. eapply IHinp; try eassumption. intros. apply Haep. constructor.
+        assumption.
+      - apply exec_A. intros x. eapply H; eauto. intros. apply Haep. econstructor.
+        eassumption.
+    Qed.
+
     Lemma seq_assoc {pick_sp: PickSp} : forall s1 s2 s3 aep k t m l mc post,
         exec (SSeq s1 (SSeq s2 s3)) true aep k t m l mc post ->
         exec (SSeq (SSeq s1 s2) s3) true aep k t m l mc post.

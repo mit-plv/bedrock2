@@ -53,7 +53,10 @@ Section WithArguments.
            end;
     clear;
     FlatImp.scost_hammer
-  ).
+                ).
+
+  Lemma or_same P : P \/ P -> P.
+  Proof. tauto. Qed.
 
   (* TODO these two lemmas are somewhat slow *)
   Lemma op_cost_y : forall x0 y v0 mcH' mc v mcL lit,
@@ -69,8 +72,6 @@ Section WithArguments.
     exec.cost_SOp isRegStr x0 v0 (Const v) (cost_lit isRegStr lit mcL) - mcL <=
       mcH' - mc.
   Proof. finish. Qed.
-
-
 
   Lemma useImmediate_correct_aux:
     forall eH eL,
@@ -153,32 +154,69 @@ Section WithArguments.
           finish
         ]
       ).
-      { apply exec.seq_cps. apply exec.det_invert in H0; [fwd|reflexivity|]. remember (SLit _ _) as s.
-        induction H0; inversion Heqs; subst.
+      (* apply exec.seq_cps. *)
+
+      Ltac stupid_invert H :=
+        apply exec.invert_one_step in H; [|reflexivity];
+        let inp := fresh "inp" in
+        let H1 := fresh H in
+        let H2 := fresh H in
+        destruct H as (inp&H1&H2);
+        inversion H2; subst;
+        [
+        |(*match goal with
+           | H'1: forall aep' : MetricLeakageSemantics.AEP,
+               MetricLeakageSemantics.goes_to ?aep ?inp aep' -> _,
+            H'2: MetricLeakageSemantics.compat ?aep ?inp |- _ =>
+            apply MetricLeakageSemantics.goes_to_something in H'2;
+            let aep' := fresh aep' in
+            destruct H'2 as [aep' H'2];
+            specialize (H'1 _ H'2);
+            apply or_same in H'1
+          end*)].
+      (* stupid_invert H0. *)
+      (* 2: { eapply exec.inp_works; eauto. intros aep' Haep'. *)
+      (*        specialize H0 with (1 := Haep'). apply or_same in H0. *)
+      (*        apply exec.quit. apply exec.quit. specialize H1 with (1 := H0). *)
+      (*        inversion H1. subst. finish. } *)
+      (*   eapply exec.inp_works; eauto. intros aep' Haep'. *)
+      (*   specialize H5 with (1 := Haep'). destruct H5 as [H5|H5]. *)
+      (*   { apply exec.quit. apply exec.quit. specialize H1 with (1 := H5). *)
+      (*     inversion H1. subst. finish. } *)
       all: eapply @exec.seq_cps.
-      
-      eapply @exec.lit; simpl in IHexec.
-      { specialize (IHexec mcL). 
-      1: match goal with
+
+      all: match goal with
            | H: exec _ _ _ _ _ _ _ _ _ ?mid,
                H': forall q aep k t m l mc,
                  ?mid _ _ _ _ _ _ _ -> exec ?eL _ _ _ _ _ _ _ _ ?post
-                 |- _ => inversion H
+                 |- _ => stupid_invert H;
+                       [|eapply exec.inp_works; [solve[eauto]|]; intros aep' Haep';
+                         specialize H0 with (1 := Haep'); apply or_same in H0;
+                         apply exec.quit; apply exec.quit; specialize H1 with (1 := H0);
+                         inversion H1; subst; finish]
            end.
+      all: eapply exec.inp_works; [solve[eauto]|]; intros aep' Haep'; specialize H5 with (1 := Haep'); destruct H5 as [H5|H5]; [apply exec.quit; apply exec.quit; specialize H1 with (1 := H5); inversion H1; subst; finish|].
+      all: econstructor; eauto; [].
 
-      all: match goal with
+       all: match goal with
            | H: ?mid _ _ _ _ _ _ _,
              H0: forall q aep k t m l mc,
-                 ?mid q aep k t m l mc -> _(*forall mcL, exec ?eL _ _ _ _ _ _ _ _ mcL _*)
+                 ?mid q aep k t m l mc -> forall mcL, exec ?eL _ _ _ _ _ _ _ mcL _
                  |- exec ?eL _ _ _ _ _ _ _ _ _
-             => idtac end. specialize (H0 _ _ _ _ _ _ _ H EmptyMetricLog); inversion H0
-           end.
+             => specialize (H0 _ _ _ _ _ _ _ H EmptyMetricLog); stupid_invert H0;
+               [|eapply exec.inp_works; [solve[eauto]|]; intros aep'' Haep'';
+                 specialize H2 with (1 := Haep''); apply or_same in H2;
+                 apply exec.quit; fwd; finish]
+            end.
+      
+       all: eapply exec.inp_works; [solve[eauto]|]; intros aep'' Haep''; specialize H19 with (1 := Haep'').
+       all: destruct H19 as [H19|H19]; [fwd; apply exec.quit; finish|].
 
-      all: simpl in *;
-        match goal with
-        | [ H: map.get (map.put _ ?x _) ?x = _ |- _ ]
-          => rewrite map.get_put_same in H; fwd
-        end.
+       all: simpl in *;
+         match goal with
+         | [ H: map.get (map.put _ ?x _) ?x = _ |- _ ]
+           => rewrite map.get_put_same in H; fwd
+         end.
 
       all: eapply @exec.op; simpl in *; [ eassumption | reflexivity | ].
 
