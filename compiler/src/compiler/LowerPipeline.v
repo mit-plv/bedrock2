@@ -395,8 +395,8 @@ Section LowerPipeline.
   Definition riscv_call(p: list Instruction * pos_map * Z)
     (p_funcs stack_pastend ret_addr : word)(f_name: string)(aep: AEP) (kL: list LeakageEvent)
     (t: Semantics.trace)(mH: mem)(argvals: list word)(mc: MetricLog) 
-    (post: AEP -> list LeakageEvent -> Semantics.trace -> mem -> list word -> MetricLog -> Prop)
-    (mid: AEP -> Semantics.trace -> MetricLog -> Prop) : Prop :=
+    (mid: AEP -> Semantics.trace -> MetricLog -> Prop)
+    (post: AEP -> list LeakageEvent -> Semantics.trace -> mem -> list word -> MetricLog -> Prop) : Prop :=
     let '(instrs, finfo, req_stack_size) := p in
     exists f_rel_pos,
       map.get finfo f_name = Some f_rel_pos /\
@@ -519,17 +519,17 @@ Section LowerPipeline.
               else mid aep' kH' t' m' l' mc') ->
       forall mcL,
         riscv_call p2 p_funcs stack_pastend ret_addr fname aep kL t m argvals mcL
+          (fun aep' t' mcL' =>
+             exists kH' mH' l' mcH',
+               metricsLeq (mcL' - mcL) (mcH' - mcH) /\
+                 mid aep' kH' t' mH' l' mcH')
           (fun aep' kL' t m a mcL' =>
              exists mcH' kH' kH'',
                metricsLeq (mcL' - mcL) (mcH' - mcH) /\
                  kH' = kH'' ++ kH /\
                  fst (fun_leakage iset compile_ext_call leak_ext_call finfo p1 p_funcs
                         (rev kH'') (rev kL) f_rel_pos stack_pastend ret_addr retnames fbody (fun _ rk => (rk, word.of_Z 0))) = rev kL' /\
-                 post aep' kH' t m a mcH')
-          (fun aep' t' mcL' =>
-             exists kH' mH' l' mcH',
-               metricsLeq (mcL' - mcL) (mcH' - mcH) /\
-                 mid aep' kH' t' mH' l' mcH')).
+                 post aep' kH' t m a mcH')).
   Proof.
     unfold riscv_call.
     intros p1 p2. destruct p2 as ((finstrs & finfo) & req_stack_size). intros.

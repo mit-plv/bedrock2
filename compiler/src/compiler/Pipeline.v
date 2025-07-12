@@ -57,8 +57,8 @@ Require Import compiler.FitsStack.
 Require Import compiler.LowerPipeline.
 Require Import compiler.UseImmediateDef.
 Require Import compiler.UseImmediate.
-Require Import compiler.DeadCodeElimDef.
-Require Import compiler.DeadCodeElim.
+(* Require Import compiler.DeadCodeElimDef. *)
+(* Require Import compiler.DeadCodeElim. *)
 Import Utility.
 
 Section WithWordAndMem.
@@ -69,8 +69,9 @@ Section WithWordAndMem.
     Valid: Program -> Prop;
     Leakage: Type;
     Call(p: Program)(pick_sp: list Leakage -> word)(funcname: string)
-        (k: list Leakage)(t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
-        (post: list Leakage -> trace -> mem -> list word -> MetricLog -> Prop): Prop;
+        (aep: AEP)(k: list Leakage)(t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
+        (mid: AEP -> trace -> MetricLog -> Prop)
+        (post: AEP -> list Leakage -> trace -> mem -> list word -> MetricLog -> Prop): Prop;
   }.
 
   Record phase_correct{L1 L2: Lang}
@@ -85,13 +86,17 @@ Section WithWordAndMem.
         compile p1 = Success p2 ->
         forall fname k1 k2 pick_sp2,
           exists pick_sp1 k2'',
-        forall t m argvals mc1 post,
-        L1.(Call) p1 pick_sp1 fname k1 t m argvals mc1 post ->
+        forall aep t m argvals mc1 mid post,
+        L1.(Call) p1 pick_sp1 fname aep k1 t m argvals mc1 mid post ->
         forall mc2,
-          L2.(Call) p2 pick_sp2 fname k2 t m argvals mc2
-               (fun k2' t m a mc2' =>
+          L2.(Call) p2 pick_sp2 fname aep k2 t m argvals mc2
+               (fun aep t mc2' =>
+                  exists mc1',
+                    mid aep t mc1' /\
+                      metricsLeq (mc2' - mc2) (mc1' - mc1))
+               (fun aep k2' t m a mc2' =>
                   exists mc1' k1',
-                    post k1' t m a mc1' /\
+                    post aep k1' t m a mc1' /\
                       k2' = k2'' k1' /\
                       metricsLeq (mc2' - mc2) (mc1' - mc1));
   }.
@@ -126,8 +131,9 @@ Section WithWordAndMem.
     destruct C12 as [pick_sp1 [f12 C12] ]. 
     exists pick_sp1. exists (fun k3' => f23 (f12 k3')).
     intros. eapply C12 in H1. eapply C23 in H1.
-    eassert ((fun _ _ _ _ _ => exists _, _) = _) as ->. 2: exact H1.
-    post_ext. split; intros; fwd; eauto 10 with metric_arith.
+    eassert ((fun _ _ _ _ _ _ => exists _, _) = _) as ->; [|eassert ((fun _ _ _ => exists _, _) = _) as ->].
+    3: exact H1.
+    1,2: post_ext; split; intros; fwd; eauto 10 with metric_arith.
     Unshelve. all: exact EmptyMetricLog.
   Qed.
 
@@ -168,22 +174,26 @@ Section WithWordAndMem.
     Definition is12BitImmediate(x: Z) : bool :=
       andb (Z.leb (-2048) x) (Z.ltb x 2048).
 
+    Print call_spec.
     Definition locals_based_call_spec {Var Cmd: Type}{locals: map.map Var word}
       {string_keyed_map': forall T: Type, map.map string T}
       (Exec: PickSp -> string_keyed_map' (list Var * list Var * Cmd)%type ->
-             Cmd -> leakage -> trace -> mem -> locals -> MetricLog ->
-             (leakage -> trace -> mem -> locals -> MetricLog -> Prop) -> Prop)
+             Cmd -> bool -> AEP -> leakage -> trace -> mem -> locals -> MetricLog ->
+             (bool -> AEP -> leakage -> trace -> mem -> locals -> MetricLog -> Prop) -> Prop)
       (spilled : bool)(e: string_keyed_map' (list Var * list Var * Cmd)%type)
       (pick_sp: PickSp) (f: string)
-      (k: leakage)(t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
-      (post: leakage -> trace -> mem -> list word -> MetricLog -> Prop): Prop :=
+      (aep: AEP)(k: leakage)(t: trace)(m: mem)(argvals: list word)(mc: MetricLog)
+      (mid: AEP -> trace -> MetricLog -> Prop)
+      (post: AEP -> leakage -> trace -> mem -> list word -> MetricLog -> Prop): Prop :=
       exists argnames retnames fbody l,
         map.get e f = Some (argnames, retnames, fbody) /\
           map.of_list_zip argnames argvals = Some l /\
-          Exec pick_sp e fbody k t m l (if spilled then mc else cost_spill_spec mc)
-            (fun k' t' m' l' mc' =>
-               exists retvals, map.getmany_of_list l' retnames = Some retvals /\
-                            post k' t' m' retvals mc').
+          Exec pick_sp e fbody true aep k t m l (if spilled then mc else cost_spill_spec mc)
+            (fun q' aep' k' t' m' l' mc' =>
+               if q' then
+                 exists retvals, map.getmany_of_list l' retnames = Some retvals /\
+                              post aep' k' t' m' retvals mc'
+               else mid aep' t' mc').
     
     Definition ParamsNoDup{Var: Type}: (list Var * list Var * FlatImp.stmt Var) -> Prop :=
       fun '(argnames, retnames, body) => NoDup argnames /\ NoDup retnames.
@@ -315,10 +325,12 @@ Section WithWordAndMem.
           eapply start_state_spec. 2: exact A.
           eapply ListSet.In_list_union_l. eapply ListSet.In_list_union_l. assumption.
         + eapply @freshNameGenState_disjoint_fbody.
-      - simpl. intros. fwd. eexists. split.
-        + eauto using map.getmany_of_list_extends.
-        + do 2 eexists. split; [eassumption|]. rewrite remove_n_r_spec.
-          split; [reflexivity|]. unfold cost_spill_spec in *; solve_MetricLog.
+      - simpl. intros. fwd. destruct q'.
+        + specialize (H1p5 eq_refl). fwd. eexists. split.
+          -- eauto using map.getmany_of_list_extends.
+          -- do 2 eexists. split; [eassumption|]. rewrite remove_n_r_spec.
+             split; [reflexivity|]. unfold cost_spill_spec in *; solve_MetricLog.
+        + eexists. intuition eauto. unfold cost_spill_spec in *. solve_MetricLog.
     Qed.
 
     Lemma useimmediate_functions_NoDup: forall funs funs',
@@ -330,7 +342,7 @@ Section WithWordAndMem.
     Proof.
       unfold useimmediate_functions. intros.
       eapply map.try_map_values_bw in H0.
-      2: { eassumption.  }
+      2: { eassumption. }
       unfold useimmediate_function in *.
       fwd.
       eapply H.
@@ -367,74 +379,76 @@ Section WithWordAndMem.
         simpl_rev. rewrite List.skipn_app_r.
         2: rewrite rev_length; reflexivity.
         rewrite rev_involutive. reflexivity.
-      - simpl. intros. fwd. eexists. intuition eauto.
-        do 2 eexists. intuition eauto.
-        { rewrite remove_n_r_spec. reflexivity. }
-        unfold cost_spill_spec in *; solve_MetricLog.
+      - simpl. intros. fwd. destruct q'; fwd.
+        + eexists. intuition eauto.
+          do 2 eexists. intuition eauto.
+          { rewrite remove_n_r_spec. reflexivity. }
+          unfold cost_spill_spec in *; solve_MetricLog.
+        + eexists. intuition eauto. unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
-    Lemma dce_functions_NoDup: forall funs funs',
-        (forall f argnames retnames body,
-          map.get funs f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames) ->
-        dce_functions funs = Success funs' ->
-        forall f argnames retnames body,
-          map.get funs' f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames.
-    Proof.
-      unfold dce_functions. intros.
-      eapply map.try_map_values_bw in H0. 2: eassumption.
-      unfold dce_function in *. fwd.
-      eapply H. eassumption.
-    Qed.
+    (* Lemma dce_functions_NoDup: forall funs funs', *)
+    (*     (forall f argnames retnames body, *)
+    (*       map.get funs f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames) -> *)
+    (*     dce_functions funs = Success funs' -> *)
+    (*     forall f argnames retnames body, *)
+    (*       map.get funs' f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames. *)
+    (* Proof. *)
+    (*   unfold dce_functions. intros. *)
+    (*   eapply map.try_map_values_bw in H0. 2: eassumption. *)
+    (*   unfold dce_function in *. fwd. *)
+    (*   eapply H. eassumption. *)
+    (* Qed. *)
 
-    Lemma dce_correct: phase_correct FlatWithStrVars FlatWithStrVars dce_functions.
-    Proof.
-      unfold FlatWithStrVars.
-      split; cbn.
-      { unfold map.forall_values, ParamsNoDup. intros.
-        destruct v as  ((argnames & retnames) & body).
-        eapply dce_functions_NoDup; try eassumption.
-        intros. specialize H0 with (1 := H2).
-        simpl in H0. assumption.
-      }
-      unfold locals_based_call_spec. intros.
-      assert (E: (exists x, map.get p1 fname = Some x) -> map.get p1 fname = Some (match (map.get p1 fname) with | Some finfo => finfo | None => (nil, nil, SSkip) end)).
-      { intros. destruct H1 as [x H1]. destruct (map.get p1 fname); congruence. }
-      destruct (match map.get p1 fname with
-                    | Some finfo => finfo
-                    | None => ([], [], SSkip)
-                    end) as [ [argnames0 retnames0] fbody0 ].
-      eexists. eexists. intros. fwd.
-      assert (H1p0': map.get p1 fname = Some (argnames0, retnames0, fbody0)).
-      { eapply E. eexists. apply H1p0. }
-      rewrite H1p0 in H1p0'. inversion H1p0'. subst. clear H1p0'.
-      pose proof H0 as GI.
-      unfold dce_functions in GI.
-      eapply map.try_map_values_fw in GI. 2: eassumption.
-      unfold dce_function in GI. fwd.
-      eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption.
-      intros.
-      eapply @exec.weaken.
-      - eapply exec.exec_ext. 1: eapply dce_correct_aux; eauto.
-        { eapply MapEauto.agree_on_refl. }
-        2: { intros. simpl. instantiate (1 := fun x => pick_sp2 (rev x)).
-             simpl. rewrite rev_involutive. reflexivity. }
-        intros. remember (k ++ k1) as kk eqn:Hkk.
-        rewrite <- (remove_n_r_spec k k1). forget (k ++ k1) as kk0.
-        subst. instantiate (2 := fun _ => _). simpl. reflexivity.
-      - unfold compile_post. intros. fwd.
-        exists retvals.
-        split.
-        + erewrite MapEauto.agree_on_getmany; [ eauto | eapply MapEauto.agree_on_comm; [ eassumption ] ].
-        + do 3 eexists; ssplit; eauto. 2: unfold cost_spill_spec in *; solve_MetricLog.
-          instantiate (1 := fun _ => _). simpl.
-          specialize (H1p8 nil (fun _ => nil)). simpl in H1p8.
-          do 2 rewrite app_nil_r in H1p8.
-          rewrite <- (rev_involutive kL''). rewrite <- H1p8.
-          remember (kH'' ++ k1) as kk eqn:Hkk.
-          rewrite <- (remove_n_r_spec kH'' k1).
-          rewrite <- Hkk. reflexivity.
-          Unshelve. all: auto.
-    Qed.
+    (* Lemma dce_correct: phase_correct FlatWithStrVars FlatWithStrVars dce_functions. *)
+    (* Proof. *)
+    (*   unfold FlatWithStrVars. *)
+    (*   split; cbn. *)
+    (*   { unfold map.forall_values, ParamsNoDup. intros. *)
+    (*     destruct v as  ((argnames & retnames) & body). *)
+    (*     eapply dce_functions_NoDup; try eassumption. *)
+    (*     intros. specialize H0 with (1 := H2). *)
+    (*     simpl in H0. assumption. *)
+    (*   } *)
+    (*   unfold locals_based_call_spec. intros. *)
+    (*   assert (E: (exists x, map.get p1 fname = Some x) -> map.get p1 fname = Some (match (map.get p1 fname) with | Some finfo => finfo | None => (nil, nil, SSkip) end)). *)
+    (*   { intros. destruct H1 as [x H1]. destruct (map.get p1 fname); congruence. } *)
+    (*   destruct (match map.get p1 fname with *)
+    (*                 | Some finfo => finfo *)
+    (*                 | None => ([], [], SSkip) *)
+    (*                 end) as [ [argnames0 retnames0] fbody0 ]. *)
+    (*   eexists. eexists. intros. fwd. *)
+    (*   assert (H1p0': map.get p1 fname = Some (argnames0, retnames0, fbody0)). *)
+    (*   { eapply E. eexists. apply H1p0. } *)
+    (*   rewrite H1p0 in H1p0'. inversion H1p0'. subst. clear H1p0'. *)
+    (*   pose proof H0 as GI. *)
+    (*   unfold dce_functions in GI. *)
+    (*   eapply map.try_map_values_fw in GI. 2: eassumption. *)
+    (*   unfold dce_function in GI. fwd. *)
+    (*   eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption. *)
+    (*   intros. *)
+    (*   eapply @exec.weaken. *)
+    (*   - eapply exec.exec_ext. 1: eapply dce_correct_aux; eauto. *)
+    (*     { eapply MapEauto.agree_on_refl. } *)
+    (*     2: { intros. simpl. instantiate (1 := fun x => pick_sp2 (rev x)). *)
+    (*          simpl. rewrite rev_involutive. reflexivity. } *)
+    (*     intros. remember (k ++ k1) as kk eqn:Hkk. *)
+    (*     rewrite <- (remove_n_r_spec k k1). forget (k ++ k1) as kk0. *)
+    (*     subst. instantiate (2 := fun _ => _). simpl. reflexivity. *)
+    (*   - unfold compile_post. intros. fwd. *)
+    (*     exists retvals. *)
+    (*     split. *)
+    (*     + erewrite MapEauto.agree_on_getmany; [ eauto | eapply MapEauto.agree_on_comm; [ eassumption ] ]. *)
+    (*     + do 3 eexists; ssplit; eauto. 2: unfold cost_spill_spec in *; solve_MetricLog. *)
+    (*       instantiate (1 := fun _ => _). simpl. *)
+    (*       specialize (H1p8 nil (fun _ => nil)). simpl in H1p8. *)
+    (*       do 2 rewrite app_nil_r in H1p8. *)
+    (*       rewrite <- (rev_involutive kL''). rewrite <- H1p8. *)
+    (*       remember (kH'' ++ k1) as kk eqn:Hkk. *)
+    (*       rewrite <- (remove_n_r_spec kH'' k1). *)
+    (*       rewrite <- Hkk. reflexivity. *)
+    (*       Unshelve. all: auto. *)
+    (* Qed. *)
 
     Lemma regalloc_functions_NoDup: forall funs funs',
         regalloc_functions funs = Success funs' ->
@@ -494,10 +508,12 @@ Section WithWordAndMem.
           edestruct putmany_of_list_zip_states_compat as (lL' & P' & Cp); try eassumption.
           1: eapply states_compat_empty.
           rewrite H1 in P'. inversion P'. exact Cp.
-      - simpl. intros. fwd. eexists. split.
-        + eauto using states_compat_getmany.
-        + do 2 eexists. rewrite remove_n_r_spec. intuition eauto.
-          unfold cost_spill_spec in *; solve_MetricLog.
+      - simpl. intros. fwd. destruct q'; fwd.
+        + eexists. split.
+          -- eauto using states_compat_getmany.
+          -- do 2 eexists. rewrite remove_n_r_spec. intuition eauto.
+             unfold cost_spill_spec in *; solve_MetricLog.
+        + eexists. intuition eauto. unfold cost_spill_spec in *; solve_MetricLog.
     Qed.
 
     Ltac debool :=
@@ -553,8 +569,8 @@ Section WithWordAndMem.
       1: exact spilling_preserves_valid.
       unfold locals_based_call_spec. intros.
       set (finfo := (match (map.get p1 fname) with | Some finfo => finfo | None => (nil, nil, SSkip) end)).
-      exists (fun k => snd (fun_leakage p1 pick_sp2 finfo (skipn (length k1) (rev k)) (rev k2))).
-      exists (fun k1' => rev (fst (fun_leakage p1 pick_sp2 finfo (rev (remove_n_r (length k1) k1')) (rev k2)))).
+      exists (fun k => pick_sp2 (rev (fun_leakage p1 pick_sp2 finfo (skipn (length k1) (rev k)) (rev k2)))).
+      exists (fun k1' => rev (fun_leakage p1 pick_sp2 finfo (rev (remove_n_r (length k1) k1')) (rev k2))).
       intros. fwd.
       subst finfo. rewrite H1p0 in *.
       pose proof H0 as GL.
@@ -576,25 +592,29 @@ Section WithWordAndMem.
       eapply FlatImp.exec.weaken.
       - eapply spill_fun_correct; try eassumption.
         unfold call_spec. intros * E. rewrite E in *. fwd. exact H1p2.
-      - cbv beta. intros. fwd. eexists. intuition eauto.
-        do 2 eexists. intuition eauto. rewrite remove_n_r_spec.
-        rewrite H2p1p2. rewrite rev_involutive. reflexivity.
+      - cbv beta. intros. destruct q'; fwd.
+        + eexists. intuition eauto.
+          do 2 eexists. intuition eauto. rewrite remove_n_r_spec.
+          rewrite H2p1p2. rewrite rev_involutive. reflexivity.
+        + eexists. intuition eauto. cbv [related] in H2p0. fwd. assumption.
     Qed.
 
     Lemma riscv_call_weaken :
       forall p p_funcs stack_pastend ret_addr funcname
-        k t m argvals mc post1,
-        riscv_call p p_funcs stack_pastend ret_addr funcname k t m argvals mc post1 ->
-        forall post2,
-          (forall k' t' m' retvals mc',
-              post1 k' t' m' retvals mc' -> post2 k' t' m' retvals mc') ->
-          riscv_call p p_funcs stack_pastend ret_addr funcname k t m argvals mc post2.
+        aep k t m argvals mc mid1 post1,
+        riscv_call p p_funcs stack_pastend ret_addr funcname aep k t m argvals mc mid1 post1 ->
+        forall post2 mid2,
+          (forall aep' t' mc', mid1 aep' t' mc' -> mid2 aep' t' mc') ->
+          (forall aep' k' t' m' retvals mc',
+              post1 aep' k' t' m' retvals mc' -> post2 aep' k' t' m' retvals mc') ->
+          riscv_call p p_funcs stack_pastend ret_addr funcname aep k t m argvals mc mid2 post2.
     Proof.
       intros. cbv [riscv_call] in *. destruct p. destruct p.
       destruct H as [f_rel_pos H]. exists f_rel_pos. intuition eauto.
-      cbv [runsTo]. eapply runsToNonDet.runsTo_weaken. 1: eapply H2.
-      all: try eassumption. simpl. intros. fwd. do 3 eexists.
-      intuition eauto.
+      cbv [runsTo]. eapply runsToNonDet.runsTo_weaken. 1: eapply H3.
+      all: try eassumption. simpl. intros. fwd. destruct q'; fwd.
+      - exists true. do 3 eexists. intuition eauto.
+      - exists false. auto.
     Qed.
 
     Lemma riscv_phase_correct p_funcs stack_pastend ret_addr : phase_correct FlatWithRegs (RiscvLang p_funcs stack_pastend ret_addr) (riscvPhase compile_ext_call).
@@ -610,13 +630,15 @@ Section WithWordAndMem.
         inversion E. subst. pose proof flat_to_riscv_correct as H'.
         repeat specialize (H' ltac:(assumption)).
         specialize (H' (instrs, finfo_, req_stack_size)).
-        do 2 specialize (H' ltac:(assumption)). cbv beta match in H'. idtac.
-        eapply riscv_call_weaken. 1: eapply H'; eauto.
-        simpl. intros. fwd. do 2 eexists. split; [eassumption|]. split; [|eassumption].
-        rewrite <- (rev_involutive k'). rewrite <- H1p5.       
-        remember (kH'' ++ k1) as k''. replace kH'' with (remove_n_r (length k1) k'').
-        2: { subst. apply remove_n_r_spec. }
-        instantiate (1 := fun _ => _). simpl. reflexivity.
+        do 2 specialize (H' ltac:(assumption)). cbv beta match in H'.
+        eapply riscv_call_weaken.
+        { eapply H'. intuition eauto. exact H1p2. }
+        + simpl. intros. fwd. eauto.
+        + simpl. intros. fwd. do 2 eexists. split; [eassumption|]. split; [|eassumption].
+          rewrite <- (rev_involutive k'). rewrite <- H1p5.       
+          remember (kH'' ++ k1) as k''. replace kH'' with (remove_n_r (length k1) k'').
+          2: { subst. apply remove_n_r_spec. }
+          instantiate (1 := fun _ => _). simpl. reflexivity.
     Qed.
 
     Definition composed_compile:
@@ -624,20 +646,20 @@ Section WithWordAndMem.
       result (list Instruction * string_keyed_map Z * Z) :=
       (compose_phases flatten_functions
       (compose_phases (useimmediate_functions is5BitImmediate is12BitImmediate)
-      (compose_phases dce_functions
+      (*(compose_phases dce_functions*)
       (compose_phases regalloc_functions
       (compose_phases spill_functions
-                      (riscvPhase compile_ext_call)))))).
+                      (riscvPhase compile_ext_call))))).
 
     Lemma composed_compiler_correct p_funcs stack_pastend ret_addr : phase_correct SrcLang (RiscvLang p_funcs stack_pastend ret_addr) composed_compile.
     Proof.
       unfold composed_compile.
       exact (compose_phases_correct flattening_correct
             (compose_phases_correct useimmediate_correct
-            (compose_phases_correct dce_correct
+            (* (compose_phases_correct dce_correct *)
             (compose_phases_correct regalloc_correct
             (compose_phases_correct spilling_correct
-                                    (riscv_phase_correct _ _ _)))))).
+                                    (riscv_phase_correct _ _ _))))).
     Qed.
 
     Definition compile(funs: list (string * (list string * list string * cmd))):
@@ -689,16 +711,19 @@ Section WithWordAndMem.
         compile functions = Success (instrs, finfo, req_stack_size) ->
         forall kH kL,
         exists f pick_sp,
-        forall t mH argvals mc (post: leakage -> trace -> mem -> list word -> MetricLog -> Prop),
+        forall aep t mH argvals mc mid post,
         (exists (argnames retnames: list string) (fbody: cmd) l,
             map.get (map.of_list (map := Semantics.env) functions) fname =
               Some (argnames, retnames, fbody) /\
             map.of_list_zip argnames argvals = Some l /\
-              MetricLeakageSemantics.exec (pick_sp := pick_sp) (map.of_list functions) fbody kH t mH l
+              MetricLeakageSemantics.exec (pick_sp := pick_sp) (map.of_list functions) fbody true aep kH t mH l
                 (cost_spill_spec mc)
-                (fun kH' t' m' l' mc' => exists retvals: list word,
-                     map.getmany_of_list l' retnames = Some retvals /\
-                     post kH' t' m' retvals mc')) ->
+                (fun q' aep' kH' t' m' l' mc' =>
+                   if q' then
+                     exists retvals: list word,
+                       map.getmany_of_list l' retnames = Some retvals /\
+                         post aep' kH' t' m' retvals mc'
+                   else mid aep' t' mc')) ->
         forall mcL,
         exists (f_rel_pos: Z),
           map.get (map.of_list finfo) fname = Some f_rel_pos /\
@@ -716,16 +741,23 @@ Section WithWordAndMem.
             initial.(getTrace) = Some kL ->
             raiseMetrics (cost_compile_spec initial.(getMetrics)) = mcL ->
             machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
-            runsTo initial (fun final : MetricRiscvMachine =>
-              exists kH' mH' retvals,
-                arg_regs_contain (getRegs final) retvals /\
-                  (exists mcH' : MetricLog,
-                      ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mc)%metricsH /\
-                        post kH' (getLog final) mH' retvals mcH') /\
-                  final.(getTrace) = Some (f kH') /\
-                  map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
-                  final.(getPc) = ret_addr /\
-                machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final).
+            runsTo' (initial, aep)
+              (fun '(final, aep') =>
+                 exists (q' : bool),
+                   if q' then
+                     exists kH' mH' retvals,
+                       arg_regs_contain (getRegs final) retvals /\
+                         (exists mcH' : MetricLog,
+                             ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mc)%metricsH /\
+                               post aep' kH' (getLog final) mH' retvals mcH') /\
+                         final.(getTrace) = Some (f kH') /\
+                         map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
+                         final.(getPc) = ret_addr /\
+                         machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final
+                   else
+                     exists mcH',
+                       metricsLeq (raiseMetrics final.(getMetrics) - mcL) (mcH' - mc) /\
+                         mid aep' final.(getLog) mcH').
     Proof.
       intros.
       pose proof (phase_preserves_post (composed_compiler_correct p_funcs stack_hi ret_addr)) as C.
@@ -745,9 +777,10 @@ Section WithWordAndMem.
       destruct C as [f_rel_pos C]. exists f_rel_pos. fwd.
       intuition eauto.
       eapply runsToNonDet.runsTo_weaken.
-      1: eapply Cp1; eauto. cbv beta. intros. fwd. do 3 eexists. intuition eauto.
+      1: eapply Cp1; eauto. cbv beta. intros. fwd. destruct q'; fwd.
+      - exists true. do 3 eexists. intuition eauto.
+      - exists false. eauto.
     Qed.
-
     Definition instrencode(p: list Instruction): list byte :=
       List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
 
@@ -771,13 +804,13 @@ Section WithWordAndMem.
         forall kH kL,
         exists f pick_sp, forall
         (* high-level initial state & post on final state: *)
-        (t: trace) (mH: mem) (argvals: list word) (mcH : MetricLog) (mcL : MetricLog) (post: leakage -> trace -> mem -> list word -> MetricLog -> Prop)
+        (aep: AEP)(t: trace) (mH: mem) (argvals: list word) (mcH : MetricLog) (mcL : MetricLog) (post: _ -> _ -> leakage -> trace -> mem -> list word -> MetricLog -> Prop)
         (* ghost vars that help describe the low-level machine: *)
         (stack_lo : word) (Rdata Rexec: mem -> Prop)
         (* low-level machine on which we're going to run the compiled program: *)
         (initial: MetricRiscvMachine),
         NoDup (map fst fs) ->
-        MetricLeakageSemantics.call (pick_sp := pick_sp) (map.of_list fs) fname kH t mH argvals (cost_spill_spec mcH) post ->
+        MetricLeakageSemantics.call (pick_sp := pick_sp) (map.of_list fs) fname true aep kH t mH argvals (cost_spill_spec mcH) post ->
         map.get (map.of_list finfo) fname = Some f_rel_pos ->
         req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
         word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
@@ -789,16 +822,23 @@ Section WithWordAndMem.
         initial.(getTrace) = Some kL ->
         raiseMetrics (cost_compile_spec initial.(getMetrics)) = mcL ->
         machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
-        runsTo initial (fun final : MetricRiscvMachine =>
-              exists kH' mH' retvals,
-                arg_regs_contain (getRegs final) retvals /\
-                  (exists mcH' : MetricLog,
-                      ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mcH)%metricsH /\
-                        post kH' (getLog final) mH' retvals mcH') /\
-                  final.(getTrace) = Some (f kH') /\
-                  map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
-                  final.(getPc) = ret_addr /\
-                machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final).
+        runsTo' (initial, aep)
+          (fun '(final, aep') =>
+             exists (q' : bool),
+               if q' then
+                 exists kH' mH' retvals,
+                   arg_regs_contain (getRegs final) retvals /\
+                     (exists mcH' : MetricLog,
+                         ((raiseMetrics final.(getMetrics)) - mcL <= mcH' - mcH)%metricsH /\
+                           post true aep' kH' (getLog final) mH' retvals mcH') /\
+                     final.(getTrace) = Some (f kH') /\
+                     map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
+                     final.(getPc) = ret_addr /\
+                     machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final
+               else
+                 exists kH' mH' lH' mcH',
+                   metricsLeq (raiseMetrics final.(getMetrics) - mcL) (mcH' - mcH) /\
+                     post false aep' final.(getLog) mcH').
     Proof.
       intros.
       destruct (compiler_correct fs instrs finfo req_stack_size fname p_funcs stack_hi ret_addr H H0 kH kL) as
