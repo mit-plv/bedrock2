@@ -101,6 +101,22 @@ Section step.
         specialize H1 with (1 := Hs') (2 := Hpost). apply H1.
   Qed.
 
+  Lemma inp_works inp aep s post :
+    compat aep inp ->
+    (forall aep',
+        goes_to aep inp aep' ->
+        runsTo step' (s, aep') post) ->
+    runsTo step' (s, aep) post.
+  Proof.
+    intros Hcom Haep. revert aep Hcom Haep. induction inp; intros aep Hcom Haep;
+      inversion Hcom; subst.
+    - apply Haep. constructor.
+    - apply runsToStep_cps. apply step_E. exists n. eapply IHinp; try eassumption. intros. apply Haep. constructor.
+      assumption.
+    - apply runsToStep_cps. apply step_A. intros x. eapply H; eauto. intros. apply Haep. econstructor.
+      eassumption.
+  Qed.
+  
   CoInductive stream (T : Type) :=
   | scons (a : T) (rest : stream T).
 

@@ -1323,3 +1323,10 @@ Ltac scost_solve := scost_unfold; scost_destr; try solve_MetricLog.
 Ltac scost_solve_piecewise := scost_unfold; scost_destr; try solve_MetricLog_piecewise.
 Ltac scost_hammer := try solve [eauto 3 with metric_arith | scost_solve].
 
+Ltac stupid_invert H :=
+  apply exec.invert_one_step in H; [|reflexivity];
+  let inp := fresh "inp" in
+  let H1 := fresh H in
+  let H2 := fresh H in
+  destruct H as (inp&H1&H2);
+  inversion H2; subst.

@@ -278,6 +278,19 @@ Section MMIO1.
     rename extcall into action.
     pose proof (compile_interact_emits_valid RV32I _ action _ V_resvars V_argvars).
     simp.
+
+    stupid_invert H.
+    2: { eapply SmallStep.inp_works; [solve[eauto]|]. intros aep' Haep'.
+         specialize H with (1 := Haep'). eassert (postH _ _ _ _ _ _ _) by (destruct H as [H|H]; exact H).
+         apply runsToDone. exists false. do 5 eexists. split; [eassumption|].
+         split; [reflexivity|]. split.
+         { solve_MetricLog. }
+         split.
+         { exists nil. eexists. split; [reflexivity|]. split; [eassumption|]. reflexivity. }
+         unfold FlatToRiscvCommon.goodMachine in *. simp. reflexivity. }
+    eapply SmallStep.inp_works; [solve[eauto]|].
+    intros aep' Haep'.
+
     destruct_RiscvMachine initialL.
     unfold FlatToRiscvCommon.goodMachine in *.
     match goal with
@@ -331,7 +344,15 @@ Section MMIO1.
       subst.
       cbn in *.
       simp.
-      eapply runsToNonDet.runsToStep_cps.
+
+      specialize HPp1 with (2 := Haep').
+      edestruct HPp1 as [HPp1'|HPp1'].
+      { apply map.split_empty_r. reflexivity. }
+      { apply runsToDone. exists false. do 5 eexists. simpl. intuition eauto.
+        - solve_MetricLog.
+        - exists nil. eexists. eauto. }
+      
+      apply runsToNonDet.runsToStep_cps. apply SmallStep.step_usual_cps.
       match goal with
       | H: iff1 allx _ |- _ => apply iff1ToEq in H; subst allx
       end.
@@ -388,10 +409,10 @@ Section MMIO1.
       apply eqb_eq in E. subst action.
       cbn -[invalidateWrittenXAddrs] in *.
       specialize (HPp1 mKeep). rewrite map.split_empty_r in HPp1. specialize (HPp1 eq_refl).
-      do 5 eexists.
+      exists true. do 5 eexists.
+      simp.
       split; eauto.
-      split; eauto.
-      split; [unfold map.only_differ; eauto|].
+      split; [unfold map.only_differ; solve[eauto]|].
       split. {
         unfold id, MetricCosts.cost_interact. MetricsToRiscv.solve_MetricLog.
       }
@@ -475,7 +496,22 @@ Section MMIO1.
       simp.
       subst.
       cbn in *.
-      eapply runsToNonDet.runsToStep_cps.
+
+      match goal with
+      | A: forall _ _, outcome _ _ _ -> _, OC: forall _, outcome _ _ _ |- _ =>
+         epose proof (A (cons _ nil) (cons _ nil) (OC _)) as P; clear A
+      end.
+      cbn in P.
+      simp.      
+
+      specialize Pp1 with (2 := Haep').
+      edestruct Pp1 as [HPp1'|HPp1'].
+      { apply map.split_empty_r. reflexivity. }
+      { apply runsToDone. exists false. do 5 eexists. simpl. intuition eauto.
+        - solve_MetricLog.
+        - exists nil. eexists. eauto. }
+      
+      apply runsToNonDet.runsToStep_cps. apply SmallStep.step_usual_cps.
       match goal with
       | H: iff1 allx _ |- _ => apply iff1ToEq in H; subst allx
       end.
@@ -529,22 +565,15 @@ Section MMIO1.
       simpl_word_exprs word_ok. simpl.
 
       unfold mmioLoadEvent, signedByteTupleToReg.
-      match goal with
-      | A: forall _ _, outcome _ _ _ -> _, OC: forall _, outcome _ _ _ |- _ =>
-         epose proof (A (cons _ nil) (cons _ nil) (OC _)) as P; clear A
-      end.
-      cbn in P.
-      simp.
-      apply eqb_eq in EE. subst action.
+      (*THING*)apply eqb_eq in EE. subst action.
       cbn in *.
       specialize (Pp1 mKeep). rewrite map.split_empty_r in Pp1. specialize (Pp1 eq_refl).
       unfold setReg.
       destr ((0 <? z1) && (z1 <? 32))%bool; [|exfalso;blia].
-      do 5 eexists.
+      exists true. do 5 eexists.
       split; eauto.
-      split; eauto.
-      split. {
-        unfold map.only_differ. intros. unfold union, of_list, elem_of, singleton_set. simpl.
+      split; [split; [solve[eauto]|]|].
+      { unfold map.only_differ. intros. unfold union, of_list, elem_of, singleton_set. simpl.
         rewrite map.get_put_dec.
         destruct_one_match; auto.
       }

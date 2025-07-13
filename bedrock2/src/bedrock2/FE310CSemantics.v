@@ -48,7 +48,7 @@ Section WithParameters.
     split;
     cbv [leakage_ext_spec Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl];
     intros.
-    all :
+    1,2 :
     repeat match goal with
       | H : context[(?x =? ?y)%string] |- _ =>
           destruct (x =? y)%string in *
@@ -60,6 +60,17 @@ Section WithParameters.
       | H: _ :: _ = _ :: _ |- _ => injection H; intros; subst; clear H
     end;
     eauto 8 using Properties.map.same_domain_refl.
+    repeat match goal with
+           | H: context[(?x =? ?y)%string] |- _ => destruct (x =? y)%string end.
+    - assert (H0 := H O). destruct H0 as (addr & val & H0 & (H1 & H2 & H3) & H4). subst.
+      exists addr, val. intuition auto. specialize (H x).
+      destruct H as (addr' & val' & H0' & (H1' & H2' & H3') & H4'). subst.
+      inversion H0'. subst. assumption.
+    - assert (H0 := H O). destruct H0 as (addr & H0 & (H1 & H2 & H3) & H4). subst.
+      exists addr. intuition auto. specialize (H x).
+      destruct H as (addr' & H0' & (H1' & H2' & H3') & H4'). subst.
+      inversion H0'. subst. auto.
+    - set (x := O). auto.
   Qed.
 
   Global Instance ext_spec : Semantics.ExtSpec := deleakaged_ext_spec.
