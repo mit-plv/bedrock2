@@ -1,6 +1,5 @@
 Require Import Coq.Arith.Arith.
 Require Import bedrock2.Map.SeparationLogic.
-Require Import bedrock2.ptsto_bytes.
 Require Import coqutil.Decidable.
 Require Import coqutil.Word.Properties.
 Require Import compiler.ExprImp.
