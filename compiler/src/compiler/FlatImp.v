@@ -928,19 +928,120 @@ Module exec.
                      post q' aep' k' t' m' l' mc').
     Proof. intros. edestruct invert_one_step'; fwd; eauto. Qed.
 
-    Definition weakest_pre {pick_sp: PickSp} s post aep k t m l mc :=
+    Print exec.
+    Definition weakest_pre {ext_spec: ExtSpec} {pick_sp: PickSp} s post aep k t m l mc :=
       match s with
+      | SInteract resvars action argvars =>
+          exists mKeep mGive argvals,
+          map.split m mKeep mGive /\
+            map.getmany_of_list l argvars = Some argvals /\
+            ext_spec t mGive action argvals
+              (fun mReceive resvals klist =>
+                 exists l' : locals,
+                   map.putmany_of_list_zip resvars resvals l = Some l' /\
+                     (forall m' : mem,
+                         map.split m' mKeep mReceive ->
+                         post true aep (leak_list klist :: k)
+                           ((mGive, action, argvals, (mReceive, resvals)) :: t) m' l'
+                           (cost_interact phase mc)))
+      | SCall binds fname args =>
+          exists params rets fbody argvs st0,
+          map.get e fname = Some (params, rets, fbody) /\
+            map.getmany_of_list l args = Some argvs /\
+            map.putmany_of_list_zip params argvs map.empty = Some st0 /\
+            exec fbody true aep (leak_unit :: k) t m st0 mc
+              (fun q' aep' k' t' m' st1 mc' =>
+                 if q'
+                 then
+                   exists (retvs : list word) (l' : locals),
+                     map.getmany_of_list st1 rets = Some retvs /\
+                       map.putmany_of_list_zip binds retvs l = Some l' /\
+                       post q' aep' k' t' m' l' (cost_call phase mc')
+                 else post q' aep' k' t' m' st1 (cost_call phase mc'))
+      | SLoad sz x a o =>
+          exists addr v,
+          map.get l a = Some addr /\
+            Memory.load sz m (word.add addr (word.of_Z o)) = Some v /\
+            post true aep (leak_word (word.add addr (word.of_Z o)) :: k) t m
+              (map.put l x v) (cost_load isReg x a mc)
+      | SStore sz a v o =>
+          exists addr val m',
+          map.get l a = Some addr /\
+            map.get l v = Some val /\
+            Memory.store sz m (word.add addr (word.of_Z o)) val = Some m' /\
+            post true aep (leak_word (word.add addr (word.of_Z o)) :: k) t m' l
+              (cost_store isReg a v mc)
+      | SInlinetable sz x table i =>
+          exists index v,
+          x <> i /\
+          map.get l i = Some index /\
+          Memory.load sz (map.of_list_word table) index = Some v /\
+          post true aep (leak_word index :: k) t m 
+            (map.put l x v) (cost_inlinetable isReg x i mc)
       | SSeq s1 s2 =>
           exec s1 true aep k t m l mc
             (fun q' aep' k' t' m' l' mc' =>
                exec s2 q' aep' k' t' m' l' mc' post)
-      | _ => True(*TODO*)
+      | SStackalloc x n body =>
+          n mod bytes_per_word width = 0 /\
+            forall mStack mCombined : mem,
+              let a := pick_sp k in
+              anybytes a n mStack ->
+              map.split mCombined m mStack ->
+              exec body true aep (leak_unit :: k) t mCombined 
+                (map.put l x a) mc
+                (fun q' aep' k' t' mCombined' l' mc' =>
+                   if q'
+                   then
+                     exists mSmall' mStack' : mem,
+                       anybytes a n mStack' /\
+                         map.split mCombined' mSmall' mStack' /\
+                         post q' aep' k' t' mSmall' l' (cost_stackalloc isReg x mc')
+                   else
+                     post q' aep' k' t' mCombined' l' (cost_stackalloc isReg x mc'))
+      | SLit x v =>
+          post true aep k t m (map.put l x (word.of_Z v)) (cost_lit isReg x mc)
+      | SOp x o y z =>
+          exists y' z',
+          map.get l y = Some y' /\
+            lookup_op_locals l z = Some z' /\
+            post true aep (leak_binop o y' z' ++ k) t m
+              (map.put l x (interp_binop o y' z')) (cost_SOp x y z mc)
+      | SSet x y =>
+          exists y',
+          map.get l y = Some y' /\
+            post true aep k t m (map.put l x y') (cost_set isReg x y mc)
+      | SIf cond bThen bElse =>
+          exists b,
+          eval_bcond l cond = Some b /\
+            exec (if b then bThen else bElse) true aep (leak_bool b :: k) t m l (cost_SIf cond mc) post
+      | SLoop body1 cond body2 =>
+          exec body1 true aep k t m l mc
+            (fun q aep k t m l mc =>
+               if q then
+                 exists b,
+                   eval_bcond l cond = Some b /\
+                     (b = false -> post q aep (leak_bool false :: k) t m l (cost_SLoop_false cond mc)) /\
+                     (b = true -> 
+                      exec body2 q aep (leak_bool true :: k) t m l mc
+                        (fun q aep k t m l mc =>
+                           exec (SLoop body1 cond body2) q aep k t m l
+                             (cost_SLoop_true cond mc) post))
+               else post q aep k t m l mc)
+      | SSkip =>
+          post true aep k t m l mc
       end.
 
-    (*TODO: a lemma like this one would be more convenient than the invert_one_step lemma.
-     More importantly, it would work even with statements that don't finish in one step.
-     However, I am too lazy to finish it right now.*)
-    Lemma weakest_pre_works {pick_sp: PickSp} aep s k t m l mc post :
+    Lemma weakest_pre_impl_exec {pick_sp: PickSp} s post aep k t m l mc :
+      weakest_pre s post aep k t m l mc ->
+      exec s true aep k t m l mc post.
+    Proof.
+      destruct s; try solve [simpl; intros; fwd; econstructor; eauto].
+      { simpl. intros. fwd. destruct b; [solve [eapply if_true; eauto] | solve [eapply if_false; eauto]]. }
+      { simpl. intros. apply loop_cps. assumption. }
+    Qed.
+    
+    Lemma exec_impl_weakest_pre {pick_sp: PickSp} aep s k t m l mc post :
       exec s true aep k t m l mc post ->
       exists inp,
         compat aep inp /\
@@ -948,10 +1049,39 @@ Module exec.
             goes_to aep inp aep' ->
             post false aep' k t m l mc \/ weakest_pre s post aep' k t m l mc.
     Proof.
-      intros Hexec. induction aep.
-      3: { inversion Hexec; subst.
-           13: { exists inp_nil; split; [solve[constructor]|]; intros aep' Haep'; inversion Haep'; subst. right. simpl. eapply weaken; eauto. }
-    Abort.
+      intros Hexec. induction Hexec; try solve [exists inp_nil; split; [constructor|]; intros aep' Haep'; inversion Haep'; subst; right; simpl; eauto 10].
+      all: try (fwd; eexists; split; [eassumption|]).
+      - exists inp_nil. split; [constructor|]. intros aep' Haep'. inversion Haep'. subst.
+        right. simpl. do 3 eexists. intuition eauto. eapply ext_spec.weaken; eauto.
+      - intros aep' Haep'. right.
+        specialize IHHexecp1 with (1 := Haep'). simpl. do 5 eexists. intuition eauto.
+        + specialize (H2 _ _ _ _ _ _ _ ltac:(eassumption)). simpl in H2. apply quit.
+          assumption.
+        + eapply weaken. 1: apply weakest_pre_impl_exec; eassumption. assumption.
+      - intros aep' Haep'. right. specialize IHHexecp1 with (1 := Haep'). simpl.
+        destruct IHHexecp1 as [H'|H'].
+        { apply quit. auto. }
+        eapply weaken.
+        { apply weakest_pre_impl_exec. eassumption. }
+        intros. destruct q'; [|solve [auto]].
+        specialize H with (1 := H6). specialize H0 with (1 := H6). specialize H1 with (1 := H6).
+        specialize H2 with (1 := H6). destruct (eval_bcond l' cond); [|congruence].
+        eexists. split; [reflexivity|]. split; intros; subst; [solve[auto]|].
+        eapply weaken; eauto.
+      - intros aep' Haep'. right. specialize IHHexecp1 with (1 := Haep'). simpl.
+        destruct IHHexecp1 as [H'|H']. 1: apply quit; solve[auto].
+        eapply weaken; eauto. apply weakest_pre_impl_exec. assumption.
+      - exists inp_nil. split; [constructor|]. intros aep' Haep'. inversion Haep'. subst.
+        auto.
+      - eassert (exists f, _).
+        { apply choice. intros x. specialize (H0 x). destruct H0 as [inp H0].
+          exists inp. exact H0. }
+        destruct H1 as [f H1]. exists (inp_A f). split.
+        { constructor. intros x. specialize (H1 x). fwd. assumption. }
+        intros aep' Haep'. inversion Haep'. subst. specialize (H1 x). fwd. auto.
+      - fwd. exists (inp_E x inp). split; [constructor; auto|]. intros aep' Haep'.
+        inversion Haep'. subst. auto.
+    Qed.
 
     Lemma inp_works {pick_sp: PickSp} inp aep k t m l mc s post :
       compat aep inp ->

@@ -185,17 +185,23 @@ Section WithArguments.
       (*     inversion H1. subst. finish. } *)
       all: eapply @exec.seq_cps.
 
+      Ltac apply_something_in H :=
+        match goal with
+        | H': _ |- _ => apply H' in H
+        end.
+
       all: match goal with
            | H: exec _ _ _ _ _ _ _ _ _ ?mid,
                H': forall q aep k t m l mc,
                  ?mid _ _ _ _ _ _ _ -> exec ?eL _ _ _ _ _ _ _ _ ?post
-                 |- _ => stupid_invert H;
-                       [|eapply exec.inp_works; [solve[eauto]|]; intros aep' Haep';
-                         specialize H0 with (1 := Haep'); apply or_same in H0;
-                         apply exec.quit; apply exec.quit; specialize H1 with (1 := H0);
-                         inversion H1; subst; finish]
+                 |- _ => apply exec.exec_impl_weakest_pre in H;
+                       destruct H as (inp & Hcompat & Hinp);
+                       eapply exec.inp_works; [exact Hcompat|]; intros aep' Haep';
+                       specialize Hinp with (1 := Haep'); destruct Hinp as [Hinp|Hinp];
+                       [apply H' in Hinp; inversion Hinp; subst; apply exec.quit;
+                        apply exec.quit; finish|simpl in Hinp]
            end.
-      all: eapply exec.inp_works; [solve[eauto]|]; intros aep' Haep'; specialize H5 with (1 := Haep'); destruct H5 as [H5|H5]; [apply exec.quit; apply exec.quit; specialize H1 with (1 := H5); inversion H1; subst; finish|].
+
       all: econstructor; eauto; [].
 
        all: match goal with
@@ -203,14 +209,13 @@ Section WithArguments.
              H0: forall q aep k t m l mc,
                  ?mid q aep k t m l mc -> forall mcL, exec ?eL _ _ _ _ _ _ _ mcL _
                  |- exec ?eL _ _ _ _ _ _ _ _ _
-             => specialize (H0 _ _ _ _ _ _ _ H EmptyMetricLog); stupid_invert H0;
-               [|eapply exec.inp_works; [solve[eauto]|]; intros aep'' Haep'';
-                 specialize H2 with (1 := Haep''); apply or_same in H2;
-                 apply exec.quit; fwd; finish]
+             => specialize (H0 _ _ _ _ _ _ _ H EmptyMetricLog); simpl in H0;
+               apply exec.exec_impl_weakest_pre in H0;
+               destruct H0 as (inp' & Hcompat' & Hinp');
+               eapply exec.inp_works; [exact Hcompat'|]; intros aep'' Haep'';
+               specialize Hinp' with (1 := Haep''); destruct Hinp' as [Hinp'|Hinp'];
+               [fwd; apply exec.quit; finish|simpl in Hinp'; fwd]
             end.
-      
-       all: eapply exec.inp_works; [solve[eauto]|]; intros aep'' Haep''; specialize H19 with (1 := Haep'').
-       all: destruct H19 as [H19|H19]; [fwd; apply exec.quit; finish|].
 
        all: simpl in *;
          match goal with
