@@ -135,13 +135,6 @@ Section WithArguments.
 
     - (* SSeq *)
       simpl. intro.
-      Locate destr. Print coqutil.Tactics.destr.destr.
-      (* match goal with *)
-      (*   | |- context[match ?x with _ => _ end] => *)
-      (*       match goal with *)
-      (*       | H: exec _ x _ _ _ _ _ _ _ _ |- _ => inversion H; subst *)
-      (*       end *)
-      (* end. *)
       repeat (
         match goal with
         | |- context[match ?x with _ => _ end] => destr x
@@ -154,41 +147,7 @@ Section WithArguments.
           finish
         ]
       ).
-      (* apply exec.seq_cps. *)
-
-      Ltac stupid_invert H :=
-        apply exec.invert_one_step in H; [|reflexivity];
-        let inp := fresh "inp" in
-        let H1 := fresh H in
-        let H2 := fresh H in
-        destruct H as (inp&H1&H2);
-        inversion H2; subst;
-        [
-        |(*match goal with
-           | H'1: forall aep' : MetricLeakageSemantics.AEP,
-               MetricLeakageSemantics.goes_to ?aep ?inp aep' -> _,
-            H'2: MetricLeakageSemantics.compat ?aep ?inp |- _ =>
-            apply MetricLeakageSemantics.goes_to_something in H'2;
-            let aep' := fresh aep' in
-            destruct H'2 as [aep' H'2];
-            specialize (H'1 _ H'2);
-            apply or_same in H'1
-          end*)].
-      (* stupid_invert H0. *)
-      (* 2: { eapply exec.inp_works; eauto. intros aep' Haep'. *)
-      (*        specialize H0 with (1 := Haep'). apply or_same in H0. *)
-      (*        apply exec.quit. apply exec.quit. specialize H1 with (1 := H0). *)
-      (*        inversion H1. subst. finish. } *)
-      (*   eapply exec.inp_works; eauto. intros aep' Haep'. *)
-      (*   specialize H5 with (1 := Haep'). destruct H5 as [H5|H5]. *)
-      (*   { apply exec.quit. apply exec.quit. specialize H1 with (1 := H5). *)
-      (*     inversion H1. subst. finish. } *)
       all: eapply @exec.seq_cps.
-
-      Ltac apply_something_in H :=
-        match goal with
-        | H': _ |- _ => apply H' in H
-        end.
 
       all: match goal with
            | H: exec _ _ _ _ _ _ _ _ _ ?mid,
