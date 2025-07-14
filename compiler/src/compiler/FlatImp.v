@@ -1041,8 +1041,8 @@ Module exec.
       { simpl. intros. apply loop_cps. assumption. }
     Qed.
     
-    Lemma exec_impl_weakest_pre {pick_sp: PickSp} aep s k t m l mc post :
-      exec s true aep k t m l mc post ->
+    Lemma exec_impl_weakest_pre {pick_sp: PickSp} q aep s k t m l mc post :
+      exec s q aep k t m l mc post ->
       exists inp,
         compat aep inp /\
           forall aep',

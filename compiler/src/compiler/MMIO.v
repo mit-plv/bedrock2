@@ -279,23 +279,17 @@ Section MMIO1.
     pose proof (compile_interact_emits_valid RV32I _ action _ V_resvars V_argvars).
     simp.
 
-    stupid_invert H.
-    2: { eapply SmallStep.inp_works; [solve[eauto]|]. intros aep' Haep'.
-         specialize H with (1 := Haep'). eassert (postH _ _ _ _ _ _ _) by (destruct H as [H|H]; exact H).
-         apply runsToDone. exists false. do 5 eexists. split; [eassumption|].
-         split; [reflexivity|]. split.
-         { solve_MetricLog. }
-         split.
-         { exists nil. eexists. split; [reflexivity|]. split; [eassumption|]. reflexivity. }
-         unfold FlatToRiscvCommon.goodMachine in *. simp. reflexivity. }
-    eapply SmallStep.inp_works; [solve[eauto]|].
-    intros aep' Haep'.
-
+    apply exec.exec_impl_weakest_pre in H. destruct H as (inp & Hcompat & Hinp).
+    eapply SmallStep.inp_works; [solve[eauto]|]. intros aep' Haep'.
+    specialize Hinp with (1 := Haep'). destruct Hinp as [Hinp|Hinp].
+    { apply runsToDone. exists false. do 5 eexists. split; [eassumption|].
+      split; [reflexivity|]. split; [solve_MetricLog|]. split.
+      { exists nil. eexists. split; [reflexivity|]. split; [eassumption|]. reflexivity. }
+      unfold FlatToRiscvCommon.goodMachine in *. simp. reflexivity. }
+    simpl in Hinp. simp.
+    
     destruct_RiscvMachine initialL.
     unfold FlatToRiscvCommon.goodMachine in *.
-    match goal with
-    | H: forall _ _ _, outcome _ _ _ -> _ |- _ => specialize H with (mReceive := map.empty)
-    end.
     destruct (String.eqb "MMIOWRITE" action) eqn: E;
       cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics getXAddrs] in *.
     + (* MMOutput *)
@@ -337,20 +331,14 @@ Section MMIO1.
       | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
       end.
       match goal with
-      | HO: outcome _ _ _, H: _ |- _ => specialize (H _ _ HO); rename H into HP
+      | H: forall m', map.split m' ?mKeep map.empty -> _ |- _ =>
+          specialize (H mKeep); rewrite map.split_empty_r in H; specialize (H eq_refl)
       end.
       destruct g. FlatToRiscvCommon.simpl_g_get.
       simp.
       subst.
       cbn in *.
       simp.
-
-      specialize HPp1 with (2 := Haep').
-      edestruct HPp1 as [HPp1'|HPp1'].
-      { apply map.split_empty_r. reflexivity. }
-      { apply runsToDone. exists false. do 5 eexists. simpl. intuition eauto.
-        - solve_MetricLog.
-        - exists nil. eexists. eauto. }
       
       apply runsToNonDet.runsToStep_cps. apply SmallStep.step_usual_cps.
       match goal with
@@ -376,7 +364,7 @@ Section MMIO1.
       rewrite Zmod_mod, Z.mod_small by eapply EncodeBound.encode_range.
       rewrite DecodeEncode.decode_encode; cycle 1. {
         epose proof Registers.arg_range_Forall as HH.
-        rewrite E3 in HH.
+        rewrite E0 in HH.
         repeat match goal with HH : Forall _ (_::_)|-_ => inversion HH; subst; clear HH end.
         split; cbn; unfold Encode.verify_S, funct3_SW, opcode_STORE; ssplit; try Lia.lia.
       }
@@ -408,7 +396,6 @@ Section MMIO1.
       rewrite word.of_Z_unsigned.
       apply eqb_eq in E. subst action.
       cbn -[invalidateWrittenXAddrs] in *.
-      specialize (HPp1 mKeep). rewrite map.split_empty_r in HPp1. specialize (HPp1 eq_refl).
       exists true. do 5 eexists.
       simp.
       split; eauto.
@@ -496,20 +483,6 @@ Section MMIO1.
       simp.
       subst.
       cbn in *.
-
-      match goal with
-      | A: forall _ _, outcome _ _ _ -> _, OC: forall _, outcome _ _ _ |- _ =>
-         epose proof (A (cons _ nil) (cons _ nil) (OC _)) as P; clear A
-      end.
-      cbn in P.
-      simp.      
-
-      specialize Pp1 with (2 := Haep').
-      edestruct Pp1 as [HPp1'|HPp1'].
-      { apply map.split_empty_r. reflexivity. }
-      { apply runsToDone. exists false. do 5 eexists. simpl. intuition eauto.
-        - solve_MetricLog.
-        - exists nil. eexists. eauto. }
       
       apply runsToNonDet.runsToStep_cps. apply SmallStep.step_usual_cps.
       match goal with
@@ -536,7 +509,7 @@ Section MMIO1.
       rewrite Zmod_mod, Z.mod_small by eapply EncodeBound.encode_range.
       rewrite DecodeEncode.decode_encode; cycle 1. {
         epose proof Registers.arg_range_Forall as HH.
-        rewrite E1 in HH.
+        rewrite E0 in HH.
         repeat match goal with HH : Forall _ (_::_)|-_ => inversion HH; subst; clear HH end.
         split; cbn; unfold Encode.verify_I, opcode_LOAD, funct3_LW; ssplit; try Lia.lia.
       }
@@ -565,9 +538,16 @@ Section MMIO1.
       simpl_word_exprs word_ok. simpl.
 
       unfold mmioLoadEvent, signedByteTupleToReg.
-      (*THING*)apply eqb_eq in EE. subst action.
+      match goal with
+      | A: forall _, exists _, _ /\ (forall _, map.split _ ?mKeep _ -> _) |- _ =>
+          epose proof (A _) as P; clear A; destruct P as (? & ? & P);
+          specialize (P mKeep); rewrite map.split_empty_r in P;
+          specialize (P eq_refl)
+      end.
+      simp.
+
+      apply eqb_eq in EE. subst action.
       cbn in *.
-      specialize (Pp1 mKeep). rewrite map.split_empty_r in Pp1. specialize (Pp1 eq_refl).
       unfold setReg.
       destr ((0 <? z1) && (z1 <? 32))%bool; [|exfalso;blia].
       exists true. do 5 eexists.
