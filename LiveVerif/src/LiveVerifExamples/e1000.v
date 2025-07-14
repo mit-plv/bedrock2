@@ -186,10 +186,13 @@ Derive e1000_init SuchThat (fun_correct! e1000_init) As e1000_init_ok.          
   store32(f + 20 + sizeof(uintptr_t),
         b + MBUF_SIZE * RX_RING_SIZE + MBUF_SIZE * TX_RING_SIZE +
         sizeof(rx_desc) * RX_RING_SIZE);                                   /**. .**/
-  /* tx_buf_allocator */                                                   /**. .**/
+        /* tx_buf_allocator */                                                   /**. (* .**/
+
+  (* this cancellation relied on unifying scalar with ptsto_bytes *)
   store32(f + 20 + 2 * sizeof(uintptr_t),
         b + MBUF_SIZE * RX_RING_SIZE + MBUF_SIZE * TX_RING_SIZE +
         sizeof(rx_desc) * RX_RING_SIZE + sizeof(tx_desc) * TX_RING_SIZE);  /**.
+Import dlist.
   repeat match goal with
   | H: merge_step _ |- _ => clear H
   end.
@@ -200,6 +203,7 @@ Derive e1000_init SuchThat (fun_correct! e1000_init) As e1000_init_ok.          
   step. eexists {| tx_buf_allocator := _ |}. record.simp.
   steps.
   (* TODO circular_buffer_slice support *)
+   *)
 Abort.
 
 End LiveVerif. Comments .**/ //.

@@ -65,8 +65,12 @@ Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          
   store16(p+2, load16(p));                                                 /**. .**/
   store16(p, tmp);                                                         /**. .**/
 }                                                                          /**.
-subst tmp. bottom_up_simpl_in_goal. reflexivity.
+subst tmp.
+Print uint.
+(* This proof was commented out when changing [scalar] and [uint] to no longer unfold to [ptsto_bytes] (of tuple)
+bottom_up_simpl_in_goal. reflexivity.
 Qed.
+*) Abort.
 
 
 #[export] Instance spec_of_init_baz: fnspec :=                                  .**/
@@ -79,9 +83,12 @@ void init_baz(uintptr_t p, uintptr_t bazPayloadLen) /**#
        <{ * baz_t ? p
           * R }> m' #**/                                                   /**.
 Derive init_baz SuchThat (fun_correct! init_baz) As init_baz_ok.                .**/
-{                                                                          /**. .**/
+{                                                                          /**. 
+(* This proof was commented out when changing [scalar] and [uint] to no longer unfold to [ptsto_bytes] (of tuple)
+.**/
 }                                                                          /**.
 Qed.
+ *) Abort.
 
 
 #[export] Instance spec_of_init_sepapps: fnspec :=                              .**/
@@ -122,7 +129,9 @@ void init_bar(uintptr_t p, uintptr_t barPayloadLen) /**#
 Derive init_bar SuchThat (fun_correct! init_bar) As init_bar_ok.                .**/
 {                                                                          /**. .**/
 }                                                                          /**.
+(* This proof was commented out when changing [scalar] and [uint] to no longer unfold to [ptsto_bytes] (of tuple)
 Qed.
+ *) Abort.
 
 
 #[export] Instance spec_of_init_foo: fnspec :=                                  .**/

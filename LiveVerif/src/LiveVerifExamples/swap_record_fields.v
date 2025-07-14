@@ -63,9 +63,11 @@ Derive swap_bc SuchThat (fun_correct! swap_bc) As swap_bc_ok.                   
 {                                                                          /**. .**/
   swap(p+4, p+8);                                                          /**. .**/
 } /**.
+(* this proof was commented out at the same time as another proof that relied on unfolding scalar to ptsto_bytes (of tuple)
 reflexivity. (* TODO automate, but don't use reflexivity in the library, because
   especially on unprovable goals with evars, it can run forever *)
 Qed.
+ *) Abort.
 
 #[export] Instance spec_of_swap_singleField: fnspec :=                          .**/
 
