@@ -311,7 +311,7 @@ Definition c_func '(name, (args, rets, body)) :=
     (match localvars with nil => "" | _ => indent ++ "br_word_t " ++ concat ", " (List.map c_var localvars) ++ ";" ++ LF end) ++
     c_cmd indent body ++
     concat "" (List.map (fun '(o, optr) => indent ++ "*" ++ c_var optr ++ " = " ++ c_var o ++ ";" ++ LF) retrenames) ++
-    (match retvar with None => "" | Some rv => indent ++ "return " ++c_var rv ++ ";" ++ LF ++ end)
+    (match retvar with None => "" | Some rv => indent ++ "return " ++c_var rv ++ ";" ++ LF end) ++
     "}" ++ LF.
 
 Definition c_module (fs : list (String.string * func)) :=
