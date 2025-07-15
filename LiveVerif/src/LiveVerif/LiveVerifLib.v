@@ -13,7 +13,7 @@ Require Export bedrock2.Lift1Prop.
 Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Export bedrock2.Map.DisjointUnion.
 Require Export bedrock2.unzify.
-Require Export bedrock2.ptsto_bytes bedrock2.Scalars.
+Require Export bedrock2.Scalars.
 Require Export coqutil.Word.Bitwidth.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Export bedrock2.SepBulletPoints.

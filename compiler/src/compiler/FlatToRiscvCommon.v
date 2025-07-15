@@ -37,7 +37,6 @@ Require Import compiler.SeparationLogic.
 Require Import bedrock2.Scalars.
 Require Import coqutil.Tactics.Simp.
 Require Export coqutil.Word.SimplWordExpr.
-Require Import bedrock2.ptsto_bytes.
 Require Import compiler.RiscvWordProperties.
 Require Import compiler.eqexact.
 Require Import compiler.on_hyp_containing.
