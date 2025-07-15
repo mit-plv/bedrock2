@@ -3,10 +3,13 @@ Require Import coqutil.sanity coqutil.Byte.
 Require Import bedrock2.MetricLeakageSemantics.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
+Require Import Coq.Logic.ChoiceFacts.
+Require Import Coq.Logic.ClassicalFacts.
+
 
 Section step.
-  Context (State : Type) (step : State -> (State -> Prop) -> Prop).
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context (State : Type) (step : State -> (State -> Prop) -> Prop).
 
   Definition State' : Type := State * AEP.
   Inductive step' : State' -> (State' -> Prop) -> Prop :=
@@ -116,36 +119,37 @@ Section step.
     - apply runsToStep_cps. apply step_A. intros x. eapply H; eauto. intros. apply Haep. econstructor.
       eassumption.
   Qed.
+End step.
+
+Section streams.
+  Context (State : Type) (might_step : State -> State -> Prop).
   
   CoInductive stream (T : Type) :=
   | scons (a : T) (rest : stream T).
-
+  
   Fixpoint nth {T : Type} (n : nat) (s : stream T) : T :=
     match s, n with
     | scons _ a rest, S n' => nth n' rest
     | scons _ a rest, O => a
     end.
-  
-  CoInductive possible {T : Type} (step_ : T -> T -> Prop) : stream T -> Prop :=
-  | poss a b rest : step_ b a ->
-                    possible step_ (scons _ b rest) ->
-                    possible step_ (scons _ a (scons _ b rest)).
 
-  Fixpoint trace_pred_of {T : Type} aep : _ -> stream T -> Prop :=
-    match aep with
-    | AEP_A aep' => fun post => fun str => forall x, trace_pred_of (aep' x) post str
-    | AEP_E aep' => fun post => fun str => exists x, trace_pred_of (aep' x) post str
-    | AEP_P P => fun post => fun str => exists n, post P (nth n str)
+  Fixpoint prefix {T : Type} (n : nat) (s : stream T) : list T :=
+    match s, n with
+    | scons _ a rest, S n' => a :: prefix n' rest
+    | scons _ a rest, O => nil
     end.
+  
+  CoInductive possible : stream State -> Prop :=
+  | poss a b rest : might_step a b ->
+                    possible (scons _ b rest) ->
+                    possible (scons _ a (scons _ b rest)).
 
-  Require Import Coq.Logic.ChoiceFacts.
-  Require Import Coq.Logic.ClassicalFacts.
-  Lemma naen (A : Type) (P : A -> Prop) :
+  Lemma naen (A : Type) (P : A -> _) :
     excluded_middle ->
     ~(forall y, P y) ->
     exists y, ~P y.
   Proof.
-    intros em. clear -em. cbv [excluded_middle]. intros H. assert (H1 := em (exists y, ~P y)).
+    intros em. clear -em. intros H. assert (H1 := em (exists y, ~P y)).
     destruct H1 as [H1|H1].
     - assumption.
     - exfalso. apply H. clear H. intros y. assert (H2 := em (P y)).
@@ -154,52 +158,181 @@ Section step.
       + exfalso. apply H1. exists y. assumption.
   Qed.
 
-  Lemma chains_finite_implies_Acc' (A : Type) (R : A -> A -> Prop) x str :
-    nth O str = x ->
-    possible R str ->
-    ~ Acc R x.
-  Proof.
-    intros H1 H2 H3. revert str H1 H2. induction H3. intros str H1 H2. inversion H2.
-    subst. simpl in *. specialize H0 with (3 := H4). specialize H0 with (2 := eq_refl).
-    apply H0. apply H3.
+  Lemma enna (A : Type) (P : A -> _) :
+    (exists y, ~P y) ->
+    ~(forall y, P y).
+  Proof. intros [y H]. auto. Qed.
+
+  CoFixpoint stream_of {T : Type} (start : T) (step : T -> T) :=
+    scons _ start (stream_of (step start) step).
+
+  Lemma stream_of_eq T (start : T) step_ :
+    stream_of start step_ = scons _ start (stream_of (step_ start) step_).
+  Proof. replace (stream_of start step_) with (match stream_of start step_ with
+                                               | scons _ hd tl => scons _ hd tl
+                                               end).
+         { reflexivity. }
+         destruct (stream_of _ _). reflexivity.
   Qed.
 
-  Lemma notnot :
+  (*taken from https://github.com/OwenConoly/semantics_relations/blob/master/equiv/EquivProof.v*)
+  Lemma chains_finite_implies_Acc x :
     excluded_middle ->
-    forall P,
-    ~~P ->
-    P.
-  Proof. intros em P nnP. specialize (em P). tauto. Qed.
-
-  Lemma chains_finite_implies_Acc (A : Type) (R : A -> A -> Prop) x :
-    excluded_middle ->
-    ~ (forall str, possible R str -> nth O str = x -> False) ->
-    Acc R x.
+    FunctionalChoice_on State State ->
+    (forall str, nth O str = x -> possible str -> False) ->
+    Acc (fun x y => might_step y x) x.
   Proof.
-    intros em H. apply (notnot em). intros H'. apply H. intros. clear H. Search excluded_middle. Abort. 
-  (* Lemma runsTo_iff_trace_pred {T : Type} (step_ : T -> _ -> Prop) s P : *)
-  (*   runsTo step_ s P <-> (forall str, possible step_ str -> *)
-  (*                              nth O str = s -> *)
-  (*                              exists n, P (nth n str)). *)
-  (* Proof. *)
-  (*   split; intros H. *)
-  (*   - induction H. *)
-  (*     + intros. destruct str; inversion H1. subst. exists O. simpl. assumption. *)
-  (*     + intros. inversion H2. subst.  *)
-  (*       specialize H4 with (1 := H). specialize H0 with (1 := H4). *)
-  (*       specialize H1 with (1 := H4). specialize H1 with (1 := H5). *)
-  (*       specialize (H1 eq_refl). destruct H1 as [n H1]. exists (S n). simpl. assumption. *)
-  (*   -  *)
-        
-  (* Lemma step'_iff_trace_pred s aep post : *)
-  (*   runsTo step' (s, aep) *)
-  (*     (fun '(s', aep') => *)
-  (*        match aep' with *)
-  (*        | AEP_P P => post P s' *)
-  (*        | _ => False *)
-  (*        end) <-> *)
-  (*     (forall str, possible str -> trace_pred_of aep post str). *)
-  (* Proof. *)
-  (*   split; intros H. *)
-  (*   - intros str Hstr. *)
-End step.
+    intros em choice H. cbv [FunctionalChoice_on] in choice.
+    set (R := fun x y => might_step y x).
+    specialize (choice (fun x y => ~Acc R x -> ~Acc R y /\ R y x)). destruct choice as [f H'].
+    { clear -em. intros x. cbv [excluded_middle] in em.
+      assert (H1 := em (forall y, R y x -> Acc R y)). destruct H1 as [H1|H1].
+      - exists x. intros H. exfalso. apply H. constructor. assumption.
+      - assert (H2 := naen). specialize H2 with (1 := em) (2 := H1).
+        simpl in H2. destruct H2 as [y H2]. exists y. intros _. split.
+        + intros H. apply H2. intros. assumption.
+        + assert (H3 := em (R y x)). destruct H3 as [H3|H3].
+          -- assumption.
+          -- exfalso. apply H2. intros. exfalso. apply H3. apply H. }
+    assert (H1 := em (Acc R x)). destruct H1 as [H1|H1].
+    - assumption.
+    - specialize (H (stream_of x f) eq_refl). exfalso.
+      exfalso. apply H. clear H. revert x H1. cofix Hcofix. intros x H.
+      specialize (H' x H). do 2 rewrite stream_of_eq. destruct H'.
+      constructor; [assumption|]. rewrite <- stream_of_eq. apply Hcofix. assumption.
+  Qed.
+End streams.
+
+Section omni_trad.
+  Context (State : Type) (might_step : State -> State -> Prop).
+
+  Definition step x (P : _ -> Prop) :=
+    forall y, might_step x y -> P y.
+
+  Lemma possible_weaken {T : Type} str (R1 : T -> T -> Prop) :
+    possible T R1 str ->
+    forall R2,
+    (forall x y, R1 x y -> R2 x y) ->
+    possible T R2 str.
+  Proof.
+    intros H' R2 H. revert str H'. cofix Hstr. intros str H'. inversion H'. subst.
+    clear H'. constructor. 1: auto. apply Hstr. assumption.
+  Qed.
+
+  Lemma possible_nth {T : Type} str (R : T -> T -> Prop) n :
+    possible T R str ->
+    R (nth n str) (nth (S n) str).
+  Proof.
+    revert str. induction n.
+    - intros str H. inversion H. subst. simpl. assumption.
+    - intros str H. inversion H. subst. simpl. apply IHn. assumption.
+  Qed.    
+  
+  Lemma runsTo_iff_trace_pred s P :
+    excluded_middle ->
+    FunctionalChoice_on State State ->
+    runsTo step s P <-> (forall str, possible _ might_step str ->
+                               nth O str = s ->
+                               exists n, P (nth n str)).
+  Proof.
+    intros em choice. split; intros H.
+    - induction H.
+      + intros. destruct str; inversion H1. subst. exists O. simpl. assumption.
+      + intros. inversion H2. subst. clear H2. simpl in H. cbv [step] in H.
+        edestruct H1 as [n Hn].
+        -- apply H. eassumption.
+        -- eassumption.
+        -- reflexivity.
+        -- exists (S n). simpl. assumption.
+    - set (R := fun x y => might_step y x /\ ~P y).
+      assert (Hyp: forall str, nth O str = s -> possible _ (fun x y => R y x) str -> False).
+      { intros str HO Hsteps. subst. eassert _ as Hn.
+        { apply H. 2: reflexivity. eapply possible_weaken. 1: eassumption.
+          subst R. simpl. intros ? ? [? ?]. assumption. }
+        destruct Hn as [n Hn]. apply (possible_nth _ _ n) in Hsteps. subst R.
+        simpl in Hsteps. destruct Hsteps as [_ ?]. auto. }
+      apply chains_finite_implies_Acc in Hyp; [|assumption|assumption].
+      induction Hyp. assert (H' := em (P x)). destruct H' as [H'|H'].
+      { apply runsToDone. assumption. }
+      subst R. simpl in *. apply runsToStep_cps. intros y Hy. eapply H1; eauto.
+      intros str. specialize (H (scons _ x str)). intros Hstr ?. destruct str. subst.
+      specialize (H ltac:(econstructor; eauto) eq_refl). destruct H as [n Hn].
+      destruct n as [|n].
+      { simpl in Hn. exfalso. auto. }
+      exists n. simpl in Hn. apply Hn.
+  Qed.
+End omni_trad.
+
+Section post_of_surj.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context (Event : Type) (State : Type) (trace : State -> list Event).
+  Context (might_step : State -> State -> Prop).
+  Context (trace_gets_longer : forall x y, might_step x y -> exists t, trace y = List.app (trace x) t).
+  Notation step := (step _ might_step).
+
+  (*a formula stating a predicate about event streams*)
+  Inductive formula :=
+  (*because I don't want to deal with dependent types, quantifiers can only bind nats*)
+  | forall_ : (nat -> formula) -> formula
+  | exists_ : (nat -> formula) -> formula
+  (*assertion about the nth element of the stream*)
+  | asstn (n : nat) : (Event -> formula) -> formula
+  (*base case: a prop*)
+  | propn : Prop -> formula.
+
+  Fixpoint interp (f : formula) (t : stream Event) : Prop :=
+    match f with
+    | forall_ f' => forall n, interp (f' n) t
+    | exists_ f' => exists n, interp (f' n) t
+    | asstn n f' => interp (f' (nth n t)) t
+    | propn P => P
+    end.
+
+  Definition definable P := exists f, forall t, P t <-> interp f t.
+  Print post_of.
+  Lemma post_of_surjective P :
+    definable P ->
+    exists aep post,
+      (forall t, P t <-> exists n, post_of _ step aep post (prefix n t)).
+
+End post_of_surj.
+  Lemma post_of_surjective
+  Check post_of.  
+Section aep_omni_trad.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Notation step := (step _ might_step).
+  Notation step' := (step' _ step).
+  
+  Lemma blah s aep post :
+    excluded_middle ->
+    FunctionalChoice_on State State ->
+    runsTo step' (s, aep)
+      (fun '(s', aep') =>
+         match aep' with
+         | AEP_P P => post P s'
+         | _ => False
+         end) <->
+      (forall str : stream State,
+          possible State might_step str ->
+          nth 0 str = s -> exists n : nat, post_of State step aep post (nth n str)).
+  Proof.
+    intros em choice.
+    rewrite step'_iff_step. rewrite runsTo_iff_trace_pred; [|assumption|assumption].
+    reflexivity.
+  Qed.
+
+  Print post_of. 
+    
+  Lemma step'_iff_trace_pred s aep post :
+    runsTo step' (s, aep)
+      (fun '(s', aep') =>
+         match aep' with
+         | AEP_P P => post P s'
+         | _ => False
+         end) <->
+      (forall str, possible str -> trace_pred_of aep post str).
+  Proof.
+    split; intros H.
+    - intros str Hstr.
+
+  
