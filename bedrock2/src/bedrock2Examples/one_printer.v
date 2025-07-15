@@ -1,7 +1,30 @@
+Require Import bedrock2.NotationsCustomEntry.
+
+Import Syntax Syntax.Coercions BinInt String List List.ListNotations.
+Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
+
+Definition anMMIOAddr : Z := 131072.
+
+(* TODO use nice notations here *)
+
+Definition one_printer :=
+  (cmd.while (expr.literal 1) (cmd.interact nil "MMIOWRITE" (cons (expr.literal anMMIOAddr) (cons (expr.literal 1) nil)))).
+
+Definition countdown :=
+  (cmd.while (expr.var "x")
+     (cmd.seq
+        (cmd.interact nil "MMIOWRITE" (cons (expr.literal anMMIOAddr) (cons (expr.literal 0) nil)))
+        (cmd.set "x" (expr.op bopname.sub (expr.var "x") (expr.literal 1))))).
+
+Definition eventual_one_printer :=
+  cmd.seq (cmd.stackalloc "x" 0 cmd.skip)
+    (cmd.seq countdown one_printer).
+
+Definition one_printer_fun : (list String.string * list String.string * cmd) := (nil, nil, eventual_one_printer).
+
 Require Import coqutil.sanity coqutil.Byte.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.
-Require coqutil.Map.SortedListString.
 Require Import coqutil.Z.Lia.
 Require Import bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
@@ -24,21 +47,6 @@ Section WithParams.
   Require Import Strings.String.
   Open Scope string_scope.
   
-  Definition anMMIOAddr : Z := 131072.
-
-  Definition one_printer :=
-    (cmd.while (expr.literal 1) (cmd.interact nil "MMIOWRITE" (cons (expr.literal anMMIOAddr) (cons (expr.literal 1) nil)))).
-
-  Definition countdown :=
-    (cmd.while (expr.var "x")
-       (cmd.seq
-          (cmd.interact nil "MMIOWRITE" (cons (expr.literal anMMIOAddr) (cons (expr.literal 0) nil)))
-          (cmd.set "x" (expr.op bopname.sub (expr.var "x") (expr.literal 1))))).
-  
-  Definition eventual_one_printer :=
-    cmd.seq (cmd.stackalloc "x" 0 cmd.skip)
-      (cmd.seq countdown one_printer).
-
   Context {locals_ok: map.ok locals}.
 
   Lemma countdown_terminates e aep k t m l mc xval :
@@ -144,15 +152,16 @@ Section WithParams.
   Qed.
 
   Definition eventually_print_ones : AEP :=
-    AEP_E (fun n1 => AEP_A (fun n2 => AEP_P (fun _ t _ _ => exists t1, List.length t1 = n1 /\ (t = repeat one n2 ++ t1)%list))).
+    AEP_E (fun n1 => AEP_A (fun n2 => AEP_P (fun t _ => exists t1, List.length t1 = n1 /\ (t = repeat one n2 ++ t1)%list))).
   
   Lemma eventual_one_printer_eventually_prints_ones e k t m l mc :
     exec e eventual_one_printer true eventually_print_ones k t m l mc
-      (fun _ aep k t m l mc =>
-         match aep with
-         | AEP_P P => P k t m mc
-         | _ => False
-         end).
+      (fun q' aep k t m l mc =>
+         q' = false /\
+           match aep with
+           | AEP_P P => forall mc, P t mc
+           | _ => False
+           end).
   Proof.
     cbv [eventual_one_printer]. eapply exec.seq_cps.
     econstructor.
@@ -167,8 +176,7 @@ Section WithParams.
     apply exec.exec_E with (x := List.length t').
     apply exec.exec_A. intros.
     eapply exec.weaken. 1: apply one_printer_prints_ones.
-    simpl. intros. fwd. eexists. split; [reflexivity|]. reflexivity.
+    simpl. intros. fwd. split; [reflexivity|]. eexists. split; [reflexivity|].
+    simpl. eauto.
   Qed.
-
-  Definition one_printer_fun : (list string * list string * cmd) := (nil, nil, eventual_one_printer).
 End WithParams.

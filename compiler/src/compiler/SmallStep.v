@@ -58,7 +58,7 @@ Section step.
     match aep with
     | AEP_A aep' => fun post => fun s => forall n, runsTo step s (post_of (aep' n) post)
     | AEP_E aep' => fun post => fun s => exists n, runsTo step s (post_of (aep' n) post)
-    | AEP_P X => fun post => fun s' => post X s'
+    | AEP_P P => fun post => fun s' => post P s'
     end.
   
   Lemma step'_iff_step s aep post : runsTo step' (s, aep)
@@ -135,7 +135,7 @@ Section step.
     match aep with
     | AEP_A aep' => fun post => fun str => forall x, trace_pred_of (aep' x) post str
     | AEP_E aep' => fun post => fun str => exists x, trace_pred_of (aep' x) post str
-    | AEP_P X => fun post => fun str => exists n, post X (nth n str)
+    | AEP_P P => fun post => fun str => exists n, post P (nth n str)
     end.
 
   Require Import Coq.Logic.ChoiceFacts.

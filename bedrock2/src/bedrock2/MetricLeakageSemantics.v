@@ -1,4 +1,4 @@
-Require Import coqutil.sanity coqutil.Byte.
+ Require Import coqutil.sanity coqutil.Byte.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.
 Require coqutil.Map.SortedListString.
@@ -21,7 +21,9 @@ Section aep.
   Inductive AEP :=
   | AEP_A : (nat -> AEP) -> AEP
   | AEP_E : (nat -> AEP) -> AEP
-  | AEP_P : (leakage -> trace -> mem -> metrics -> Prop) -> AEP.
+  | AEP_P : (trace -> MetricLog -> Prop) -> AEP.
+  (* Too bad this is painful to work with.  no reason not to do it, in principle *)
+  (* | AEP_P : forall T : Type, T -> AEP. *)
 
   Inductive inputs :=
   | inp_nil
@@ -113,7 +115,7 @@ Module exec. Section WithParams.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
   Section WithEnv.
-  Context (e: env).
+    Context (e: env).
 
   Local Notation metrics := MetricLog.
 

@@ -27,7 +27,7 @@ Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Spec.LeakageOfInstr.
 Require Import riscv.Spec.Decode.
 Require compiler.NaiveRiscvWordProperties.
-Require Import bedrock2Examples.memequal.
+Require Import bedrock2.MetricLeakageSemantics.
 Require Import compiler.MMIO.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Map.SortedListZ.
@@ -56,27 +56,27 @@ Qed.
 Lemma word_ok' : word.ok Words32Naive.word.
 Proof. exact Naive.word32_ok. Qed.
 
-Definition fs_memequal := &[,memequal].
-Definition instrs_memequal :=
-  match (compile compile_ext_call fs_memequal) with
+Definition fs_one_printer := &[,one_printer_fun].
+Definition instrs_one_printer :=
+  match (compile compile_ext_call fs_one_printer) with
   | Success (instrs, _, _) => instrs
   | _ => nil
   end.
-Definition finfo_memequal :=
-  match (compile compile_ext_call fs_memequal) with
+Definition finfo_one_printer :=
+  match (compile compile_ext_call fs_one_printer) with
   | Success (_, finfo, _) => finfo
   | _ => nil
   end.
-Definition req_stack_size_memequal :=
-  match (compile compile_ext_call fs_memequal) with
+Definition req_stack_size_one_printer :=
+  match (compile compile_ext_call fs_one_printer) with
   | Success (_, _, req_stack_size) => req_stack_size
   | _ => 0
   end.
-Definition fname_memequal := "memequal".
-Definition f_rel_pos_memequal := 0.
+Definition fname_one_printer := "one_printer".
+Definition f_rel_pos_one_printer := 0.
 Definition post : list LogItem -> mem32 -> list Words32Naive.word -> Prop := fun _ _ _ => True.
 
-Lemma memequal_ct :
+Theorem one_printer_prints_ones :
   forall x y n p_funcs stack_hi ret_addr,
   exists finalTrace : list LeakageEvent,
   forall Rx Ry xs ys m stack_lo
@@ -85,14 +85,14 @@ Lemma memequal_ct :
       Separation.sep (Array.array Separation.ptsto (word.of_Z 1) y ys) Ry m /\
       Z.of_nat (Datatypes.length xs) = word.unsigned n /\
       Z.of_nat (Datatypes.length ys) = word.unsigned n /\
-      req_stack_size_memequal <= word.unsigned (word.sub stack_hi stack_lo) / SeparationLogic.bytes_per_word ->
+      req_stack_size_one_printer <= word.unsigned (word.sub stack_hi stack_lo) / SeparationLogic.bytes_per_word ->
     word.unsigned (word.sub stack_hi stack_lo) mod SeparationLogic.bytes_per_word = 0 ->
-    getPc initial = word.add p_funcs (word.of_Z f_rel_pos_memequal) ->
+    getPc initial = word.add p_funcs (word.of_Z f_rel_pos_one_printer) ->
     initial.(getTrace) = Some [] ->
     map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
     word.unsigned ret_addr mod 4 = 0 ->
     LowerPipeline.arg_regs_contain (getRegs initial) [x; y; n] ->
-    LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_memequal m Rdata Rexec initial ->
+    LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_one_printer m Rdata Rexec initial ->
     FlatToRiscvCommon.runsTo initial
       (fun final : RiscvMachine =>
          (exists mH' (retvals : list Words32Naive.word),
@@ -101,15 +101,15 @@ Lemma memequal_ct :
                map.only_differ (getRegs initial) reg_class.caller_saved (getRegs final) /\
                getPc final = ret_addr /\
                final.(getTrace) = Some finalTrace /\
-               LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_memequal mH' 
+               LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_one_printer mH' 
                  Rdata Rexec final)).
 Proof.
-  assert (spec := @memequal_ok _ _ Words32Naive.word mem32 (SortedListString.map (@Naive.rep 32)) leakage_ext_spec).
+  assert (spec := @eventual_one_printer_eventually_prints_ones _ _ Words32Naive.word mem32 (SortedListString.map (@Naive.rep 32)) _ _).
   intros.
-  edestruct (@compiler_correct_wp _ _ Words32Naive.word mem32 _ leakage_ext_spec _ _ _ leakage_ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct ltac:(reflexivity) fs_memequal instrs_memequal finfo_memequal req_stack_size_memequal fname_memequal p_funcs stack_hi ret_addr f_rel_pos_memequal) as [f_ [pick_sp_ H] ].
+  edestruct (@compiler_correct _ _ Words32Naive.word mem32 _ leakage_ext_spec _ _ _ leakage_ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct ltac:(reflexivity) fs_one_printer instrs_one_printer finfo_one_printer req_stack_size_one_printer fname_one_printer p_funcs stack_hi ret_addr) as [f_ [pick_sp_ H] ].
   { simpl. reflexivity. }
   { vm_compute. reflexivity. }
-  specialize (spec pick_sp_ word_ok' _ ltac:(apply SortedListString.ok) leakage_ext_spec_ok).
+  specialize (spec pick_sp_ _ ltac:(apply SortedListString.ok) leakage_ext_spec_ok).
   cbv [LeakageProgramLogic.program_logic_goal_for] in spec.
   specialize (spec (map.of_list fs_memequal) eq_refl).
   cbv [spec_of_memequal] in spec. destruct spec as [f spec].

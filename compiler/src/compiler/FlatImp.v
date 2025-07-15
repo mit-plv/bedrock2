@@ -920,7 +920,7 @@ Module exec.
         exec s q aep k t m l mc post ->
         exists inp,
           compat aep inp /\
-            exec s q (AEP_P (fun _ _ _ _ => True)) k t m l mc
+            exec s q (AEP_P (fun _ _ => True)) k t m l mc
               (fun q' _ k' t' m' l' mc' =>
                  forall aep',
                    goes_to aep inp aep' ->
