@@ -292,14 +292,14 @@ Definition c_decl (f : String.string * func) :=
 
 Definition c_func '(name, (args, rets, body)) :=
   let decl_retvar_retrenames : string * option String.string * list (String.string * String.string) :=
-  match rets with
-  | nil => (fmt_c_decl "void" args name nil, None, nil)
-  | cons r0 _ =>
-    let r0 := List.last rets r0 in
-    let rets' := List.removelast rets in
-    let retrenames := fst (rename_outs rets' (cmd.vars body)) in
-    (fmt_c_decl "br_word_t" args name (List.map snd retrenames), Some r0, retrenames)
-  end in
+    match rets with
+    | nil => (fmt_c_decl "void" args name nil, None, nil)
+    | cons r0 _ =>
+      let r0 := List.last rets r0 in
+      let rets' := List.removelast rets in
+      let retrenames := fst (rename_outs rets' (cmd.vars body)) in
+      (fmt_c_decl "br_word_t" args name (List.map snd retrenames), Some r0, retrenames)
+    end in
   let decl := fst (fst decl_retvar_retrenames) in
   let retvar := snd (fst decl_retvar_retrenames) in
   let retrenames := snd decl_retvar_retrenames in
@@ -311,7 +311,7 @@ Definition c_func '(name, (args, rets, body)) :=
     (match localvars with nil => "" | _ => indent ++ "br_word_t " ++ concat ", " (List.map c_var localvars) ++ ";" ++ LF end) ++
     c_cmd indent body ++
     concat "" (List.map (fun '(o, optr) => indent ++ "*" ++ c_var optr ++ " = " ++ c_var o ++ ";" ++ LF) retrenames) ++
-    indent ++ "return" ++ (match retvar with None => "" | Some rv => " "++c_var rv end) ++ ";" ++ LF ++
+    (match retvar with None => "" | Some rv => indent ++ "return " ++c_var rv ++ ";" ++ LF end) ++
     "}" ++ LF.
 
 Definition c_module (fs : list (String.string * func)) :=
