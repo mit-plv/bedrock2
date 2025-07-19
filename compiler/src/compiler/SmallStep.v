@@ -6,7 +6,6 @@ Require Import coqutil.Map.Interface.
 Require Import Coq.Logic.ChoiceFacts.
 Require Import Coq.Logic.ClassicalFacts.
 
-
 Section step.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context (State : Type) (step : State -> (State -> Prop) -> Prop).
@@ -63,7 +62,7 @@ Section step.
     | AEP_E aep' => fun post => fun s => exists n, runsTo step s (post_of (aep' n) post)
     | AEP_P P => fun post => fun s' => post P s'
     end.
-  
+
   Lemma step'_iff_step s aep post : runsTo step' (s, aep)
                                 (fun '(s', aep') =>
                                    match aep' with
@@ -133,12 +132,27 @@ Section streams.
     | scons _ a rest, O => a
     end.
 
-  Fixpoint prefix {T : Type} (n : nat) (s : stream T) : list T :=
+  Fixpoint firstn {T : Type} (n : nat) (s : stream T) : list T :=
     match s, n with
-    | scons _ a rest, S n' => a :: prefix n' rest
+    | scons _ a rest, S n' => a :: firstn n' rest
     | scons _ a rest, O => nil
     end.
   
+  Fixpoint skipn {T : Type} (n : nat) (s : stream T) : stream T :=
+    match n with
+    | O => s
+    | S n' =>
+        match s with
+        | scons _ a rest => skipn n' rest
+        end
+    end.
+
+  Lemma nth_skipn {T : Type} (n m : nat) (s : stream T) :
+    nth n (skipn m s) = nth (m + n) s.
+  Proof.
+    revert s. induction m; [reflexivity|]. simpl. destruct s. apply IHm.
+  Qed.
+
   CoInductive possible : stream State -> Prop :=
   | poss a b rest : might_step a b ->
                     possible (scons _ b rest) ->
@@ -226,7 +240,17 @@ Section omni_trad.
     revert str. induction n.
     - intros str H. inversion H. subst. simpl. assumption.
     - intros str H. inversion H. subst. simpl. apply IHn. assumption.
-  Qed.    
+  Qed.
+
+  Lemma possible_skipn {T : Type} str (R : T -> T -> Prop) n :
+    possible T R str ->
+    possible T R (skipn n str).
+  Proof.
+    revert str. induction n.
+    - intros str H. inversion H. subst. simpl. assumption.
+    - intros str H. inversion H. subst. simpl. apply IHn. assumption.
+  Qed.
+
   
   Lemma runsTo_iff_trace_pred s P :
     excluded_middle ->
@@ -265,44 +289,220 @@ End omni_trad.
 
 Section post_of_surj.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
-  Context (Event : Type) (State : Type) (trace : State -> list Event).
+  Context (Event : Type) (State := nat : Type) (trace : State -> list Event).
   Context (might_step : State -> State -> Prop).
   Context (trace_gets_longer : forall x y, might_step x y -> exists t, trace y = List.app (trace x) t).
   Notation step := (step _ might_step).
 
   (*a formula stating a predicate about event streams*)
-  Inductive formula :=
+  Inductive sformula :=
   (*because I don't want to deal with dependent types, quantifiers can only bind nats*)
-  | forall_ : (nat -> formula) -> formula
-  | exists_ : (nat -> formula) -> formula
+  | sforall : (nat -> sformula) -> sformula
+  | sexists : (nat -> sformula) -> sformula
   (*assertion about the nth element of the stream*)
-  | asstn (n : nat) : (Event -> formula) -> formula
+  | sasstn (n : nat) : (State -> sformula) -> sformula
   (*base case: a prop*)
-  | propn : Prop -> formula.
+  | spropn : Prop -> sformula.
 
-  Fixpoint interp (f : formula) (t : stream Event) : Prop :=
+  Fixpoint sinterp (f : sformula) (t : stream State) : Prop :=
     match f with
-    | forall_ f' => forall n, interp (f' n) t
-    | exists_ f' => exists n, interp (f' n) t
-    | asstn n f' => interp (f' (nth n t)) t
-    | propn P => P
+    | sforall f' => forall n, sinterp (f' n) t
+    | sexists f' => exists n, sinterp (f' n) t
+    | sasstn n f' => sinterp (f' (nth n t)) t
+    | spropn P => P
+    end.
+  Axiom definable : (stream State -> Prop) -> Prop.
+  Axiom definable_characterization :
+    forall P, definable P ->
+         exists f, forall t, P t <-> sinterp f t.
+
+  (*about lists*)
+  Inductive lformula :=
+  | lforall : (nat -> lformula) -> lformula
+  | lexists : (nat -> lformula) -> lformula
+  | lpropn : (list State -> Prop) -> lformula.
+
+  Fixpoint linterp (f : lformula) (t : stream State) : Prop :=
+    match f with
+    | lforall f' => forall n, linterp (f' n) t
+    | lexists f' => exists n, linterp (f' n) t
+    | lpropn P => exists n, forall n0, n <= n0 -> P (firstn n0 t)
     end.
 
-  Definition definable P := exists f, forall t, P t <-> interp f t.
-  Print post_of.
-  Lemma post_of_surjective P :
-    definable P ->
-    exists aep post,
-      (forall t, P t <-> exists n, post_of _ step aep post (prefix n t)).
+  Fixpoint lnth {T : Type} (n : nat) (l : list T) : option T :=
+    match n, l with
+    | S n', cons a l' => lnth n' l'
+    | O, cons a l' => Some a
+    | _, _ => None
+    end.
+
+  Require Import Lia.
+  Lemma lnth_firstn {T : Type} n n1 (t : stream T) :
+    n < n1 /\ lnth n (firstn n1 t) = Some (nth n t) \/ n >= n1 /\ lnth n (firstn n1 t) = None.
+  Proof.
+    clear. revert n t. induction n1; intros.
+    - right. split; [lia|]. simpl. destruct t. destruct n; reflexivity.
+    - simpl. destruct t. destruct n; simpl.
+      + left. split; [lia|]. reflexivity.
+      + specialize (IHn1 n t). destruct IHn1 as [(H1&H2)|(H1&H2)]; [left|right]; split; try lia;  assumption.
+  Qed.
+
+  Lemma assert_nth s n lf :
+    excluded_middle ->
+    FunctionalChoice_on nat lformula ->
+    exists lf', forall t, linterp lf' t <-> (linterp lf t /\ nth n t = s).
+  Proof.
+    clear. intros em choice. induction lf.
+    - eassert (H': exists l', _).
+      { apply choice. intros x. specialize (H x). destruct H as [lf' H]. exists lf'. exact H. }
+      clear H. destruct H' as [l' H']. exists (lforall l'). intros. simpl. split.
+      + intros. (*hmm here we use that quantfiers over nats are not vacuous.  relevant?*)
+        assert (HO := H O). rewrite H' in HO. destruct HO as [_ HO].
+        split; [|assumption]. intros n0. specialize (H n0). rewrite H' in H.
+        destruct H. assumption.
+      + intros H0 n0. rewrite H'. destruct H0. auto.
+    - eassert (H': exists l', _).
+      { apply choice. intros x. specialize (H x). destruct H as [lf' H]. exists lf'. exact H. }
+      clear H. destruct H' as [l' H']. exists (lexists l'). intros. simpl. split.
+      + intros [n0 Hn0]. rewrite H' in Hn0. intuition eauto.
+      + intros ([n0 H0] & H1). eexists. rewrite H'. eauto.
+    - exists (lpropn (fun l => P l /\ lnth n l = Some s)). intros t. simpl. split.
+      + intros [n0 H]. assert (HO := H n0 ltac:(lia)). destruct HO as [_ HO].
+        epose proof lnth_firstn as H'. edestruct H' as [(_&H'')|(_&H'')]; [rewrite H'' in HO|]; clear H'.
+        -- inversion HO. subst. split; [|reflexivity]. exists n0. intros n1 Hn1.
+           specialize (H _ Hn1). destruct H. assumption.
+        -- congruence.
+      + intros [(n0&Hn0) ?]. subst. exists (Nat.max (S n) n0). intros n1 Hn2.
+        specialize (Hn0 n1 ltac:(lia)). split; [assumption|].
+        epose proof lnth_firstn as H'. edestruct H' as [(_&H'')|H'']; [exact H''|].
+        clear H'. destruct H''. lia.
+  Qed.
+  
+  Lemma finite_prefixes_enough f :
+    excluded_middle ->
+    FunctionalChoice_on nat lformula ->
+    exists lf, forall t, sinterp f t <-> linterp lf t.
+  Proof.
+    clear. intros em choice. induction f.
+    - eassert (H': exists P, _).
+      { apply choice. intros x. specialize (H x). destruct H as [P H]. exists P. exact H. }
+      clear H. destruct H' as [P H']. exists (lforall P). intros t.
+      split.
+      + simpl. intros. apply H'. auto.
+      + simpl. intros. apply H'. auto.
+    - eassert (H': exists P, _).
+      { apply choice. intros x. specialize (H x). destruct H as [P H]. exists P. exact H. }
+      clear H. destruct H' as [P H']. exists (lexists P). intros t.
+      split.
+      + simpl. intros [n H]. exists n. apply H'. auto.
+      + simpl. intros [n H]. exists n. apply H'. auto.
+    - simpl. eassert (exists f, _).
+      { apply choice. intros x. specialize (H x). destruct H as [lf H].
+        pose proof assert_nth as H'. specialize H' with (1 := em) (2 := choice).
+        specialize (H' x n lf). destruct H' as [lf' H']. exists lf'.
+        eassert (H'': forall t, _).
+        { intros t. specialize (H t). specialize (H' t). rewrite <- H in H'. exact H'. }
+        exact H''. }
+      clear H. destruct H0 as [f H]. exists (lexists f). intros. simpl. split.
+      + intros H'. eexists. rewrite H. split; [eassumption|]. reflexivity.
+      + intros [n0 H']. rewrite H in H'. destruct H' as [H' ?]. subst. assumption.
+    - simpl. Print lformula. eexists (lpropn (fun _ => P)). simpl. intuition eauto.
+      destruct H as [n H]. specialize (H n ltac:(lia)). assumption.
+      Unshelve. exact O.
+  Qed.
+
+  Fixpoint aep_post_of (f : formula) : AEP :=
+    match f with
+    | forall_ f' => AEP_A (fun x => aep_post_of (f' x))
+    | exists_ f' => AEP_E (fun x => aep_post_of (f' x))
+    | asstn n f' => 
+
+  Lemma post_of_surj :
+  (* Lemma post_of_surjective P : *)
+  (*   definable P -> *)
+  (*   exists aep post, *)
+  (*     (forall t, P t <-> exists n, post_of _ step aep post (prefix n t)). *)
 
 End post_of_surj.
-  Lemma post_of_surjective
-  Check post_of.  
+
 Section aep_omni_trad.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context (Event : Type) (State : Type) (trace : State -> list Event).
+  Context (might_step : State -> State -> Prop).
+
   Notation step := (step _ might_step).
   Notation step' := (step' _ step).
   
+  Fixpoint simple_post_of aep (post : _ -> State -> Prop) (str : stream State) :=
+    match aep with
+    | AEP_A aep' =>
+        forall str,
+          starts_with str s ->
+          
+        exists n, forall x,
+        forall str',
+          prefix n str = prefix n str' ->
+          simple_post_of (aep' x) post str'
+    | AEP_E aep' =>
+        exists n, exists x,
+        forall str',
+          prefix n str = prefix n str' ->
+          simple_post_of (aep' x) post str
+    | AEP_P X => exists n, post X (nth n str)
+    end.
+
+  (* Lemma simple_post_of_skipn aep post str n : *)
+  (*   simple_post_of aep post (skipn n str) -> *)
+  (*   simple_post_of aep post str. *)
+  (* Proof. *)
+  (*   intros H. induction aep; simpl in *; auto. *)
+  (*   - destruct H as [n0 H]. eauto. *)
+  (*   - destruct H as [n0 H]. rewrite nth_skipn in H. eauto. *)
+  (* Qed. *)
+
+  Lemma post_of_iff_trace_pred aep post s :
+    excluded_middle ->
+    FunctionalChoice_on State State ->
+    (forall str, possible _ might_step str ->
+            nth O str = s ->
+            (exists n, post_of _ step aep post (nth n str))) <->
+      (forall str, possible _ might_step str ->
+              nth O str = s ->
+              simple_post_of aep post str).
+  Proof.
+    intros em choice. split.
+    - revert s post. induction aep; intros s post H'; cbn [post_of simple_post_of] in *.
+      + intros str Hstr HO. subst. specialize H' with (1 := Hstr) (2 := eq_refl).
+        destruct H' as [n H']. exists n. intros x str' Hstr'. subst. eapply H. intros. subst. specialize H' with (1 := H0) (2 := eq_refl).
+        destruct H' as (n0 & H'). specialize (H' n).
+        rewrite runsTo_iff_trace_pred in H' by assumption.
+        specialize (H' (skipn n0 str) ltac:(auto using possible_skipn)).
+        rewrite nth_skipn, PeanoNat.Nat.add_0_r in H'. specialize (H' eq_refl).
+        destruct H' as (n1 & H'). rewrite nth_skipn in H'. eauto.
+      + Check runsTo_iff_trace_pred. Print simple_post_of.
+        apply H'. ; auto.
+        specialize H' with (1 := Hstr) (2 := eq_refl). destruct H' as [n0 Hn0].
+        cbn [post_of] in Hn0. specialize (Hn0 n).
+        rewrite runsTo_iff_trace_pred in Hn0 by assumption.
+        specialize H with (1 := Hn0). clear Hn0.
+        eapply simple_post_of_skipn. eapply H.
+        2: rewrite nth_skipn, PeanoNat.Nat.add_0_r; reflexivity.
+        auto using possible_skipn.
+      + specialize H' with (1 := Hstr) (2 := eq_refl). destruct H' as (n & n0 & H').
+        rewrite runsTo_iff_trace_pred in H' by assumption.
+        specialize H with (1 := H'). clear H'. exists n0.
+        eapply simple_post_of_skipn. eapply H.
+        2: rewrite nth_skipn, PeanoNat.Nat.add_0_r; reflexivity.
+        auto using possible_skipn.
+      + auto.
+    - revert s post. induction aep; intros s post H' str Hstr HO; cbn [post_of simple_post_of] in *; subst.
+      + exists O. intros n. rewrite runsTo_iff_trace_pred by assumption. intros.
+        eapply H. 3: eassumption. 2: assumption. intros. apply H'; assumption.
+      + exists O. assert (H'' := H'). specialize (H' _ ltac:(eassumption) ltac:(reflexivity)).
+        destruct H' as [n H']. exists n. rewrite runsTo_iff_trace_pred by assumption.
+        apply H.
+        
+      
   Lemma blah s aep post :
     excluded_middle ->
     FunctionalChoice_on State State ->
@@ -312,12 +512,11 @@ Section aep_omni_trad.
          | AEP_P P => post P s'
          | _ => False
          end) <->
-      (forall str : stream State,
-          possible State might_step str ->
-          nth 0 str = s -> exists n : nat, post_of State step aep post (nth n str)).
+      True.
   Proof.
     intros em choice.
     rewrite step'_iff_step. rewrite runsTo_iff_trace_pred; [|assumption|assumption].
+    w
     reflexivity.
   Qed.
 
@@ -330,7 +529,7 @@ Section aep_omni_trad.
          | AEP_P P => post P s'
          | _ => False
          end) <->
-      (forall str, possible str -> trace_pred_of aep post str).
+      (forall str, possible str -> simple_post_of aep post str).
   Proof.
     split; intros H.
     - intros str Hstr.
