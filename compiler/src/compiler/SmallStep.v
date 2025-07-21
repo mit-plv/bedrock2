@@ -411,6 +411,9 @@ Section post_of_surj.
       Unshelve. exact O.
   Qed.
 
+  Print linterp. Print lformula.
+  Search AEP.
+
   Fixpoint aep_post_of (f : formula) : AEP :=
     match f with
     | forall_ f' => AEP_A (fun x => aep_post_of (f' x))

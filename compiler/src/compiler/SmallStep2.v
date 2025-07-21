@@ -450,30 +450,47 @@ Section aep_omni_trad.
   Context (might_step : State -> State -> Prop).
   Check step'.
   Notation step := (step _ might_step).
-  Notation step' := (step' T State step). Check step'.
-  Check finite_prefixes_enough. Check runsTo_iff_trace_pred. Check runsTo. Print lformula. Check step'_iff_step.
+  Notation step' := (step' T State step).
+  
   Lemma post_of_iff_trace_pred s lf :
     excluded_middle ->
-    (forall U, FunctionalChoice_on U (AEP T)) ->
-    exists aep post,
+    (forall U, FunctionalChoice_on U (AEP (State -> Prop))) ->
+    FunctionalChoice_on State State ->
+    exists aep,
       (forall str, possible _ might_step str ->
               nth O str = s ->
               linterp _ lf str) <->
         (forall str, possible _ might_step str ->
                 nth O str = s ->
-                runsTo step s (post_of T _ step aep post)).
+                runsTo step s (post_of T _ step aep (fun P s => P s))).
   Proof.
-    intros em choice. induction lf.
-    - eassert (H': exists aep, exists post, _).
-      { apply choice. intros x. specialize (H x). destruct H as [P H]. exists P. exact H. }
+    intros em choice1 choice2. induction lf.
+    - eassert (H': exists _, _).
+      { apply choice1. intros x. specialize (H x). destruct H as (aep & H).
+        exists aep. exact H. }
       clear H. destruct H' as [aep H]. exists (AEP_A _ _ aep). cbn [linterp].
       split; intros H'; intros.
-      + apply runsToStep_cps. apply step_A. intros x. specialize (H x).
-        destruct H as (H&_). eapply H.
-        -- intros. apply H'; assumption.
-        -- eassumption.
-        -- assumption.
-      + specialize (H n). destruct H as (_&H). apply H; auto. intros. apply H'.
+      + simpl. apply runsTo_iff_trace_pred; [assumption|assumption|]. intros.
+        exists O. rewrite H3. intros n. specialize H' with (n := n).
+        rewrite H in H'. eapply H'; eassumption.
+      + specialize (H n). cbn [post_of] in H'. destruct H as [_ H].
+        apply H; [|assumption|assumption]. intros. apply runsTo_trans_cps.
+        eapply runsTo_weaken. 1: solve[eapply H'; eauto]. simpl. intros. auto.
+    - eassert (H': exists _, _).
+      { apply choice1. intros x. specialize (H x). destruct H as (aep & H).
+        exists aep. exact H. }
+      clear H. destruct H' as [aep H].
+      runsTo step s (post_of T State step (aep x) (fun (P : T) (s : State) => P s)) <->
+               runsTo step s (post_of T State step (aep x) (fun (P : T) (s : State) => P s))
+                 exists (AEP_E _ _ ). cbn [linterp].
+      split; intros H'; intros.
+      + simpl. eapply runsTo_trans_cps.
+        apply runsTo_iff_trace_pred; [assumption|assumption|]. intros.
+        exists O. rewrite H3. apply runsToDone. specialize (H' _ H2 H3). destruct Hintros n. specialize H' with (n := n).
+        rewrite H in H'. eapply H'; eassumption.
+      + specialize (H n). cbn [post_of] in H'. destruct H as [_ H].
+        apply H; [|assumption|assumption]. intros. apply runsTo_trans_cps.
+        eapply runsTo_weaken. 1: solve[eapply H'; eauto]. simpl. intros. auto.
     - revert s post. induction aep; intros s post H'; cbn [post_of simple_post_of] in *.
       + intros str Hstr HO. subst. specialize H' with (1 := Hstr) (2 := eq_refl).
         destruct H' as [n H']. exists n. intros x str' Hstr'. subst. eapply H. intros. subst. specialize H' with (1 := H0) (2 := eq_refl).
