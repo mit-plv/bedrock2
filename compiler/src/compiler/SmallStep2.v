@@ -126,6 +126,7 @@ Section step.
       goes_to (aep x) inp aep' ->
       goes_to (AEP_E U aep) (inp_E U x inp) aep'.
 
+  (*requires some quantifiers to be nonvacuous*)
   (* Lemma goes_to_something aep inp : *)
   (*   compat aep inp -> *)
   (*   exists aep', goes_to aep inp aep'. *)
@@ -329,7 +330,6 @@ Section post_of_surj.
 
   (*a formula stating a predicate about event streams*)
   Inductive sformula :=
-  (*because I don't want to deal with dependent types, quantifiers can only bind nats*)
   | sforall (U : Type) (u : U) : (U -> sformula) -> sformula
   | sexists (U : Type) (u : U) : (U -> sformula) -> sformula
   (*assertion about the nth element of the stream*)
@@ -509,10 +509,51 @@ Section aep_omni_trad.
   Notation step := (step _ might_step).
   Notation step' := (step' T State step).
   
-  Lemma spread_exists f : exists f',
-    forall str,
-      ainterp State f str <-> exists (st : State), ainterp State (f' st) str.
-  Proof. Admitted.
+  (* Lemma spread_exists f : exists f', *)
+  (*   forall str, *)
+  (*     ainterp State f str <-> exists (st : State), ainterp State (f' st) str. *)
+  (* Proof. Admitted. *)
+
+  Print aformula. Print ainterp.
+  (*i am proving a fact about prefixes here.  this is important.*)
+  (*for every stream, either we diverge from it or it works*)
+  Print AEP.
+  Fixpoint and_then {U : Type} (l : list U) (s : stream U) : stream U :=
+    match l with
+    | nil => s
+    | cons a l' => scons _ a (and_then l' s)
+    end.
+
+  Fixpoint interp_aep {U : Type} (aep : AEP (list U -> Prop))
+    (sp : stream U -> Prop) (pfx : list U) : Prop :=
+    match aep with
+    | AEP_A _ _ aep' =>
+        forall s,
+          sp s ->
+          exists n,
+          forall x, interp_aep (aep' x) (fun sfx => sp (and_then (firstn n s) sfx)) (List.app pfx (firstn n s))
+    | AEP_E _ _ aep' =>
+        forall s,
+          sp s ->
+          exists n,
+          exists x, interp_aep (aep' x) (fun sfx => sp (and_then (firstn n s) sfx)) (List.app pfx (firstn n s))
+                          
+    | AEP_P _ P =>
+        forall s,
+          sp s ->
+          exists n,
+            P (firstn n s)
+    end.
+
+  Fixpoint aep_of (af : aformula State) : AEP (State -> Prop) :=
+    match af with
+    | aforall _ U u af' => AEP_A _ _ (fun x => aep_of (af' x))
+    | aexists _ U u af' => AEP_E _ (State -> U)
+                            (fun (f : stream State -> U) =>
+                               
+                               AEP_A _ (stream State) (fun (s : stream State) =>
+                                            aep_of (af' (f s))  
+    end.
 
   Lemma post_of_iff_trace_pred s af :
     excluded_middle ->
@@ -538,7 +579,13 @@ Section aep_omni_trad.
       + specialize (H n). cbn [post_of] in H'. destruct H as [_ H].
         apply H; [|assumption|assumption]. intros. apply runsTo_trans_cps.
         eapply runsTo_weaken. 1: solve[eapply H'; eauto]. simpl. intros. auto.
-    - eassert (H': exists _, _).
+    - cbn [ainterp].
+      (*
+        exists f : State -> U,
+        forall u : U,
+        
+       *)
+      simpl. eassert (H': exists _, _).
       { apply choice1. intros x. specialize (H x). destruct H as (aep & H).
         exists aep. exact H. }
       clear H. destruct H' as [aep H].
