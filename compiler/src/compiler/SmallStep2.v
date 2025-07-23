@@ -174,6 +174,12 @@ Section streams.
     | scons _ a rest, S n' => a :: firstn n' rest
     | scons _ a rest, O => nil
     end.
+
+  Fixpoint lfirstn {T : Type} (n : nat) (l : list T) : list T :=
+    match l, n with
+    | cons a rest, S n' => a :: lfirstn n' rest
+    | _, _ => nil
+    end.
   
   Fixpoint skipn {T : Type} (n : nat) (s : stream T) : stream T :=
     match n with
@@ -498,7 +504,18 @@ Section more_omni_trad.
     - cbn -[nth]. rewrite runsTo_iff_trace_pred by assumption. split; intros; auto.
       destruct H0. auto.
   Qed.
-End omni_trad.
+
+  Lemma aep_to_trad s aep :
+    excluded_middle ->
+    FunctionalChoice_on State State ->
+    runsTo step' (s, aep) (fun '(s', aep') =>
+                             match aep' with
+                             | AEP_P _ P => P s'
+                             | _ => False
+                             end) <->
+      interp_aep aep (fun str => possible _ might_step str /\ nth O str = s).
+  Proof. rewrite step'_iff_step. apply runsTo_iff_trace_pred'. Qed.
+End more_omni_trad.
 
 Section post_of_surj.
   Context (Event : Type) (State : Type) (st : State).
@@ -653,6 +670,15 @@ Section post_of_surj.
         rewrite length_firstn in Hn. eenough (n0 = _) as -> by eassumption. lia.
   Qed.
 End post_of_surj.
+
+Section with_traces.
+  Context (Event : Type) (State : Type) (T := State -> Prop : Type).
+  Context (might_step : State -> State -> Prop).
+  Context (U : Type) (trace : State -> list U).
+  Context (trace_gets_longer : forall s1 s2,
+              might_step s1 s2 -> exists n, trace s1 = lfirstn n (trace s2)).
+  
+  CoInductive is_trace_of
 
 Section aep_omni_trad.
   Context (Event : Type) (State : Type) (T := State -> Prop : Type).
