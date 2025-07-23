@@ -2,6 +2,7 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import BinIntDef.
 Require Import Coq.Logic.ChoiceFacts.
 Require Import Coq.Logic.ClassicalFacts.
+Require Import Lia.
 
 Section step.
   Context (T : Type).
@@ -194,6 +195,13 @@ Section streams.
                     possible (scons _ b rest) ->
                     possible (scons _ a (scons _ b rest)).
 
+  Inductive lpossible : list State -> Prop :=
+  | lposs_nil : lpossible nil
+  | lposs_one a : lpossible (cons a nil)
+  | lposs_cons a b rest : might_step a b ->
+                          lpossible (cons b rest) ->
+                          lpossible (cons a (cons b rest)).
+  
   Lemma naen (A : Type) (P : A -> _) :
     excluded_middle ->
     ~(forall y, P y) ->
@@ -255,22 +263,41 @@ End streams.
 
 Section omni_trad.
   Context (State : Type) (might_step : State -> State -> Prop).
-
+  
   Definition step x (P : _ -> Prop) :=
     forall y, might_step x y -> P y.
 
-  Lemma possible_weaken {T : Type} str (R1 : T -> T -> Prop) :
-    possible T R1 str ->
+  Fixpoint lnth {T : Type} (n : nat) (l : list T) : option T :=
+    match n, l with
+    | S n', cons a l' => lnth n' l'
+    | O, cons a l' => Some a
+    | _, _ => None
+    end.
+
+  Lemma lnth_firstn {T : Type} n n1 (t : stream T) :
+    n < n1 /\ lnth n (firstn n1 t) = Some (nth n t) \/ n >= n1 /\ lnth n (firstn n1 t) = None.
+  Proof.
+    clear. revert n t. induction n1; intros.
+    - right. split; [lia|]. simpl. destruct t. destruct n; reflexivity.
+    - simpl. destruct t. destruct n; simpl.
+      + left. split; [lia|]. reflexivity.
+      + specialize (IHn1 n t). destruct IHn1 as [(H1&H2)|(H1&H2)]; [left|right]; split; try lia;  assumption.
+  Qed.
+  
+  Definition last_elt {T : Type} (l : list T) := lnth (length l - 1) l.
+  
+  Lemma possible_weaken {U : Type} str (R1 : U -> U -> Prop) :
+    possible U R1 str ->
     forall R2,
     (forall x y, R1 x y -> R2 x y) ->
-    possible T R2 str.
+    possible U R2 str.
   Proof.
     intros H' R2 H. revert str H'. cofix Hstr. intros str H'. inversion H'. subst.
     clear H'. constructor. 1: auto. apply Hstr. assumption.
   Qed.
 
-  Lemma possible_nth {T : Type} str (R : T -> T -> Prop) n :
-    possible T R str ->
+  Lemma possible_nth {U : Type} str (R : U -> U -> Prop) n :
+    possible U R str ->
     R (nth n str) (nth (S n) str).
   Proof.
     revert str. induction n.
@@ -278,15 +305,62 @@ Section omni_trad.
     - intros str H. inversion H. subst. simpl. apply IHn. assumption.
   Qed.
 
-  Lemma possible_skipn {T : Type} str (R : T -> T -> Prop) n :
-    possible T R str ->
-    possible T R (skipn n str).
+  Lemma possible_skipn {U : Type} str (R : U -> U -> Prop) n :
+    possible U R str ->
+    possible U R (skipn n str).
   Proof.
     revert str. induction n.
     - intros str H. inversion H. subst. simpl. assumption.
     - intros str H. inversion H. subst. simpl. apply IHn. assumption.
   Qed.
 
+  Lemma lpossible_firstn {U : Type} str (R : U -> U -> Prop) n :
+    possible U R str ->
+    lpossible U R (firstn n str).
+  Proof.
+    revert str. induction n.
+    - intros. destruct str. simpl. constructor.
+    - intros. destruct str. simpl. inversion H. subst. destruct n.
+      1: constructor. constructor; auto. apply IHn in H3. simpl in H3.
+      apply H3.
+  Qed.
+
+  Fixpoint and_then {U : Type} (l : list U) (s : stream U) : stream U :=
+    match l with
+    | nil => s
+    | cons a l' => scons _ a (and_then l' s)
+    end.
+
+  Lemma length_firstn {A : Type} n (s : stream A) : length (firstn n s) = n.
+  Proof.
+    revert s. induction n; destruct s; [reflexivity|]. simpl. rewrite IHn. reflexivity.
+  Qed.
+
+  Lemma last_elt_cons_cons {U : Type} (a b : U) l :
+    last_elt (cons a (cons b l)) = last_elt (cons b l).
+  Proof. cbv [last_elt]. simpl. f_equal. lia. Qed.
+
+  Lemma possible_andthen {U : Type} l str (R : U -> U -> Prop) :
+    lpossible _ R l ->
+    match last_elt l with
+    | None => True
+    | Some x => R x (nth O str)
+    end ->
+    possible _ R str ->
+    possible _ R (and_then l str).
+  Proof.
+    intros H1 H2 H3. revert H1 H2. induction l; intros H1 H2.
+    - simpl. assumption.
+    - simpl. destruct l.
+      + simpl. destruct str. simpl in H2. constructor; [assumption|].
+        apply IHl. 1: constructor. simpl. constructor.
+      + simpl. inversion H1. subst. constructor; [assumption|].
+        apply IHl. 1: assumption. rewrite last_elt_cons_cons in H2. apply H2.
+  Qed.
+
+  Lemma skipn_andthen {U : Type} (l : list U) s :
+    skipn (length l) (and_then l s) = s.
+  Proof. revert s. induction l; auto. Qed.         
   
   Lemma runsTo_iff_trace_pred s P :
     excluded_middle ->
@@ -320,6 +394,109 @@ Section omni_trad.
       destruct n as [|n].
       { simpl in Hn. exfalso. auto. }
       exists n. simpl in Hn. apply Hn.
+  Qed.
+End omni_trad.
+
+Section more_omni_trad.
+  Context (State : Type) (might_step : State -> State -> Prop).
+  Notation step := (step _ might_step).
+  Notation step' := (step' _ State step).
+  
+  Fixpoint interp_aep {U : Type} (aep : AEP (U -> Prop))
+    (sp : stream U -> Prop) : Prop :=
+    match aep with
+    | AEP_A _ _ aep' =>
+        forall s,
+          sp s ->
+          exists n,
+          forall x, interp_aep (aep' x)
+                 (fun sfx => nth O sfx = nth n s /\
+                            sp (and_then (firstn n s) sfx))
+    | AEP_E _ _ aep' =>
+        forall s,
+          sp s ->
+          exists n,
+          exists x, interp_aep (aep' x)
+                 (fun sfx => nth O sfx = nth n s /\
+                            sp (and_then (firstn n s) sfx))
+
+    | AEP_P _ P =>
+        forall s,
+          sp s ->
+          exists n,
+            P (nth n s)
+    end.
+
+  Lemma interp_aep_weaken {U : Type} (aep : AEP (U -> Prop)) (sp1 sp2 : stream U -> Prop) :
+    (forall str, sp2 str -> sp1 str) ->
+    interp_aep aep sp1 ->
+    interp_aep aep sp2.
+  Proof.
+    revert sp1 sp2. induction aep; cbn -[nth] in *; intros.
+    - apply H0 in H2. apply H1 in H2. destruct H2 as [n Hn]. exists n. intros x.
+      specialize (Hn x). eapply H; try apply Hn. intros ? (?&?). auto.
+    - apply H0 in H2. apply H1 in H2. destruct H2 as [n Hn]. exists n.
+      destruct Hn as [x Hn]. exists x. eapply H; try apply Hn. intros ? (?&?). auto.
+    - auto.
+  Qed.
+  
+  Lemma runsTo_iff_trace_pred' s aep :
+    excluded_middle ->
+    FunctionalChoice_on State State ->
+    runsTo step s (post_of _ State step aep (fun P s => P s)) <->
+      interp_aep aep (fun str => possible _ might_step str /\ nth O str = s).
+  Proof.
+    intros em choice. revert s. induction aep; intros s.
+    - rewrite runsTo_iff_trace_pred by assumption. split.
+      + intros H'. cbn [interp_aep]. intros s0 (H1&H2). specialize (H' s0 H1 H2).
+        destruct H' as [n Hn]. exists n. intros x. simpl in Hn. specialize (Hn x).
+        apply H in Hn. eapply interp_aep_weaken. 2: eassumption. cbv beta.
+        intros ? (H3&H4&H5). split; [|assumption]. Check possible_skipn.
+        eapply possible_skipn in H4. rewrite skipn_andthen in H4 by reflexivity.
+        assumption.
+      + cbn -[nth]. intros. specialize (H0 str (conj H1 H2)).
+        destruct H0 as [n Hn]. exists n. intros x. specialize (Hn x). apply H.
+        eapply interp_aep_weaken. 2: eassumption. cbv beta. intros ? (?&?).
+        split; [assumption|]. split.
+        -- apply possible_andthen.
+           ++ apply lpossible_firstn. assumption.
+           ++ destruct n.
+              --- destruct str. simpl. constructor.
+              --- cbv [last_elt]. rewrite length_firstn.
+                  epose proof lnth_firstn as lfn.
+                  edestruct lfn as [(?&Hlfn)|(?&?)]; [rewrite Hlfn|lia].
+                  rewrite H3. cbn -[nth]. rewrite PeanoNat.Nat.sub_0_r.
+                  apply possible_nth. assumption.
+           ++ assumption.
+        -- destruct n.
+           ++ destruct str. cbn -[nth]. rewrite H3. assumption.
+           ++ destruct str. simpl. apply H2.
+    - rewrite runsTo_iff_trace_pred by assumption. split.
+      + intros H'. cbn [interp_aep]. intros s0 (H1&H2). specialize (H' s0 H1 H2).
+        destruct H' as [n Hn]. exists n. destruct Hn as [x Hn]. exists x.
+        apply H in Hn. eapply interp_aep_weaken. 2: eassumption. cbv beta.
+        intros ? (H3&H4&H5). split; [|assumption]. Check possible_skipn.
+        eapply possible_skipn in H4. rewrite skipn_andthen in H4 by reflexivity.
+        assumption.
+      + cbn -[nth]. intros. specialize (H0 str (conj H1 H2)).
+        destruct H0 as [n Hn]. exists n. destruct Hn as [x Hn]. exists x. apply H.
+        eapply interp_aep_weaken. 2: eassumption. cbv beta. intros ? (?&?).
+        split; [assumption|]. split.
+        -- apply possible_andthen.
+           ++ apply lpossible_firstn. assumption.
+           ++ destruct n.
+              --- destruct str. simpl. constructor.
+              --- cbv [last_elt]. rewrite length_firstn.
+                  epose proof lnth_firstn as lfn.
+                  edestruct lfn as [(?&Hlfn)|(?&?)]; [rewrite Hlfn|lia].
+                  rewrite H3. cbn -[nth]. rewrite PeanoNat.Nat.sub_0_r.
+                  apply possible_nth. assumption.
+           ++ assumption.
+        -- destruct n.
+           ++ destruct str. cbn -[nth]. rewrite H3. assumption.
+           ++ destruct str. simpl. apply H2.
+    - cbn -[nth]. rewrite runsTo_iff_trace_pred by assumption. split; intros; auto.
+      destruct H0. auto.
   Qed.
 End omni_trad.
 
@@ -374,24 +551,6 @@ Section post_of_surj.
     | aexists U _ f' => exists n, ainterp (f' n) t
     | apropn P => exists n, forall n0, n <= n0 -> P (nth n0 t)
     end.
-
-  Fixpoint lnth {T : Type} (n : nat) (l : list T) : option T :=
-    match n, l with
-    | S n', cons a l' => lnth n' l'
-    | O, cons a l' => Some a
-    | _, _ => None
-    end.
-
-  Require Import Lia.
-  Lemma lnth_firstn {T : Type} n n1 (t : stream T) :
-    n < n1 /\ lnth n (firstn n1 t) = Some (nth n t) \/ n >= n1 /\ lnth n (firstn n1 t) = None.
-  Proof.
-    clear. revert n t. induction n1; intros.
-    - right. split; [lia|]. simpl. destruct t. destruct n; reflexivity.
-    - simpl. destruct t. destruct n; simpl.
-      + left. split; [lia|]. reflexivity.
-      + specialize (IHn1 n t). destruct IHn1 as [(H1&H2)|(H1&H2)]; [left|right]; split; try lia;  assumption.
-  Qed.
 
   Lemma assert_nth s n lf :
     excluded_middle ->
@@ -457,8 +616,6 @@ Section post_of_surj.
       Unshelve. exact O.
   Qed.
 
-  Definition last_elt {T : Type} (l : list T) := lnth (length l - 1) l.
-
   Fixpoint only_cares_about_end lf : Prop :=
     match lf with
     | lforall _ _ lf' => forall u, only_cares_about_end (lf' u)
@@ -470,11 +627,6 @@ Section post_of_surj.
                                 end
     end.
 
-  Lemma length_firstn {A : Type} n (s : stream A) : length (firstn n s) = n.
-  Proof.
-    revert s. induction n; destruct s; [reflexivity|]. simpl. rewrite IHn. reflexivity.
-  Qed.
-      
   Lemma single_states_enough lf :
     excluded_middle ->
     (forall U, FunctionalChoice_on U lformula) ->
@@ -518,33 +670,6 @@ Section aep_omni_trad.
   (*i am proving a fact about prefixes here.  this is important.*)
   (*for every stream, either we diverge from it or it works*)
   Print AEP.
-  Fixpoint and_then {U : Type} (l : list U) (s : stream U) : stream U :=
-    match l with
-    | nil => s
-    | cons a l' => scons _ a (and_then l' s)
-    end.
-
-  Fixpoint interp_aep {U : Type} (aep : AEP (list U -> Prop))
-    (sp : stream U -> Prop) (pfx : list U) : Prop :=
-    match aep with
-    | AEP_A _ _ aep' =>
-        forall s,
-          sp s ->
-          exists n,
-          forall x, interp_aep (aep' x) (fun sfx => sp (and_then (firstn n s) sfx)) (List.app pfx (firstn n s))
-    | AEP_E _ _ aep' =>
-        forall s,
-          sp s ->
-          exists n,
-          exists x, interp_aep (aep' x) (fun sfx => sp (and_then (firstn n s) sfx)) (List.app pfx (firstn n s))
-                          
-    | AEP_P _ P =>
-        forall s,
-          sp s ->
-          exists n,
-            P (firstn n s)
-    end.
-
   Fixpoint aep_of (af : aformula State) : AEP (State -> Prop) :=
     match af with
     | aforall _ U u af' => AEP_A _ _ (fun x => aep_of (af' x))
