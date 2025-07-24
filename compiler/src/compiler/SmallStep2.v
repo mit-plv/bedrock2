@@ -705,6 +705,28 @@ Section OK_execution.
     | lexists _ U _ f' => exists n, linterp_lol (f' n) t
     | lpropn _ P => exists n, forall n0, n <= n0 -> P (trace (nth n0 t))
     end.
+
+  Print interp_aep.
+
+  Fixpoint aep_of (tgt : stream Event) (lf : lformula Event) : AEP (State -> Prop) :=
+    match lf with
+    | lforall _ U u af' => AEP_A _ _ (fun x => aep_of tgt (af' x))
+    | lexists _ U u af' => AEP_E _ _ (fun x => aep_of tgt (af' x))
+    | lpropn _ P => AEP_P _ (fun s => P (trace s) \/ (trace s) <> firstn (length (trace s)) tgt)
+    end.
+
+  Lemma aep_enough' lf ex tr :
+    has_inf_trace ex tr ->
+    (sp ex -> linterp_lol lf ex) <-> interp_aep (aep_of tr lf) sp.
+  Proof.
+    intros H. induction lf; cbn -[nth].
+    - 
+  
+  Lemma aep_enough lf :
+    (forall ex, sp ex ->
+           linterp_lol lf ex) <->
+      interp_aep (AEP_A _ _ (fun tgt => (aep_of tgt lf))) sp.
+  Proof. Abort.
   
   Lemma linterp_iff_linterp_lol lf tr ex :
     sp ex ->
