@@ -706,8 +706,6 @@ Section OK_execution.
     | lpropn _ P => exists n, forall n0, n <= n0 -> P (trace (nth n0 t))
     end.
 
-  Print interp_aep.
-
   Fixpoint aep_of (tgt : stream Event) (lf : lformula Event) : AEP (State -> Prop) :=
     match lf with
     | lforall _ U u af' => AEP_A _ _ (fun x => aep_of tgt (af' x))
@@ -715,12 +713,28 @@ Section OK_execution.
     | lpropn _ P => AEP_P _ (fun s => P (trace s) \/ (trace s) <> firstn (length (trace s)) tgt)
     end.
 
+  Lemma linterp_lol_skipn lf n s :
+    linterp_lol lf (skipn n s) <-> linterp_lol lf s.
+  Proof. Abort.
+  
+  Lemma has_inf_trace_skipn n s tr :
+    has_inf_trace s tr <-> has_inf_trace (skipn n s) tr.
+  Proof. Abort.
+  
   Lemma aep_enough' lf ex tr :
     has_inf_trace ex tr ->
-    (sp ex -> linterp_lol lf ex) <-> interp_aep (aep_of tr lf) sp.
+    sp ex ->
+    linterp_lol lf ex <-> interp_aep (aep_of tr lf) sp.
   Proof.
-    intros H. induction lf; cbn -[nth].
-    - 
+    intros H1 H2. clear trace_gets_longer. revert sp ex H1 H2. induction lf; cbn -[nth].
+    - intros. split.
+      + intros H' s Hs. exists O. intros x. eapply interp_aep_weaken.
+        2: { specialize H with (1 := H1) (2 := H2). apply H. auto. }
+        intros. destruct H0 as [_ H0]. simpl in H0. destruct s. simpl in H0. assumption.
+      + intros H' n. specialize H' with (1 := H2). destruct H' as [n0 H'].
+        specialize (H' n). specialize H with (ex := skipn n0 ex). rewrite <- H in H'.
+        eapply H in H'. 1: assumption. specialize H with (1 := H2). apply H. specialize (H' _ H2). destruct H' as [n0 H'].
+        eapply interp_aep_weaken. 2: eapply H'. cbn -[nth]. intros.
   
   Lemma aep_enough lf :
     (forall ex, sp ex ->
