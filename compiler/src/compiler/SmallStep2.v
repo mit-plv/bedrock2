@@ -673,11 +673,26 @@ End post_of_surj.
 
 Section OK_execution.
   Context (State : Type).
-  Context (Event : Type) (trace : State -> list Event).
+  Context (Event : Type) (ev : Event) (trace : State -> list Event).
   Context (sp : stream State -> Prop).
   Context (trace_gets_longer :
             forall s, sp s ->
-                 forall n, exists m, trace (nth (S n) s) = lfirstn m (trace (nth n s))).
+                 forall n, exists tr', trace (nth (S n) s) = List.app (trace (nth n s)) tr').
+
+  Lemma trace_longer_trans s :
+    sp s ->
+    forall n1 n2,
+      n1 <= n2 ->
+      exists tr', trace (nth n2 s) = List.app (trace (nth n1 s)) tr'.
+  Proof.
+    intros H. specialize (trace_gets_longer _ H). clear H. intros n1 n2 H.
+    replace n2 with ((n2 - n1) + n1) by lia. clear H. remember (n2 - n1) as n.
+    clear Heqn n2. induction n.
+    - exists nil. rewrite List.app_nil_r. reflexivity.
+    - destruct IHn as [tr' IHn]. specialize (trace_gets_longer (n + n1)).
+      destruct trace_gets_longer as [tr'' tgl]. cbn -[nth]. rewrite tgl, IHn.
+      rewrite <- List.app_assoc. eexists. reflexivity.
+  Qed.
 
   Definition has_inf_trace (ex : stream State) (tr : stream Event) :=
     forall n, exists m, lfirstn n (trace (nth m ex)) = firstn n tr.
@@ -691,17 +706,37 @@ Section OK_execution.
     | lpropn _ P => exists n, forall n0, n <= n0 -> P (trace (nth n0 t))
     end.
   
+  Lemma linterp_iff_linterp_lol lf tr ex :
+    sp ex ->
+    has_inf_trace ex tr ->
+    linterp Event lf tr <-> linterp_lol lf ex.
+  Proof.
+    pose proof trace_longer_trans as Htl. clear trace_gets_longer.
+    intros Hsp. specialize (Htl _ Hsp). clear Hsp.
+    intros H. induction lf; intros; simpl.
+    - split; intros; apply H0; auto.
+    - split; intros (?&?); eexists; apply H0; eauto.
+    - split; intros (n&H').
+      + cbv [has_inf_trace] in H. specialize (H n). destruct H as [m H].
+        exists m. intros n0 Hn0.
+  Admitted.
+  
   Lemma lformula_enough sf :
+    excluded_middle ->
+    (forall U : Type, FunctionalChoice_on U (lformula Event)) ->
     exists lf,
       (forall ex,
           sp ex ->
           forall tr, has_inf_trace ex tr ->
-                sinterp _ sf tr) <->
-        (forall ex,
-            sp ex ->
-            linterp_lol lf ex).
-  Proof. Abort.
-        
+                sinterp _ sf tr <-> linterp_lol lf ex).
+  Proof.
+    intros em choice.
+    pose proof (finite_prefixes_enough Event ev sf em choice) as H.
+    destruct H as [lf H]. exists lf. intros. rewrite H.
+    apply linterp_iff_linterp_lol; assumption.
+  Qed.
+End OK_execution.
+
 Section aep_omni_trad.
   Context (Event : Type) (State : Type) (T := State -> Prop : Type).
   Context (might_step : State -> State -> Prop).
