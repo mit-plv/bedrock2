@@ -671,15 +671,37 @@ Section post_of_surj.
   Qed.
 End post_of_surj.
 
-Section with_traces.
-  Context (Event : Type) (State : Type) (T := State -> Prop : Type).
-  Context (might_step : State -> State -> Prop).
-  Context (U : Type) (trace : State -> list U).
-  Context (trace_gets_longer : forall s1 s2,
-              might_step s1 s2 -> exists n, trace s1 = lfirstn n (trace s2)).
-  
-  CoInductive is_trace_of
+Section OK_execution.
+  Context (State : Type).
+  Context (Event : Type) (trace : State -> list Event).
+  Context (sp : stream State -> Prop).
+  Context (trace_gets_longer :
+            forall s, sp s ->
+                 forall n, exists m, trace (nth (S n) s) = lfirstn m (trace (nth n s))).
 
+  Definition has_inf_trace (ex : stream State) (tr : stream Event) :=
+    forall n, exists m, lfirstn n (trace (nth m ex)) = firstn n tr.
+
+  Definition OK (ex : stream State) := exists tr, has_inf_trace ex tr.
+
+  Fixpoint linterp_lol (f : lformula Event) (t : stream State) : Prop :=
+    match f with
+    | lforall _ U _ f' => forall n, linterp_lol (f' n) t
+    | lexists _ U _ f' => exists n, linterp_lol (f' n) t
+    | lpropn _ P => exists n, forall n0, n <= n0 -> P (trace (nth n0 t))
+    end.
+  
+  Lemma lformula_enough sf :
+    exists lf,
+      (forall ex,
+          sp ex ->
+          forall tr, has_inf_trace ex tr ->
+                sinterp _ sf tr) <->
+        (forall ex,
+            sp ex ->
+            linterp_lol lf ex).
+  Proof. Abort.
+        
 Section aep_omni_trad.
   Context (Event : Type) (State : Type) (T := State -> Prop : Type).
   Context (might_step : State -> State -> Prop).
