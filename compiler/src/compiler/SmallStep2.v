@@ -181,6 +181,14 @@ Section streams.
     | _, _ => nil
     end.
   
+  Lemma length_lfirstn {T : Type} (n : nat) (l : list T) :
+    length (lfirstn n l) = Nat.min n (length l).
+  Proof.
+    revert l. induction n; intros l.
+    - destruct l; reflexivity.
+    - destruct l; try reflexivity. simpl in *. f_equal. apply IHn.
+  Qed.
+  
   Fixpoint skipn {T : Type} (n : nat) (s : stream T) : stream T :=
     match n with
     | O => s
@@ -715,26 +723,93 @@ Section OK_execution.
 
   Lemma linterp_lol_skipn lf n s :
     linterp_lol lf (skipn n s) <-> linterp_lol lf s.
-  Proof. Abort.
-  
+  Proof.
+    induction lf; simpl; split; intros H'.
+    - intros. apply H. apply H'.
+    - intros. apply H. apply H'.
+    - destruct H' as [n0 Hn0]. exists n0. apply H. apply Hn0.
+    - destruct H' as [n0 Hn0]. exists n0. apply H. apply Hn0.
+    - destruct H' as [n0 H']. exists (n + n0). intros. epose proof (H' _ _) as H'.
+      rewrite nth_skipn in H'. eassert (n1 = _) as ->. 2: eassumption.
+      instantiate (1 := n1 - n). revert H. intros. lia. Unshelve. lia.
+    - destruct H' as [n0 H']. exists (n + n0). intros. rewrite nth_skipn. apply H'. lia.
+  Qed.
+
+  Lemma firstns_something {T : Type} n m (l : list T) s : 
+    m <= n ->
+    lfirstn n l = firstn n s ->
+    lfirstn m l = firstn m s.
+  Proof.
+    revert n m s. induction l; intros n m s Hmn H.
+    - destruct s. destruct n; [|discriminate H]. replace m with 0 by lia. reflexivity.
+    - destruct s. destruct m; [reflexivity|]. destruct n; [lia|]. simpl in H.
+      inversion H. subst. clear H. simpl. f_equal. eapply IHl. 2: eassumption. lia.
+  Qed.
+
+  Lemma tail_has_inf_trace a s tr :
+    has_inf_trace (scons State a s) tr <->
+    has_inf_trace s tr.
+  Proof.
+    split; cbv [has_inf_trace]; intros H' n.
+    - specialize (H' (n + S (length (trace a)))). destruct H' as [m H'].
+      destruct m.
+      + simpl in H'. eassert (forall x y, length x <> length y -> x <> y).
+        2: { exfalso. eapply H. 2: exact H'. rewrite length_firstn.
+             rewrite length_lfirstn. lia. }
+        intros. intros H''. apply H. subst. reflexivity.
+      + exists m. simpl in H'. eapply firstns_something. 2: eassumption. lia.
+    - specialize (H' n). destruct H' as [m H']. exists (S m). simpl. assumption.
+  Qed.
+      
   Lemma has_inf_trace_skipn n s tr :
     has_inf_trace s tr <-> has_inf_trace (skipn n s) tr.
-  Proof. Abort.
+  Proof.
+    revert s. induction n; simpl; split; intros H'; try assumption.
+    - destruct s. rewrite <- IHn. eapply tail_has_inf_trace. eassumption.
+    - destruct s. rewrite <- IHn in H'. apply tail_has_inf_trace. apply H'.
+  Qed.
+
+  Lemma andthen_firstn_skipn {T : Type} (s : stream T) n :
+    and_then (firstn n s) (skipn n s) = s.
+  Proof.
+    revert s. induction n.
+    - destruct s. reflexivity.
+    -  intros. simpl. destruct s. simpl. f_equal. apply IHn.
+  Qed.
   
   Lemma aep_enough' lf ex tr :
+    excluded_middle ->
     has_inf_trace ex tr ->
     sp ex ->
     linterp_lol lf ex <-> interp_aep (aep_of tr lf) sp.
   Proof.
-    intros H1 H2. clear trace_gets_longer. revert sp ex H1 H2. induction lf; cbn -[nth].
+    intros em H1 H2. clear trace_gets_longer. revert sp ex H1 H2. induction lf; cbn -[nth].
     - intros. split.
       + intros H' s Hs. exists O. intros x. eapply interp_aep_weaken.
         2: { specialize H with (1 := H1) (2 := H2). apply H. auto. }
         intros. destruct H0 as [_ H0]. simpl in H0. destruct s. simpl in H0. assumption.
       + intros H' n. specialize H' with (1 := H2). destruct H' as [n0 H'].
         specialize (H' n). specialize H with (ex := skipn n0 ex). rewrite <- H in H'.
-        eapply H in H'. 1: assumption. specialize H with (1 := H2). apply H. specialize (H' _ H2). destruct H' as [n0 H'].
-        eapply interp_aep_weaken. 2: eapply H'. cbn -[nth]. intros.
+        -- eapply linterp_lol_skipn. eassumption.
+        -- apply has_inf_trace_skipn. assumption.
+        -- split.
+           ++ rewrite nth_skipn. f_equal. lia.
+           ++ rewrite andthen_firstn_skipn. assumption.
+    - intros. split.
+      + intros H' s Hs. exists O. destruct H' as [x Hx]. exists x. eapply interp_aep_weaken.
+        2: { specialize H with (1 := H1) (2 := H2). apply H. auto. }
+        intros. destruct H0 as [_ H0]. simpl in H0. destruct s. simpl in H0. assumption.
+      + intros H'. specialize H' with (1 := H2). destruct H' as [n (x&H')].
+        exists x. specialize H with (ex := skipn n ex). rewrite <- H in H'.
+        -- eapply linterp_lol_skipn. eassumption.
+        -- apply has_inf_trace_skipn. assumption.
+        -- split.
+           ++ rewrite nth_skipn. f_equal. lia.
+           ++ rewrite andthen_firstn_skipn. assumption.
+    - intros. split.
+      + intros [n Hn] s Hs. assert (Hem := em (forall n0, firstn n0 ex = firstn n0 s)).
+        destruct Hem as [same|not_same].
+        -- exists 
   
   Lemma aep_enough lf :
     (forall ex, sp ex ->
