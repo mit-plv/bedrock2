@@ -731,7 +731,7 @@ Section OK_execution.
     match lf with
     | lforall _ U u af' => AEP_A _ _ (fun x => aep_of tgt (af' x))
     | lexists _ U u af' => AEP_E _ _ (fun x => aep_of tgt (af' x))
-    | lpropn _ P => AEP_P _ (fun s => P (trace s) \/ (trace s) <> firstn (length (trace s)) tgt)
+    | lpropn _ P => AEP_P _ (fun s => (forall l, P (trace s ++ l)%list) \/ (trace s) <> firstn (length (trace s)) tgt)
     end.
 
   Lemma linterp_lol_skipn lf n s :
@@ -924,7 +924,7 @@ Section OK_execution.
            destruct Htr' as [m Htr']. rewrite <- same in Htr'. clear same tr'. exists m.
            left. rewrite firstn_inf_trace in Htr' by assumption.
            epose proof (firstn_app_skipn _ (trace (nth m s))) as H. rewrite Htr' in H.
-           rewrite <- H. apply Hn.
+           rewrite <- H. intros l. rewrite <- List.app_assoc. apply Hn.
         -- apply naen in not_same; [|assumption]. destruct not_same as [y not_same].
            cbv [has_inf_trace] in Htr'. specialize (Htr' y). destruct Htr' as [m Htr'].
            exists m. right. intros H'. rewrite H' in Htr'. apply not_same. rewrite <- Htr'.
@@ -934,7 +934,9 @@ Section OK_execution.
            apply H0 in Htr'. do 2 rewrite length_firstn in Htr'. auto.
       + intros H'. specialize (H' _ H2). destruct H' as [n H']. exists n.
         destruct H' as [H'|H'].
-        -- 
+        -- assumption.
+        -- exfalso. apply H'. symmetry. apply firstn_inf_trace; assumption.
+  Qed.
                          
   
   Lemma aep_enough lf :
