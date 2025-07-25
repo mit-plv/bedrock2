@@ -824,6 +824,57 @@ Section OK_execution.
     eexists. exact H.
   Qed.
 
+  Lemma lfirstn_app_r {T : Type} (l1 l2 : list T) :
+    lfirstn (length l1) (l1 ++ l2) = l1.
+  Proof.
+    induction l1.
+    - destruct l2; reflexivity.
+    - simpl. f_equal. assumption.
+  Qed.
+      
+  Lemma lfirstn_all {T : Type} (l1 : list T) :
+    lfirstn (length l1) l1 = l1.
+  Proof.
+    rewrite <- lfirstn_app_r with (l2 := nil). rewrite List.app_nil_r. reflexivity.
+  Qed.
+
+  Lemma firstn_inf_trace n ex tr :
+    sp ex ->
+    has_inf_trace ex tr ->
+    firstn (length (trace (nth n ex))) tr = trace (nth n ex).
+  Proof.
+    intros Hsp H. cbv [has_inf_trace] in H. specialize (H (length (trace (nth n ex)))).
+    destruct H as [m H]. rewrite <- H. pose proof (trace_longer_trans _ Hsp) as H0.
+    assert (n <= m \/ m <= n) by lia. destruct H1 as [H1|H1].
+    - specialize (H0 _ _ H1). destruct H0 as [tr' Htr']. rewrite Htr'.
+      rewrite lfirstn_app_r. reflexivity.
+    - specialize (H0 _ _ H1). eassert (H': forall x y, x = y -> length x = length y).
+      { intros. subst. reflexivity. }
+      apply H' in H. rewrite length_lfirstn in H. rewrite length_firstn in H.
+      destruct H0 as [tr' Htr']. rewrite Htr'. apply H' in Htr'.
+      rewrite List.length_app in Htr'.
+      assert (length tr' = 0) by lia. destruct tr'; [|discriminate H0].
+      rewrite List.app_nil_r. rewrite lfirstn_all. reflexivity.
+  Qed.
+
+  Fixpoint lskipn {T : Type} n (l : list T) :=
+    match n, l with
+    | S n', cons _ l' => lskipn n' l'
+    | _, _ => l
+    end.
+
+  Lemma firstn_app_skipn {T : Type} n (l : list T) :
+    (lfirstn n l ++ lskipn n l = l)%list.
+  Proof.
+    revert n. induction l; intros n.
+    - destruct n; reflexivity.
+    - destruct n; [reflexivity|]. simpl. f_equal. auto.
+  Qed.
+
+  Lemma lfirstn_firstn {T : Type} m n (s : stream T) :
+    lfirstn m (firstn n s) = firstn (Nat.min m n) s.
+  Proof. Admitted.
+  
   Lemma aep_enough' lf ex tr :
     excluded_middle ->
     has_inf_trace ex tr ->
@@ -869,10 +920,21 @@ Section OK_execution.
       + intros [n Hn] s Hs. apply H3 in Hs. destruct Hs as [tr' Htr'].
         assert (Hem := em (forall n0, firstn n0 tr = firstn n0 tr')).
         destruct Hem as [same|not_same].
-        -- cbv [has_inf_trace] in Htr'. specialize (Htr' n). destruct Htr' as [m Htr'].
-           specialize (Hn n ltac:(lia)).
-           has_inf_trace ex tr ->
-                         has_inf_trace ex' tr' ->
+        -- cbv [has_inf_trace] in Htr'. specialize (Htr' (length (trace (nth n ex)))).
+           destruct Htr' as [m Htr']. rewrite <- same in Htr'. clear same tr'. exists m.
+           left. rewrite firstn_inf_trace in Htr' by assumption.
+           epose proof (firstn_app_skipn _ (trace (nth m s))) as H. rewrite Htr' in H.
+           rewrite <- H. apply Hn.
+        -- apply naen in not_same; [|assumption]. destruct not_same as [y not_same].
+           cbv [has_inf_trace] in Htr'. specialize (Htr' y). destruct Htr' as [m Htr'].
+           exists m. right. intros H'. rewrite H' in Htr'. apply not_same. rewrite <- Htr'.
+           rewrite lfirstn_firstn in *. f_equal.
+           eassert (H0: forall x y, x = y -> length x = length y).
+           { intros. subst. reflexivity. }
+           apply H0 in Htr'. do 2 rewrite length_firstn in Htr'. auto.
+      + intros H'. specialize (H' _ H2). destruct H' as [n H']. exists n.
+        destruct H' as [H'|H'].
+        -- 
                          
   
   Lemma aep_enough lf :
