@@ -695,23 +695,24 @@ End post_of_surj.
 Section OK_execution.
   Context (State : Type).
   Context (Event : Type) (ev : Event) (trace : State -> list Event).
-  Context (sp : stream State -> Prop).
-  Context (trace_gets_longer :
-            forall s, sp s ->
-                 forall n, exists tr', trace (nth (S n) s) = List.app (trace (nth n s)) tr').
 
-  Lemma trace_longer_trans s :
+  Definition trace_gets_longer (sp : _ -> Prop) :=
+    forall s, sp s ->
+         forall n, exists tr', trace (nth (S n) s) = List.app (trace (nth n s)) tr'.
+
+  Lemma trace_longer_trans sp s :
+    trace_gets_longer sp ->
     sp s ->
     forall n1 n2,
       n1 <= n2 ->
       exists tr', trace (nth n2 s) = List.app (trace (nth n1 s)) tr'.
   Proof.
-    intros H. specialize (trace_gets_longer _ H). clear H. intros n1 n2 H.
+    intros tgl H. specialize (tgl _ H). clear H. intros n1 n2 H.
     replace n2 with ((n2 - n1) + n1) by lia. clear H. remember (n2 - n1) as n.
     clear Heqn n2. induction n.
     - exists nil. rewrite List.app_nil_r. reflexivity.
-    - destruct IHn as [tr' IHn]. specialize (trace_gets_longer (n + n1)).
-      destruct trace_gets_longer as [tr'' tgl]. cbn -[nth]. rewrite tgl, IHn.
+    - destruct IHn as [tr' IHn]. specialize (tgl (n + n1)).
+      destruct tgl as [tr'' tgl]. cbn -[nth]. rewrite tgl, IHn.
       rewrite <- List.app_assoc. eexists. reflexivity.
   Qed.
 
@@ -734,20 +735,21 @@ Section OK_execution.
     | lpropn _ P => AEP_P _ (fun s => (forall l, P (trace s ++ l)%list) \/ (trace s) <> firstn (length (trace s)) tgt)
     end.
 
-  Lemma linterp_lol_skipn lf n s :
+  Lemma linterp_lol_skipn lf n sp s :
+    trace_gets_longer sp ->
     sp s ->
     linterp_lol lf (skipn n s) <-> linterp_lol lf s.
   Proof.
-    intros Hsp. induction lf; simpl; split; intros H'.
+    intros tgl Hsp. induction lf; simpl; split; intros H'.
     - intros. apply H. apply H'.
     - intros. apply H. apply H'.
     - destruct H' as [n0 Hn0]. exists n0. apply H. apply Hn0.
     - destruct H' as [n0 Hn0]. exists n0. apply H. apply Hn0.
     - destruct H' as [n0 H']. exists (n + n0). intros.
-      pose proof trace_longer_trans as H.
+      pose proof trace_longer_trans as H. specialize H with (1 := tgl).
       specialize (H s Hsp). rewrite nth_skipn in H'. apply H'.
     - destruct H' as [n0 H']. exists n0. intros.
-      pose proof trace_longer_trans as H.
+      pose proof trace_longer_trans as H. specialize H with (1 := tgl).
       specialize (H s Hsp). specialize (H n0 (n + n0) ltac:(lia)).
       destruct H as [tr' Htr']. rewrite nth_skipn. rewrite Htr'.
       rewrite <- List.app_assoc. apply H'.
@@ -838,13 +840,14 @@ Section OK_execution.
     rewrite <- lfirstn_app_r with (l2 := nil). rewrite List.app_nil_r. reflexivity.
   Qed.
 
-  Lemma firstn_inf_trace n ex tr :
+  Lemma firstn_inf_trace sp n ex tr :
+    trace_gets_longer sp ->
     sp ex ->
     has_inf_trace ex tr ->
     firstn (length (trace (nth n ex))) tr = trace (nth n ex).
   Proof.
-    intros Hsp H. cbv [has_inf_trace] in H. specialize (H (length (trace (nth n ex)))).
-    destruct H as [m H]. rewrite <- H. pose proof (trace_longer_trans _ Hsp) as H0.
+    intros tgl Hsp H. cbv [has_inf_trace] in H. specialize (H (length (trace (nth n ex)))).
+    destruct H as [m H]. rewrite <- H. pose proof (trace_longer_trans _ _ tgl Hsp) as H0.
     assert (n <= m \/ m <= n) by lia. destruct H1 as [H1|H1].
     - specialize (H0 _ _ H1). destruct H0 as [tr' Htr']. rewrite Htr'.
       rewrite lfirstn_app_r. reflexivity.
@@ -873,16 +876,21 @@ Section OK_execution.
 
   Lemma lfirstn_firstn {T : Type} m n (s : stream T) :
     lfirstn m (firstn n s) = firstn (Nat.min m n) s.
-  Proof. Admitted.
-  
-  Lemma aep_enough' lf ex tr :
+  Proof.
+    revert m s. induction n; intros m s.
+    - simpl. destruct s. rewrite PeanoNat.Nat.min_0_r. destruct m; reflexivity.
+    - simpl. destruct s. destruct m; [reflexivity|]. simpl. f_equal. apply IHn.
+  Qed.
+      
+  Lemma aep_enough' sp lf ex tr :
     excluded_middle ->
+    trace_gets_longer sp ->
     has_inf_trace ex tr ->
     sp ex ->
     (forall ex, sp ex -> OK ex) ->
     linterp_lol lf ex <-> interp_aep (aep_of tr lf) sp.
   Proof.
-    intros em H1 H2 H3. revert sp trace_gets_longer ex H1 H2 H3.
+    intros em tgl H1 H2 H3. revert sp tgl ex H1 H2 H3.
     induction lf; cbn -[nth].
     - intros. split.
       + intros H' s Hs. exists O. intros x. eapply interp_aep_weaken.
@@ -922,7 +930,9 @@ Section OK_execution.
         destruct Hem as [same|not_same].
         -- cbv [has_inf_trace] in Htr'. specialize (Htr' (length (trace (nth n ex)))).
            destruct Htr' as [m Htr']. rewrite <- same in Htr'. clear same tr'. exists m.
-           left. rewrite firstn_inf_trace in Htr' by assumption.
+           left. pose proof firstn_inf_trace as fit.
+           specialize fit with (1 := tgl) (2 := H2).
+             rewrite fit in Htr' by assumption. clear fit.
            epose proof (firstn_app_skipn _ (trace (nth m s))) as H. rewrite Htr' in H.
            rewrite <- H. intros l. rewrite <- List.app_assoc. apply Hn.
         -- apply naen in not_same; [|assumption]. destruct not_same as [y not_same].
@@ -935,9 +945,11 @@ Section OK_execution.
       + intros H'. specialize (H' _ H2). destruct H' as [n H']. exists n.
         destruct H' as [H'|H'].
         -- assumption.
-        -- exfalso. apply H'. symmetry. apply firstn_inf_trace; assumption.
-  Qed.
-                         
+        -- exfalso. apply H'. symmetry.
+           pose proof firstn_inf_trace as fit.
+           specialize fit with (1 := tgl) (2 := H2).
+           apply fit; assumption.
+  Qed.                         
   
   Lemma aep_enough lf :
     (forall ex, sp ex ->
