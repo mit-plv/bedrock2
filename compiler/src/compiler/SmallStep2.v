@@ -950,14 +950,59 @@ Section OK_execution.
            specialize fit with (1 := tgl) (2 := H2).
            apply fit; assumption.
   Qed.
-
+  
+  Lemma traces_diff ex tr tr' :
+    excluded_middle ->
+    has_inf_trace ex tr ->
+    ~has_inf_trace ex tr' ->
+    exists n, firstn n tr <> firstn n tr'.
+  Proof.
+    intros em H1 H2. cbv [has_inf_trace] in H2. apply naen in H2; [|assumption].
+    destruct H2 as [n H2]. exists n. intros H'. apply H2. clear H2. rewrite <- H'. clear H'.
+    cbv [has_inf_trace] in H1. apply H1.
+  Qed.
+      
   Lemma vacuity sp tr lf :
+    excluded_middle ->
+    (forall ex, sp ex -> OK ex) ->
     (forall ex, sp ex -> has_inf_trace ex tr -> False) ->
     interp_aep (aep_of tr lf) sp.
   Proof.
-    revert sp tr. induction lf; intros sp tr H'; cbn -[nth].
-    - 
-    intros H. revert 
+    intros em allOK H'. induction lf; cbn -[nth].
+    - intros s Hs. exists O. intros x. eapply interp_aep_weaken. 2: eapply H.
+      intros ? [_ H0]. simpl in H0. destruct s. simpl in H0. assumption.
+    - intros s Hs. exists O. exists u. eapply interp_aep_weaken. 2: apply H.
+      intros ? [_ H0]. destruct s. simpl in H0. assumption.
+    - intros s Hs. specialize H' with (1 := Hs). specialize allOK with (1 := Hs).
+      destruct allOK as [tr' Htr']. pose proof traces_diff as H.
+      specialize H with (1 := em) (2 := Htr') (3 := H'). destruct H as [n H].
+      specialize (Htr' n). destruct Htr' as [m Htr']. exists m. right.
+      rewrite <- Htr' in H.
+      eassert (H'': forall x y, x = y -> length x = length y).
+      { intros. subst. reflexivity. }
+      apply H'' in Htr'. clear H''.
+      intros H''. rewrite H'' in H.
+      apply H. rewrite lfirstn_firstn. f_equal.
+      rewrite length_firstn, length_lfirstn in Htr'. apply Htr'.
+  Qed.
+
+  (*Seems true but not needed*)
+  (* Lemma suffixes_better {U : Type} (aep : AEP (U -> Prop)) sp sp' : *)
+  (*   interp_aep aep sp -> *)
+  (*   (forall s, sp' s -> exists l, sp (and_then l s)) -> *)
+  (*   interp_aep aep sp'. *)
+  (* Proof. *)
+  (*   revert sp sp'. induction aep; intros sp sp' H1 H2. *)
+  (*   - cbn -[nth]. intros s Hs. specialize H2 with (1 := Hs). destruct H2 as [l Hl]. *)
+  (*     cbn -[nth] in H1. specialize H1 with (1 := Hl). destruct H1 as [n H1]. *)
+  (*     exists (n + length l). intros x. eapply H. 1: eauto. cbn -[nth]. intros s0 (H2&H3). *)
+      
+  (*     simpl. .eapply interp_aep_weaken. 2: eauto. cbn -[nth]. *)
+  (*     intros. *)
+  (*   revert sp sp'. induction aep; intros sp sp' H1 H2; cbn -[nth]. *)
+  (*   - intros s Hsp. cbn -[nth] in H1. specialize H2 with (1 := Hsp). *)
+  (*     destruct H2 as [l H2]. specialize H1 with (1 := H2). destruct H1 as [n H1]. *)
+  (*     exists n. intros x. eapply H; [apply H1|]. cbn -[nth]. intros.  *)
   
   Lemma aep_enough sp lf :
     excluded_middle ->
@@ -968,22 +1013,30 @@ Section OK_execution.
       interp_aep (AEP_A _ _ (fun tgt => (aep_of tgt lf))) sp.
   Proof.
     intros em tgl allOK. pose proof aep_enough' as H'.
-    specialize H' with (1 := em) (2 := tgl).
-    split; intros H.
-    - cbn -[nth]. intros. exists O. intros tr.
+    specialize H' with (1 := em). split; intros H.
+    - specialize H' with (1 := tgl).
+      cbn -[nth]. intros. exists O. intros tr.
       eapply interp_aep_weaken with (sp1 := sp).
       { intros ? (?&?). simpl in H2. destruct s. simpl in H2. apply H2. }
       clear s H0.
       assert (Hem := em (exists ex, sp ex /\ has_inf_trace ex tr)).
       destruct Hem as [Hex|Hne].
       + destruct Hex as (ex&Hsp&Hinf). rewrite <- H'; eauto.
-      + apply nean in Hne.
-      rewrite <- H'; eauto.
-      specialize H with (1 := H0). assert (H1 := allOK).
-      specialize H1 with (1 := H0). destruct H1 as [tr1 Htr1].
-      rewrite <- H'. specialize H' with (1 := Htr1) (2 := allOK). apply H'.
-      apply H in H0. apply aep_enough'.
-    
+      + apply vacuity; try assumption. intros. apply Hne. eexists; eauto.
+    - intros ex Hex. cbn -[nth] in H. specialize (H ex Hex). destruct H as [n H].
+      (* specialize H' with (2 := Hex). specialize H' with (2 := allOK). *)
+      assert (Htr := allOK). specialize Htr with (1 := Hex).
+      destruct Htr as [tr Htr]. (* specialize H' with (1 := Htr). *)
+      specialize (H tr). eapply linterp_lol_skipn; try eassumption. erewrite H'.
+      1: eassumption.
+      3: { cbn -[nth]. rewrite nth_skipn. instantiate (1 := n). split.
+           { f_equal. lia. }
+           rewrite andthen_firstn_skipn. assumption. }
+      + eapply trace_gets_longer_preserved; eauto. intros ? [? ?]. eassumption.
+      + apply has_inf_trace_skipn. assumption.
+      + cbn -[nth]. intros ? [? ?]. simpl. apply allOK in H1. destruct H1 as [tr' Htr'].
+        exists tr'. Search has_inf_trace. eapply has_inf_trace_andthen. eassumption.
+  Qed.
   
   Lemma linterp_iff_linterp_lol lf tr ex :
     sp ex ->
