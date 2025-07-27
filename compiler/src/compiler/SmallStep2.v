@@ -574,7 +574,7 @@ Section post_of_surj.
     match f with
     | lforall U _ f' => forall n, linterp (f' n) t
     | lexists U _ f' => exists n, linterp (f' n) t
-    | lpropn P => exists n, forall n0, n <= n0 -> P (firstn n0 t)
+    | lpropn P => exists n, forall l, P (firstn n t ++ l)%list
     end.
 
   (*about single states, or 'atoms'.  (i used 's' already, so i guess i'll use 'a')*)
@@ -590,6 +590,24 @@ Section post_of_surj.
     | apropn P => exists n, forall n0, n <= n0 -> P (nth n0 t)
     end.
 
+  Lemma firstn_split {T : Type} n m (t : stream T) :
+    n <= m ->
+    firstn m t = (firstn n t ++ (firstn (m - n) (skipn n t)))%list.
+  Proof.
+    revert n t. induction m; intros n t Hn.
+    - destruct n; [|lia]. destruct t. reflexivity.
+    - destruct n.
+      + destruct t. simpl. reflexivity.
+      + destruct t. simpl. f_equal. apply IHm. lia.
+  Qed.
+
+  Lemma lnth_app_r {T : Type} n l l0 (x : T) :
+    lnth n l = Some x ->
+    lnth n (l ++ l0) = Some x.
+  Proof.
+    revert l. induction n; intros l H; (destruct l; simpl in *; [congruence|]); auto.
+  Qed.
+  
   Lemma assert_nth s n lf :
     excluded_middle ->
     (forall U, FunctionalChoice_on U lformula) ->
@@ -610,15 +628,18 @@ Section post_of_surj.
       + intros [n0 Hn0]. rewrite H' in Hn0. intuition eauto.
       + intros ([n0 H0] & H1). eexists. rewrite H'. eauto.
     - exists (lpropn (fun l => P l /\ lnth n l = Some s)). intros t. simpl. split.
-      + intros [n0 H]. assert (HO := H n0 ltac:(lia)). destruct HO as [_ HO].
-        epose proof lnth_firstn as H'. edestruct H' as [(_&H'')|(_&H'')]; [rewrite H'' in HO|]; clear H'.
-        -- inversion HO. subst. split; [|reflexivity]. exists n0. intros n1 Hn1.
-           specialize (H _ Hn1). destruct H. assumption.
+      + intros [n0 H]. assert (HO := H nil). destruct HO as [_ HO].
+        epose proof lnth_firstn as H'. rewrite List.app_nil_r in HO.
+        edestruct H' as [(_&H'')|(_&H'')]; [rewrite H'' in HO|]; clear H'.
+        -- inversion HO. subst. split; [|reflexivity]. exists n0. intros l.
+           specialize (H l). destruct H. assumption.
         -- congruence.
-      + intros [(n0&Hn0) ?]. subst. exists (Nat.max (S n) n0). intros n1 Hn2.
-        specialize (Hn0 n1 ltac:(lia)). split; [assumption|].
-        epose proof lnth_firstn as H'. edestruct H' as [(_&H'')|H'']; [exact H''|].
-        clear H'. destruct H''. lia.
+      + intros [(n0&Hn0) ?]. subst. exists (Nat.max (S n) n0). intros l.
+        rewrite firstn_split with (n := n0) by lia. rewrite <- List.app_assoc.
+        split; [apply Hn0|]. rewrite List.app_assoc. rewrite <- firstn_split by lia.
+        epose proof (lnth_firstn n (Nat.max (S n) n0)) as H'.
+        edestruct H' as [(_&H'')|H'']; [|destruct H''; lia].
+        clear H'. apply lnth_app_r. eassumption.
   Qed.
   
   Lemma finite_prefixes_enough f :
@@ -649,46 +670,9 @@ Section post_of_surj.
       clear H. destruct H0 as [f H]. exists (lexists _ st f). intros. simpl. split.
       + intros H'. eexists. rewrite H. split; [eassumption|]. reflexivity.
       + intros [n0 H']. rewrite H in H'. destruct H' as [H' ?]. subst. assumption.
-    - simpl. Print lformula. eexists (lpropn (fun _ => P)). simpl. intuition eauto.
-      destruct H as [n H]. specialize (H n ltac:(lia)). assumption.
-      Unshelve. exact O.
-  Qed.
-
-  Fixpoint only_cares_about_end lf : Prop :=
-    match lf with
-    | lforall _ _ lf' => forall u, only_cares_about_end (lf' u)
-    | lexists _ _ lf' => forall u, only_cares_about_end (lf' u)
-    | lpropn P => exists P', forall l, P l <->
-                                match last_elt l with
-                                | Some x => P' x
-                                | None => False
-                                end
-    end.
-
-  Lemma single_states_enough lf :
-    excluded_middle ->
-    (forall U, FunctionalChoice_on U lformula) ->
-    (forall U, FunctionalChoice_on U aformula) ->
-    only_cares_about_end lf ->
-    exists af, forall t, ainterp af t <-> linterp lf t.
-  Proof.
-    intros em choice1 choice2 Hend. induction lf.
-    - eassert (H': exists P, _).
-      { apply choice2. intros x. specialize (H x (Hend x)). destruct H as [P H]. exists P. exact H. }
-      clear H. destruct H' as [P H']. exists (aforall _ u P). intros t.
-      simpl in Hend. simpl. split; intros; apply H'; auto.
-    - eassert (H': exists P, _).
-      { apply choice2. intros x. specialize (H x (Hend x)). destruct H as [P H]. exists P. exact H. }
-      clear H. destruct H' as [P H']. exists (aexists _ u P). intros t.
-      simpl in Hend. simpl. split; intros [? ?]; eexists; apply H'; eauto.
-    - simpl in Hend. destruct Hend as [P' Hend]. exists (apropn P'). intros. simpl.
-      split; intros [n Hn]; exists (S n); intros n0 ?.
-      + rewrite Hend. destruct n0; [lia|]. cbv [last_elt]. rewrite length_firstn.
-        epose proof lnth_firstn as H'. edestruct H' as [(H1&H2)|(H1&H2)]; rewrite H2; [|lia].
-        apply Hn. lia.
-      + specialize (Hn (S n0) ltac:(lia)). apply Hend in Hn.
-        epose proof lnth_firstn as H'. cbv [last_elt] in Hn. edestruct H' as [(H1&H2)|(H1&H2)]; rewrite H2 in Hn; [|lia].
-        rewrite length_firstn in Hn. eenough (n0 = _) as -> by eassumption. lia.
+    - simpl. Print lformula. eexists (lpropn (fun _ => P)). simpl. split.
+      + intros. exists O. auto.
+      + intros (?&H). apply H. exact nil.
   Qed.
 End post_of_surj.
 
@@ -807,17 +791,11 @@ Section OK_execution.
   Qed.
   
   Lemma trace_gets_longer_preserved sp1 sp2 l :
-    let trace_gets_longer :=
-      fun sp0 =>
-        (forall s : stream State,
-            sp0 s ->
-            forall n : nat,
-            exists tr' : list Event, trace (nth (S n) s) = (trace (nth n s) ++ tr')%list) in
     trace_gets_longer sp1 ->
     (forall s, sp2 s -> sp1 (and_then l s)) ->
     trace_gets_longer sp2.
   Proof.
-    intros tgl. subst tgl. cbn -[nth]. intros H Hsp s Hs n.
+    cbv [trace_gets_longer]. cbn -[nth]. intros H Hsp s Hs n.
     apply Hsp in Hs. specialize H with (1 := Hs). specialize (H (length l + n)).
     destruct H as [tr' H]. epose proof nth_andthen as H'.
     edestruct H' as [(?&H1)|(?&H1)]; [|rewrite H1 in H]. 1: lia.
@@ -986,24 +964,6 @@ Section OK_execution.
       rewrite length_firstn, length_lfirstn in Htr'. apply Htr'.
   Qed.
 
-  (*Seems true but not needed*)
-  (* Lemma suffixes_better {U : Type} (aep : AEP (U -> Prop)) sp sp' : *)
-  (*   interp_aep aep sp -> *)
-  (*   (forall s, sp' s -> exists l, sp (and_then l s)) -> *)
-  (*   interp_aep aep sp'. *)
-  (* Proof. *)
-  (*   revert sp sp'. induction aep; intros sp sp' H1 H2. *)
-  (*   - cbn -[nth]. intros s Hs. specialize H2 with (1 := Hs). destruct H2 as [l Hl]. *)
-  (*     cbn -[nth] in H1. specialize H1 with (1 := Hl). destruct H1 as [n H1]. *)
-  (*     exists (n + length l). intros x. eapply H. 1: eauto. cbn -[nth]. intros s0 (H2&H3). *)
-      
-  (*     simpl. .eapply interp_aep_weaken. 2: eauto. cbn -[nth]. *)
-  (*     intros. *)
-  (*   revert sp sp'. induction aep; intros sp sp' H1 H2; cbn -[nth]. *)
-  (*   - intros s Hsp. cbn -[nth] in H1. specialize H2 with (1 := Hsp). *)
-  (*     destruct H2 as [l H2]. specialize H1 with (1 := H2). destruct H1 as [n H1]. *)
-  (*     exists n. intros x. eapply H; [apply H1|]. cbn -[nth]. intros.  *)
-  
   Lemma aep_enough sp lf :
     excluded_middle ->
     trace_gets_longer sp ->
@@ -1038,172 +998,89 @@ Section OK_execution.
         exists tr'. Search has_inf_trace. eapply has_inf_trace_andthen. eassumption.
   Qed.
   
-  Lemma linterp_iff_linterp_lol lf tr ex :
+  Lemma linterp_iff_linterp_lol sp lf tr ex :
+    trace_gets_longer sp ->
     sp ex ->
     has_inf_trace ex tr ->
     linterp Event lf tr <-> linterp_lol lf ex.
   Proof.
-    pose proof trace_longer_trans as Htl. clear trace_gets_longer.
-    intros Hsp. specialize (Htl _ Hsp). clear Hsp.
+    intros tgl. pose proof trace_longer_trans as Htl.
+    specialize Htl with (1 := tgl). 
+    intros Hsp. specialize (Htl _ Hsp). 
     intros H. induction lf; intros; simpl.
     - split; intros; apply H0; auto.
     - split; intros (?&?); eexists; apply H0; eauto.
     - split; intros (n&H').
       + cbv [has_inf_trace] in H. specialize (H n). destruct H as [m H].
-        exists m. intros n0 Hn0.
-  Admitted.
-  
-  Lemma lformula_enough sf :
+        exists m. intros l. rewrite <- (firstn_app_skipn n (trace _)).
+        rewrite <- List.app_assoc. rewrite H. apply H'.
+      + exists (length (trace (nth n ex))). Search has_inf_trace.
+        erewrite firstn_inf_trace by eassumption. assumption.
+  Qed.
+
+  Lemma sinterp_to_aep' sp sf :
     excluded_middle ->
     (forall U : Type, FunctionalChoice_on U (lformula Event)) ->
+    trace_gets_longer sp ->
+    (forall ex, sp ex -> OK ex) ->
     exists lf,
-      (forall ex,
-          sp ex ->
-          forall tr, has_inf_trace ex tr ->
-                sinterp _ sf tr <-> linterp_lol lf ex).
+    interp_aep (AEP_A _ _ (fun tgt => (aep_of tgt lf))) sp <->
+      (forall ex, sp ex ->
+             exists tr, has_inf_trace ex tr /\ sinterp _ sf tr).
   Proof.
-    intros em choice.
-    pose proof (finite_prefixes_enough Event ev sf em choice) as H.
-    destruct H as [lf H]. exists lf. intros. rewrite H.
-    apply linterp_iff_linterp_lol; assumption.
+    intros em choice tgl allOK. pose proof (finite_prefixes_enough Event ev) as fpe.
+    specialize (fpe sf em choice). destruct fpe as [lf fpe]. exists lf.
+    rewrite <- aep_enough by assumption. split.
+    - intros H ex Hsp. specialize allOK with (1 := Hsp). destruct allOK as [tr Htr].
+      exists tr. split; [assumption|]. rewrite fpe.
+      rewrite linterp_iff_linterp_lol by eassumption. apply H. assumption.
+    - intros H ex Hsp. specialize H with (1 := Hsp). destruct H as [tr (H1&H2)].
+      rewrite <- linterp_iff_linterp_lol by eassumption.
+      rewrite <- fpe. assumption.
   Qed.
+
+  (* Lemma suffixes_better {U : Type} (aep : AEP (U -> Prop)) sp sp' : *)
+  (*   interp_aep aep sp -> *)
+  (*   (forall s, sp' s -> exists l, sp (and_then l s)) -> *)
+  (*   interp_aep aep sp'. *)
+  (* Proof. *)
+  (*   revert sp sp'. induction aep; intros sp sp' H1 H2. *)
+  (*   - cbn -[nth]. intros s Hs. specialize H2 with (1 := Hs). destruct H2 as [l Hl]. *)
+  (*     cbn -[nth] in H1. specialize H1 with (1 := Hl). destruct H1 as [n H1]. *)
+  (*     exists (n + length l). intros x. eapply H. 1: eauto. cbn -[nth]. intros s0 (H2&H3). *)
+      
+  (*     simpl. .eapply interp_aep_weaken. 2: eauto. cbn -[nth]. *)
+  (*     intros. *)
+  (*   revert sp sp'. induction aep; intros sp sp' H1 H2; cbn -[nth]. *)
+  (*   - intros s Hsp. cbn -[nth] in H1. specialize H2 with (1 := Hsp). *)
+  (*     destruct H2 as [l H2]. specialize H1 with (1 := H2). destruct H1 as [n H1]. *)
+  (*     exists n. intros x. eapply H; [apply H1|]. cbn -[nth]. intros.  *)
+  
+  Lemma AEP_A_forall U sp aep :
+    interp_aep (AEP_A _ U aep) sp <-> forall u, interp_aep (U := U) (aep u) sp.
+  Proof.
+    split.
+    2: { intros H. cbn -[nth]. intros s Hs. exists O. intros x. Search interp_aep.
+    - cbn -[nth]. (*TODO use suffixes_better here*) Abort.
+  
+
+  Definition AEP_and {T : Type} (l r : AEP T) :=
+    AEP_A _ bool (fun b => if b then l else r).
+
+  Lemma AEP_and_works {T : Type} (l r : AEP (T -> Prop)) sp :
+    interp_aep (AEP_and l r) sp <-> (interp_aep l sp /\ interp_aep r sp).
+  Proof. (*TODO is corollary of AEP_A_forall*) Abort.
+
+  Definition AEP_is_inf : AEP (State -> Prop) :=
+    AEP_A _ nat (fun n => AEP_P _ (fun x => length (trace x) = n)).
+  
+  Lemma sinterp_to_aep sp sf :
+    excluded_middle ->
+    (forall U : Type, FunctionalChoice_on U (lformula Event)) ->
+    trace_gets_longer sp ->
+    exists lf,
+      interp_aep (AEP_and AEP_is_inf (AEP_A _ _ (fun tgt => (aep_of tgt lf)))) sp <->
+        (forall ex, sp ex ->
+               exists tr, has_inf_trace ex tr /\ sinterp _ sf tr).
+  Proof. (*TODO follows from AEP_and_works*) Abort.
 End OK_execution.
-
-Section aep_omni_trad.
-  Context (Event : Type) (State : Type) (T := State -> Prop : Type).
-  Context (might_step : State -> State -> Prop).
-  Check step'.
-  Notation step := (step _ might_step).
-  Notation step' := (step' T State step).
-  
-  (* Lemma spread_exists f : exists f', *)
-  (*   forall str, *)
-  (*     ainterp State f str <-> exists (st : State), ainterp State (f' st) str. *)
-  (* Proof. Admitted. *)
-
-  Print aformula. Print ainterp.
-  (*i am proving a fact about prefixes here.  this is important.*)
-  (*for every stream, either we diverge from it or it works*)
-  Print AEP.
-  Fixpoint aep_of (af : aformula State) : AEP (State -> Prop) :=
-    match af with
-    | aforall _ U u af' => AEP_A _ _ (fun x => aep_of (af' x))
-    | aexists _ U u af' => AEP_E _ (State -> U)
-                            (fun (f : stream State -> U) =>
-                               
-                               AEP_A _ (stream State) (fun (s : stream State) =>
-                                            aep_of (af' (f s))  
-    end.
-
-  Lemma post_of_iff_trace_pred s af :
-    excluded_middle ->
-    (forall U, FunctionalChoice_on U (AEP (State -> Prop))) ->
-    FunctionalChoice_on State State ->
-    exists aep,
-      (forall str, possible _ might_step str ->
-              nth O str = s ->
-              ainterp _ af str) <->
-        (forall str, possible _ might_step str ->
-                nth O str = s ->
-                runsTo step s (post_of T _ step aep (fun P s => P s))).
-  Proof.
-    intros em choice1 choice2. induction af.
-    - eassert (H': exists _, _).
-      { apply choice1. intros x. specialize (H x). destruct H as (aep & H).
-        exists aep. exact H. }
-      clear H. destruct H' as [aep H]. exists (AEP_A _ _ aep). cbn [ainterp].
-      split; intros H'; intros.
-      + simpl. apply runsTo_iff_trace_pred; [assumption|assumption|]. intros.
-        exists O. rewrite H3. intros n. specialize H' with (n := n).
-        rewrite H in H'. eapply H'; eassumption.
-      + specialize (H n). cbn [post_of] in H'. destruct H as [_ H].
-        apply H; [|assumption|assumption]. intros. apply runsTo_trans_cps.
-        eapply runsTo_weaken. 1: solve[eapply H'; eauto]. simpl. intros. auto.
-    - cbn [ainterp].
-      (*
-        exists f : State -> U,
-        forall u : U,
-        
-       *)
-      simpl. eassert (H': exists _, _).
-      { apply choice1. intros x. specialize (H x). destruct H as (aep & H).
-        exists aep. exact H. }
-      clear H. destruct H' as [aep H].
-      cbn [ainterp].
-
-      
-      runsTo step s (post_of T State step (aep x) (fun (P : T) (s : State) => P s)) <->
-               runsTo step s (post_of T State step (aep x) (fun (P : T) (s : State) => P s))
-                 exists (AEP_E _ _ ). cbn [linterp].
-      split; intros H'; intros.
-      + simpl. eapply runsTo_trans_cps.
-        apply runsTo_iff_trace_pred; [assumption|assumption|]. intros.
-        exists O. rewrite H3. apply runsToDone. specialize (H' _ H2 H3). destruct Hintros n. specialize H' with (n := n).
-        rewrite H in H'. eapply H'; eassumption.
-      + specialize (H n). cbn [post_of] in H'. destruct H as [_ H].
-        apply H; [|assumption|assumption]. intros. apply runsTo_trans_cps.
-        eapply runsTo_weaken. 1: solve[eapply H'; eauto]. simpl. intros. auto.
-    - revert s post. induction aep; intros s post H'; cbn [post_of simple_post_of] in *.
-      + intros str Hstr HO. subst. specialize H' with (1 := Hstr) (2 := eq_refl).
-        destruct H' as [n H']. exists n. intros x str' Hstr'. subst. eapply H. intros. subst. specialize H' with (1 := H0) (2 := eq_refl).
-        destruct H' as (n0 & H'). specialize (H' n).
-        rewrite runsTo_iff_trace_pred in H' by assumption.
-        specialize (H' (skipn n0 str) ltac:(auto using possible_skipn)).
-        rewrite nth_skipn, PeanoNat.Nat.add_0_r in H'. specialize (H' eq_refl).
-        destruct H' as (n1 & H'). rewrite nth_skipn in H'. eauto.
-      + Check runsTo_iff_trace_pred. Print simple_post_of.
-        apply H'. ; auto.
-        specialize H' with (1 := Hstr) (2 := eq_refl). destruct H' as [n0 Hn0].
-        cbn [post_of] in Hn0. specialize (Hn0 n).
-        rewrite runsTo_iff_trace_pred in Hn0 by assumption.
-        specialize H with (1 := Hn0). clear Hn0.
-        eapply simple_post_of_skipn. eapply H.
-        2: rewrite nth_skipn, PeanoNat.Nat.add_0_r; reflexivity.
-        auto using possible_skipn.
-      + specialize H' with (1 := Hstr) (2 := eq_refl). destruct H' as (n & n0 & H').
-        rewrite runsTo_iff_trace_pred in H' by assumption.
-        specialize H with (1 := H'). clear H'. exists n0.
-        eapply simple_post_of_skipn. eapply H.
-        2: rewrite nth_skipn, PeanoNat.Nat.add_0_r; reflexivity.
-        auto using possible_skipn.
-      + auto.
-    - revert s post. induction aep; intros s post H' str Hstr HO; cbn [post_of simple_post_of] in *; subst.
-      + exists O. intros n. rewrite runsTo_iff_trace_pred by assumption. intros.
-        eapply H. 3: eassumption. 2: assumption. intros. apply H'; assumption.
-      + exists O. assert (H'' := H'). specialize (H' _ ltac:(eassumption) ltac:(reflexivity)).
-        destruct H' as [n H']. exists n. rewrite runsTo_iff_trace_pred by assumption.
-        apply H.
-        
-      
-  Lemma blah s aep post :
-    excluded_middle ->
-    FunctionalChoice_on State State ->
-    runsTo step' (s, aep)
-      (fun '(s', aep') =>
-         match aep' with
-         | AEP_P P => post P s'
-         | _ => False
-         end) <->
-      True.
-  Proof.
-    intros em choice.
-    rewrite step'_iff_step. rewrite runsTo_iff_trace_pred; [|assumption|assumption].
-    w
-    reflexivity.
-  Qed.
-
-  Print post_of. 
-    
-  Lemma step'_iff_trace_pred s aep post :
-    runsTo step' (s, aep)
-      (fun '(s', aep') =>
-         match aep' with
-         | AEP_P P => post P s'
-         | _ => False
-         end) <->
-      (forall str, possible str -> simple_post_of aep post str).
-  Proof.
-    split; intros H.
-    - intros str Hstr.
-
-  
