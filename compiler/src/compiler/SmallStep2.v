@@ -162,7 +162,7 @@ Section streams.
   
   CoInductive stream (T : Type) :=
   | scons (a : T) (rest : stream T).
-  
+
   Fixpoint nth {T : Type} (n : nat) (s : stream T) : T :=
     match s, n with
     | scons _ a rest, S n' => nth n' rest
@@ -1082,6 +1082,42 @@ Section OK_execution.
     - apply H. simpl. assumption.
     - apply H. simpl. constructor.
   Qed.
+
+  Lemma lnth_oob {U : Type} (l : list U) n :
+    length l <= n ->
+    lnth n l = None.
+  Proof.
+    revert n. induction l.
+    - intros. destruct n; reflexivity.
+    - simpl. intros. destruct n; [lia|]. simpl. apply IHl. lia.
+  Qed.
+
+  Lemma nth_andthen' {U : Type} (l : list U) s n :
+    nth n (and_then l s) = match lnth n l with
+                           | Some x => x
+                           | None => nth (n - length l) s
+                           end.
+  Proof.
+    pose proof (nth_andthen l s n) as H. destruct H as [(H1&H2)|(H1&H2)].
+    - rewrite <- H2. reflexivity.
+    - rewrite H2. rewrite lnth_oob by lia. reflexivity.
+  Qed.
+
+  Lemma andthen_assoc {U : Type} (l1 l2 : list U) s :
+    and_then l1 (and_then l2 s) = and_then (List.app l1 l2) s.
+  Proof.
+    induction l1.
+    - reflexivity.
+    - simpl. f_equal. assumption.
+  Qed.
+    
+  Lemma firstn_plus_m {U : Type} n m (s : stream U) :
+    List.app (firstn n s) (firstn m (skipn n s)) = firstn (n + m) s.
+  Proof.
+    revert s. induction n.
+    - destruct s. reflexivity.
+    - destruct s. simpl. f_equal. auto.
+  Qed.
   
   Lemma AEP_A_forall {T U : Type} (sp : stream T -> Prop) aep :
     excluded_middle ->
@@ -1101,8 +1137,11 @@ Section OK_execution.
       split; [f_equal; lia|]. split.
       -- destruct n0.
          ++ cbn -[nth]. destruct (skipn n s). cbn -[nth]. assumption.
-         ++ cbn -[nth]. admit.
-      -- admit.
+         ++ rewrite nth_andthen'. epose proof lnth_firstn as H.
+            edestruct H as [(?&H')|(?&?)]; [rewrite H'|lia]. rewrite nth_skipn.
+            f_equal. lia.
+      -- rewrite andthen_assoc. rewrite firstn_plus_m.
+         replace (n + n0) with (n0 + n) by lia. assumption.
     + cbn -[nth]. intros s Hs.
       cbn -[nth] in H. specialize (H s Hs). destruct H as [n Hn].
       specialize (Hn u). rewrite E in Hn. cbn -[nth] in Hn.
