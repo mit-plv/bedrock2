@@ -1039,6 +1039,13 @@ Section OK_execution.
       rewrite <- fpe. assumption.
   Qed.
 
+  (*nope, really need to do these as AEPs, not lformulas.  after doing these, everything else can be an lformula.*)
+  (* Definition is_OK : lformula Event := *)
+  (*   lforall _ nat O (fun n => lpropn _ (fun x => length x = n)). *)
+
+  (* Definition lfand {T : Type} (P Q : lformula T) := *)
+  (*   lforall _ bool true (fun b => if b then P else Q). *)
+    
   (* Lemma suffixes_better {U : Type} (aep : AEP (U -> Prop)) sp sp' : *)
   (*   interp_aep aep sp -> *)
   (*   (forall s, sp' s -> exists l, sp (and_then l s)) -> *)
@@ -1055,24 +1062,66 @@ Section OK_execution.
   (*   - intros s Hsp. cbn -[nth] in H1. specialize H2 with (1 := Hsp). *)
   (*     destruct H2 as [l H2]. specialize H1 with (1 := H2). destruct H1 as [n H1]. *)
   (*     exists n. intros x. eapply H; [apply H1|]. cbn -[nth]. intros.  *)
+
+  Print AEP.
+  Definition holds_for_all_subterms {T : Type} (aep : AEP T) (P : AEP T -> Prop) : Prop :=
+    match aep with
+    | AEP_A _ _ aep =>
+        forall u, P (aep u)
+    | AEP_E _ _ aep =>
+        forall u, P (aep u)
+    | AEP_P _ _ => True
+    end.
   
-  Lemma AEP_A_forall U sp aep :
-    interp_aep (AEP_A _ U aep) sp <-> forall u, interp_aep (U := U) (aep u) sp.
+  Lemma strong_induction_AEP {T : Type} (P : AEP T -> Prop) :
+    (forall aep, holds_for_all_subterms aep P -> P aep) ->
+    forall aep, P aep.
   Proof.
-    split.
-    2: { intros H. cbn -[nth]. intros s Hs. exists O. intros x. Search interp_aep.
-    - cbn -[nth]. (*TODO use suffixes_better here*) Abort.
+    intros H aep. induction aep.
+    - apply H. simpl. assumption.
+    - apply H. simpl. assumption.
+    - apply H. simpl. constructor.
+  Qed.
   
+  Lemma AEP_A_forall {T U : Type} (sp : stream T -> Prop) aep :
+    excluded_middle ->
+    interp_aep (AEP_A _ _ aep) sp <-> forall (u : U), interp_aep (aep u) sp.
+  Proof.
+    intros em. split.
+    2: { intros H. cbn -[nth]. intros s Hs. exists O. intros x. eapply interp_aep_weaken.
+         2: solve[auto]. intros str [H1 H2]. destruct s. simpl in H2. apply H2. }
+    subst. cbn -[nth]. intros H u. destruct (aep u) eqn:E.
+    + cbn -[nth]. intros s Hs. cbn -[nth] in H. specialize (H s Hs).
+      destruct H as [n Hn]. specialize (Hn u). rewrite E in Hn. cbn -[nth] in Hn.
+      specialize (Hn (skipn n s)). edestruct Hn as (n0&H0); clear Hn.
+      { rewrite nth_skipn. split; [f_equal; lia|]. rewrite andthen_firstn_skipn.
+        assumption. }
+      exists (n0 + n). intros x. specialize (H0 x). eapply interp_aep_weaken. 2: eassumption.
+      cbn -[nth]. intros ? [H2 H3]. rewrite nth_skipn. rewrite H2.
+      split; [f_equal; lia|]. split.
+      -- destruct n0.
+         ++ cbn -[nth]. destruct (skipn n s). cbn -[nth]. assumption.
+         ++ cbn -[nth]. admit.
+      -- admit.
+    + cbn -[nth]. intros s Hs.
+      cbn -[nth] in H. specialize (H s Hs). destruct H as [n Hn].
+      specialize (Hn u). rewrite E in Hn. cbn -[nth] in Hn.
+      specialize (Hn (skipn n s)). edestruct Hn as (n0&x0&H0).
+      { rewrite nth_skipn. split; [f_equal; lia|]. rewrite andthen_firstn_skipn.
+        assumption. }
+      exists (n + n0), x0. eapply interp_aep_weaken. 2: eapply H0.
+      clear Hn H0. cbn -[nth]. intros ? (H1&H2). admit.
+    + admit.
 
-  Definition AEP_and {T : Type} (l r : AEP T) :=
-    AEP_A _ bool (fun b => if b then l else r).
+  (* Definition AEP_and {T : Type} (l r : AEP T) := *)
+  (*   AEP_A _ bool (fun b => if b then l else r). *)
 
-  Lemma AEP_and_works {T : Type} (l r : AEP (T -> Prop)) sp :
-    interp_aep (AEP_and l r) sp <-> (interp_aep l sp /\ interp_aep r sp).
-  Proof. (*TODO is corollary of AEP_A_forall*) Abort.
+  (* Lemma AEP_and_works {T : Type} (l r : AEP (T -> Prop)) sp : *)
+  (*   interp_aep (AEP_and l r) sp <-> (interp_aep l sp /\ interp_aep r sp). *)
+  (* Proof. (*TODO is corollary of AEP_A_forall*) Abort. *)
 
-  Definition AEP_is_inf : AEP (State -> Prop) :=
-    AEP_A _ nat (fun n => AEP_P _ (fun x => length (trace x) = n)).
+  (* Definition AEP_is_inf : AEP (State -> Prop) := *)
+  (*   AEP_A _ nat (fun n => AEP_P _ (fun x => length (trace x) = n)). *)
   
   Lemma sinterp_to_aep sp sf :
     excluded_middle ->
