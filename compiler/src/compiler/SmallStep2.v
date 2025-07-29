@@ -1253,17 +1253,23 @@ Section OK_execution.
 
   Context (might_step : State -> State -> Prop).
   Notation step := (step State might_step).
-  
+  Notation step' := (step' _ State step).
+
   Lemma sinterp_to_omni_aep s sf :
     excluded_middle ->
     FunctionalChoice_on nat nat ->
     (forall U : Type, FunctionalChoice_on U (lformula Event)) ->
     FunctionalChoice_on State State ->
+
     (forall s1 s2, might_step s1 s2 -> exists tr', trace s2 = (trace s1 ++ tr')%list) ->
     exists aep,
-    runsTo step s (post_of _ State step aep (fun P s => P s)) <->
-      (forall ex, (fun str => possible _ might_step str /\ nth O str = s) ex ->
-             exists tr, has_inf_trace ex tr /\ sinterp _ sf tr).
+      runsTo step' (s, aep) (fun '(s', aep') =>
+                               match aep' with
+                               | (AEP_A _ _ _) | (AEP_E _ _ _) => False
+                               | (AEP_P _ P) => P s'
+                               end) <->
+        (forall ex, (fun str => possible _ might_step str /\ nth O str = s) ex ->
+               exists tr, has_inf_trace ex tr /\ sinterp _ sf tr).
   Proof.
     intros em choice1 choice2 choice3 tgl.
     pose proof sinterp_to_aep as H.
@@ -1274,7 +1280,8 @@ Section OK_execution.
       specialize (tgl (nth n s0) (nth (S n) s0)).
       eapply possible_nth in H0. specialize tgl with (1 := H0). destruct tgl as [tr' tgl].
       exists tr'. assumption. }
-    destruct H as [lf Hlf]. eexists. rewrite runsTo_iff_trace_pred' by assumption.
+    destruct H as [lf Hlf]. eexists. rewrite step'_iff_step.
+    rewrite runsTo_iff_trace_pred' by assumption.
     apply Hlf.
   Qed.    
 End OK_execution.
