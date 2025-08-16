@@ -582,19 +582,6 @@ Section post_of_surj.
     | lpropn P => exists n, forall l, P (firstn n t ++ l)%list
     end.
 
-  (*about single states, or 'atoms'.  (i used 's' already, so i guess i'll use 'a')*)
-  Inductive aformula :=
-  | aforall (U : Type) (u : U) : (U -> aformula) -> aformula
-  | aexists (U : Type) (u : U) : (U -> aformula) -> aformula
-  | apropn : (State -> Prop) -> aformula.
-
-  Fixpoint ainterp (f : aformula) (t : stream State) : Prop :=
-    match f with
-    | aforall U _ f' => forall n, ainterp (f' n) t
-    | aexists U _ f' => exists n, ainterp (f' n) t
-    | apropn P => exists n, forall n0, n <= n0 -> P (nth n0 t)
-    end.
-
   Lemma firstn_split {T : Type} n m (t : stream T) :
     n <= m ->
     firstn m t = (firstn n t ++ (firstn (m - n) (skipn n t)))%list.
@@ -1361,12 +1348,13 @@ Section OK_execution.
   Notation step := (step State might_step).
   Notation step' := (step' _ State step).
 
-  Lemma sinterp_to_omni_aep s sf :
+  Lemma sinterp_to_omni_aep s P :
     excluded_middle ->
     FunctionalChoice_on nat nat ->
     (forall U : Type, FunctionalChoice_on U (lformula Event)) ->
     FunctionalChoice_on State State ->
 
+    definable _ P ->
     (forall s1 s2, might_step s1 s2 -> exists tr', trace s2 = (trace s1 ++ tr')%list) ->
     exists aep,
       runsTo step' (s, aep) (fun '(s', aep') =>
@@ -1376,9 +1364,10 @@ Section OK_execution.
                                end) <->
         (forall ex, possible _ might_step ex /\ nth O ex = s ->
                (exists n, post (nth n ex)) \/
-                 exists tr, has_inf_trace ex tr /\ sinterp _ sf tr).
+                 exists tr, has_inf_trace ex tr /\ P tr).
   Proof.
-    intros em choice1 choice2 choice3 tgl.
+    intros em choice1 choice2 choice3 Hd tgl.
+    apply definable_characterization in Hd. destruct Hd as [sf Hsf].
     pose proof sinterp_to_aep as H.
     specialize H with (1 := em) (2 := choice1) (3 := choice2).
     specialize (H (fun str : stream State => possible State might_step str /\ nth 0 str = s) sf).
@@ -1389,6 +1378,23 @@ Section OK_execution.
       exists tr'. assumption. }
     destruct H as [lf Hlf]. eexists. rewrite step'_iff_step.
     rewrite runsTo_iff_trace_pred' by assumption.
-    apply Hlf.
-  Qed.    
+    rewrite Hlf. split; intuition auto.
+    - specialize (H1 ex ltac:(auto)). destruct H1 as [?|(?&?&?)]; auto. right.
+      eexists. rewrite Hsf. eauto.
+    - specialize (H ex ltac:(auto)). destruct H as [?|(?&?&?)]; auto. right.
+      eexists. rewrite <- Hsf. eauto.
+  Qed.
 End OK_execution.
+Check sinterp_to_omni_aep.
+Search excluded_middle.
+Axiom em: excluded_middle.
+Check sinterp_to_omni_aep.
+Axiom fun_choice: forall T1 T2, FunctionalChoice_on T1 T2.
+Check sinterp_to_omni_aep.
+Definition sinterp_to_omni_aep_pretty :=
+  fun State Event might_step trace tgl ev post s P Pdef =>
+    sinterp_to_omni_aep State Event ev trace post might_step s P em (fun_choice _ _) (fun _ => fun_choice _ _) (fun_choice _ _) Pdef tgl.
+Check sinterp_to_omni_aep_pretty.
+Print Assumptions sinterp_to_omni_aep_pretty.
+
+Check aep_to_trad.
