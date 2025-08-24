@@ -5,20 +5,27 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 
 Definition anMMIOAddr : Z := 131072.
 
-(* TODO use nice notations here *)
-
 Definition one_printer :=
-  (cmd.while (expr.literal 1) (cmd.interact nil "MMIOWRITE" (cons (expr.literal anMMIOAddr) (cons (expr.literal 1) nil)))).
+  bedrock_func_body:(
+                       while $1 {
+                           output! MMIOWRITE (coq:(anMMIOAddr), $1)
+                         }
+                     ).
 
 Definition countdown :=
-  (cmd.while (expr.var "x")
-     (cmd.seq
-        (cmd.interact nil "MMIOWRITE" (cons (expr.literal anMMIOAddr) (cons (expr.literal 0) nil)))
-        (cmd.set "x" (expr.op bopname.sub (expr.var "x") (expr.literal 1))))).
+  bedrock_func_body:(
+                       while x {
+                           output! MMIOWRITE (coq:(anMMIOAddr), $0);
+                           x = x - $1
+                         }
+                     ).
 
 Definition eventual_one_printer :=
-  cmd.seq (cmd.stackalloc "x" 0 cmd.skip)
-    (cmd.seq countdown one_printer).
+  bedrock_func_body:(
+                       {stackalloc 0 as x; /*skip*/};
+                       coq:(countdown);
+                       coq:(one_printer)
+                     ).
 
 Definition one_printer_fun : (list String.string * list String.string * cmd) := (nil, nil, eventual_one_printer).
 
@@ -152,7 +159,11 @@ Section WithParams.
   Qed.
 
   Definition eventually_print_ones : AEP :=
-    AEP_E (fun n1 => AEP_A (fun n2 => AEP_P (fun t _ => exists t1, List.length t1 = n1 /\ (t = repeat one n2 ++ t1)%list))).
+    AEP_E (fun garbage_length =>
+             AEP_A (fun num_ones =>
+                      AEP_P (fun t _ =>
+                               exists garbage, List.length garbage = garbage_length /\
+                                       (t = repeat one num_ones ++ garbage)%list))).
   
   Lemma eventual_one_printer_eventually_prints_ones e k t m l mc :
     exec e eventual_one_printer true eventually_print_ones k t m l mc
