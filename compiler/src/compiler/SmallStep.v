@@ -118,171 +118,19 @@ Section step.
     - apply runsToStep_cps. apply step_A. intros x. eapply H; eauto. intros. apply Haep. econstructor.
       eassumption.
   Qed.
+
+  Lemma push_in_exists {T : Type} post s :
+    runsTo step s (fun s' => exists (n : T), runsTo step s' (fun s'' => post n s'')) <->
+      runsTo step s (fun s' => exists n, post n s').
+  Proof.
+    split; intros H.
+    - eapply runsTo_trans. 1: eassumption. simpl. intros s' [n Hn].
+      eapply runsTo_weaken. 1: eassumption. simpl. eauto.
+    - remember (fun s' => _) as P. eassert (HP : forall s', P s' -> _).
+      { subst. exact (fun _ x => x). }
+      clear HeqP. revert HP. induction H; intros HP.
+      + apply HP in H. destruct H as [n Hn]. apply runsToDone. exists n.
+        apply runsToDone. assumption.
+      + eapply runsToStep. 1: eassumption. auto.
+  Qed.
 End step.
-
-Section streams.
-  Context (State : Type) (might_step : State -> State -> Prop).
-  
-  CoInductive stream (T : Type) :=
-  | scons (a : T) (rest : stream T).
-  
-  Fixpoint nth {T : Type} (n : nat) (s : stream T) : T :=
-    match s, n with
-    | scons _ a rest, S n' => nth n' rest
-    | scons _ a rest, O => a
-    end.
-
-  Fixpoint firstn {T : Type} (n : nat) (s : stream T) : list T :=
-    match s, n with
-    | scons _ a rest, S n' => a :: firstn n' rest
-    | scons _ a rest, O => nil
-    end.
-  
-  Fixpoint skipn {T : Type} (n : nat) (s : stream T) : stream T :=
-    match n with
-    | O => s
-    | S n' =>
-        match s with
-        | scons _ a rest => skipn n' rest
-        end
-    end.
-
-  Lemma nth_skipn {T : Type} (n m : nat) (s : stream T) :
-    nth n (skipn m s) = nth (m + n) s.
-  Proof.
-    revert s. induction m; [reflexivity|]. simpl. destruct s. apply IHm.
-  Qed.
-
-  CoInductive possible : stream State -> Prop :=
-  | poss a b rest : might_step a b ->
-                    possible (scons _ b rest) ->
-                    possible (scons _ a (scons _ b rest)).
-
-  Lemma naen (A : Type) (P : A -> _) :
-    excluded_middle ->
-    ~(forall y, P y) ->
-    exists y, ~P y.
-  Proof.
-    intros em. clear -em. intros H. assert (H1 := em (exists y, ~P y)).
-    destruct H1 as [H1|H1].
-    - assumption.
-    - exfalso. apply H. clear H. intros y. assert (H2 := em (P y)).
-      destruct H2 as [H2|H2].
-      + assumption.
-      + exfalso. apply H1. exists y. assumption.
-  Qed.
-
-  Lemma enna (A : Type) (P : A -> _) :
-    (exists y, ~P y) ->
-    ~(forall y, P y).
-  Proof. intros [y H]. auto. Qed.
-
-  CoFixpoint stream_of {T : Type} (start : T) (step : T -> T) :=
-    scons _ start (stream_of (step start) step).
-
-  Lemma stream_of_eq T (start : T) step_ :
-    stream_of start step_ = scons _ start (stream_of (step_ start) step_).
-  Proof. replace (stream_of start step_) with (match stream_of start step_ with
-                                               | scons _ hd tl => scons _ hd tl
-                                               end).
-         { reflexivity. }
-         destruct (stream_of _ _). reflexivity.
-  Qed.
-
-  (*taken from https://github.com/OwenConoly/semantics_relations/blob/master/equiv/EquivProof.v*)
-  Lemma chains_finite_implies_Acc x :
-    excluded_middle ->
-    FunctionalChoice_on State State ->
-    (forall str, nth O str = x -> possible str -> False) ->
-    Acc (fun x y => might_step y x) x.
-  Proof.
-    intros em choice H. cbv [FunctionalChoice_on] in choice.
-    set (R := fun x y => might_step y x).
-    specialize (choice (fun x y => ~Acc R x -> ~Acc R y /\ R y x)). destruct choice as [f H'].
-    { clear -em. intros x. cbv [excluded_middle] in em.
-      assert (H1 := em (forall y, R y x -> Acc R y)). destruct H1 as [H1|H1].
-      - exists x. intros H. exfalso. apply H. constructor. assumption.
-      - assert (H2 := naen). specialize H2 with (1 := em) (2 := H1).
-        simpl in H2. destruct H2 as [y H2]. exists y. intros _. split.
-        + intros H. apply H2. intros. assumption.
-        + assert (H3 := em (R y x)). destruct H3 as [H3|H3].
-          -- assumption.
-          -- exfalso. apply H2. intros. exfalso. apply H3. apply H. }
-    assert (H1 := em (Acc R x)). destruct H1 as [H1|H1].
-    - assumption.
-    - specialize (H (stream_of x f) eq_refl). exfalso.
-      exfalso. apply H. clear H. revert x H1. cofix Hcofix. intros x H.
-      specialize (H' x H). do 2 rewrite stream_of_eq. destruct H'.
-      constructor; [assumption|]. rewrite <- stream_of_eq. apply Hcofix. assumption.
-  Qed.
-End streams.
-
-Section omni_trad.
-  Context (State : Type) (might_step : State -> State -> Prop).
-
-  Definition step x (P : _ -> Prop) :=
-    forall y, might_step x y -> P y.
-
-  Lemma possible_weaken {T : Type} str (R1 : T -> T -> Prop) :
-    possible T R1 str ->
-    forall R2,
-    (forall x y, R1 x y -> R2 x y) ->
-    possible T R2 str.
-  Proof.
-    intros H' R2 H. revert str H'. cofix Hstr. intros str H'. inversion H'. subst.
-    clear H'. constructor. 1: auto. apply Hstr. assumption.
-  Qed.
-
-  Lemma possible_nth {T : Type} str (R : T -> T -> Prop) n :
-    possible T R str ->
-    R (nth n str) (nth (S n) str).
-  Proof.
-    revert str. induction n.
-    - intros str H. inversion H. subst. simpl. assumption.
-    - intros str H. inversion H. subst. simpl. apply IHn. assumption.
-  Qed.
-
-  Lemma possible_skipn {T : Type} str (R : T -> T -> Prop) n :
-    possible T R str ->
-    possible T R (skipn n str).
-  Proof.
-    revert str. induction n.
-    - intros str H. inversion H. subst. simpl. assumption.
-    - intros str H. inversion H. subst. simpl. apply IHn. assumption.
-  Qed.
-
-  
-  Lemma runsTo_iff_trace_pred s P :
-    excluded_middle ->
-    FunctionalChoice_on State State ->
-    runsTo step s P <-> (forall str, possible _ might_step str ->
-                               nth O str = s ->
-                               exists n, P (nth n str)).
-  Proof.
-    intros em choice. split; intros H.
-    - induction H.
-      + intros. destruct str; inversion H1. subst. exists O. simpl. assumption.
-      + intros. inversion H2. subst. clear H2. simpl in H. cbv [step] in H.
-        edestruct H1 as [n Hn].
-        -- apply H. eassumption.
-        -- eassumption.
-        -- reflexivity.
-        -- exists (S n). simpl. assumption.
-    - set (R := fun x y => might_step y x /\ ~P y).
-      assert (Hyp: forall str, nth O str = s -> possible _ (fun x y => R y x) str -> False).
-      { intros str HO Hsteps. subst. eassert _ as Hn.
-        { apply H. 2: reflexivity. eapply possible_weaken. 1: eassumption.
-          subst R. simpl. intros ? ? [? ?]. assumption. }
-        destruct Hn as [n Hn]. apply (possible_nth _ _ n) in Hsteps. subst R.
-        simpl in Hsteps. destruct Hsteps as [_ ?]. auto. }
-      apply chains_finite_implies_Acc in Hyp; [|assumption|assumption].
-      induction Hyp. assert (H' := em (P x)). destruct H' as [H'|H'].
-      { apply runsToDone. assumption. }
-      subst R. simpl in *. apply runsToStep_cps. intros y Hy. eapply H1; eauto.
-      intros str. specialize (H (scons _ x str)). intros Hstr ?. destruct str. subst.
-      specialize (H ltac:(econstructor; eauto) eq_refl). destruct H as [n Hn].
-      destruct n as [|n].
-      { simpl in Hn. exfalso. auto. }
-      exists n. simpl in Hn. apply Hn.
-  Qed.
-End omni_trad.

@@ -75,7 +75,6 @@ Definition req_stack_size_one_printer :=
   end.
 Definition fname_one_printer := "one_printer_fun".
 Definition f_rel_pos_one_printer := 0.
-Definition post : list LogItem -> mem32 -> list Words32Naive.word -> Prop := fun _ _ _ => True.
 
 Theorem one_printer_prints_ones :
   forall p_funcs stack_hi ret_addr,
@@ -91,14 +90,13 @@ Theorem one_printer_prints_ones :
     LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_one_printer m Rdata Rexec initial ->
     FlatToRiscvCommon.runsTo initial
       (fun s' =>
-         exists n : nat,
+         exists garbage_length : nat,
+         forall num_ones : nat,
            FlatToRiscvCommon.runsTo s'
              (fun s'' =>
-                forall n0 : nat,
-                  FlatToRiscvCommon.runsTo s''
-                    (fun s''' =>
-                       exists t1 : list Semantics.LogItem,
-                         Datatypes.length t1 = n /\ getLog s''' = (repeat one n0 ++ t1)%list))).
+                exists garbage,
+                  Datatypes.length garbage = garbage_length /\
+                    getLog s'' = (repeat one num_ones ++ garbage)%list)).
 Proof.
   assert (spec := @eventual_one_printer_eventually_prints_ones _ Words32Naive.word mem32 (SortedListString.map (@Naive.rep 32)) _ _).
   intros.
@@ -111,7 +109,7 @@ Proof.
     { simpl. fwd. split; [reflexivity|]. instantiate (1 := fun _ _ _ => _). exact H7p1. } }
   fwd. vm_compute in H''p0. inversion H''p0. subst. clear H''p0.
   specialize (H''p1 initial _ Rdata Rexec ltac:(eassumption) ltac:(eassumption) ltac:(assumption) ltac:(assumption) ltac:(assumption) ltac:(assumption) ltac:(reflexivity) ltac:(eassumption) ltac:(reflexivity) ltac:(eassumption)).
-  simpl in H''p1.
+  apply SmallStep.push_in_exists.
   eapply runsToNonDet.runsTo_weaken. 1: eassumption.
   simpl. intros final [n Hn]. exists n. eapply runsToNonDet.runsTo_weaken. 1: eassumption.
   simpl. intros final0 Hn' n'. specialize (Hn' n'). eapply runsToNonDet.runsTo_weaken.
