@@ -1,0 +1,62 @@
+# copy of https://github.com/mit-plv/coqutil/blob/master/.github/workflows/debian.yml
+
+name: CI (Coq, Debian)
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+  release:
+    types: [published]
+  schedule:
+    - cron: '0 0 1 * *'
+
+jobs:
+  build:
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - env: { DEBIAN: "sid" }
+
+    runs-on: 'ubuntu-latest'
+    env: ${{ matrix.env }}
+    name: debian-${{ matrix.env.DEBIAN }}
+
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.env.DEBIAN }}-${{ github.head_ref || github.run_id }}
+      cancel-in-progress: true
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: setup debian
+      run: |
+        sudo mkdir /chroot
+        sudo apt-get -q -y -o Acquire::Retries=30 update
+        sudo apt-get -q -y -o Acquire::Retries=30 install debootstrap debian-keyring
+        sudo debootstrap --variant=minbase "$DEBIAN" /chroot http://debian-archive.trafficmanager.net/debian/ || ( cat /tmp/tmp.*/debootstrap/debootstrap.log ; exit 1 )
+        sudo mount proc /chroot/proc -t proc
+        sudo mount sysfs /chroot/sys -t sysfs
+        sudo chroot /chroot apt-get -q -y -o Acquire::Retries=30 install apt-eatmydata
+        sudo chroot /chroot apt-get -q -y -o Acquire::Retries=30 install sudo git make time coq
+        sudo chroot /chroot groupadd -g "$(id -g)" "$(id -g -n)"
+        sudo chroot /chroot useradd  -g "$(id -g)" -u "$(id -u)" "$(id -u -n)"
+        printf "%s ALL=(ALL) NOPASSWD: ALL\n" "$(id -u -n)" | sudo tee /chroot/etc/sudoers.d/root
+        sudo mkdir -p "/chroot/$HOME"
+        sudo chown "$(id -u):$(id -g)" "/chroot/$HOME"
+        sudo mount --bind "$HOME" "/chroot/$HOME"
+        sudo tee /chroot-sh <<'EOF'
+        #!/bin/sh
+        exec sudo -E chroot /chroot setpriv --reuid "$(id -u)" --regid "$(id -g)" --init-groups \
+          /bin/sh -e -u -x -c 'cd "$1"; shift; exec sh -e -u -x "$@"' -- "$(pwd)" "$@"
+        EOF
+        sudo chmod +x /chroot-sh
+    - name: TIMED=1 make -j "$(nproc)" -k
+      shell: /chroot-sh {0}
+      run: |
+          TIMED=1 make -j "$(nproc)" -k
