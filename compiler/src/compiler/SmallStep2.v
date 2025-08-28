@@ -157,6 +157,20 @@ Section step.
   Print Assumptions inp_works.
 End step.
 
+Lemma naen (A : Type) (P : A -> _) :
+  excluded_middle ->
+  ~(forall y, P y) ->
+  exists y, ~P y.
+Proof.
+  intros em. clear -em. intros H. assert (H1 := em (exists y, ~P y)).
+  destruct H1 as [H1|H1].
+  - assumption.
+  - exfalso. apply H. clear H. intros y. assert (H2 := em (P y)).
+    destruct H2 as [H2|H2].
+    + assumption.
+    + exfalso. apply H1. exists y. assumption.
+Qed.
+
 Section streams.
   Context (State : Type) (might_step : State -> State -> Prop).
   
@@ -216,20 +230,6 @@ Section streams.
                           lpossible (cons b rest) ->
                           lpossible (cons a (cons b rest)).
   
-  Lemma naen (A : Type) (P : A -> _) :
-    excluded_middle ->
-    ~(forall y, P y) ->
-    exists y, ~P y.
-  Proof.
-    intros em. clear -em. intros H. assert (H1 := em (exists y, ~P y)).
-    destruct H1 as [H1|H1].
-    - assumption.
-    - exfalso. apply H. clear H. intros y. assert (H2 := em (P y)).
-      destruct H2 as [H2|H2].
-      + assumption.
-      + exfalso. apply H1. exists y. assumption.
-  Qed.
-
   CoFixpoint stream_of {T : Type} (start : T) (step : T -> T) :=
     scons _ start (stream_of (step start) step).
 
@@ -543,6 +543,33 @@ Section post_of_surj.
   Context (might_step : State -> State -> Prop).
   Notation step := (step _ might_step).
 
+  (*fancy formulas stating predicates about event streams*)
+  Inductive fformula :=
+  | fforall (U : Type) : (U -> fformula) -> fformula
+  | fexists (U : Type) : (U -> fformula) -> fformula
+  | fasstn (n : nat) : (State -> fformula) -> fformula
+  | fpropn : Prop -> fformula
+  | fand : fformula -> fformula -> fformula
+  | fnot : fformula -> fformula.
+
+  Fixpoint finterp (f : fformula) (t : stream State) : Prop :=
+    match f with
+    | fforall _ f' => forall n, finterp (f' n) t
+    | fexists _ f' => exists n, finterp (f' n) t
+    | fasstn n f' => finterp (f' (nth n t)) t
+    | fpropn P => P
+    | fand f1 f2 => finterp f1 t /\ finterp f2 t
+    | fnot f' => ~finterp f' t
+    end.
+  
+  (*For concreteness, say this is the set of stream predicates that can be written in Coq.*)
+  Axiom definable : (stream State -> Prop) -> Prop.
+
+  (*Hopefully this is believable.*)
+  Axiom definable_characterization :
+    forall P, definable P ->
+         exists (f : fformula), forall t, P t <-> finterp f t.
+
   (*a formula stating a predicate about event streams*)
   Inductive sformula :=
   | sforall (U : Type) (u : U) : (U -> sformula) -> sformula
@@ -559,11 +586,60 @@ Section post_of_surj.
     | sasstn n f' => sinterp (f' (nth n t)) t
     | spropn P => P
     end.
-  Axiom definable : (stream State -> Prop) -> Prop.
-  Axiom definable_characterization :
-    forall P, definable P ->
-         exists f, forall t, P t <-> sinterp f t.
 
+  Fixpoint neg (f : sformula) :=
+    match f with
+    | sforall _ u0 f' => sexists _ u0 (fun u => neg (f' u))
+    | sexists _ u0 f' => sforall _ u0 (fun u => neg (f' u))
+    | sasstn n f' => sasstn n (fun s => neg (f' s))
+    | spropn P => spropn (~P)
+    end.
+
+  Fixpoint sformula_of (f : fformula) :=
+    match f with
+    | fforall _ f' => sforall _ (inl tt) (fun u =>
+                                           match u with
+                                           | inl _ => spropn True
+                                           | inr u' => sformula_of (f' u')
+                                           end)
+    | fexists _ f' => sexists _ (inl tt) (fun u =>
+                                           match u with
+                                           | inl _ => spropn False
+                                           | inr u' => sformula_of (f' u')
+                                           end)
+    | fasstn n f' => sasstn n (fun s => sformula_of (f' s))
+    | fpropn P => spropn P
+    | fnot f' => neg (sformula_of f')
+    | fand f1 f2 => sforall _ true (fun b => if b then sformula_of f1 else sformula_of f2)
+    end.
+
+  Require Import coqutil.Tactics.fwd.
+  Lemma neg_works sf t :
+    excluded_middle ->
+    sinterp (neg sf) t <-> ~sinterp sf t.
+  Proof.
+    intros em. induction sf; simpl; split; cbv [not] in *; intros; fwd;
+      try solve [edestruct H; eauto].
+    apply naen in H0; try assumption. destruct H0 as [y H0]. edestruct H; eauto.
+  Qed.
+      
+  Lemma sformula_of_works ff t :
+    excluded_middle ->
+    finterp ff t <-> sinterp (sformula_of ff) t.
+  Proof.
+    clear. intros em. induction ff; intros; simpl; split; intros; fwd;
+      try assumption;
+      try solve [auto; edestruct H; eauto].
+    - destruct n. { simpl. constructor. } edestruct H; eauto.
+    - specialize (H0 (inr n)). simpl in H0. edestruct H; eauto.
+    - eexists (inr _). edestruct H; eauto.
+    - destruct n; simpl in H0; [solve[destruct H0]|]. edestruct H; eauto.
+    - destruct n; edestruct IHff1, IHff2; eauto.
+    - pose proof (H false). pose proof (H true). simpl in *. destruct IHff1, IHff2; eauto.
+    - apply neg_works; try assumption. destruct IHff; eauto.
+    - apply neg_works in H; try assumption. destruct IHff; auto.
+  Qed.
+  
   (*about lists*)
   Inductive lformula :=
   | lforall (U : Type) (u : U) : (U -> lformula) -> lformula
@@ -1344,7 +1420,10 @@ Lemma sinterp_to_omni_aep_pretty (State Event : Type) (ev : Event)
           (exists n : nat, post (nth n ex0)) \/
             (exists tr : stream Event, has_inf_trace State Event trace ex0 tr /\ P tr)).
 Proof.
-  intros Hd. apply definable_characterization in Hd. destruct Hd as (?&?).
+  intros Hd. apply definable_characterization in Hd. destruct Hd as (?&Hd).
+  eassert (forall t, _).
+  { intros t. specialize (Hd t). rewrite sformula_of_works in Hd by (exact em). exact Hd. }
+  clear Hd.
   eexists. apply sinterp_to_omni_aep; auto using em, fun_choice.
   Unshelve. exact ev.
 Qed.
