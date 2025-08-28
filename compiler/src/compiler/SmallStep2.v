@@ -1401,11 +1401,11 @@ End OK_execution.
 Axiom em: excluded_middle.
 Axiom fun_choice: forall T1 T2, FunctionalChoice_on T1 T2.
 
-Lemma sinterp_to_omni_aep_pretty (State Event : Type) (ev : Event)
-  (trace : State -> list Event) (post : State -> Prop) (might_step : State -> State -> Prop) 
-  (s : State) (P : stream Event -> Prop) :
+Lemma sinterp_to_omni_aep_pretty (State Event : Type) (trace : State -> list Event) (P : stream Event -> Prop) (post : State -> Prop) (ev : Event) :
   definable _ P ->
   exists aep,
+  forall (might_step : State -> State -> Prop) (s : State),
+
     (forall s1 s2,
         might_step s1 s2 -> exists tr', trace s2 = (trace s1 ++ tr')%list) ->
 
@@ -1415,16 +1415,16 @@ Lemma sinterp_to_omni_aep_pretty (State Event : Type) (ev : Event)
          | AEP_A _ _ _ | AEP_E _ _ _ => False
          | AEP_P _ P0 => P0 s'
          end) <->
-      (forall ex0 : stream State,
-          possible State might_step ex0 /\ nth 0 ex0 = s ->
-          (exists n : nat, post (nth n ex0)) \/
-            (exists tr : stream Event, has_inf_trace State Event trace ex0 tr /\ P tr)).
+      (forall ex : stream State,
+          possible _ might_step ex /\ nth 0 ex = s ->
+          (exists n, post (nth n ex)) \/
+            (exists tr : stream Event, has_inf_trace _ _ trace ex tr /\ P tr)).
 Proof.
   intros Hd. apply definable_characterization in Hd. destruct Hd as (?&Hd).
   eassert (forall t, _).
   { intros t. specialize (Hd t). rewrite sformula_of_works in Hd by (exact em). exact Hd. }
   clear Hd.
-  eexists. apply sinterp_to_omni_aep; auto using em, fun_choice.
+  eexists. intros. apply sinterp_to_omni_aep; auto using em, fun_choice.
   Unshelve. exact ev.
 Qed.
 Print Assumptions sinterp_to_omni_aep_pretty.
