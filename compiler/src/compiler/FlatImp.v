@@ -317,7 +317,7 @@ Module exec.
     Local Notation metrics := MetricLog.
 
     (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
-    Implicit Types post : leakage -> trace -> mem -> locals -> metrics -> Prop.
+    Implicit Types post : bool -> AEP -> leakage -> trace -> mem -> locals -> metrics -> Prop.
 
     Definition lookup_op_locals (l: locals) (o: operand) :=
       match o with
@@ -352,10 +352,10 @@ Module exec.
     (* alternative semantics which allow non-determinism *)
     Inductive exec {pick_sp: PickSp} :
       stmt varname ->
-      leakage -> trace -> mem -> locals -> metrics ->
-      (leakage -> trace -> mem -> locals -> metrics -> Prop)
+      bool -> AEP -> leakage -> trace -> mem -> locals -> metrics ->
+      (bool -> AEP -> leakage -> trace -> mem -> locals -> metrics -> Prop)
     -> Prop :=
-    | interact: forall k t m mKeep mGive l mc action argvars argvals resvars outcome post,
+    | interact: forall aep k t m mKeep mGive l mc action argvars argvals resvars outcome post,
         map.split m mKeep mGive ->
         map.getmany_of_list l argvars = Some argvals ->
         ext_spec t mGive action argvals outcome ->
@@ -363,156 +363,121 @@ Module exec.
             outcome mReceive resvals klist ->
             exists l', map.putmany_of_list_zip resvars resvals l = Some l' /\
             forall m', map.split m' mKeep mReceive ->
-            post (leak_list klist :: k) (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l'
+            post true aep (leak_list klist :: k) (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l'
                  (cost_interact phase mc)) ->
-        exec (SInteract resvars action argvars) k t m l mc post
-    | call: forall k t m l mc binds fname args params rets fbody argvs st0 post outcome,
+        exec (SInteract resvars action argvars) true aep k t m l mc post
+    | call: forall aep k t m l mc binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list_zip params argvs map.empty = Some st0 ->
-        exec fbody (leak_unit :: k) t m st0 mc outcome ->
-        (forall k' t' m' mc' st1,
-            outcome k' t' m' st1 mc' ->
-            exists retvs l',
-              map.getmany_of_list st1 rets = Some retvs /\
-              map.putmany_of_list_zip binds retvs l = Some l' /\
-              post k' t' m' l' (cost_call phase mc')) ->
-        exec (SCall binds fname args) k t m l mc post
-    | load: forall k t m l mc sz x a o v addr post,
+        exec fbody true aep (leak_unit :: k) t m st0 mc outcome ->
+        (forall q' aep' k' t' m' st1 mc',
+            outcome q' aep' k' t' m' st1 mc' ->
+            if q' then
+              exists retvs l',
+                map.getmany_of_list st1 rets = Some retvs /\
+                  map.putmany_of_list_zip binds retvs l = Some l' /\
+                  post q' aep' k' t' m' l' (cost_call phase mc')
+            else post q' aep' k' t' m' st1 (cost_call phase mc')) ->
+        exec (SCall binds fname args) true aep k t m l mc post
+    | load: forall aep k t m l mc sz x a o v addr post,
         map.get l a = Some addr ->
         load sz m (word.add addr (word.of_Z o)) = Some v ->
-        post (leak_word (word.add addr (word.of_Z o)) :: k) t m (map.put l x v) (cost_load isReg x a mc)->
-        exec (SLoad sz x a o) k t m l mc post
-    | store: forall k t m m' mc l sz a o addr v val post,
+        post true aep (leak_word (word.add addr (word.of_Z o)) :: k) t m (map.put l x v) (cost_load isReg x a mc)->
+        exec (SLoad sz x a o) true aep k t m l mc post
+    | store: forall aep k t m m' mc l sz a o addr v val post,
         map.get l a = Some addr ->
         map.get l v = Some val ->
         store sz m (word.add addr (word.of_Z o)) val = Some m' ->
-        post (leak_word (word.add addr (word.of_Z o)) :: k) t m' l (cost_store isReg a v mc) ->
-        exec (SStore sz a v o) k t m l mc post
-    | inlinetable: forall sz x table i v index k t m l mc post,
+        post true aep (leak_word (word.add addr (word.of_Z o)) :: k) t m' l (cost_store isReg a v mc) ->
+        exec (SStore sz a v o) true aep k t m l mc post
+    | inlinetable: forall sz x table i v index aep k t m l mc post,
         (* compiled riscv code uses x as a tmp register and this shouldn't overwrite i *)
         x <> i ->
         map.get l i = Some index ->
         load sz (map.of_list_word table) index = Some v ->
-        post (leak_word index :: k) t m (map.put l x v) (cost_inlinetable isReg x i mc) ->
-        exec (SInlinetable sz x table i) k t m l mc post
-    | stackalloc: forall k t mSmall l mc x n body post,
+        post true aep (leak_word index :: k) t m (map.put l x v) (cost_inlinetable isReg x i mc) ->
+        exec (SInlinetable sz x table i) true aep k t m l mc post
+    | stackalloc: forall aep k t mSmall l mc x n body post,
         n mod (bytes_per_word width) = 0 ->
         (forall mStack mCombined,
             let a := pick_sp k in
             anybytes a n mStack ->
             map.split mCombined mSmall mStack ->
-            exec body (leak_unit :: k) t mCombined (map.put l x a) mc
-             (fun k' t' mCombined' l' mc' =>
-              exists mSmall' mStack',
+            exec body true aep (leak_unit :: k) t mCombined (map.put l x a) mc
+             (fun q' aep' k' t' mCombined' l' mc' =>
+              if q' then exists mSmall' mStack',
                 anybytes a n mStack' /\
                 map.split mCombined' mSmall' mStack' /\
-                post k' t' mSmall' l' (cost_stackalloc isReg x mc'))) ->
-        exec (SStackalloc x n body) k t mSmall l mc post
-    | lit: forall k t m l mc x v post,
-        post k t m (map.put l x (word.of_Z v)) (cost_lit isReg x mc) ->
-        exec (SLit x v) k t m l mc post
-    | op: forall k t m l mc x op y y' z z' post,
+                  post q' aep' k' t' mSmall' l' (cost_stackalloc isReg x mc')
+              else post q' aep' k' t' mCombined' l' (cost_stackalloc isReg x mc'))) ->
+        exec (SStackalloc x n body) true aep k t mSmall l mc post
+    | lit: forall aep k t m l mc x v post,
+        post true aep k t m (map.put l x (word.of_Z v)) (cost_lit isReg x mc) ->
+        exec (SLit x v) true aep k t m l mc post
+    | op: forall aep k t m l mc x op y y' z z' post,
         map.get l y = Some y' ->
         lookup_op_locals l z = Some z' ->
-        post (leak_binop op y' z' ++ k) t m (map.put l x (interp_binop op y' z')) (cost_SOp x y z mc) ->
-        exec (SOp x op y z) k t m l mc post
-    | set: forall k t m l mc x y y' post,
+        post true aep (leak_binop op y' z' ++ k) t m (map.put l x (interp_binop op y' z')) (cost_SOp x y z mc) ->
+        exec (SOp x op y z) true aep k t m l mc post
+    | set: forall aep k t m l mc x y y' post,
         map.get l y = Some y' ->
-        post k t m (map.put l x y') (cost_set isReg x y mc) ->
-        exec (SSet x y) k t m l mc post
-    | if_true: forall k t m l mc cond  bThen bElse post,
+        post true aep k t m (map.put l x y') (cost_set isReg x y mc) ->
+        exec (SSet x y) true aep k t m l mc post
+    | if_true: forall aep k t m l mc cond  bThen bElse post,
         eval_bcond l cond = Some true ->
-        exec bThen (leak_bool true :: k) t m l (cost_SIf cond mc) post ->
-        exec (SIf cond bThen bElse) k t m l mc post
-    | if_false: forall k t m l mc cond bThen bElse post,
+        exec bThen true aep (leak_bool true :: k) t m l (cost_SIf cond mc) post ->
+        exec (SIf cond bThen bElse) true aep k t m l mc post
+    | if_false: forall aep k t m l mc cond bThen bElse post,
         eval_bcond l cond = Some false ->
-        exec bElse (leak_bool false :: k) t m l (cost_SIf cond mc) post ->
-        exec (SIf cond bThen bElse) k t m l mc post
-    | loop: forall k t m l mc cond body1 body2 mid1 mid2 post,
+        exec bElse true aep (leak_bool false :: k) t m l (cost_SIf cond mc) post ->
+        exec (SIf cond bThen bElse) true aep k t m l mc post
+    | loop: forall aep k t m l mc cond body1 body2 mid1 mid2 post,
         (* This case is carefully crafted in such a way that recursive uses of exec
          only appear under forall and ->, but not under exists, /\, \/, to make sure the
          auto-generated induction principle contains an IH for all recursive uses. *)
-        exec body1 k t m l mc mid1 ->
-        (forall k' t' m' l' mc',
-            mid1 k' t' m' l' mc' ->
+        exec body1 true aep k t m l mc mid1 ->
+        (forall aep' k' t' m' l' mc',
+            mid1 true aep' k' t' m' l' mc' ->
             eval_bcond l' cond <> None) ->
-        (forall k' t' m' l' mc',
-            mid1 k' t' m' l' mc' ->
+        (forall aep' k' t' m' l' mc',
+            mid1 true aep' k' t' m' l' mc' ->
             eval_bcond l' cond = Some false ->
-            post (leak_bool false :: k') t' m' l' (cost_SLoop_false cond mc')) ->
-        (forall k' t' m' l' mc',
-            mid1 k' t' m' l' mc' ->
+            post true aep' (leak_bool false :: k') t' m' l' (cost_SLoop_false cond mc')) ->
+        (forall aep' k' t' m' l' mc',
+            mid1 true aep' k' t' m' l' mc' ->
             eval_bcond l' cond = Some true ->
-            exec body2 (leak_bool true :: k') t' m' l' mc' mid2) ->
-        (forall k'' t'' m'' l'' mc'',
-            mid2 k'' t'' m'' l'' mc'' ->
-            exec (SLoop body1 cond body2) k'' t'' m'' l''
-                 (cost_SLoop_true cond mc'') post) ->
-        exec (SLoop body1 cond body2) k t m l mc post
-    | seq: forall k t m l mc s1 s2 mid post,
-        exec s1 k t m l mc mid ->
-        (forall k' t' m' l' mc', mid k' t' m' l' mc' -> exec s2 k' t' m' l' mc' post) ->
-        exec (SSeq s1 s2) k t m l mc post
-    | skip: forall k t m l mc post,
-        post k t m l mc ->
-        exec SSkip k t m l mc post.
+            exec body2 true aep' (leak_bool true :: k') t' m' l' mc' mid2) ->
+        (forall aep' k' t' m' l' mc',
+            mid1 false aep' k' t' m' l' mc' ->
+            post false aep' k' t' m' l' mc') ->
+        (forall q'' aep'' k'' t'' m'' l'' mc'',
+            mid2 q'' aep'' k'' t'' m'' l'' mc'' ->
+            exec (SLoop body1 cond body2) q'' aep'' k'' t'' m'' l''
+              (cost_SLoop_true cond mc'') post) ->
+        exec (SLoop body1 cond body2) true aep k t m l mc post
+    | seq: forall aep k t m l mc s1 s2 mid post,
+        exec s1 true aep k t m l mc mid ->
+        (forall q' aep' k' t' m' l' mc', mid q' aep' k' t' m' l' mc' -> exec s2 q' aep' k' t' m' l' mc' post) ->
+        exec (SSeq s1 s2) true aep k t m l mc post
+    | skip: forall aep k t m l mc post,
+        post true aep k t m l mc ->
+        exec SSkip true aep k t m l mc post
+    | quit s q aep k t m l mc post
+        (_ : post false aep k t m l mc)
+      : exec s q aep k t m l mc post
+    | exec_A s aep k t m l mc post
+        (_ : forall x, exec s true (aep x) k t m l mc post)
+      : exec s true (AEP_A aep) k t m l mc post
+    | exec_E s aep k t m l mc post x
+        (_ : exec s true (aep x) k t m l mc post)
+      : exec s true (AEP_E aep) k t m l mc post.
 
-    Lemma det_step {pick_sp: PickSp} : forall k0 t0 m0 l0 mc0 s1 s2 k1 t1 m1 l1 mc1 post,
-        exec s1 k0 t0 m0 l0 mc0 (fun k1' t1' m1' l1' mc1' => k1' = k1 /\ t1' = t1 /\ m1' = m1 /\ l1' = l1 /\ mc1 = mc1') ->
-        exec s2 k1 t1 m1 l1 mc1 post ->
-        exec (SSeq s1 s2) k0 t0 m0 l0 mc0 post.
-    Proof.
-      intros.
-      eapply seq; [eassumption|].
-      intros. simpl in *. simp.
-      assumption.
-    Qed.
-
-    Lemma seq_cps {pick_sp: PickSp} : forall s1 s2 k t m (l: locals) mc post,
-        exec s1 k t m l mc (fun k' t' m' l' mc' => exec s2 k' t' m' l' mc' post) ->
-        exec (SSeq s1 s2) k t m l mc post.
-    Proof.
-      intros. eapply seq. 1: eassumption. simpl. clear. auto.
-    Qed.
-
-    Lemma call_cps {pick_sp: PickSp} : forall fname params rets binds args fbody argvs k t (l: locals) m mc st post,
-        map.get e fname = Some (params, rets, fbody) ->
-        map.getmany_of_list l args = Some argvs ->
-        map.putmany_of_list_zip params argvs map.empty = Some st ->
-        exec fbody (leak_unit :: k) t m st mc
-             (fun k' t' m' st' mc' =>
-                exists retvs l',
-                  map.getmany_of_list st' rets = Some retvs /\
-                    map.putmany_of_list_zip binds retvs l = Some l' /\
-                    post k' t' m' l' (cost_call phase mc')) ->
-      exec (SCall binds fname args) k t m l mc post.
-    Proof.
-      intros. eapply call; try eassumption.
-      cbv beta. intros *. exact id.
-    Qed.
-
-    Lemma loop_cps {pick_sp: PickSp} : forall body1 cond body2 k t m l mc post,
-      exec body1 k t m l mc (fun k t m l mc => exists b,
-        eval_bcond l cond = Some b /\
-        (b = false -> post (leak_bool false :: k) t m l (cost_SLoop_false cond mc)) /\
-        (b = true -> exec body2 (leak_bool true :: k) t m l mc (fun k t m l mc =>
-           exec (SLoop body1 cond body2) k t m l
-                (cost_SLoop_true cond mc) post))) ->
-      exec (SLoop body1 cond body2) k t m l mc post.
-    Proof.
-      intros. eapply loop. 1: eapply H. all: cbv beta; intros; simp.
-      - congruence.
-      - replace b with false in * by congruence. clear b. eauto. 
-      - replace b with true in * by congruence. clear b. eauto.
-      - assumption.
-    Qed.
-
-    Lemma weaken {pick_sp: PickSp} : forall s k t m l mc post1,
-        exec s k t m l mc post1 ->
+    Lemma weaken {pick_sp: PickSp} : forall s q aep k t m l mc post1,
+        exec s q aep k t m l mc post1 ->
         forall post2,
-          (forall k' t' m' l' mc', post1 k' t' m' l' mc' -> post2 k' t' m' l' mc') ->
-          exec s k t m l mc post2.
+          (forall q' aep' k' t' m' l' mc', post1 q' aep' k' t' m' l' mc' -> post2 q' aep' k' t' m' l' mc') ->
+          exec s q aep k t m l mc post2.
     Proof.
       induction 1; intros; try solve [econstructor; eauto].
       - eapply interact; try eassumption.
@@ -524,30 +489,639 @@ Module exec.
         all: eauto.
         intros. simp.
         specialize H3 with (1 := H5).
+        destruct q'; [|solve[auto]].
         simp. eauto 10.
       - eapply stackalloc. 1: assumption.
         intros.
         eapply H1; eauto.
-        intros. simp. eauto 10.
+        intros. simp. destruct q'; fwd; eauto 10.
     Qed.
-
-    Lemma seq_assoc {pick_sp: PickSp} : forall s1 s2 s3 k t m l mc post,
-        exec (SSeq s1 (SSeq s2 s3)) k t m l mc post ->
-        exec (SSeq (SSeq s1 s2) s3) k t m l mc post.
+    
+    Lemma det_step {pick_sp: PickSp} : forall aep0 k0 t0 m0 l0 mc0 s1 s2 q1 aep1 k1 t1 m1 l1 mc1 post,
+        exec s1 true aep0 k0 t0 m0 l0 mc0 (fun q1' aep1' k1' t1' m1' l1' mc1' => q1' = q1 /\ aep1' = aep1 /\ k1' = k1 /\ t1' = t1 /\ m1' = m1 /\ l1' = l1 /\ mc1 = mc1') ->
+        exec s2 q1 aep1 k1 t1 m1 l1 mc1 post ->
+        exec (SSeq s1 s2) true aep0 k0 t0 m0 l0 mc0 post.
     Proof.
-      intros. simp.
-      eapply seq_cps.
-      eapply seq_cps.
-      eapply weaken. 1: eassumption. intros.
-      specialize H9 with (1 := H). simp.
-      eapply weaken. 1: eassumption. intros.
-      eauto.
+      intros.
+      eapply seq; [eassumption|].
+      intros. simpl in *. simp.
+      assumption.
     Qed.
 
-    Lemma seq_assoc_bw {pick_sp: PickSp} : forall s1 s2 s3 k t m l mc post,
-        exec (SSeq (SSeq s1 s2) s3) k t m l mc post ->
-        exec (SSeq s1 (SSeq s2 s3)) k t m l mc post.
-    Proof. intros. simp. eauto 10 using seq. Qed.
+    Lemma loop_cps {pick_sp: PickSp} : forall body1 cond body2 aep k t m l mc post,
+        exec body1 true aep k t m l mc
+          (fun q aep k t m l mc =>
+             if q then
+               exists b,
+               eval_bcond l cond = Some b /\
+                 (b = false -> post q aep (leak_bool false :: k) t m l (cost_SLoop_false cond mc)) /\
+                   (b = true -> 
+                    exec body2 q aep (leak_bool true :: k) t m l mc
+                      (fun q aep k t m l mc =>
+                         exec (SLoop body1 cond body2) q aep k t m l
+                                     (cost_SLoop_true cond mc) post))
+               else post q aep k t m l mc) ->
+      exec (SLoop body1 cond body2) true aep k t m l mc post.
+    Proof.
+      intros. eapply loop. 1: eapply H. all: cbv beta; intros; simp.
+      - congruence.
+      - replace b with false in * by congruence. clear b. eauto. 
+      - replace b with true in * by congruence. clear b. eauto.
+      - assumption.
+      - simpl in *. destruct q''; [assumption|]. apply quit. inversion H0. subst.
+        assumption.
+    Qed.
+
+    Fixpoint one_step (s : stmt varname) : Prop :=
+      match s with
+      | SLoad _ _ _ _ => True
+      | SStore _ _ _ _ => True
+      | SInlinetable _ _ _ _ => True
+      | SStackalloc _ _ _ => False
+      | SLit _ _ => True
+      | SOp _ _ _ _ => True
+      | SSet _ _ => True
+      | SIf _ s1 s2 => False
+      | SLoop s1 _ s2 => False
+      | SSeq s1 s2 => False
+      | SSkip => True
+      | SCall _ _ _ => False
+      | SInteract _ _ _ => True
+      end.
+
+    Require Import Coq.Logic.ChoiceFacts.
+
+    Ltac stuff :=
+      repeat match goal with
+        | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
+            replace x2 with x1 in * by congruence;
+            replace y2 with y1 in * by congruence;
+            replace z2 with z1 in * by congruence;
+            clear x2 y2 z2 H2
+        end;
+      repeat match goal with
+        | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+            replace v2 with v1 in * by congruence; clear H2
+        end.
+
+    Lemma call_cps {pick_sp: PickSp} : forall fname params rets binds args fbody argvs aep k t (l: locals) m mc st post,
+        map.get e fname = Some (params, rets, fbody) ->
+        map.getmany_of_list l args = Some argvs ->
+        map.putmany_of_list_zip params argvs map.empty = Some st ->
+        exec fbody true aep (leak_unit :: k) t m st mc
+             (fun q' aep' k' t' m' st' mc' =>
+                if q' then
+                  exists retvs l',
+                  map.getmany_of_list st' rets = Some retvs /\
+                    map.putmany_of_list_zip binds retvs l = Some l' /\
+                    post q' aep' k' t' m' l' (cost_call phase mc')
+             else post q' aep' k' t' m' st' (cost_call phase mc')) ->
+      exec (SCall binds fname args) true aep k t m l mc post.
+    Proof.
+      intros. eapply call; try eassumption.
+      cbv beta. intros * ?. destruct q'; [|solve[auto]]. fwd. eauto.
+    Qed.
+    
+    Lemma seq_cps {pick_sp: PickSp} : forall s1 s2 aep k t m (l: locals) mc post,
+        exec s1 true aep k t m l mc (fun q' aep' k' t' m' l' mc' => exec s2 q' aep' k' t' m' l' mc' post) ->
+        exec (SSeq s1 s2) true aep k t m l mc post.
+    Proof.
+      intros. eapply seq. 1: eassumption. simpl. clear. auto.
+    Qed.
+
+    Lemma aep_same {pick_sp: PickSp} : forall q blah k t m l mc s post,
+        exec s q (AEP_P blah) k t m l mc post ->
+        exec s q (AEP_P blah) k t m l mc (fun q' aep' k' t' m' l' mc' =>
+                                            aep' = AEP_P blah /\ post q' aep' k' t' m' l' mc').
+    Proof.
+      intros. remember (AEP_P _) as blagh. revert Heqblagh.
+      induction H; intros; subst; try solve [econstructor; eauto; simpl; intros; fwd; eauto].
+      - econstructor; eauto. intros * H'. specialize H2 with (1 := H'). fwd. eauto.
+      - eapply call_cps; eauto. eapply weaken. 1: clear H2; eauto. simpl. intros. fwd.
+        apply H3 in H4p1. destruct q'; fwd; intuition eauto 20.
+      - econstructor; eauto. intros. eapply weaken. 1: eapply H1; eauto. simpl.
+        intros. fwd. destruct q'; fwd; eauto 20.
+      - apply loop_cps. eapply weaken. 1: apply IHexec; auto. simpl. intros. fwd.
+        destruct q'; [|solve[auto]]. Search mid1. specialize H0 with (1 := H7p1).
+        destruct (eval_bcond _ _) eqn:E; [|congruence]. eexists.
+        split; [reflexivity|split; intros; subst].
+        + auto.
+        + Search body2. Search body2. clear H2. eapply weaken. 1: eauto. simpl. intros.
+          fwd. eauto.
+      - apply seq_cps. clear H H0. eapply weaken; eauto. simpl. intros. fwd. eauto.
+      - congruence.
+      - congruence.
+    Qed.
+        
+    Axiom em : forall (P : Prop), P \/ ~P.
+    Axiom choice : forall x y, FunctionalChoice_on x y.
+    Lemma intersect {pick_sp: PickSp} : forall q blah0 k t m l mc s (postx : _ -> _ -> _ -> _ -> _ -> _ -> Prop),
+        (forall (x : nat), exec s q (AEP_P blah0) k t m l mc (fun q' aep' k' t' m' l' mc' => q' = true /\ postx x k' t' m' l' mc')) ->
+        forall blah, exec s q (AEP_P blah) k t m l mc (fun q' aep' k' t' m' l' mc' =>
+                                                    q' = true /\ forall x, postx x k' t' m' l' mc').
+    Proof.
+      intros. pose proof (H O) as H0. remember (fun q' aep' k' t' m' l' mc' => _) as post.
+      assert (Hpost: forall q' aep' k' t' m' l' mc', post q' aep' k' t' m' l' mc' -> q' = true) by (subst; intros; fwd; auto).
+      clear Heqpost. remember (AEP_P blah0) as aep. revert Hpost postx Heqaep H.
+      induction H0; intros Hpost postx Haep Hx; subst.
+      - eassert (exists f, _) as Hf.
+        { apply choice. intros x. specialize (Hx x). inversion Hx; subst.
+          2: { fwd. congruence. }
+          rewrite H0 in H7. inversion H7. subst.
+          pose proof ext_spec.mGive_unique as P.
+          specialize P with (1 := H) (2 := H6) (3 := H1) (4 := H8). subst mGive0.
+          destruct (map.split_diff (map.same_domain_refl mGive) H H6) as (? & _).
+          subst mKeep0.
+          exists outcome0. exact (conj H8 H16). }
+        destruct Hf as [f Hf].
+        econstructor. 1: eassumption. 1: eassumption.
+        { eapply ext_spec.intersect with (post := f). intros x. specialize (Hf x).
+          fwd. assumption. }
+        simpl. intros. pose proof (H3 O) as H3'. pose proof (Hf O) as [Hf'1 Hf'2].
+        specialize Hf'2 with (1 := H3'). fwd. eexists. split; [eassumption|]. intros.
+        intuition. specialize (Hf x). specialize (H3 x).
+        fwd. specialize Hfp1 with (1 := H3). fwd. rewrite Hfp1p0 in Hf'2p0.
+        inversion Hf'2p0; subst; clear Hf'2p0. edestruct Hfp1p1; fwd; eassumption.
+      - specialize IHexec with (2 := eq_refl). pose proof (Hx O) as HxO.
+        inversion HxO; subst; [|fwd; congruence]. stuff.
+        econstructor; eauto.
+        { eapply IHexec.
+          { intros * Hout. apply H3 in Hout. destruct q'; fwd; eauto. }
+          intros. move Hx at bottom. specialize (Hx x).
+          inversion Hx; subst; [|fwd; congruence].
+          stuff.
+          eapply weaken. 1: exact H11. intros * H4. specialize H20 with (1 := H4).
+          destruct q'; [|fwd; congruence].
+          split; [reflexivity|]. fwd. intuition.
+          instantiate (1 := fun _ _ _ _ _ _ => exists retvs l'0, _ /\ _ /\ _). simpl.
+          exists retvs, l'0. ssplit; [exact H20p0|exact H20p1|exact H20p3]. }
+        simpl. intros. fwd. pose proof (H4p1 O) as HO. fwd. eexists. eexists.
+        intuition eauto. specialize (H4p1 x). fwd. stuff. assumption.
+      - econstructor; eauto. intuition. specialize (Hx x0).
+        inversion Hx; subst; [|fwd; congruence]. fwd. stuff. assumption.
+      - econstructor; eauto. intuition. specialize (Hx x).
+        inversion Hx; subst; [|fwd; congruence]. fwd. stuff. assumption.
+      - econstructor; eauto. intuition. specialize (Hx x0).
+        inversion Hx; subst; [|fwd; congruence]. fwd. stuff. assumption.
+      - econstructor; eauto. intros. eapply weaken.
+        { eapply H1; eauto.
+          { intros * Hmid. destruct q'; fwd; eauto. }
+          intros x0. specialize (Hx x0).
+          inversion Hx; subst; [|fwd; congruence].
+          specialize (H15 _ _ ltac:(eassumption) ltac:(eassumption)). eapply weaken.
+          1: eapply H15. simpl. intros. destruct q'; [|fwd; congruence]. fwd.
+          intuition. instantiate (1 := fun _ _ _ _ _ _ => exists _ _, _ /\ _ /\ _).
+          exists mSmall', mStack'. ssplit; [exact H4p0|exact H4p1|exact H4p3]. }
+        simpl. intros. fwd. pose proof (H4p1 O) as HO. fwd. eexists. eexists.
+        intuition eauto. specialize (H4p1 x0). fwd.
+        lazymatch goal with
+        | A: map.split _ _ _, B: map.split _ _ _ |- _ =>
+            specialize @map.split_diff with (4 := A) (5 := B) as P
+        end.
+        edestruct P; try typeclasses eauto. 2: subst; eauto 10.
+        eapply anybytes_unique_domain; eassumption.
+      - econstructor; eauto. intuition. specialize (Hx x0).
+        inversion Hx; subst; [|fwd; congruence]. fwd. stuff. assumption.
+      - econstructor; eauto. intuition. specialize (Hx x0).
+        inversion Hx; subst; [|fwd; congruence]. fwd. stuff. assumption.
+      - econstructor; eauto. intuition. specialize (Hx x0).
+        inversion Hx; subst; [|fwd; congruence]. fwd. stuff. assumption.
+      - econstructor; eauto. apply IHexec; auto. intros x. specialize (Hx x).
+        inversion Hx; subst; [|congruence|fwd; congruence]. assumption.
+      - eapply if_false; eauto. apply IHexec; auto. intros x. specialize (Hx x).
+        inversion Hx; subst; [congruence| |fwd; congruence]. assumption.
+      - apply loop_cps. eapply weaken.
+        { apply aep_same. eapply IHexec; eauto.
+          { intros. destruct q' eqn:E; [reflexivity|]. eauto. }
+          intros x. 
+          instantiate (1 := fun x _ _ _ _ _ => match x with | O => _ | _ => _ end).
+          destruct x.
+          - eapply weaken.
+            { apply aep_same. exact H0. }
+            simpl. intros. fwd. destruct q'.
+            + split; [reflexivity|]. exact H7p1.
+            + Search mid1. apply H4 in H7p1. apply Hpost in H7p1. congruence.
+          - specialize (Hx x).
+            inversion Hx; subst; [|fwd; congruence]. eapply weaken.
+            { apply aep_same. Check IHexec. exact H10. }
+            simpl. intros. fwd. destruct q'.
+            + split; [reflexivity|]. Search (mid0 true). specialize H11 with (1 := H7p1).
+              Search (mid0 true). specialize H13 with (1 := H7p1). Search (mid0 true).
+              specialize H12 with (1 := H7p1).
+              simpl. instantiate (1 := exists mid3, _). exists mid3.
+              exact (conj H11 (conj H13 (conj H12 H22))).
+            + Search mid0. apply H14 in H7p1. fwd. congruence. }
+        simpl. intros. fwd. pose proof (H7p2 O) as Hmid1. pose proof (H7p2 (S O)) as HO.
+        simpl in *. fwd.
+        destruct (eval_bcond _ _) eqn:E; [|congruence]. eexists. split; [reflexivity|].
+        split; intros; subst.
+        + clear HOp1 HOp0 HOp2 HOp3 mid3. intuition. specialize (H7p2 (S x)).
+          simpl in H7p2. fwd. specialize (H7p2p2 eq_refl). fwd. assumption.
+        + clear HOp1 HOp0 HOp2 HOp3 mid3. eapply weaken.
+          { apply aep_same. eapply H3; eauto.
+            - intros. destruct q'; [reflexivity|]. Search mid2. apply H5 in H7.
+              inversion H7. subst. Search post. apply Hpost in H8. congruence.
+            - instantiate (1 := fun x _ _ _ _ _ => match x with | O => _ | _ => _ end).
+              intros x. destruct x.
+              + eapply weaken.
+                { apply aep_same. eauto. }
+                simpl. intros. fwd. destruct q'.
+                -- split; [reflexivity|]. exact H7p1.
+                -- Search mid2. apply H5 in H7p1. inversion H7p1. subst.
+                   apply Hpost in H7. congruence.
+              + specialize (H7p2 (S x)). simpl in H7p2. fwd. Search mid3.
+                eapply weaken.
+                { apply aep_same. apply H7p2p1. reflexivity. }
+                simpl. intros. fwd. apply H7p2p3 in H7p1. destruct q'.
+                2: { inversion H7p1. subst. fwd. congruence. }
+                split; [reflexivity|]. exact H7p1. }
+          simpl. intros. fwd. eapply H6; eauto.
+          -- exact (H7p3 O).
+          -- exact (fun x => H7p3 (S x)).
+      - apply seq_cps. eapply weaken.
+        { apply aep_same. eapply IHexec; eauto.
+          - intros. destruct q'; [reflexivity|]. Search mid. apply H in H2.
+            inversion H2. subst. apply Hpost in H3. congruence.
+          - instantiate (1 := fun x _ _ _ _ _ => match x with | O => _ | _ => _ end).
+            intros x. destruct x.
+            + eapply weaken.
+              { apply aep_same. eauto. }
+              simpl. intros. fwd. destruct q'.
+              -- split; [reflexivity|exact H2p1].
+              -- apply H in H2p1. inversion H2p1. subst. apply Hpost in H2. congruence.
+            + specialize (Hx x). inversion Hx; subst.
+              2: { fwd. congruence. }
+              eapply weaken.
+              { apply aep_same. exact H4. }
+              simpl. intros. fwd. apply H5 in H2p1. destruct q'.
+              -- split; [reflexivity|]. exact H2p1.
+              -- inversion H2p1. subst. fwd. congruence. }
+        simpl. intros. fwd. eapply H1; eauto.
+        + exact (H2p2 O).
+        + exact (fun x => (H2p2 (S x))).
+      - econstructor; eauto. intuition. specialize (Hx x).
+        inversion Hx; subst; [|fwd; congruence]. fwd. stuff. assumption.
+      - apply Hpost in H. congruence.
+      - congruence.
+      - congruence.
+    Qed.
+
+    Lemma det_invert {pick_sp: PickSp} : forall q aep k t m l mc s post,
+        one_step s ->
+        exec s q aep k t m l mc post ->
+        exists inp,
+          compat aep inp /\
+            forall aep',
+              goes_to aep inp aep' ->
+              forall blah,
+                exec s q (AEP_P blah) k t m l mc
+                  (fun q' _ k' t' m' l' mc' =>
+                     post q' aep' k' t' m' l' mc').
+    Proof.
+      intros * Hdet Hexec. induction aep.
+      - inversion Hexec; subst; simpl in Hdet; try destruct Hdet.
+        all: try (exists inp_nil; split; [solve[constructor]|]; intros * H'; econstructor; eauto;
+                    inversion H'; subst; assumption).
+        eassert (H': exists f, _).
+        { apply choice. intros x. specialize (H3 x). specialize (H x H3).
+          destruct H as [inp H]. exists inp. exact H. }
+        clear H. simpl in H'. destruct H' as [f H']. exists (inp_A f). split.
+        { constructor. intros x. specialize (H' x). fwd. assumption. }
+        intros * H *. inversion H. subst. specialize (H' x). fwd.
+        specialize H'p1 with (1 := H2). apply H'p1.
+      - inversion Hexec; subst; simpl in Hdet; try destruct Hdet.
+        all: try (exists inp_nil; split; [solve[constructor]|]; intros * H'; econstructor; eauto;
+                    inversion H'; subst; assumption).
+        specialize H with (1 := H3). fwd. exists (inp_E x inp).
+        split; [constructor; assumption|]. intros * H *. inversion H. subst. apply Hp1.
+        assumption.
+      - exists inp_nil. split; [constructor|]. intros * H *. inversion H. subst.
+        inversion Hexec; subst; try destruct Hdet; econstructor; eauto.
+    Qed.
+
+    (*explicit indexing was a horrible idea*)
+    Lemma ext_spec_intersect_subset t mGive a args postx H :
+      (exists n, H n) ->
+      (forall x : nat, H x -> ext_spec t mGive a args (postx x)) ->
+      ext_spec t mGive a args
+        (fun (mReceive : mem) (resvals klist : list word) =>
+           forall x : nat, H x -> postx x mReceive resvals klist).
+    Proof.
+      intros He Ha.
+      eassert (exists f, _).
+      { apply choice. intros x0. specialize (Ha x0). assert (Hem := em (H x0)).
+        destruct Hem as [Hem|Hem].
+        - exists (postx x0). instantiate (1 := fun x0 y => (H x0 -> y = postx x0) /\ (~H x0 -> y = fun _ _ _ => True)).
+          simpl. split; [|congruence]. intros _. reflexivity.
+        - simpl. eexists. split; [congruence|]. intros. reflexivity. }
+      destruct H0 as [f H0]. eapply ext_spec.weaken.
+      2: { apply ext_spec.intersect with (post := f). intros x. specialize (H0 x). fwd.
+           assert (Hem := em (H x)). destruct Hem as [Hem|Hem].
+           - specialize (H0p0 Hem). rewrite H0p0. auto.
+           - specialize (H0p1 Hem). rewrite H0p1. eapply ext_spec.weaken.
+             2: eauto. cbv [Morphisms.pointwise_relation Basics.impl]. auto. }
+      cbv [Morphisms.pointwise_relation Basics.impl].
+      intros. specialize (H0 x). fwd. apply H0p0 in H2. rewrite <- H2. auto.
+    Qed.
+    
+    Lemma intersect_one_step {pick_sp: PickSp} : forall q blah0 k t m l mc s (postx : _ -> _ -> _ -> _ -> _ -> _ -> _ -> Prop),
+        one_step s ->
+        (forall (x : nat), exec s q (AEP_P blah0) k t m l mc (fun q' _ => postx x q')) ->
+        forall blah, exec s q (AEP_P blah) k t m l mc (fun q' aep' k' t' m' l' mc' =>
+                                                    forall x,
+                                                      postx x false k t m l mc \/
+                                                        postx x q' k' t' m' l' mc').
+    Proof.
+      intros * Hstep Hexec ?. assert (Hem := em (exists n, ~postx n false k t m l mc)).
+      destruct Hem as [ [n Hem]|Hem].
+      2: { apply quit. intros x. assert (Hem' := em (postx x false k t m l mc)).
+           destruct Hem' as [Hem'|Hem']; [left; apply Hem'|]. exfalso. apply Hem.
+           exists x. apply Hem'. }
+      assert (Hn := Hexec n).
+      destruct s; try solve [destruct Hstep].
+      all: inversion Hn; subst; try congruence; cycle -1.
+      { eassert (exists f, _) as Hf.
+        { apply choice. intros x. specialize (Hexec x). inversion Hexec; subst.
+          2: { eexists. instantiate (2 := fun x _ => ~postx x false k t m l mc -> _).
+               simpl. intros H'. congruence. }
+          stuff. pose proof ext_spec.mGive_unique as P.
+          specialize P with (1 := H2) (2 := H4) (3 := H12) (4 := H6). subst mGive0.
+          destruct (map.split_diff (map.same_domain_refl mGive) H2 H4) as (? & _).
+          subst mKeep0.
+          exists outcome0. intros _. exact (conj H6 H16). }
+        destruct Hf as [f Hf]. econstructor. 1,2: eauto.
+        { apply ext_spec_intersect_subset.
+          2: exact (fun x P => match Hf x P with | conj a b => a end). simpl. eauto. }
+        simpl. intros. assert (Hn' := Hf n ltac:(assumption)). fwd.
+        specialize (Hn'p1 _ _ _ ltac:(eauto)). fwd. eexists. split; [eassumption|].
+        intros. specialize Hn'p1p1 with (1 := H0). specialize (Hf x).
+        eassert (Hem' := em _). destruct Hem' as [Hem'|Hem']; [left; exact Hem'|].
+        specialize Hf with (1 := Hem'). fwd. specialize (Hfp1 _ _ _ ltac:(eauto)).
+        fwd. stuff. specialize (Hfp1p1 _ ltac:(eassumption)). auto. }
+      all: econstructor; eauto; cycle -1.
+      all: intros x0.
+      all: specialize (Hexec x) || specialize (Hexec x0).
+      all: inversion Hexec; subst; auto.
+      all: stuff; auto.
+      Unshelve. (*where did this come from*) exact (fun _ _ _ => True).
+    Qed.
+
+    Lemma invert_one_step' {pick_sp: PickSp} : forall q aep k t m l mc s post,
+        one_step s ->
+        exec s q aep k t m l mc post ->
+        exists inp,
+          compat aep inp /\
+            forall blah,
+              exec s q (AEP_P blah) k t m l mc
+                (fun q' _ k' t' m' l' mc' =>
+                   forall aep',
+                     goes_to aep inp aep' ->
+                     post false aep' k t m l mc \/
+                       post q' aep' k' t' m' l' mc').
+    Proof.
+      intros * Hone_step Hexec. induction aep.
+      - inversion Hexec; subst; simpl in Hone_step; try solve [destruct Hone_step].
+        all: try (exists inp_nil; split; [solve[constructor]|]; intros ?; econstructor; eauto;
+                    intros * Hgt; inversion Hgt; subst; solve [auto]).
+        + exists inp_nil; split; [solve[constructor]|]. intros ?; econstructor; eauto.
+          intros. specialize H3 with (1 := H4). fwd. eexists. intuition eauto.
+          inversion H5. subst. auto.
+        + eassert (H': exists f, _).
+          { apply choice. intros x. specialize (H3 x). specialize (H x H3).
+            destruct H as [inp H]. exists inp. exact H. }
+          clear H. simpl in H'. destruct H' as [f H']. exists (inp_A f). split.
+          { constructor. intros x. specialize (H' x). fwd. assumption. }
+          intros ?. eapply weaken.
+          { eapply intersect_one_step; auto. intros x. specialize (H' x). fwd.
+            specialize (H'p1 blah). eapply weaken. 1: exact H'p1. simpl. intros.
+            exact H. }
+          simpl. intros. inversion H0. subst. specialize (H x). destruct H as [H|H].
+          -- apply H in H4. auto. destruct H4; auto.
+          -- apply H in H4. assumption.
+      - inversion Hexec; subst; simpl in Hone_step; try solve [destruct Hone_step].
+        all: try (exists inp_nil; split; [solve[constructor]|]; intros ?; econstructor; eauto;
+                    intros * Hgt; inversion Hgt; subst; solve [auto]).
+        + exists inp_nil. split; [solve[constructor]|]; intros ?; econstructor; eauto; intros * Houtcome.
+          specialize H3 with (1 := Houtcome). fwd. eexists; intuition eauto. inversion H4.
+          subst. auto.
+        + specialize (H _ ltac:(eassumption)). fwd. exists (inp_E x inp).
+          split; [constructor; assumption|]. intros. eapply weaken. 1: eauto.
+          simpl. intros. inversion H0. subst. apply H in H6. assumption.
+      - inversion Hexec; subst; simpl in Hone_step; try solve [destruct Hone_step].
+        all: try (exists inp_nil; split; [solve[constructor]|]; intros ?; econstructor; eauto;
+                    intros * Hgt; inversion Hgt; subst; solve [auto]).
+        exists inp_nil. split; [solve[constructor]|]; intros ?; econstructor; eauto; intros * Houtcome.
+          specialize H2 with (1 := Houtcome). fwd. eexists; intuition eauto. inversion H3.
+          subst. auto.
+    Qed.
+
+    Lemma invert_one_step {pick_sp: PickSp} : forall q aep k t m l mc s post,
+        one_step s ->
+        exec s q aep k t m l mc post ->
+        exists inp,
+          compat aep inp /\
+            exec s q (AEP_P (fun _ _ => True)) k t m l mc
+              (fun q' _ k' t' m' l' mc' =>
+                 forall aep',
+                   goes_to aep inp aep' ->
+                   post false aep' k t m l mc \/
+                     post q' aep' k' t' m' l' mc').
+    Proof. intros. edestruct invert_one_step'; fwd; eauto. Qed.
+
+    Print exec.
+    Definition weakest_pre {ext_spec: ExtSpec} {pick_sp: PickSp} s post aep k t m l mc :=
+      match s with
+      | SInteract resvars action argvars =>
+          exists mKeep mGive argvals,
+          map.split m mKeep mGive /\
+            map.getmany_of_list l argvars = Some argvals /\
+            ext_spec t mGive action argvals
+              (fun mReceive resvals klist =>
+                 exists l' : locals,
+                   map.putmany_of_list_zip resvars resvals l = Some l' /\
+                     (forall m' : mem,
+                         map.split m' mKeep mReceive ->
+                         post true aep (leak_list klist :: k)
+                           ((mGive, action, argvals, (mReceive, resvals)) :: t) m' l'
+                           (cost_interact phase mc)))
+      | SCall binds fname args =>
+          exists params rets fbody argvs st0,
+          map.get e fname = Some (params, rets, fbody) /\
+            map.getmany_of_list l args = Some argvs /\
+            map.putmany_of_list_zip params argvs map.empty = Some st0 /\
+            exec fbody true aep (leak_unit :: k) t m st0 mc
+              (fun q' aep' k' t' m' st1 mc' =>
+                 if q'
+                 then
+                   exists (retvs : list word) (l' : locals),
+                     map.getmany_of_list st1 rets = Some retvs /\
+                       map.putmany_of_list_zip binds retvs l = Some l' /\
+                       post q' aep' k' t' m' l' (cost_call phase mc')
+                 else post q' aep' k' t' m' st1 (cost_call phase mc'))
+      | SLoad sz x a o =>
+          exists addr v,
+          map.get l a = Some addr /\
+            Memory.load sz m (word.add addr (word.of_Z o)) = Some v /\
+            post true aep (leak_word (word.add addr (word.of_Z o)) :: k) t m
+              (map.put l x v) (cost_load isReg x a mc)
+      | SStore sz a v o =>
+          exists addr val m',
+          map.get l a = Some addr /\
+            map.get l v = Some val /\
+            Memory.store sz m (word.add addr (word.of_Z o)) val = Some m' /\
+            post true aep (leak_word (word.add addr (word.of_Z o)) :: k) t m' l
+              (cost_store isReg a v mc)
+      | SInlinetable sz x table i =>
+          exists index v,
+          x <> i /\
+          map.get l i = Some index /\
+          Memory.load sz (map.of_list_word table) index = Some v /\
+          post true aep (leak_word index :: k) t m 
+            (map.put l x v) (cost_inlinetable isReg x i mc)
+      | SSeq s1 s2 =>
+          exec s1 true aep k t m l mc
+            (fun q' aep' k' t' m' l' mc' =>
+               exec s2 q' aep' k' t' m' l' mc' post)
+      | SStackalloc x n body =>
+          n mod bytes_per_word width = 0 /\
+            forall mStack mCombined : mem,
+              let a := pick_sp k in
+              anybytes a n mStack ->
+              map.split mCombined m mStack ->
+              exec body true aep (leak_unit :: k) t mCombined 
+                (map.put l x a) mc
+                (fun q' aep' k' t' mCombined' l' mc' =>
+                   if q'
+                   then
+                     exists mSmall' mStack' : mem,
+                       anybytes a n mStack' /\
+                         map.split mCombined' mSmall' mStack' /\
+                         post q' aep' k' t' mSmall' l' (cost_stackalloc isReg x mc')
+                   else
+                     post q' aep' k' t' mCombined' l' (cost_stackalloc isReg x mc'))
+      | SLit x v =>
+          post true aep k t m (map.put l x (word.of_Z v)) (cost_lit isReg x mc)
+      | SOp x o y z =>
+          exists y' z',
+          map.get l y = Some y' /\
+            lookup_op_locals l z = Some z' /\
+            post true aep (leak_binop o y' z' ++ k) t m
+              (map.put l x (interp_binop o y' z')) (cost_SOp x y z mc)
+      | SSet x y =>
+          exists y',
+          map.get l y = Some y' /\
+            post true aep k t m (map.put l x y') (cost_set isReg x y mc)
+      | SIf cond bThen bElse =>
+          exists b,
+          eval_bcond l cond = Some b /\
+            exec (if b then bThen else bElse) true aep (leak_bool b :: k) t m l (cost_SIf cond mc) post
+      | SLoop body1 cond body2 =>
+          exec body1 true aep k t m l mc
+            (fun q aep k t m l mc =>
+               if q then
+                 exists b,
+                   eval_bcond l cond = Some b /\
+                     (b = false -> post q aep (leak_bool false :: k) t m l (cost_SLoop_false cond mc)) /\
+                     (b = true -> 
+                      exec body2 q aep (leak_bool true :: k) t m l mc
+                        (fun q aep k t m l mc =>
+                           exec (SLoop body1 cond body2) q aep k t m l
+                             (cost_SLoop_true cond mc) post))
+               else post q aep k t m l mc)
+      | SSkip =>
+          post true aep k t m l mc
+      end.
+
+    Lemma weakest_pre_impl_exec {pick_sp: PickSp} s post aep k t m l mc :
+      weakest_pre s post aep k t m l mc ->
+      exec s true aep k t m l mc post.
+    Proof.
+      destruct s; try solve [simpl; intros; fwd; econstructor; eauto].
+      { simpl. intros. fwd. destruct b; [solve [eapply if_true; eauto] | solve [eapply if_false; eauto]]. }
+      { simpl. intros. apply loop_cps. assumption. }
+    Qed.
+    
+    Lemma exec_impl_weakest_pre {pick_sp: PickSp} q aep s k t m l mc post :
+      exec s q aep k t m l mc post ->
+      exists inp,
+        compat aep inp /\
+          forall aep',
+            goes_to aep inp aep' ->
+            post false aep' k t m l mc \/ weakest_pre s post aep' k t m l mc.
+    Proof.
+      intros Hexec. induction Hexec; try solve [exists inp_nil; split; [constructor|]; intros aep' Haep'; inversion Haep'; subst; right; simpl; eauto 10].
+      all: try (fwd; eexists; split; [eassumption|]).
+      - exists inp_nil. split; [constructor|]. intros aep' Haep'. inversion Haep'. subst.
+        right. simpl. do 3 eexists. intuition eauto. eapply ext_spec.weaken; eauto.
+      - intros aep' Haep'. right.
+        specialize IHHexecp1 with (1 := Haep'). simpl. do 5 eexists. intuition eauto.
+        + specialize (H2 _ _ _ _ _ _ _ ltac:(eassumption)). simpl in H2. apply quit.
+          assumption.
+        + eapply weaken. 1: apply weakest_pre_impl_exec; eassumption. assumption.
+      - intros aep' Haep'. right. specialize IHHexecp1 with (1 := Haep'). simpl.
+        destruct IHHexecp1 as [H'|H'].
+        { apply quit. auto. }
+        eapply weaken.
+        { apply weakest_pre_impl_exec. eassumption. }
+        intros. destruct q'; [|solve [auto]].
+        specialize H with (1 := H6). specialize H0 with (1 := H6). specialize H1 with (1 := H6).
+        specialize H2 with (1 := H6). destruct (eval_bcond l' cond); [|congruence].
+        eexists. split; [reflexivity|]. split; intros; subst; [solve[auto]|].
+        eapply weaken; eauto.
+      - intros aep' Haep'. right. specialize IHHexecp1 with (1 := Haep'). simpl.
+        destruct IHHexecp1 as [H'|H']. 1: apply quit; solve[auto].
+        eapply weaken; eauto. apply weakest_pre_impl_exec. assumption.
+      - exists inp_nil. split; [constructor|]. intros aep' Haep'. inversion Haep'. subst.
+        auto.
+      - eassert (exists f, _).
+        { apply choice. intros x. specialize (H0 x). destruct H0 as [inp H0].
+          exists inp. exact H0. }
+        destruct H1 as [f H1]. exists (inp_A f). split.
+        { constructor. intros x. specialize (H1 x). fwd. assumption. }
+        intros aep' Haep'. inversion Haep'. subst. specialize (H1 x). fwd. auto.
+      - fwd. exists (inp_E x inp). split; [constructor; auto|]. intros aep' Haep'.
+        inversion Haep'. subst. auto.
+    Qed.
+
+    Lemma inp_works {pick_sp: PickSp} inp aep k t m l mc s post :
+      compat aep inp ->
+      (forall aep',
+          goes_to aep inp aep' ->
+          exec s true aep' k t m l mc post) ->
+      exec s true aep k t m l mc post.
+    Proof.
+      intros Hcom Haep. revert aep Hcom Haep. induction inp; intros aep Hcom Haep;
+        inversion Hcom; subst.
+      - apply Haep. constructor.
+      - eapply exec_E. eapply IHinp; try eassumption. intros. apply Haep. constructor.
+        assumption.
+      - apply exec_A. intros x. eapply H; eauto. intros. apply Haep. econstructor.
+        eassumption.
+    Qed.
+
+    Lemma seq_assoc {pick_sp: PickSp} : forall s1 s2 s3 aep k t m l mc post,
+        exec (SSeq s1 (SSeq s2 s3)) true aep k t m l mc post ->
+        exec (SSeq (SSeq s1 s2) s3) true aep k t m l mc post.
+    Proof.
+      intros. apply exec_impl_weakest_pre in H. fwd.
+      eapply inp_works; [eassumption|]; intros.
+      specialize (Hp1 _ ltac:(eassumption)). destruct Hp1 as [Hp1|Hp1].
+      { apply quit. assumption. }
+      simpl in Hp1. apply seq_cps. econstructor; eauto. simpl. intros.
+      destruct q'.
+      2: { apply quit. apply quit. inversion H0. subst. assumption. }
+      apply exec_impl_weakest_pre in H0. fwd.
+      eapply inp_works; [eassumption|]; intros. specialize (H0p1 _ ltac:(eassumption)).
+      destruct H0p1 as [H0p1|H0p1].
+      { apply quit. apply quit. assumption. }
+      simpl in H0p1. assumption.
+    Qed.
+
+    (*i don't want to*)
+    (* Lemma seq_assoc_bw {pick_sp: PickSp} : forall s1 s2 s3 k t m l mc post, *)
+    (*     exec (SSeq (SSeq s1 s2) s3) k t m l mc post -> *)
+    (*     exec (SSeq s1 (SSeq s2 s3)) k t m l mc post. *)
+    (* Proof. intros. simp. eauto 10 using seq. Qed. *)
 
     Ltac equalities :=
       repeat match goal with
@@ -556,118 +1130,124 @@ Module exec.
              | H1: ?P, H2: ?P |- _ => clear H2
              end;
       simp.
+    
+    (* (*not true*) *)
+    (* Lemma intersect {pick_sp: PickSp} : forall k t m l mc s post1, *)
+    (*     exec s k t m l mc post1 -> *)
+    (*     forall post2, *)
+    (*       exec s k t m l mc post2 -> *)
+    (*       exec s k t m l mc (fun k' t' m' l' mc' => post1 k' t' m' l' mc' /\ post2 k' t' m' l' mc'). *)
+    (* Proof. *)
+    (*   induction 1; intros; *)
+    (*     match goal with *)
+    (*     | H: exec _ _ _ _ _ _ _ |- _ => inversion H; subst; clear H *)
+    (*     end; *)
+    (*     equalities; *)
+    (*     try solve [econstructor; eauto | exfalso; congruence]. *)
 
-    Lemma intersect {pick_sp: PickSp} : forall k t m l mc s post1,
-        exec s k t m l mc post1 ->
-        forall post2,
-          exec s k t m l mc post2 ->
-          exec s k t m l mc (fun k' t' m' l' mc' => post1 k' t' m' l' mc' /\ post2 k' t' m' l' mc').
-    Proof.
-      induction 1; intros;
-        match goal with
-        | H: exec _ _ _ _ _ _ _ |- _ => inversion H; subst; clear H
-        end;
-        equalities;
-        try solve [econstructor; eauto | exfalso; congruence].
+    (*   - (* SInteract *) *)
+    (*     pose proof ext_spec.mGive_unique as P. *)
+    (*     specialize P with (1 := H) (2 := H7) (3 := H1) (4 := H15). *)
+    (*     subst mGive0. *)
+    (*     destruct (map.split_diff (map.same_domain_refl mGive) H H7) as (? & _). *)
+    (*     subst mKeep0. *)
+    (*     eapply @interact. *)
+    (*     + eassumption. *)
+    (*     + eassumption. *)
+    (*     + eapply ext_spec.intersect; [exact H1|exact H15]. *)
+    (*     + simpl. intros. simp. *)
+    (*       edestruct H2 as (? & ? & ?); [eassumption|]. *)
+    (*       edestruct H16 as (? & ? & ?); [eassumption|]. *)
+    (*       simp. *)
+    (*       equalities. *)
+    (*       eauto 10. *)
 
-      - (* SInteract *)
-        pose proof ext_spec.mGive_unique as P.
-        specialize P with (1 := H) (2 := H7) (3 := H1) (4 := H15).
-        subst mGive0.
-        destruct (map.split_diff (map.same_domain_refl mGive) H H7) as (? & _).
-        subst mKeep0.
-        eapply @interact.
-        + eassumption.
-        + eassumption.
-        + eapply ext_spec.intersect; [exact H1|exact H15].
-        + simpl. intros. simp.
-          edestruct H2 as (? & ? & ?); [eassumption|].
-          edestruct H16 as (? & ? & ?); [eassumption|].
-          simp.
-          equalities.
-          eauto 10.
+    (*   - (* SCall *) *)
+    (*     rename IHexec into IH. *)
+    (*     specialize IH with (1 := H17). *)
+    (*     eapply @call; [..|exact IH|]; eauto. *)
+    (*     rename H3 into Ex1. *)
+    (*     rename H18 into Ex2. *)
+    (*     move Ex1 before Ex2. *)
+    (*     intros. simpl in *. simp. *)
+    (*     edestruct Ex1; [eassumption|]. *)
+    (*     edestruct Ex2; [eassumption|]. *)
+    (*     simp. *)
+    (*     equalities. *)
+    (*     eauto 10. *)
 
-      - (* SCall *)
-        rename IHexec into IH.
-        specialize IH with (1 := H17).
-        eapply @call; [..|exact IH|]; eauto.
-        rename H3 into Ex1.
-        rename H18 into Ex2.
-        move Ex1 before Ex2.
-        intros. simpl in *. simp.
-        edestruct Ex1; [eassumption|].
-        edestruct Ex2; [eassumption|].
-        simp.
-        equalities.
-        eauto 10.
+    (*   - (* SStackalloc *) *)
+    (*     eapply @stackalloc. 1: eassumption. *)
+    (*     intros. *)
+    (*     rename H0 into Ex1, H13 into Ex2. *)
+    (*     eapply weaken. 1: eapply H1. 1,2: eassumption. *)
+    (*     1: eapply Ex2. 1,2: eassumption. *)
+    (*     cbv beta. *)
+    (*     intros. simp. *)
+    (*     lazymatch goal with *)
+    (*       | A: map.split _ _ _, B: map.split _ _ _ |- _ => *)
+    (*         specialize @map.split_diff with (4 := A) (5 := B) as P *)
+    (*     end. *)
+    (*     edestruct P; try typeclasses eauto. 2: subst; eauto 10. *)
+    (*     eapply anybytes_unique_domain; eassumption. *)
 
-      - (* SStackalloc *)
-        eapply @stackalloc. 1: eassumption.
-        intros.
-        rename H0 into Ex1, H13 into Ex2.
-        eapply weaken. 1: eapply H1. 1,2: eassumption.
-        1: eapply Ex2. 1,2: eassumption.
-        cbv beta.
-        intros. simp.
-        lazymatch goal with
-          | A: map.split _ _ _, B: map.split _ _ _ |- _ =>
-            specialize @map.split_diff with (4 := A) (5 := B) as P
-        end.
-        edestruct P; try typeclasses eauto. 2: subst; eauto 10.
-        eapply anybytes_unique_domain; eassumption.
+    (*   - (* SLoop *) *)
+    (*     eapply @loop. *)
+    (*     + eapply IHexec. exact H10. *)
+    (*     + simpl. intros. simp. eauto. *)
+    (*     + simpl. intros. simp. eauto. *)
+    (*     + simpl. intros. simp. eapply H3; [eassumption..|]. (* also an IH *) *)
+    (*       eapply H19; eassumption. *)
+    (*     + simpl. intros. simp. eapply H5; [eassumption..|]. (* also an IH *) *)
+    (*       eapply H20; eassumption. *)
 
-      - (* SLoop *)
-        eapply @loop.
-        + eapply IHexec. exact H10.
-        + simpl. intros. simp. eauto.
-        + simpl. intros. simp. eauto.
-        + simpl. intros. simp. eapply H3; [eassumption..|]. (* also an IH *)
-          eapply H19; eassumption.
-        + simpl. intros. simp. eapply H5; [eassumption..|]. (* also an IH *)
-          eapply H20; eassumption.
+    (*   - (* SSeq *) *)
+    (*     pose proof IHexec as IH1. *)
+    (*     specialize IH1 with (1 := H5). *)
+    (*     eapply @seq; [exact IH1|]. *)
+    (*     intros; simpl in *. *)
+    (*     destruct H2. *)
+    (*     eauto. *)
+    (* Qed. *)
 
-      - (* SSeq *)
-        pose proof IHexec as IH1.
-        specialize IH1 with (1 := H5).
-        eapply @seq; [exact IH1|].
-        intros; simpl in *.
-        destruct H2.
-        eauto.
-    Qed.
-
-    Lemma exec_extends_trace {pick_sp: PickSp} s k t m l mc post :
-      exec s k t m l mc post ->
-      exec s k t m l mc (fun k' t' m' l' mc' => post k' t' m' l' mc' /\ exists k'', k' = k'' ++ k).
+    Lemma exec_extends_trace {pick_sp: PickSp} s q aep k t m l mc post :
+      exec s q aep k t m l mc post ->
+      exec s q aep k t m l mc (fun q' aep' k' t' m' l' mc' => post q' aep' k' t' m' l' mc' /\ exists k'', k' = k'' ++ k).
     Proof.
       intros H. induction H; try (econstructor; intuition eauto; eexists; align_trace; fail).
       - econstructor; intuition eauto. specialize H2 with (1 := H3). fwd.
         eexists. intuition eauto. eexists. align_trace.
       - econstructor; intuition eauto. fwd. specialize H3 with (1 := H4p0). fwd.
-        eexists. intuition eauto. eexists. intuition eauto.
-        eexists. align_trace.
+        destruct q'.
+        + fwd. eexists. eexists. intuition eauto. eexists. align_trace.
+        + intuition. eexists. align_trace.
       - econstructor; intuition eauto. intros. eapply weaken. 1: eapply H1; eauto.
-        simpl. intros. fwd. eexists. eexists. intuition eauto. eexists. align_trace.
+        simpl. intros. fwd. destruct q'.
+        + fwd. eexists. eexists. intuition eauto. eexists. align_trace.
+        + intuition. eexists. align_trace.
       - eapply if_true; intuition eauto. eapply weaken. 1: eapply IHexec.
         simpl. intros. fwd. intuition eauto. eexists. align_trace.
       - eapply if_false; intuition eauto. eapply weaken. 1: eapply IHexec.
         simpl. intros. fwd. intuition eauto. eexists. align_trace.
-      - clear H2 H4. econstructor; intuition eauto; fwd; eauto.
-        { eexists. align_trace. }
-        { eapply weaken. 1: eapply H3; eauto. simpl. intros. fwd.
-          instantiate (1 := fun k'0 t'0 m'0 l'0 mc'0 =>
-                              mid2 k'0 t'0 m'0 l'0 mc'0 /\ exists k'', k'0 = k'' ++ k).
-          simpl. intuition. eexists. align_trace. }
-        simpl in *. fwd. eapply weaken. 1: eapply H5; eauto.
-        simpl. intros. fwd. intuition. eexists. align_trace.
+      - clear H2 H5. eapply loop_cps. eapply weaken. 1: exact IHexec. simpl. intros. fwd.
+        destruct q'.
+        + specialize H0 with (1 := H2p0). specialize H1 with (1 := H2p0).
+          specialize H3 with (1 := H2p0). destruct (eval_bcond l' cond); [|congruence].
+          exists b. intuition; subst; auto.
+          -- eexists. align_trace.
+          -- eapply weaken. 1: eapply H3; auto. simpl. intros. fwd.
+             eapply weaken. 1: eapply H6; eauto. simpl. intros. fwd. intuition.
+             eexists. align_trace.
+        + intuition. eexists. align_trace.
       - econstructor; intuition eauto. fwd. eapply weaken. 1: eapply H1; eauto.
         simpl. intros. fwd. intuition eauto. eexists. align_trace.
     Qed.
 
-    Lemma exec_ext (pick_sp1: PickSp) s k t m l mc post :
-      exec (pick_sp := pick_sp1) s k t m l mc post ->
+    Lemma exec_ext (pick_sp1: PickSp) s q aep k t m l mc post :
+      exec (pick_sp := pick_sp1) s q aep k t m l mc post ->
       forall pick_sp2,
         (forall k', pick_sp1 (k' ++ k) = pick_sp2 (k' ++ k)) ->
-        exec (pick_sp := pick_sp2) s k t m l mc post.
+        exec (pick_sp := pick_sp2) s q aep k t m l mc post.
     Proof.
       intros H1 pick_sp2. induction H1; intros; try solve [econstructor; eauto].
       - econstructor. 4: eapply exec_extends_trace. all: intuition eauto.
@@ -684,15 +1264,15 @@ Module exec.
         intros. rewrite associate_one_left. repeat rewrite app_assoc. auto.
       - eapply if_false; intuition eauto. eapply IHexec.
         intros. rewrite associate_one_left. repeat rewrite app_assoc. auto.
-      - clear H2 H4. eapply loop. 1: eapply exec_extends_trace. all: intuition eauto; fwd; eauto.
+      - clear H2 H5. eapply loop. 1: eapply exec_extends_trace. all: intuition eauto; fwd; eauto.
         { eapply weaken. 1: eapply exec_extends_trace.
           { eapply H3; eauto.
             intros. rewrite associate_one_left. repeat rewrite app_assoc. auto. }
           simpl. intros. fwd.
-          instantiate (1 := fun k'0 t'0 m'0 l'0 mc'0 =>
-                              mid2 k'0 t'0 m'0 l'0 mc'0 /\ exists k'', k'0 = k'' ++ k).
+          instantiate (1 := fun q'0 aep'0 k'0 t'0 m'0 l'0 mc'0 =>
+                              mid2 q'0 aep'0 k'0 t'0 m'0 l'0 mc'0 /\ exists k'', k'0 = k'' ++ k).
           simpl. intuition eauto. eexists. align_trace. }
-        simpl in *. fwd. eapply H5; eauto. intros.
+        simpl in *. fwd. eapply H6; eauto. intros.
         repeat (rewrite app_assoc || rewrite (app_one_l _ (_ ++ k))). auto.
       - econstructor. 1: eapply exec_extends_trace; eauto. simpl. intros. fwd.
         eapply H0; eauto. intros. repeat rewrite app_assoc. apply H2.      
@@ -707,13 +1287,13 @@ Module exec.
       repeat (rewrite rev_app_distr || cbn [rev app] || rewrite rev_involutive);
       repeat rewrite <- app_assoc; reflexivity.
 
-    Lemma exec_to_other_trace (pick_sp: PickSp) s k1 k2 t m l mc post :
-      exec s k1 t m l mc post ->
+    Lemma exec_to_other_trace (pick_sp: PickSp) s q aep k1 k2 t m l mc post :
+      exec s q aep k1 t m l mc post ->
       exec (pick_sp := fun k => pick_sp (rev (skipn (length k2) (rev k)) ++ k1))
-        s k2 t m l mc (fun k2' t' m' l' mc' =>
+        s q aep k2 t m l mc (fun q' aep' k2' t' m' l' mc' =>
                          exists k'',
                            k2' = k'' ++ k2 /\
-                             post (k'' ++ k1) t' m' l' mc').
+                             post q' aep' (k'' ++ k1) t' m' l' mc').
     Proof.
       intros H. generalize dependent k2. induction H; intros.
       - econstructor; intuition eauto. apply H2 in H3. fwd.
@@ -721,9 +1301,10 @@ Module exec.
         auto.
       - econstructor; intuition eauto.
         { eapply exec_ext with (pick_sp1 := _). 1: eapply IHexec; eauto. solve_picksps_equal. }
-        cbv beta in *. fwd. apply H3 in H4p1.
-        fwd. eexists. intuition eauto. eexists. intuition eauto. eexists.
-        split; [align_trace|]. repeat rewrite <- app_assoc. auto.
+        cbv beta in *. fwd. apply H3 in H4p1. destruct q'.
+        + fwd. eexists. intuition eauto. eexists. intuition eauto. eexists.
+          split; [align_trace|]. repeat rewrite <- app_assoc. auto.
+        + eexists. split; [align_trace|]. rewrite <- app_assoc. assumption.
       - econstructor; intuition eauto. eexists. split; [align_trace|]. auto.
       - econstructor; intuition eauto. eexists. split; [align_trace|]. auto.
       - econstructor; intuition eauto. eexists. split; [align_trace|]. auto.
@@ -732,8 +1313,10 @@ Module exec.
         rewrite List.skipn_app_r in * by (rewrite rev_length; reflexivity).
         simpl in *. eapply weaken.
         { eapply exec_ext with (pick_sp1 := _). 1: eapply H1; eauto. solve_picksps_equal. }
-      simpl. intros. fwd. eexists _, _. intuition eauto. eexists (_ ++ _ :: nil).
-      rewrite <- app_assoc. simpl. rewrite <- (app_assoc _ _ k). simpl. eauto.
+        simpl. intros. fwd. destruct q'.
+        + fwd. eexists _, _. intuition eauto. eexists (_ ++ _ :: nil).
+          rewrite <- app_assoc. simpl. rewrite <- (app_assoc _ _ k). simpl. eauto.
+        + eexists. split; [align_trace|]. rewrite <- app_assoc. assumption.
       - econstructor; intuition eauto. eexists. split; [align_trace|]. auto.
       - econstructor; intuition eauto.
       - econstructor; intuition eauto. eexists. split; [align_trace|]. auto.
@@ -749,15 +1332,15 @@ Module exec.
         { eexists. split; [align_trace|]. simpl. auto. }
         { eapply exec_ext with (pick_sp1 := _).
           { eapply weaken. 1: eapply H3; eauto. simpl. intros.
-            instantiate (1 := fun k'0 t'0 m'0 l'0 mc'0 =>
+            instantiate (1 := fun q'0 aep'0 k'0 t'0 m'0 l'0 mc'0 =>
                                 exists k''0,
                                   k'0 = k''0 ++ k2 /\
-                                    mid2 (k''0 ++ k) t'0 m'0 l'0 mc'0).
+                                    mid2 q'0 aep'0 (k''0 ++ k) t'0 m'0 l'0 mc'0).
             fwd. eexists. split; [align_trace|].
             repeat rewrite <- app_assoc. simpl. auto. }
           solve_picksps_equal. }
         simpl in *. fwd. eapply exec_ext with (pick_sp1 := _).
-        { eapply weaken. 1: eapply H5; eauto. simpl. intros. fwd.
+        { eapply weaken. 1: eapply H6; eauto. simpl. intros. fwd.
           eexists. split; [align_trace|].
           repeat rewrite <- app_assoc. auto. }
         solve_picksps_equal.
@@ -766,6 +1349,9 @@ Module exec.
         simpl. intros. fwd. eexists. split; [align_trace|].
         repeat rewrite <- app_assoc. auto.
       - econstructor. eexists. split; [align_trace|]. assumption.
+      - econstructor. exists nil. split; [align_trace|]. auto.
+      - apply exec_A. auto.
+      - eapply exec_E. eauto.
     Qed.
 
   End FlatImpExec.
@@ -789,68 +1375,61 @@ Section FlatImp2.
   Variable (phase: compphase).
   Variable (isReg: varname -> bool).
   
-  Definition SimState: Type := leakage * trace * mem * locals * MetricLog.
+  Definition SimState: Type := bool * AEP * leakage * trace * mem * locals * MetricLog.
   Definition SimExec(e: env)(c: stmt varname): SimState -> (SimState -> Prop) -> Prop :=
-    fun '(k, t, m, l, mc) post =>
-      exec phase isReg e c k t m l mc (fun k' t' m' l' mc' => post (k', t', m', l', mc')).
+    fun '(q, aep, k, t, m, l, mc) post =>
+      exec phase isReg e c q aep k t m l mc (fun q' aep' k' t' m' l' mc' => post (q', aep', k', t', m', l', mc')).
 
-  Lemma modVarsSound: forall e s initialK initialT (initialSt: locals) initialM (initialMc: MetricLog) post,
-      exec phase isReg e s initialK initialT initialM initialSt initialMc post ->
-      exec phase isReg e s initialK initialT initialM initialSt initialMc
-           (fun initialK finalT finalM finalSt _ => map.only_differ initialSt (modVars s) finalSt).
+  Lemma modVarsSound: forall e s initialQ initialAEP initialK initialT initialSt initialM initialMc post,
+      exec phase isReg e s initialQ initialAEP initialK initialT initialM initialSt initialMc post ->
+      exec phase isReg e s initialQ initialAEP initialK initialT initialM initialSt initialMc
+        (fun finalQ finalAEP finalK finalT finalM finalSt finalMc => post finalQ finalAEP finalK finalT finalM finalSt finalMc /\ (finalQ = true -> initialQ = true /\ map.only_differ initialSt (modVars s) finalSt)).
   Proof.
     induction 1;
-      try solve [ econstructor; [eassumption..|simpl; map_solver locals_ok] ].
+      try solve [ econstructor; [eassumption..|intuition auto; simpl; map_solver locals_ok] ].
     - eapply exec.interact; try eassumption.
       intros; simp.
       edestruct H2; try eassumption. simp.
       eexists; split; [eassumption|].
       simpl. try split; eauto.
-      intros.
+      intros. intuition.
       eapply map.only_differ_putmany. eassumption.
     - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
-      intros; simpl in *; simp.
-      edestruct H3; try eassumption. simp.
-      do 2 eexists; split; [|split]; try eassumption.
-      eapply map.only_differ_putmany. eassumption.
+      intros; simpl in *; simp. apply H3 in H4. destruct q'.
+      + fwd. do 2 eexists; intuition eauto. eapply map.only_differ_putmany. eassumption.
+      + intuition congruence.
     - eapply exec.stackalloc; try eassumption.
       intros.
       eapply exec.weaken.
-      + eapply exec.intersect; try eassumption.
-        * eapply H0; eassumption.
-        * eapply H1; eassumption.
+      + eapply H1; eassumption.
       + simpl. intros. simp.
-        do 2 eexists. split; [eassumption|]. split; [eassumption|]. map_solver locals_ok.
+        destruct q'.
+        -- specialize (H4p1 eq_refl). fwd. do 2 eexists. split; [eassumption|].
+           split; [eassumption|]. intuition auto. map_solver locals_ok.
+        -- intuition congruence.
     - eapply exec.if_true; try eassumption.
       eapply exec.weaken; [eassumption|].
-      simpl; intros. map_solver locals_ok.
+      simpl; intros. intuition auto. map_solver locals_ok.
     - eapply exec.if_false; try eassumption.
       eapply exec.weaken; [eassumption|].
-      simpl; intros. map_solver locals_ok.
-    - eapply @exec.loop with
-          (mid1 := fun k' t' m' l' mc' => mid1 k' t' m' l' mc' /\
-                                   map.only_differ l (modVars body1) l')
-          (mid2 := fun k' t' m' l' mc' => mid2 k' t' m' l' mc' /\
-                                   map.only_differ l (modVars (SLoop body1 cond body2)) l').
-      + eapply exec.intersect; eassumption.
-      + intros. simp. eauto.
-      + intros. simp. simpl. map_solver locals_ok.
-      + intros. simp. simpl in *.
-        eapply exec.intersect; try eassumption; [eauto|].
-        eapply exec.weaken.
-        * eapply H3; eassumption.
-        * simpl. intros. map_solver locals_ok.
-      + intros. simp. simpl in *.
-        eapply exec.weaken.
-        * eapply H5; eassumption.
-        * simpl. intros. map_solver locals_ok.
-    - eapply @exec.seq with
-          (mid := fun k' t' m' l' mc' => mid k' t' m' l' mc' /\ map.only_differ l (modVars s1) l').
-      + eapply exec.intersect; eassumption.
+      simpl; intros. intuition auto. map_solver locals_ok.
+    - clear H. apply exec.loop_cps. eapply exec.weaken. 1: eassumption.
+      simpl. intros. fwd. destruct q'. 
+      + repeat match goal with | H : _ |- _ => specialize H with (1 := Hp0); move H at bottom end.
+        destruct (eval_bcond l' cond); try congruence. exists b. split; [reflexivity|]. split.
+        -- intros. subst. intuition auto. map_solver locals_ok.
+        -- intros. subst. eapply exec.weaken. 1: eapply H3; auto. simpl. intros.
+           fwd. apply H6 in Hp2. eapply exec.weaken. 1: eapply Hp2.
+           simpl. intros. fwd. intuition auto. map_solver locals_ok.
+      + intuition. congruence.
+    - eapply exec.seq.
+      + eassumption.
       + simpl; intros. simp.
         eapply exec.weaken; [eapply H1; eauto|].
-        simpl; intros.
+        simpl; intros. intuition auto.
         map_solver locals_ok.
+    - apply exec.quit. intuition congruence.
+    - eapply exec.exec_E. eauto.
   Qed.
 
 End FlatImp2.

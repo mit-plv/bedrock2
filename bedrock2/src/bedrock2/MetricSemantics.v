@@ -254,8 +254,13 @@ Module exec. Section WithParams.
       destruct (map.split_diff (map.same_domain_refl mGive) H H7) as (? & _).
       subst mKeep0.
       eapply interact. 1,2: eassumption.
-      + eapply ext_spec.intersect; [ exact H1 | exact H14 ].
-      + simpl. intros *. intros [? ?].
+      + eapply ext_spec.intersect with (post := fun x => match x with
+                                                      | O => _
+                                                      | S _ => _
+                                                      end).
+        intros x. destruct x; [ exact H1 | exact H14 ].
+      + simpl. intros *. intros H'. assert (H'1 := H' O). assert (H'2 := H' (S O)).
+        simpl in *. clear H'.
         edestruct H2 as (? & ? & ?); [eassumption|].
         edestruct H15 as (? & ? & ?); [eassumption|].
         repeat match goal with
