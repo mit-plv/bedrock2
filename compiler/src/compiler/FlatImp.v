@@ -1103,20 +1103,18 @@ Module exec.
         exec (SSeq s1 (SSeq s2 s3)) true aep k t m l mc post ->
         exec (SSeq (SSeq s1 s2) s3) true aep k t m l mc post.
     Proof.
-      intros. remember (SSeq s1 _) as s. revert s1 s2 s3 Heqs.
-      induction H; intros ? ? ? Hs; inversion Hs; subst.
-      - eapply seq_cps.
-        eapply seq_cps.
-        eapply weaken. 1: eassumption. intros. apply H0 in H2. clear H1 IHexec H0 Hs.
-        remember (SSeq s3 s4) as s. revert s3 s4 Heqs.
-        induction H2; intros ? ? Hs; inversion Hs; subst.
-        + eapply weaken. 1: eassumption. auto.
-        + apply quit. apply quit. assumption.
-        + apply exec_A. intros. apply H1. reflexivity.
-        + eapply exec_E. eapply IHexec. reflexivity.
-      - apply quit. assumption.
-      - apply exec_A. intros. apply H0. reflexivity.
-      - eapply exec_E. eapply IHexec. reflexivity.
+      intros. apply exec_impl_weakest_pre in H. fwd.
+      eapply inp_works; [eassumption|]; intros.
+      specialize (Hp1 _ ltac:(eassumption)). destruct Hp1 as [Hp1|Hp1].
+      { apply quit. assumption. }
+      simpl in Hp1. apply seq_cps. econstructor; eauto. simpl. intros.
+      destruct q'.
+      2: { apply quit. apply quit. inversion H0. subst. assumption. }
+      apply exec_impl_weakest_pre in H0. fwd.
+      eapply inp_works; [eassumption|]; intros. specialize (H0p1 _ ltac:(eassumption)).
+      destruct H0p1 as [H0p1|H0p1].
+      { apply quit. apply quit. assumption. }
+      simpl in H0p1. assumption.
     Qed.
 
     (*i don't want to*)
@@ -1452,11 +1450,3 @@ Ltac scost_destr :=
 Ltac scost_solve := scost_unfold; scost_destr; try solve_MetricLog.
 Ltac scost_solve_piecewise := scost_unfold; scost_destr; try solve_MetricLog_piecewise.
 Ltac scost_hammer := try solve [eauto 3 with metric_arith | scost_solve].
-
-Ltac stupid_invert H :=
-  apply exec.invert_one_step in H; [|reflexivity];
-  let inp := fresh "inp" in
-  let H1 := fresh H in
-  let H2 := fresh H in
-  destruct H as (inp&H1&H2);
-  inversion H2; subst.
