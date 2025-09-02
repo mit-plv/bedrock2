@@ -35,7 +35,7 @@ jobs:
       uses: coq-community/docker-coq-action@v1
       with:
         coq_version: ${{ matrix.env.DOCKER_COQ_VERSION }}
-        custom_script: sudo chmod -R a=u . && TIMED=1 make
+        custom_script: sudo chmod -R a=u . && TIMED=1 make -j "$(nproc)" -k
     - name: install
       uses: coq-community/docker-coq-action@v1
       with:
