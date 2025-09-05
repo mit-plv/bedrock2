@@ -1,0 +1,23 @@
+COQFLAGS :=
+O:=o
+
+include deps/coqutil/globalsettings.mk
+include deps/coqutil/src/coqutil/BUILD.mk
+include deps/coqutil/test/BUILD.mk
+include bedrock2/src/bedrock2/BUILD.mk
+include bedrock2/src/bedrock2Examples/BUILD.mk
+include deps/riscv-coq/src/riscv/BUILD.mk
+include compiler/src/compiler/BUILD.mk
+include compiler/src/compilerExamples/BUILD.mk
+
+VFILES := $(COQUTIL_VFILES) $(COQUTIL_TEST_VFILES) $(BEDROCK_VFILES) $(BEDROCK_EXAMPLES_VFILES) $(RISCV_VFILES) $(BEDROCK_COMPILER_VFILES) $(BEDROCK_COMPILER_EXAMPLES_VFILES)
+COQDEPFLAGS := -w +default $(COQUTIL_COQDEPFLAGS) $(BEDROCK_COQDEPFLAGS) $(BEDROCK_EXAMPLES_COQDEPFLAGS) $(RISCV_COQDEPFLAGS) $(BEDROCK_COMPILER_COQDEPFLAGS) $(BEDROCK_COMPILER_EXAMPLES_COQDEPFLAGS)
+include deps/coqutil/vfiles_rules.mk
+
+.PHONY: all
+all: vo $(COQUTIL_DIR)/_CoqProject $(COQUTIL_TEST_DIR)/_CoqProject $(BEDROCK_EXAMPLES_DIR)/_CoqProject $(RISCV_DIR)/_CoqProject $(BEDROCK_COMPILER_DIR)/_CoqProject $(BEDROCK_COMPILER_EXAMPLES_DIR)/_CoqProject
+.PHONY: check
+check: all
+.PHONY: clean
+clean: vfiles_clean
+	rm -f $(COQUTIL_DIR)/_CoqProject $(COQUTIL_TEST_DIR)/_CoqProject $(BEDROCK_EXAMPLES_DIR)/_CoqProject $(RISCV_DIR)/_CoqProject $(BEDROCK_COMPILER_DIR)/_CoqProject $(BEDROCK_COMPILER_EXAMPLES_DIR)/_CoqProject
