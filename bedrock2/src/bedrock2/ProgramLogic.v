@@ -108,6 +108,13 @@ Ltac enter f :=
 
 Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
+(* Destructing context variables is undefined behaviour, so we need to detect them.
+   For lack of better functions to do so, consider a hypothesis context variable
+   if it does not disappear after calling destruct on it while it's in the goal. *)
+Ltac is_context_variable H :=
+  assert_succeeds (exfalso; clear -H; assert(H = H);
+  let A := fresh in let B := fresh in destruct H as [A B]; pose H).
+
 Ltac straightline_cleanup :=
   match goal with
   (* TODO remove superfluous _ after .rep, but that will break some proofs that rely on
@@ -139,8 +146,8 @@ Ltac straightline_cleanup :=
   | |- let _ := _ in _ => intros
   | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
   | _ => progress (cbn [Semantics.interp_binop] in * )
-  | H: exists _, _ |- _ => assert_succeeds progress destruct H as (_&_); destruct H
-  | H: _ /\ _ |- _ => destruct H
+  | H: exists _, _ |- _ => tryif is_context_variable H then fail else destruct H
+  | H: _ /\ _ |- _ => tryif is_context_variable H then fail else destruct H
   | x := ?y |- ?G => is_var y; subst x
   | H: ?x = ?y |- _ => constr_eq x y; clear H
   | H: ?x = ?y |- _ => is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [x] in x in idtac); subst x
