@@ -108,12 +108,13 @@ Ltac enter f :=
 
 Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
-(* Destructing context variables is undefined behaviour, so we need to detect them.
-   For lack of better functions to do so, consider a hypothesis context variable
-   if it does not disappear after calling destruct on it while it's in the goal. *)
+(* Destructing section variables is unpredictable COQBUG(6826).
+    To avoid destructing them, we detect whether a variable is a section variable.
+    For lack of better functions to do so, consider a hypothesis section variable
+    if it does not disappear after calling destruct on it while it's in the goal.   *)
 Ltac is_context_variable H :=
   assert_succeeds (exfalso; clear -H; assert(H = H);
-  let A := fresh in let B := fresh in destruct H as [A B]; pose H).
+    let A := fresh in let B := fresh in destruct H as [A B]; pose H).
 
 Ltac straightline_cleanup :=
   match goal with
