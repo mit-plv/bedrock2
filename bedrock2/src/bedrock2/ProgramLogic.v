@@ -355,8 +355,8 @@ Ltac straightline :=
       end
   | |- _ => straightline_stackalloc
   | |- _ => straightline_stackdealloc
-  | |- context[sep (sep _ _) _] => progress (flatten_seps_in_goal; cbn [seps])
-  | H : context[sep (sep _ _) _] |- _ => progress (flatten_seps_in H; cbn [seps] in H)
+  | |- context[sep (sep ?_a ?_b) ?_c] => progress (flatten_seps_in_goal; cbn [seps])
+  | H : context[sep (sep ?_a ?_b) ?_c] |- _ => progress (flatten_seps_in H; cbn [seps] in H)
   end.
 
 (* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
