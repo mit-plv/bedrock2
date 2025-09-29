@@ -106,7 +106,7 @@ Section SepLog.
     rewrite H0.
     rewrite 2seps_app in H1. rewrite seps_app.
     rewrite seps_cons.
-    cancel. cancel_seps_at_indices_by_implication 0%nat 0%nat. 1: exact impl1_refl.
+    cancel.
     cbn [seps].
     etransitivity. 2: eassumption.
     ecancel.
