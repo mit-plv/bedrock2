@@ -121,68 +121,69 @@ Section MetricLeakageToSomething.
   Existing Instance deleakaged_ext_spec.
   Existing Instance deleakaged_ext_spec_ok.
 
-  Lemma metricleakage_to_plain_exec: forall c t m l post,
-      Semantics.exec e c t m l post ->
-      forall k mc, MetricLeakageSemantics.exec e c k t m l mc (fun _ t' m' l' _ => post t' m' l').
-  Proof.
-    induction 1; intros;
-      repeat match reverse goal with
-        | H: Semantics.eval_expr _ _ _ = Some _ |- _ =>
-            eapply metricleakage_to_plain_eval_expr in H; destruct H as (? & ? & H)
-        | H: Semantics.eval_call_args _ _ _ = Some _ |- _ =>
-            eapply metricleakage_to_plain_eval_call_args in H; destruct H as (? & ? & H)
-        end;
-      try solve [econstructor; eauto].
-  Qed.
+  (* Lemma metricleakage_to_plain_exec: forall c q aep t m l post, *)
+  (*     Semantics.exec e c t m l post -> *)
+  (*     forall k mc, MetricLeakageSemantics.exec e c q aep k t m l mc (fun q' _ _ t' m' l' _ => *)
+  (*                                                                 q' = true /\ post t' m' l'). *)
+  (* Proof. *)
+  (*   induction 1; intros; *)
+  (*     repeat match reverse goal with *)
+  (*       | H: Semantics.eval_expr _ _ _ = Some _ |- _ => *)
+  (*           eapply metricleakage_to_plain_eval_expr in H; destruct H as (? & ? & H) *)
+  (*       | H: Semantics.eval_call_args _ _ _ = Some _ |- _ => *)
+  (*           eapply metricleakage_to_plain_eval_call_args in H; destruct H as (? & ? & H) *)
+  (*       end; *)
+  (*     solve [econstructor; eauto]. *)
+  (* Qed. *)
 
-  Lemma metricleakage_to_metric_exec: forall c t m l mc post,
-      MetricSemantics.exec e c t m l mc post ->
-      forall k, MetricLeakageSemantics.exec e c k t m l mc (fun _ t' m' l' mc' => post t' m' l' mc').
-  Proof.
-    induction 1; intros;
-      repeat match reverse goal with
-        | H: MetricSemantics.eval_expr _ _ _ _ = Some _ |- _ =>
-            eapply metricleakage_to_metric_eval_expr in H; destruct H as (? & H)
-        | H: MetricSemantics.eval_call_args _ _ _ _ = Some _ |- _ =>
-            eapply metricleakage_to_metric_eval_call_args in H; destruct H as (? & H)
-        end;
-      try solve [econstructor; eauto].
-  Qed.
+  (* Lemma metricleakage_to_metric_exec: forall c t m l mc post, *)
+  (*     MetricSemantics.exec e c t m l mc post -> *)
+  (*     forall k, MetricLeakageSemantics.exec e c k t m l mc (fun _ t' m' l' mc' => post t' m' l' mc'). *)
+  (* Proof. *)
+  (*   induction 1; intros; *)
+  (*     repeat match reverse goal with *)
+  (*       | H: MetricSemantics.eval_expr _ _ _ _ = Some _ |- _ => *)
+  (*           eapply metricleakage_to_metric_eval_expr in H; destruct H as (? & H) *)
+  (*       | H: MetricSemantics.eval_call_args _ _ _ _ = Some _ |- _ => *)
+  (*           eapply metricleakage_to_metric_eval_call_args in H; destruct H as (? & H) *)
+  (*       end; *)
+  (*     try solve [econstructor; eauto]. *)
+  (* Qed. *)
 
-  Lemma metricleakage_to_leakage_exec: forall c t m l k post,
-      LeakageSemantics.exec e c k t m l post ->
-      forall mc, MetricLeakageSemantics.exec e c k t m l mc (fun k' t' m' l' _ => post k' t' m' l').
-  Proof.
-    induction 1; intros;
-      repeat match reverse goal with
-        | H: LeakageSemantics.eval_expr _ _ _ _ = Some _ |- _ =>
-            eapply metricleakage_to_leakage_eval_expr in H; destruct H as (? & H)
-        | H: LeakageSemantics.eval_call_args _ _ _ _ = Some _ |- _ =>
-            eapply metricleakage_to_leakage_eval_call_args in H; destruct H as (? & H)
-        end;
-      try solve [econstructor; eauto].
-  Qed.
+  (* Lemma metricleakage_to_leakage_exec: forall c t m l k post, *)
+  (*     LeakageSemantics.exec e c k t m l post -> *)
+  (*     forall mc, MetricLeakageSemantics.exec e c k t m l mc (fun k' t' m' l' _ => post k' t' m' l'). *)
+  (* Proof. *)
+  (*   induction 1; intros; *)
+  (*     repeat match reverse goal with *)
+  (*       | H: LeakageSemantics.eval_expr _ _ _ _ = Some _ |- _ => *)
+  (*           eapply metricleakage_to_leakage_eval_expr in H; destruct H as (? & H) *)
+  (*       | H: LeakageSemantics.eval_call_args _ _ _ _ = Some _ |- _ => *)
+  (*           eapply metricleakage_to_leakage_eval_call_args in H; destruct H as (? & H) *)
+  (*       end; *)
+  (*     try solve [econstructor; eauto]. *)
+  (* Qed. *)
 
-  Lemma metricleakage_to_plain_call: forall f t m args post,
-      Semantics.call e f t m args post ->
-      forall k mc, MetricLeakageSemantics.call e f k t m args mc (fun _ t' m' rets _ => post t' m' rets).
-  Proof.
-    unfold MetricLeakageSemantics.call, Semantics.call. intros. fwd. eauto 10 using metricleakage_to_plain_exec.
-  Qed.
+  (* Lemma metricleakage_to_plain_call: forall f t m args post, *)
+  (*     Semantics.call e f t m args post -> *)
+  (*     forall k mc, MetricLeakageSemantics.call e f k t m args mc (fun _ t' m' rets _ => post t' m' rets). *)
+  (* Proof. *)
+  (*   unfold MetricLeakageSemantics.call, Semantics.call. intros. fwd. eauto 10 using metricleakage_to_plain_exec. *)
+  (* Qed. *)
 
-  Lemma metricleakage_to_metric_call: forall f t m args mc post,
-      MetricSemantics.call e f t m args mc post ->
-      forall k, MetricLeakageSemantics.call e f k t m args mc (fun _ t' m' rets mc' => post t' m' rets mc').
-  Proof.
-    unfold MetricLeakageSemantics.call, MetricSemantics.call. intros. fwd. eauto 10 using metricleakage_to_metric_exec.
-  Qed.
+  (* Lemma metricleakage_to_metric_call: forall f t m args mc post, *)
+  (*     MetricSemantics.call e f t m args mc post -> *)
+  (*     forall k, MetricLeakageSemantics.call e f k t m args mc (fun _ t' m' rets mc' => post t' m' rets mc'). *)
+  (* Proof. *)
+  (*   unfold MetricLeakageSemantics.call, MetricSemantics.call. intros. fwd. eauto 10 using metricleakage_to_metric_exec. *)
+  (* Qed. *)
 
-  Lemma metricleakage_to_leakage_call: forall f k t m args post,
-      LeakageSemantics.call e f k t m args post ->
-      forall mc, MetricLeakageSemantics.call e f k t m args mc (fun k' t' m' rets _ => post k' t' m' rets).
-  Proof.
-    unfold MetricLeakageSemantics.call, LeakageSemantics.call. intros. fwd. eauto 10 using metricleakage_to_leakage_exec.
-  Qed.
+  (* Lemma metricleakage_to_leakage_call: forall f k t m args post, *)
+  (*     LeakageSemantics.call e f k t m args post -> *)
+  (*     forall mc, MetricLeakageSemantics.call e f k t m args mc (fun k' t' m' rets _ => post k' t' m' rets). *)
+  (* Proof. *)
+  (*   unfold MetricLeakageSemantics.call, LeakageSemantics.call. intros. fwd. eauto 10 using metricleakage_to_leakage_exec. *)
+  (* Qed. *)
 End MetricLeakageToSomething.
 
 Section LeakageToSomething.
@@ -316,24 +317,24 @@ Section LeakageToSomething.
     - econstructor; eauto. simpl. intros. apply H2 in H3. fwd. eauto.
   Qed.
 
-  Lemma leakage_to_metricleakage_exec: forall c t m l k mc post,
-      MetricLeakageSemantics.exec e c k t m l mc post ->
-      LeakageSemantics.exec e c k t m l (fun k' t' m' l' => exists mc', post k' t' m' l' mc').
-  Proof.
-    induction 1; intros;
-      repeat match reverse goal with
-        | H: MetricLeakageSemantics.eval_expr _ _ _ _ _ = Some _ |- _ =>
-            eapply leakage_to_metricleakage_eval_expr in H
-        | H: MetricLeakageSemantics.eval_call_args _ _ _ _ _ = Some _ |- _ =>
-            eapply leakage_to_metricleakage_eval_call_args in H
-        end;
-      try solve [econstructor; eauto].
-    all: try solve [econstructor; eauto; simpl; intros; fwd; eauto].
-    - econstructor; eauto. intros. eapply LeakageSemantics.exec.weaken.
-      1: eapply H1; solve[eauto]. simpl. intros. fwd. eexists. eexists. eauto.
-    - econstructor; eauto. simpl. intros. fwd. apply H3 in H4. fwd. eauto 10.
-    - econstructor; eauto. simpl. intros. apply H2 in H3. fwd. eauto.
-  Qed.
+  (* Lemma leakage_to_metricleakage_exec: forall c t m l k mc post, *)
+  (*     MetricLeakageSemantics.exec e c k t m l mc post -> *)
+  (*     LeakageSemantics.exec e c k t m l (fun k' t' m' l' => exists mc', post k' t' m' l' mc'). *)
+  (* Proof. *)
+  (*   induction 1; intros; *)
+  (*     repeat match reverse goal with *)
+  (*       | H: MetricLeakageSemantics.eval_expr _ _ _ _ _ = Some _ |- _ => *)
+  (*           eapply leakage_to_metricleakage_eval_expr in H *)
+  (*       | H: MetricLeakageSemantics.eval_call_args _ _ _ _ _ = Some _ |- _ => *)
+  (*           eapply leakage_to_metricleakage_eval_call_args in H *)
+  (*       end; *)
+  (*     try solve [econstructor; eauto]. *)
+  (*   all: try solve [econstructor; eauto; simpl; intros; fwd; eauto]. *)
+  (*   - econstructor; eauto. intros. eapply LeakageSemantics.exec.weaken. *)
+  (*     1: eapply H1; solve[eauto]. simpl. intros. fwd. eexists. eexists. eauto. *)
+  (*   - econstructor; eauto. simpl. intros. fwd. apply H3 in H4. fwd. eauto 10. *)
+  (*   - econstructor; eauto. simpl. intros. apply H2 in H3. fwd. eauto. *)
+  (* Qed. *)
 
   Lemma leakage_to_plain_call: forall f t m args post,
       Semantics.call e f t m args post ->
@@ -352,16 +353,16 @@ Section LeakageToSomething.
     - simpl. intros. fwd. eauto.
   Qed.
 
-  Lemma leakage_to_metricleakage_call: forall f k t m args mc post,
-      MetricLeakageSemantics.call e f k t m args mc post ->
-      LeakageSemantics.call e f k t m args (fun k' t' m' rets => exists mc', post k' t' m' rets mc').
-  Proof.
-    unfold LeakageSemantics.call, MetricLeakageSemantics.call. intros. fwd.
-    do 3 eexists. intuition eauto. eexists. intuition eauto.
-    eapply LeakageSemantics.exec.weaken.
-    - eauto 10 using leakage_to_metricleakage_exec.
-    - simpl. intros. fwd. eauto.
-  Qed.
+  (* Lemma leakage_to_metricleakage_call: forall f k t m args mc post, *)
+  (*     MetricLeakageSemantics.call e f k t m args mc post -> *)
+  (*     LeakageSemantics.call e f k t m args (fun k' t' m' rets => exists mc', post k' t' m' rets mc'). *)
+  (* Proof. *)
+  (*   unfold LeakageSemantics.call, MetricLeakageSemantics.call. intros. fwd. *)
+  (*   do 3 eexists. intuition eauto. eexists. intuition eauto. *)
+  (*   eapply LeakageSemantics.exec.weaken. *)
+  (*   - eauto 10 using leakage_to_metricleakage_exec. *)
+  (*   - simpl. intros. fwd. eauto. *)
+  (* Qed. *)
 End LeakageToSomething.
 
 Section MetricToSomething.
