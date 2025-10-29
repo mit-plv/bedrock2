@@ -501,7 +501,7 @@ Section WithWidth.
 
     { cbv [wrshift].
       rewrite wordToN_split2.
-      cbv [eq_rec_r eq_rec].
+      DepEq.eq_rect_simpl.
       rewrite wordToN_nat, wordToNat_eq_rect, <-wordToN_nat, wordToN_combine, wordToN_wzero.
       PreOmega.zify.
       rewrite !NatLib.Z_of_N_Npow2.
@@ -525,7 +525,7 @@ Section WithWidth.
       f_equal.
       rewrite Znat.Z2Nat.id; blia. }
 
-    { cbv [wrshifta eq_rec_r eq_rec].
+    { cbv [wrshifta]. DepEq.eq_rect_simpl.
       rewrite Z.mod_small, wordToZ_split2, wordToZ_eq_rect, sext_wordToZ, Znat.Z2Nat.id, Z.shiftr_div_pow2; try blia.
       cbv [swrap]; rewrite Z.mod_small; try blia.
       pose proof @wordToZ_size (pred sz).
