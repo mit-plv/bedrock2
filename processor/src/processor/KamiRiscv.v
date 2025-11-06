@@ -420,7 +420,7 @@ Section Equiv.
         apply wordToNat_inj.
         rewrite wordToNat_natToWord_eqn.
         rewrite wordToNat_split1.
-        cbv [eq_rec_r eq_rec]; rewrite wordToNat_eq_rect.
+        DepEq.eq_rect_simpl; rewrite wordToNat_eq_rect.
         reflexivity.
       }
       rewrite (@map_nth_error _ _ _ _ _ (wordToNat addr)).
