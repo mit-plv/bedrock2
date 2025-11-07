@@ -36,6 +36,8 @@ jobs:
         branch: ${{ matrix.alpine }}
         extra-repositories: https://dl-cdn.alpinelinux.org/alpine/edge/testing
         packages: git make rocq rocq-stdlib bash python3 gcc libc-dev doas-sudo-shim
+        # Sometimes Alpine packages may need to be manually rebuilt. Example request:
+        #   https://gitlab.alpinelinux.org/alpine/aports/-/issues/17690
     - name: TIMED=1 make -j "$(nproc)" -k
       shell: alpine.sh {0}
       run: TIMED=1 make -j "$(nproc)" -k
