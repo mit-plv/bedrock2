@@ -178,7 +178,8 @@ Section WordZ.
       rewrite (shatter_word_0 w); simpl.
       cbv [evalSignExtendTrunc].
       destruct (lt_dec 0 b).
-      - rewrite wzero_eq_rect.
+      - try (change eq_rec with (fun A x (P:A -> Set) => @eq_rect A x P); cbn).
+        rewrite wzero_eq_rect.
         apply eq_sym, wzero'_def.
       - assert (b = 0%nat) by blia; subst.
         reflexivity.
