@@ -28,7 +28,7 @@ jobs:
       cancel-in-progress: true
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         submodules: recursive
     - uses: jirutka/setup-alpine@v1
