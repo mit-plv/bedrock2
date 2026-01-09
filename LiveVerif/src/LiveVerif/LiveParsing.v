@@ -290,7 +290,7 @@ Proof. intros. reflexivity. Succeed Qed. Abort.
 
 Goal True.
   pose */ /* hello, world! */ /* as s.
-  pose */ /* The way we implement C comments is a bit limited:
+  pose */ /* The way we implement C comments appears a bit limited:
              - We can't use full stops
              - Only a few special characters are supported, eg ?, $, #
              - We can't use parentheses

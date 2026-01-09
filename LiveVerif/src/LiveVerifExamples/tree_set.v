@@ -356,7 +356,7 @@ Derive bst_add SuchThat (fun_correct! bst_add) As bst_add_ok.                   
     return 1;                                                              /**. .**/
   }                                                                        /**. .**/
   else {                                                                   /**. .**/
-    /* key not found, so we zoomed into the tree until it is empty, and
+    /* key not found, so we zoomed into the tree until it becomes empty, and
        shrinked the function's postcondition and the context -- there's
        no more tree around, and we'll just retrun a singleton tree! */     /**. .**/
     uintptr_t res = bst_alloc_node();                                      /**. .**/
