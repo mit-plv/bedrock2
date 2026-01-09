@@ -46,7 +46,7 @@ Derive allocate_two SuchThat (fun_correct! allocate_two)
   replace (\[p] =? 0) with false in * by hwlia. steps.
   assert_fails (
                                                                                 .**/
-}                                                                          /**).
+}                                                                          /** ).
 Abort.
 
 End LiveVerif. Comments .**/ //.
