@@ -78,7 +78,7 @@ Section Scalars.
     (Hsep : sep (scalar8 addr value) R m)
     : Memory.load Syntax.access_size.one m addr = Some (word.of_Z (byte.unsigned value)).
   Proof.
-    cbv [load load_Z Map.Memory.load_bytes bytes_per Map.Memory.footprint List.map List.seq option_all].
+    cbv [load load_Z Map.Memory.load_bytes bytes_per Map.Memory.footprint List.map List.seq List.option_all].
     erewrite get_sep, le_combine_1; trivial.
     rewrite Properties.word.add_0_r; eauto.
   Qed.
@@ -144,7 +144,7 @@ Section Scalars.
     : exists m1, Memory.store Syntax.access_size.one m addr value = Some m1 /\ post m1.
   Proof.
     cbv [store store_Z bytes_per LittleEndianList.le_split].
-    cbv [store_bytes load_bytes unchecked_store_bytes footprint option_all List.map List.seq List.length].
+    cbv [store_bytes load_bytes unchecked_store_bytes footprint List.option_all List.map List.seq List.length].
     erewrite word.add_0_r, get_sep by eauto.
     eexists; split; eauto; eapply Hpost.
     rewrite map.of_list_word_singleton.
@@ -281,10 +281,10 @@ Section Scalars.
     (_ : addr' = word.add addr (word.of_Z ((word.unsigned size) * (Z.of_nat n))))
     (Hsep : sep (array (truncated_word sz) size addr oldvalues) R m)
     (_ : (n < length oldvalues)%nat)
-    (Hpost : forall m, sep (array (truncated_word sz) size addr (upd oldvalues n value)) R m -> post m)
+    (Hpost : forall m, sep (array (truncated_word sz) size addr (List.upd oldvalues n value)) R m -> post m)
     : exists m1, Memory.store sz m addr' value = Some m1 /\ post m1.
   Proof.
-    rewrite <-(firstn_nth_skipn _ _ oldvalues (word.of_Z 0) H0) in Hsep.
+    rewrite <-(List.firstn_nth_skipn _ _ oldvalues (word.of_Z 0) H0) in Hsep.
     do 2 seprewrite_in (array_append (truncated_word sz) size) Hsep.
     seprewrite_in (array_cons (truncated_word sz) size) Hsep.
     seprewrite_in (array_nil (truncated_word sz) size) Hsep.
@@ -293,7 +293,7 @@ Section Scalars.
     eapply store_of_sep; try ecancel_assumption.
     intros.
     apply Hpost.
-    unfold upd, upds.
+    unfold List.upd, List.upds.
     rewrite (firstn_all2 (n := length oldvalues - n)) by (simpl; blia).
     do 2 seprewrite (array_append (truncated_word sz) size).
     seprewrite (array_cons (truncated_word sz) size).
@@ -308,7 +308,7 @@ Section Scalars.
     (_ : let offset := word.unsigned (word.sub addr' addr) in
          (Z.modulo offset (word.unsigned size) = 0) /\
          (let n := Z.to_nat (offset / word.unsigned size) in (n < List.length oldvalues)%nat /\
-    (forall m, sep (array (truncated_word sz) size addr (upd oldvalues n value)) R m -> post m)))
+    (forall m, sep (array (truncated_word sz) size addr (List.upd oldvalues n value)) R m -> post m)))
     : exists m1, Memory.store sz m addr' value = Some m1 /\ post m1.
   Proof.
     destruct H0.
@@ -327,7 +327,7 @@ Section Scalars.
     Memory.load sz m addr' =
     Some (truncate_word sz (nth n values (word.of_Z 0))).
   Proof.
-    rewrite <-(firstn_nth_skipn _ _ values (word.of_Z 0) H0) in Hsep.
+    rewrite <-(List.firstn_nth_skipn _ _ values (word.of_Z 0) H0) in Hsep.
     do 2 seprewrite_in (array_append (truncated_word sz) size) Hsep.
     seprewrite_in (array_cons (truncated_word sz) size) Hsep.
     seprewrite_in (array_nil (truncated_word sz) size) Hsep.
