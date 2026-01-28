@@ -7,7 +7,7 @@ Require Import compiler.RiscvWordProperties.
 Require Import end2end.KamiRiscvWordProperties.
 Require Import compilerExamples.MMIO.
 
-Import String List.ListNotations.
+Import Stings.String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Definition MMIOREAD : string := "MMIOREAD".
