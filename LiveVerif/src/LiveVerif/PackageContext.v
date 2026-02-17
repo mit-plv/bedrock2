@@ -320,9 +320,9 @@ Section MergingAnd.
       (nth n Ps /\ ands (remove_nth n Ps)) = (ands Ps).
   Proof.
     intros. cbv [nth remove_nth].
-    pose proof (List.firstn_skipn n Ps: (firstn n Ps ++ skipn n Ps) = Ps).
-    forget (skipn n Ps) as Psr.
-    forget (firstn n Ps) as Psl.
+    pose proof (List.firstn_skipn n Ps: (SeparationLogic.firstn n Ps ++ SeparationLogic.skipn n Ps) = Ps).
+    forget (SeparationLogic.skipn n Ps) as Psr.
+    forget (SeparationLogic.firstn n Ps) as Psl.
     subst Ps.
     apply PropExtensionality.propositional_extensionality.
     destruct Psr.
