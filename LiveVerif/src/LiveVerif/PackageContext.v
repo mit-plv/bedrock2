@@ -320,14 +320,14 @@ Section MergingAnd.
       (nth n Ps /\ ands (remove_nth n Ps)) = (ands Ps).
   Proof.
     intros. cbv [nth remove_nth].
-    pose proof (List.firstn_skipn n Ps: (firstn n Ps ++ skipn n Ps) = Ps).
-    forget (skipn n Ps) as Psr.
-    forget (firstn n Ps) as Psl.
+    pose proof (List.firstn_skipn n Ps: (SeparationLogic.firstn n Ps ++ SeparationLogic.skipn n Ps) = Ps).
+    forget (SeparationLogic.skipn n Ps) as Psr.
+    forget (SeparationLogic.firstn n Ps) as Psl.
     subst Ps.
     apply PropExtensionality.propositional_extensionality.
     destruct Psr.
     { cbn. rewrite List.app_nil_r. intuition idtac. }
-    cbn [hd tl]. rewrite ?ands_app. cbn [ands]. intuition idtac.
+    cbn [SeparationLogic.hd SeparationLogic.tl]. rewrite ?ands_app. cbn [ands]. intuition idtac.
   Qed.
 
   Lemma merge_ands_at_indices: forall i j (P1 P2: Prop) (b: bool) (Ps1 Ps2: list Prop),
@@ -645,8 +645,8 @@ Ltac merge_pair H Ps Qs is_match lem := once (
       lazymatch find_in_list ltac:(fun Q => is_match P Q) Qs with
       | (?j, ?Q) =>
           eapply (lem i j) in H;
-          [ cbn [app firstn tl skipn] in H
-          | cbn [hd skipn];
+          [ cbn [SeparationLogic.app SeparationLogic.firstn SeparationLogic.tl SeparationLogic.skipn] in H
+          | cbn [SeparationLogic.hd SeparationLogic.skipn];
             repeat first [ rewrite if_same
                          | rewrite push_if_into_arg1
                          | rewrite push_if_into_arg2 ];
