@@ -167,6 +167,21 @@ Section WithWord.
     do 3 Morphisms.f_equiv. rewrite <-Hl, word.of_Z_unsigned. ring.
   Qed.
 
+  Lemma list_word_at_firstn_skipn (p : word) (l : list value) (n : nat) :
+    (length l >= n)%nat ->
+    (length l <= 2^width) ->
+    iff1 (l $@ p) ((firstn n l)$@p * (skipn n l)$@(word.add p (word.of_Z n))).
+  Proof.
+    intros.
+    transitivity ((firstn n l ++ skipn n l) $@ p).
+    { rewrite (firstn_skipn n l). exact (iff1_refl _). }
+    rewrite (map.of_list_word_at_app_n _ _ _ n) by (rewrite ?length_firstn, ?length_skipn; lia).
+    unshelve (epose proof (map.adjacent_arrays_disjoint_n p (firstn n l) (skipn n l) n _ _) as HD).
+    1,2: (rewrite ?length_firstn, ?length_skipn; lia).
+    etransitivity; [exact (sep_eq_putmany _ _ HD)|].
+    cancel.
+  Qed.
+
   Lemma length_array_ptsto_1_le (default : value) bs (a : word) (m : map) (Hm : array ptsto (word.of_Z 1) a bs m) : Z.of_nat (length bs) <= 2 ^ width.
   Proof.
     pose proof word.width_pos.
