@@ -14,7 +14,7 @@ Local Open Scope Z_scope.
 Local Open Scope list_scope.
 
 (* Return the high word of the integer multiplication a * b. *)
-Definition full_mul :=
+Definition br_full_mul :=
   func! (a, b) ~> (low, high) {
       n = $wsize >> $1;
       M = $1 << n - $1;
@@ -27,8 +27,8 @@ Definition full_mul :=
       low = (second_halfword_w_oflow << n) + (ll & M)
     }.
 
-Local Instance spec_of_full_mul : spec_of "full_mul" :=
-  fnspec! "full_mul" a b ~> low high,
+Local Instance spec_of_full_mul : spec_of "br_full_mul" :=
+  fnspec! "br_full_mul" a b ~> low high,
     { requires t m := True;
       ensures T M :=
         M = m /\ T = t /\
@@ -89,7 +89,7 @@ Proof.
   rewrite wrap_mul32_is_mul32; ZnWords.
 Qed.
 
-Lemma full_mul_ok : program_logic_goal_for_function! full_mul.
+Lemma full_mul_ok : program_logic_goal_for_function! br_full_mul.
 Proof.
   repeat straightline.
 
