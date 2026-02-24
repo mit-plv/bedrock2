@@ -20,10 +20,10 @@ Local Instance spec_of_long_sub_4 : spec_of "long_sub_4" :=
 Require Import bedrock2.NotationsCustomEntry bedrock2Examples.full_sub.
 
 Definition long_sub_4 := func! (p_r, p_x, p_y, b) ~> b {
-    unpack! s0, b = full_sub(load(p_x),          load(p_y),          b);
-    unpack! s1, b = full_sub(load(p_x+$8),       load(p_y+$8),       b);
-    unpack! s2, b = full_sub(load(p_x+$8+$8),    load(p_y+$8+$8),    b);
-    unpack! s3, b = full_sub(load(p_x+$8+$8+$8), load(p_y+$8+$8+$8), b);
+    unpack! s0, b = br_full_sub(load(p_x),          load(p_y),          b);
+    unpack! s1, b = br_full_sub(load(p_x+$8),       load(p_y+$8),       b);
+    unpack! s2, b = br_full_sub(load(p_x+$8+$8),    load(p_y+$8+$8),    b);
+    unpack! s3, b = br_full_sub(load(p_x+$8+$8+$8), load(p_y+$8+$8+$8), b);
     store(p_r,          s0);
     store(p_r+$8,       s1);
     store(p_r+$8+$8,    s2);
@@ -51,7 +51,7 @@ Qed.
 (** * Linking Proof *)
 
 From coqutil Require Import WithBaseName.
-Definition long_sub_4_funcs := &[, long_sub_4; full_sub].
+Definition long_sub_4_funcs := &[, long_sub_4; br_full_sub].
 
 Lemma link_full_sub : spec_of_long_sub_4 (Interface.map.of_list long_sub_4_funcs).
 Proof. apply long_sub_4_correct; try apply full_sub_ok; trivial. Qed.

@@ -28,7 +28,7 @@ Local Notation "x -= e" :=
 
 (* This definition is inspired by `bn_sub_with_borrow` in BoringSSL,
  * but has been rewritten in order to simplify its verification.  *)
-Definition full_sub :=
+Definition br_full_sub :=
   func! (x, y, borrow) ~> (diff, out_borrow) {
       out_borrow = x < y;
       diff = x - y;
@@ -36,8 +36,8 @@ Definition full_sub :=
       diff -= borrow
     }.
 
-Local Instance spec_of_full_sub : spec_of "full_sub" :=
-  fnspec! "full_sub" x y borrow ~> diff out_borrow,
+Local Instance spec_of_full_sub : spec_of "br_full_sub" :=
+  fnspec! "br_full_sub" x y borrow ~> diff out_borrow,
     { requires t m :=
         (* This pre-condition is not required in order to ensure the
          * post-condition, but formalizes on a condition on the
@@ -60,7 +60,7 @@ Proof.
     ZnWords.
 Qed.
 
-Lemma full_sub_ok : program_logic_goal_for_function! full_sub.
+Lemma full_sub_ok : program_logic_goal_for_function! br_full_sub.
 Proof.
   repeat straightline.
   rewrite ltu_as_borrow.
