@@ -32,6 +32,7 @@ Require Import compiler.MMIO.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Map.SortedListZ.
 Require Import compiler.util.Common.
+Require Import bedrock2Examples.one_printer.
 
 Open Scope Z_scope. Open Scope string_scope. Open Scope ilist_scope.
 
@@ -72,73 +73,55 @@ Definition req_stack_size_one_printer :=
   | Success (_, _, req_stack_size) => req_stack_size
   | _ => 0
   end.
-Definition fname_one_printer := "one_printer".
+Definition fname_one_printer := "one_printer_fun".
 Definition f_rel_pos_one_printer := 0.
-Definition post : list LogItem -> mem32 -> list Words32Naive.word -> Prop := fun _ _ _ => True.
 
 Theorem one_printer_prints_ones :
-  forall x y n p_funcs stack_hi ret_addr,
-  exists finalTrace : list LeakageEvent,
-  forall Rx Ry xs ys m stack_lo
+  forall p_funcs stack_hi ret_addr,
+  forall m stack_lo
     Rdata Rexec (initial : RiscvMachine),
-    Separation.sep (Array.array Separation.ptsto (word.of_Z 1) x xs) Rx m /\
-      Separation.sep (Array.array Separation.ptsto (word.of_Z 1) y ys) Ry m /\
-      Z.of_nat (Datatypes.length xs) = word.unsigned n /\
-      Z.of_nat (Datatypes.length ys) = word.unsigned n /\
-      req_stack_size_one_printer <= word.unsigned (word.sub stack_hi stack_lo) / SeparationLogic.bytes_per_word ->
+    req_stack_size_one_printer <= word.unsigned (word.sub stack_hi stack_lo) / SeparationLogic.bytes_per_word ->
     word.unsigned (word.sub stack_hi stack_lo) mod SeparationLogic.bytes_per_word = 0 ->
     getPc initial = word.add p_funcs (word.of_Z f_rel_pos_one_printer) ->
     initial.(getTrace) = Some [] ->
     map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
     word.unsigned ret_addr mod 4 = 0 ->
-    LowerPipeline.arg_regs_contain (getRegs initial) [x; y; n] ->
+    LowerPipeline.arg_regs_contain (getRegs initial) [] ->
     LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_one_printer m Rdata Rexec initial ->
     FlatToRiscvCommon.runsTo initial
-      (fun final : RiscvMachine =>
-         (exists mH' (retvals : list Words32Naive.word),
-             LowerPipeline.arg_regs_contain (getRegs final) retvals /\
-               post (getLog final) mH' retvals /\
-               map.only_differ (getRegs initial) reg_class.caller_saved (getRegs final) /\
-               getPc final = ret_addr /\
-               final.(getTrace) = Some finalTrace /\
-               LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_one_printer mH' 
-                 Rdata Rexec final)).
+      (fun s' =>
+         exists garbage_length : nat,
+         forall num_ones : nat,
+           FlatToRiscvCommon.runsTo s'
+             (fun s'' =>
+                exists garbage,
+                  Datatypes.length garbage = garbage_length /\
+                    getLog s'' = (repeat one num_ones ++ garbage)%list)).
 Proof.
-  assert (spec := @eventual_one_printer_eventually_prints_ones _ _ Words32Naive.word mem32 (SortedListString.map (@Naive.rep 32)) _ _).
+  assert (spec := @eventual_one_printer_eventually_prints_ones _ Words32Naive.word mem32 (SortedListString.map (@Naive.rep 32)) _ _).
   intros.
-  edestruct (@compiler_correct _ _ Words32Naive.word mem32 _ leakage_ext_spec _ _ _ leakage_ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct ltac:(reflexivity) fs_one_printer instrs_one_printer finfo_one_printer req_stack_size_one_printer fname_one_printer p_funcs stack_hi ret_addr) as [f_ [pick_sp_ H] ].
-  { simpl. reflexivity. }
-  { vm_compute. reflexivity. }
-  specialize (spec pick_sp_ _ ltac:(apply SortedListString.ok) leakage_ext_spec_ok).
-  cbv [LeakageProgramLogic.program_logic_goal_for] in spec.
-  specialize (spec (map.of_list fs_memequal) eq_refl).
-  cbv [spec_of_memequal] in spec. destruct spec as [f spec].
-  eexists. intros.
-  cbv [FlatToRiscvCommon.runsTo].
-  eapply runsToNonDet.runsTo_weaken.
-  1: eapply H with (post := (fun k_ t_ m_ r_ mc => k_ = _ /\
-                                                  post t_ m_ r_)).
-  { simpl. repeat constructor. tauto. }
-  2: { eapply map.get_of_list_In_NoDup.
-       { vm_compute. repeat constructor; eauto. }
-       { vm_compute. left. reflexivity. } }
-  all: try eassumption.   
-  2: { fwd. assumption. }
-
-  { subst. cbv [fname_memequal]. move spec at bottom.
-    specialize (spec x y n xs ys Rx Ry [] (initial.(getLog)) m ltac:(intuition eauto)).
-    eapply MetricLeakageSemantics.weaken_call.
-    { eapply SemanticsRelations.metricleakage_to_leakage_call. exact spec. }
-    cbv beta. intros. fwd. split; [|reflexivity]. reflexivity. }
-  { reflexivity. }
-  { reflexivity. }
-  cbv beta. intros. fwd. do 2 eexists. intuition eauto.
-  Unshelve. exact EmptyMetricLog.
+  edestruct (@compiler_correct_nonterm _ _ Words32Naive.word mem32 _ leakage_ext_spec _ _ _ leakage_ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct ltac:(reflexivity) fs_one_printer instrs_one_printer finfo_one_printer req_stack_size_one_printer fname_one_printer p_funcs stack_hi ret_addr eq_refl eq_refl) as [pick_sp H'].
+  specialize spec with (1 := (SortedListString.ok _)).
+  specialize H' with (argvals := nil). edestruct H' as [f_rel_pos H'']; clear H'.
+  { do 4 eexists. split; [reflexivity|]. split; [reflexivity|].
+    eapply exec.weaken; [solve[eauto]|]. simpl. intros.
+    1: eauto.
+    { simpl. fwd. split; [reflexivity|]. instantiate (1 := fun _ _ _ => _). exact H7p1. } }
+  fwd. vm_compute in H''p0. inversion H''p0. subst. clear H''p0.
+  specialize (H''p1 initial _ Rdata Rexec ltac:(eassumption) ltac:(eassumption) ltac:(assumption) ltac:(assumption) ltac:(assumption) ltac:(assumption) ltac:(reflexivity) ltac:(eassumption) ltac:(reflexivity) ltac:(eassumption)).
+  apply SmallStep.push_in_exists.
+  eapply runsToNonDet.runsTo_weaken. 1: eassumption.
+  simpl. intros final [n Hn]. exists n. eapply runsToNonDet.runsTo_weaken. 1: eassumption.
+  simpl. intros final0 Hn' n'. specialize (Hn' n'). eapply runsToNonDet.runsTo_weaken.
+  1: eassumption. simpl. intros. fwd. eauto using EmptyMetricLog.
+  Unshelve. 1: exact nil. 1: exact EmptyMetricLog.
 Qed.
-(* Print Assumptions memequal_ct. *)
+(*Print Assumptions one_printer_prints_ones.*)
 (*
-  Axioms:
-  PropExtensionality.propositional_extensionality : forall P Q : Prop, P <-> Q -> P = Q
-  FunctionalExtensionality.functional_extensionality_dep :
-  forall (A : Type) (B : A -> Type) (f g : forall x : A, B x), (forall x : A, f x = g x) -> f = g
+Axioms:
+PropExtensionality.propositional_extensionality : forall P Q : Prop, P <-> Q -> P = Q
+FunctionalExtensionality.functional_extensionality_dep :
+  forall (A : Type) (B : A -> Type) (f g : forall x : A, B x),
+  (forall x : A, f x = g x) -> f = g
+FlatImp.exec.choice : forall x y : Type, ChoiceFacts.FunctionalChoice_on x y
  *)

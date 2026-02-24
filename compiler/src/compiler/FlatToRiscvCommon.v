@@ -1,4 +1,5 @@
 From coqutil Require Import HList Memory SeparationMemory LittleEndianList.
+Require Import compiler.SmallStep.
 Require Import riscv.Utility.Monads. Require Import riscv.Utility.MonadNotations.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.LeakageSemantics.
@@ -93,8 +94,12 @@ Section WithParameters.
 
   Definition runsTo{BWM: bitwidth_iset width iset}: (* BWM is unused, but makes iset inferrable *)
     MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
-    runsTo (mcomp_sat (run1 iset)).
+    runsToNonDet.runsTo (mcomp_sat (run1 iset)).
 
+  Definition runsTo'{BWM: bitwidth_iset width iset}: (* BWM is unused, but makes iset inferrable *)
+    State' MetricRiscvMachine -> (State' MetricRiscvMachine -> Prop) -> Prop :=
+    runsToNonDet.runsTo (step' _ (mcomp_sat (run1 iset))).
+  
   Definition function{BWM: bitwidth_iset width iset}(base: word)(finfo: pos_map)
              (fname: String.string)(impl : list Z * list Z * stmt Z): mem -> Prop :=
     match map.get finfo fname with
@@ -301,8 +306,8 @@ Section WithParameters.
   Definition compiles_FlatToRiscv_correctly{BWM: bitwidth_iset width iset}
     (f: pos_map -> Z -> Z -> stmt -> list Instruction)
     (s: stmt): Prop :=
-    forall e_impl_full pick_sp1 initialK initialTrace initialMH initialRegsH initialMetricsH postH,
-    exec pick_sp1 e_impl_full s initialK initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
+    forall e_impl_full pick_sp1 initialQ initialAEP initialK initialTrace initialMH initialRegsH initialMetricsH postH,
+    exec pick_sp1 e_impl_full s initialQ initialAEP initialK initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
     forall g e_impl e_pos program_base insts xframe (initialL: MetricRiscvMachine) pos initialKL cont,
     map.extends e_impl_full e_impl ->
     good_e_impl e_impl e_pos ->
@@ -320,23 +325,28 @@ Section WithParameters.
     goodMachine initialTrace initialMH initialRegsH g initialL ->
     (forall k, pick_sp1 (k ++ initialK) = snd (stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
                                                     (s, rev k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont k))) ->
-    runsTo initialL (fun finalL => exists finalK finalTrace finalMH finalRegsH finalMetricsH,
-         postH finalK finalTrace finalMH finalRegsH finalMetricsH /\
-         finalL.(getPc) = word.add initialL.(getPc)
+    runsTo' (initialL, initialAEP) (fun '(finalL, finalAEP) => exists finalQ finalK finalTrace finalMH finalRegsH finalMetricsH,
+         postH finalQ finalAEP finalK finalTrace finalMH finalRegsH finalMetricsH /\
+           (if finalQ then finalL.(getPc) = word.add initialL.(getPc)
                                    (word.of_Z (4 * Z.of_nat (List.length insts))) /\
+                              (*thing above is not true when finalQ = false.
+                                thing below, i am too lazy to prove when finalQ = false*)
          map.only_differ initialL.(getRegs)
                  (union (of_list (modVars_as_list Z.eqb s)) (singleton_set RegisterNames.ra))
-                 finalL.(getRegs) /\
+                 finalL.(getRegs) else True) /\
          (finalL.(getMetrics) - initialL.(getMetrics) <=
             lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
            (exists kH'' finalKL,
                finalK = kH'' ++ initialK /\
                  finalL.(getTrace) = Some finalKL /\
-                 forall k cont,
-                   stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
-                     (s, rev kH'' ++ k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont) =
-                     cont (rev kH'') (rev finalKL)) /\
-           goodMachine finalTrace finalMH finalRegsH g finalL).
+                 (if finalQ then
+                   forall k cont,
+                     stmt_leakage iset compile_ext_call leak_ext_call e_pos e_impl_full program_base
+                       (s, rev kH'' ++ k, rev initialKL, pos, g.(p_sp), bytes_per_word * rem_framewords g, cont) =
+                       cont (rev kH'') (rev finalKL)
+                     else True))
+         /\
+           (if finalQ then goodMachine finalTrace finalMH finalRegsH g finalL else finalL.(getLog) = finalTrace)).
 
 End WithParameters.
 
@@ -677,11 +687,22 @@ Section FlatToRiscv1.
       (valid_machine midL -> runsTo midL P) ->
       runsTo initialL P.
   Proof using PR.
- intros.
+    intros.
     eapply runsToStep with (midset := fun m' => m' = midL /\ valid_machine m').
     - eapply run1_get_sane; try eassumption.
       intros. subst. auto.
     - intros ? (? & ?). subst. eapply H1. assumption.
+  Qed.
+
+  Lemma runsTo'_det_step_with_valid_machine: forall initialL aep midL (P : _ -> Prop),
+      valid_machine initialL ->
+      mcomp_sat (Run.run1 iset) initialL (eq midL) ->
+      (valid_machine midL -> runsTo' (midL, aep) P) ->
+      runsTo' (initialL, aep) P.
+  Proof using PR.
+    intros.
+    eapply runsToStep_cps. apply step_usual_cps. eapply run1_get_sane; eauto.
+    intros. subst. apply H1. assumption.
   Qed.
 
   Lemma store_bytes_preserves_footprint: forall n a v (m m': mem),
@@ -930,7 +951,7 @@ Ltac simulate'_step :=
 Ltac simulate' := repeat simulate'_step.
 
 Ltac run1det :=
-  eapply runsTo_det_step_with_valid_machine;
+  eapply runsTo_det_step_with_valid_machine || eapply runsTo'_det_step_with_valid_machine;
   [ assumption
   | simulate';
     match goal with

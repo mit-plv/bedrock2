@@ -1,4 +1,4 @@
-Require Import coqutil.sanity coqutil.Byte.
+ Require Import coqutil.sanity coqutil.Byte.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.
 Require coqutil.Map.SortedListString.
@@ -13,6 +13,49 @@ Require Import bedrock2.LeakageSemantics.
 Require Import Coq.Lists.List.
 
 Local Notation UNK := String.EmptyString.
+
+Section aep.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Local Notation metrics := MetricLog.
+
+  Inductive AEP :=
+  | AEP_A : (nat -> AEP) -> AEP
+  | AEP_E : (nat -> AEP) -> AEP
+  | AEP_P : (trace -> MetricLog -> Prop) -> AEP.
+  (* Too bad this is painful to work with.  no reason not to do it, in principle *)
+  (* | AEP_P : forall T : Type, T -> AEP. *)
+
+  Inductive inputs :=
+  | inp_nil
+  | inp_E : nat -> inputs -> inputs
+  | inp_A : (nat -> inputs) -> inputs.
+
+  Inductive compat : AEP -> inputs -> Prop :=
+  | comp_nil aep : compat aep inp_nil
+  | comp_A aep inp : (forall x, compat (aep x) (inp x)) ->
+                     compat (AEP_A aep) (inp_A inp)
+  | comp_E aep inp x : compat (aep x) inp ->
+                       compat (AEP_E aep) (inp_E x inp).
+
+  Inductive goes_to : AEP -> inputs -> AEP -> Prop :=
+  | gt_nil : forall aep, goes_to aep inp_nil aep
+  | gt_A : forall aep inp aep' x,
+      goes_to (aep x) (inp x) aep' ->
+      goes_to (AEP_A aep) (inp_A inp) aep'
+  | gt_E : forall aep inp aep' x,
+      goes_to (aep x) inp aep' ->
+      goes_to (AEP_E aep) (inp_E x inp) aep'.
+
+  Lemma goes_to_something aep inp :
+    compat aep inp ->
+    exists aep', goes_to aep inp aep'.
+  Proof.
+    intros H. induction H.
+    - eexists; econstructor; eauto.
+    - specialize (H0 O). fwd. eexists. econstructor. eassumption.
+    - fwd. eexists. econstructor. eassumption.
+  Qed.
+End aep.
 
 Section semantics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
@@ -72,196 +115,227 @@ Module exec. Section WithParams.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
   Section WithEnv.
-  Context (e: env).
+    Context (e: env).
 
   Local Notation metrics := MetricLog.
 
-  Implicit Types post : leakage -> trace -> mem -> locals -> metrics -> Prop. (* COQBUG: unification finds Type instead of Prop and fails to downgrade *)
+  Implicit Types post : bool -> AEP -> leakage -> trace -> mem -> locals -> metrics -> Prop. (* COQBUG: unification finds Type instead of Prop and fails to downgrade *)
   Inductive exec {pick_sp: PickSp} :
-    cmd -> leakage -> trace -> mem -> locals -> metrics ->
-    (leakage -> trace -> mem -> locals -> metrics -> Prop) -> Prop :=
+    cmd -> bool -> AEP -> leakage -> trace -> mem -> locals -> metrics ->
+    (bool -> AEP -> leakage -> trace -> mem -> locals -> metrics -> Prop) -> Prop :=
   | skip
-    k t m l mc post
-    (_ : post k t m l mc)
-    : exec cmd.skip k t m l mc post
+    aep k t m l mc post
+    (_ : post true aep k t m l mc)
+    : exec cmd.skip true aep k t m l mc post
   | set x e
-    k t m l mc post
+    aep k t m l mc post
     v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
-    (_ : post k' t m (map.put l x v) (cost_set isRegStr x UNK mc'))
-    : exec (cmd.set x e) k t m l mc post
+    (_ : post true aep k' t m (map.put l x v) (cost_set isRegStr x UNK mc'))
+    : exec (cmd.set x e) true aep k t m l mc post
   | unset x
-    k t m l mc post
-    (_ : post k t m (map.remove l x) mc)
-    : exec (cmd.unset x) k t m l mc post
+    aep k t m l mc post
+    (_ : post true aep k t m (map.remove l x) mc)
+    : exec (cmd.unset x) true aep k t m l mc post
   | store sz ea ev
-    k t m l mc post
+    aep k t m l mc post
     a k' mc' (_ : eval_expr m l ea k mc = Some (a, k', mc'))
     v k'' mc'' (_ : eval_expr m l ev k' mc' = Some (v, k'', mc''))
     m' (_ : store sz m a v = Some m')
-    (_ : post (leak_word a :: k'') t m' l (cost_store isRegStr UNK UNK mc''))
-    : exec (cmd.store sz ea ev) k t m l mc post
+    (_ : post true aep (leak_word a :: k'') t m' l (cost_store isRegStr UNK UNK mc''))
+    : exec (cmd.store sz ea ev) true aep k t m l mc post
   | stackalloc x n body
-    k t mSmall l mc post
+    aep k t mSmall l mc post
     (_ : Z.modulo n (bytes_per_word width) = 0)
     (_ : forall mStack mCombined,
         let a := pick_sp k in
         anybytes a n mStack ->
         map.split mCombined mSmall mStack ->
-        exec body (leak_unit :: k) t mCombined (map.put l x a) (cost_stackalloc isRegStr x mc)
-          (fun k' t' mCombined' l' mc' =>
-            exists mSmall' mStack',
-              anybytes a n mStack' /\
-              map.split mCombined' mSmall' mStack' /\
-              post k' t' mSmall' l' mc'))
-     : exec (cmd.stackalloc x n body) k t mSmall l mc post
-  | if_true k t m l mc e c1 c2 post
+        exec body true aep (leak_unit :: k) t mCombined (map.put l x a) (cost_stackalloc isRegStr x mc)
+          (fun q' aep' k' t' mCombined' l' mc' =>
+             if q' then
+               exists mSmall' mStack',
+                 anybytes a n mStack' /\
+                   map.split mCombined' mSmall' mStack' /\
+                   post q' aep' k' t' mSmall' l' mc'
+             else post q' aep' k' t' mCombined' l' mc'))
+     : exec (cmd.stackalloc x n body) true aep k t mSmall l mc post
+  | if_true aep k t m l mc e c1 c2 post
     v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
     (_ : word.unsigned v <> 0)
-    (_ : exec c1 (leak_bool true :: k') t m l (cost_if isRegStr UNK (Some UNK) mc') post)
-    : exec (cmd.cond e c1 c2) k t m l mc post
+    (_ : exec c1 true aep (leak_bool true :: k') t m l (cost_if isRegStr UNK (Some UNK) mc') post)
+    : exec (cmd.cond e c1 c2) true aep k t m l mc post
   | if_false e c1 c2
-    k t m l mc post
+    aep k t m l mc post
     v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
     (_ : word.unsigned v = 0)
-    (_ : exec c2 (leak_bool false :: k') t m l (cost_if isRegStr UNK (Some UNK) mc') post)
-    : exec (cmd.cond e c1 c2) k t m l mc post
+    (_ : exec c2 true aep (leak_bool false :: k') t m l (cost_if isRegStr UNK (Some UNK) mc') post)
+    : exec (cmd.cond e c1 c2) true aep k t m l mc post
   | seq c1 c2
-    k t m l mc post
-    mid (_ : exec c1 k t m l mc mid)
-    (_ : forall k' t' m' l' mc', mid k' t' m' l' mc' -> exec c2 k' t' m' l' mc' post)
-    : exec (cmd.seq c1 c2) k t m l mc post
+    aep k t m l mc post
+    mid (_ : exec c1 true aep k t m l mc mid)
+    (_ : forall q' aep' k' t' m' l' mc', mid q' aep' k' t' m' l' mc' -> exec c2 q' aep' k' t' m' l' mc' post)
+    : exec (cmd.seq c1 c2) true aep k t m l mc post
   | while_false e c
-    k t m l mc post
+    aep k t m l mc post
     v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
     (_ : word.unsigned v = 0)
-    (_ : post (leak_bool false :: k') t m l (cost_loop_false isRegStr UNK (Some UNK) mc'))
-    : exec (cmd.while e c) k t m l mc post
+    (_ : post true aep (leak_bool false :: k') t m l (cost_loop_false isRegStr UNK (Some UNK) mc'))
+    : exec (cmd.while e c) true aep k t m l mc post
   | while_true e c
-      k t m l mc post
+      aep k t m l mc post
       v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
       (_ : word.unsigned v <> 0)
-      mid (_ : exec c (leak_bool true :: k') t m l mc' mid)
-      (_ : forall k'' t' m' l' mc'', mid k'' t' m' l' mc'' ->
-                                 exec (cmd.while e c) k'' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc'') post)
-    : exec (cmd.while e c) k t m l mc post
+      mid (_ : exec c true aep (leak_bool true :: k') t m l mc' mid)
+      (_ : forall q' aep' k'' t' m' l' mc'',
+          mid q' aep' k'' t' m' l' mc'' ->
+          exec (cmd.while e c) q' aep' k'' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc'') post)
+    : exec (cmd.while e c) true aep k t m l mc post
   | call binds fname arges
-      k t m l mc post
+      aep k t m l mc post
       params rets fbody (_ : map.get e fname = Some (params, rets, fbody))
       args k' mc' (_ : eval_call_args m l arges k mc = Some (args, k', mc'))
       lf (_ : map.of_list_zip params args = Some lf)
-      mid (_ : exec fbody (leak_unit :: k') t m lf mc' mid)
-      (_ : forall k'' t' m' st1 mc'', mid k'' t' m' st1 mc'' ->
-          exists retvs, map.getmany_of_list st1 rets = Some retvs /\
-          exists l', map.putmany_of_list_zip binds retvs l = Some l' /\
-          post k'' t' m' l'  (cost_call PreSpill mc''))
-    : exec (cmd.call binds fname arges) k t m l mc post
+      mid (_ : exec fbody true aep (leak_unit :: k') t m lf mc' mid)
+      (_ : forall q' aep' k'' t' m' st1 mc'',
+          mid q' aep' k'' t' m' st1 mc'' ->
+          if q' then
+            exists retvs, map.getmany_of_list st1 rets = Some retvs /\
+                       exists l', map.putmany_of_list_zip binds retvs l = Some l' /\
+                               post true aep' k'' t' m' l'  (cost_call PreSpill mc'')
+          else post q' aep' k'' t' m' st1 (cost_call PreSpill mc''))
+    : exec (cmd.call binds fname arges) true aep k t m l mc post
   | interact binds action arges
-      k t m l mc post
+      aep k t m l mc post
       mKeep mGive (_: map.split m mKeep mGive)
       args k' mc' (_ :  eval_call_args m l arges k mc = Some (args, k', mc'))
       mid (_ : ext_spec t mGive action args mid)
       (_ : forall mReceive resvals klist, mid mReceive resvals klist ->
           exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
           forall m', map.split m' mKeep mReceive ->
-          post (leak_list klist :: k') (cons ((mGive, action, args), (mReceive, resvals)) t) m' l'
+          post true aep (leak_list klist :: k') (cons ((mGive, action, args), (mReceive, resvals)) t) m' l'
             (cost_interact PreSpill mc'))
-    : exec (cmd.interact binds action arges) k t m l mc post
+    : exec (cmd.interact binds action arges) true aep k t m l mc post
+  | quit s q aep k t m l mc post
+      (_ : post false aep k t m l mc)
+    : exec s q aep k t m l mc post
+  | exec_A s aep k t m l mc post
+      (_ : forall x, exec s true (aep x) k t m l mc post)
+    : exec s true (AEP_A aep) k t m l mc post
+  | exec_E s aep k t m l mc post x
+      (_ : exec s true (aep x) k t m l mc post)
+    : exec s true (AEP_E aep) k t m l mc post
   .
 
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
 
-  Lemma weaken {pick_sp: PickSp} : forall s k t m l mc post1,
-      exec s k t m l mc post1 ->
-      forall post2: _ -> _ -> _ -> _ -> _ -> Prop,
-        (forall k' t' m' l' mc', post1 k' t' m' l' mc' -> post2 k' t' m' l' mc') ->
-        exec s k t m l mc post2.
+  Lemma seq_cps {pick_sp: PickSp} : forall s1 s2 aep k t m (l: locals) mc post,
+      exec s1 true aep k t m l mc (fun q' aep' k' t' m' l' mc' => exec s2 q' aep' k' t' m' l' mc' post) ->
+      exec (cmd.seq s1 s2) true aep k t m l mc post.
+  Proof.
+    intros. eapply seq. 1: eassumption. simpl. clear. auto.
+  Qed.
+
+  Lemma interact_cps {pick_sp: PickSp} : forall binds action arges args k' mc' aep k t m l mc post mKeep mGive,
+      map.split m mKeep mGive ->
+      eval_call_args m l arges k mc = Some (args, k', mc') ->
+      ext_spec t mGive action args (fun mReceive resvals klist =>
+          exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
+          forall m', map.split m' mKeep mReceive ->
+          post true aep (leak_list klist :: k') (cons ((mGive, action, args), (mReceive, resvals)) t) m' l' (cost_interact PreSpill mc')) ->
+      exec (cmd.interact binds action arges) true aep k t m l mc post.
+  Proof. eauto using interact. Qed.
+
+  Lemma weaken {pick_sp: PickSp} : forall s q aep k t m l mc post1,
+      exec s q aep k t m l mc post1 ->
+      forall post2: _ -> _ -> _ -> _ -> _ -> _ -> _ -> Prop,
+        (forall q' aep' k' t' m' l' mc', post1 q' aep' k' t' m' l' mc' -> post2 q' aep' k' t' m' l' mc') ->
+        exec s q aep k t m l mc post2.
   Proof.
     induction 1; intros; try solve [econstructor; eauto].
     - eapply stackalloc. 1: assumption.
       intros.
       eapply H1; eauto.
-      intros. fwd. eauto 10.
+      intros. destruct q'; fwd; eauto 10.
     - eapply call.
       4: eapply IHexec.
       all: eauto.
-      intros.
-      edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
-      eauto 10.
+      intros. apply H3 in H5. destruct q'; [|auto].
+      edestruct H5 as (? & ? & ? & ? & ?). eexists. eauto.
     - eapply interact; try eassumption.
       intros.
       edestruct H2 as (? & ? & ?); [eassumption|].
       eauto 10.
   Qed.
 
-  Lemma intersect {pick_sp: PickSp} : forall k t l m mc s post1,
-      exec s k t m l mc post1 ->
-      forall post2,
-        exec s k t m l mc post2 ->
-        exec s k t m l mc (fun k' t' m' l' mc' => post1 k' t' m' l' mc' /\ post2 k' t' m' l' mc').
-  Proof.
-    induction 1;
-      intros;
-      match goal with
-      | H: exec _ _ _ _ _ _ _ |- _ => inversion H; subst; clear H
-      end;
-      repeat match goal with
-      | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
-        replace x2 with x1 in * by congruence;
-          replace y2 with y1 in * by congruence;
-          replace z2 with z1 in * by congruence;
-          clear x2 y2 z2 H2
-      end;
-      repeat match goal with
-             | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-               replace v2 with v1 in * by congruence; clear H2
-             end;
-      try solve [econstructor; eauto | exfalso; congruence].
+  (* Lemma intersect {pick_sp: PickSp} : forall q aep k t l m mc s post1, *)
+  (*     exec s q aep k t m l mc post1 -> *)
+  (*     forall post2, *)
+  (*       exec s q aep k t m l mc post2 -> *)
+  (*       exec s q aep k t m l mc (fun q' aep' k' t' m' l' mc' => post1 q' aep' k' t' m' l' mc' /\ post2 q' aep' k' t' m' l' mc'). *)
+  (* Proof. *)
+  (*   induction 1; *)
+  (*     intros; *)
+  (*     match goal with *)
+  (*     | H: exec _ _ _ _ _ _ _ |- _ => inversion H; subst; clear H *)
+  (*     end; *)
+  (*     repeat match goal with *)
+  (*     | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ => *)
+  (*       replace x2 with x1 in * by congruence; *)
+  (*         replace y2 with y1 in * by congruence; *)
+  (*         replace z2 with z1 in * by congruence; *)
+  (*         clear x2 y2 z2 H2 *)
+  (*     end; *)
+  (*     repeat match goal with *)
+  (*            | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ => *)
+  (*              replace v2 with v1 in * by congruence; clear H2 *)
+  (*            end; *)
+  (*     try solve [econstructor; eauto | exfalso; congruence]. *)
 
-    - econstructor. 1: eassumption.
-      intros.
-      rename H0 into Ex1, H13 into Ex2.
-      eapply weaken. 1: eapply H1. 1,2: eassumption.
-      1: eapply Ex2. 1,2: eassumption.
-      cbv beta.
-      intros. fwd.
-      lazymatch goal with
-      | A: map.split _ _ _, B: map.split _ _ _ |- _ =>
-        specialize @map.split_diff with (4 := A) (5 := B) as P
-      end.
-      edestruct P; try typeclasses eauto. 2: subst; eauto 10.
-      eapply anybytes_unique_domain; eassumption.
-    - econstructor.
-      + eapply IHexec. exact H5. (* not H *)
-      + simpl. intros *. intros [? ?]. eauto.
-    - eapply while_true. 1, 2: eassumption.
-      + eapply IHexec. exact H9. (* not H1 *)
-      + simpl. intros *. intros [? ?]. eauto.
-    - eapply call. 1, 2, 3: eassumption.
-      + eapply IHexec. exact H17. (* not H2 *)
-      + simpl. intros *. intros [? ?].
-        edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
-        edestruct H18 as (? & ? & ? & ? & ?); [eassumption|].
-        repeat match goal with
-               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-                 replace v2 with v1 in * by congruence; clear H2
-               end.
-        eauto 10.
-    - pose proof ext_spec.mGive_unique as P.
-      specialize P with (1 := H) (2 := H7) (3 := H1) (4 := H15).
-      subst mGive0.
-      destruct (map.split_diff (map.same_domain_refl mGive) H H7) as (? & _).
-      subst mKeep0.
-      eapply interact. 1,2: eassumption.
-      + eapply ext_spec.intersect; [ exact H1 | exact H15 ].
-      + simpl. intros *. intros [? ?].
-        edestruct H2 as (? & ? & ?); [eassumption|].
-        edestruct H16 as (? & ? & ?); [eassumption|].
-        repeat match goal with
-               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-                 replace v2 with v1 in * by congruence; clear H2
-               end.
-        eauto 10.
-  Qed.
+  (*   - econstructor. 1: eassumption. *)
+  (*     intros. *)
+  (*     rename H0 into Ex1, H13 into Ex2. *)
+  (*     eapply weaken. 1: eapply H1. 1,2: eassumption. *)
+  (*     1: eapply Ex2. 1,2: eassumption. *)
+  (*     cbv beta. *)
+  (*     intros. fwd. *)
+  (*     lazymatch goal with *)
+  (*     | A: map.split _ _ _, B: map.split _ _ _ |- _ => *)
+  (*       specialize @map.split_diff with (4 := A) (5 := B) as P *)
+  (*     end. *)
+  (*     edestruct P; try typeclasses eauto. 2: subst; eauto 10. *)
+  (*     eapply anybytes_unique_domain; eassumption. *)
+  (*   - econstructor. *)
+  (*     + eapply IHexec. exact H5. (* not H *) *)
+  (*     + simpl. intros *. intros [? ?]. eauto. *)
+  (*   - eapply while_true. 1, 2: eassumption. *)
+  (*     + eapply IHexec. exact H9. (* not H1 *) *)
+  (*     + simpl. intros *. intros [? ?]. eauto. *)
+  (*   - eapply call. 1, 2, 3: eassumption. *)
+  (*     + eapply IHexec. exact H17. (* not H2 *) *)
+  (*     + simpl. intros *. intros [? ?]. *)
+  (*       edestruct H3 as (? & ? & ? & ? & ?); [eassumption|]. *)
+  (*       edestruct H18 as (? & ? & ? & ? & ?); [eassumption|]. *)
+  (*       repeat match goal with *)
+  (*              | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ => *)
+  (*                replace v2 with v1 in * by congruence; clear H2 *)
+  (*              end. *)
+  (*       eauto 10. *)
+  (*   - pose proof ext_spec.mGive_unique as P. *)
+  (*     specialize P with (1 := H) (2 := H7) (3 := H1) (4 := H15). *)
+  (*     subst mGive0. *)
+  (*     destruct (map.split_diff (map.same_domain_refl mGive) H H7) as (? & _). *)
+  (*     subst mKeep0. *)
+  (*     eapply interact. 1,2: eassumption. *)
+  (*     + eapply ext_spec.intersect; [ exact H1 | exact H15 ]. *)
+  (*     + simpl. intros *. intros [? ?]. *)
+  (*       edestruct H2 as (? & ? & ?); [eassumption|]. *)
+  (*       edestruct H16 as (? & ? & ?); [eassumption|]. *)
+  (*       repeat match goal with *)
+  (*              | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ => *)
+  (*                replace v2 with v1 in * by congruence; clear H2 *)
+  (*              end. *)
+  (*       eauto 10. *)
+  (* Qed. *)
 
   Lemma eval_expr_extends_trace :
     forall e0 m l mc k v mc' k',
@@ -381,33 +455,39 @@ Module exec. Section WithParams.
           apply eval_call_args_extends_trace in H; destruct H; subst
         end.
 
-  Lemma exec_extends_trace {pick_sp: PickSp} s k t m l mc post :
-    exec s k t m l mc post ->
-    exec s k t m l mc (fun k' t' m' l' mc' => post k' t' m' l' mc' /\ exists k'', k' = k'' ++ k).
+  Lemma exec_extends_trace {pick_sp: PickSp} s q aep k t m l mc post :
+    exec s q aep k t m l mc post ->
+    exec s q aep k t m l mc (fun q' aep' k' t' m' l' mc' => post q' aep' k' t' m' l' mc' /\ exists k'', k' = k'' ++ k).
   Proof.
     intros H. induction H; try (econstructor; intuition eauto; subst_exprs; eexists; align_trace; fail).
     - econstructor; intuition eauto. intros. eapply weaken. 1: eapply H1; eauto.
-      simpl. intros. fwd. eexists. eexists. intuition eauto. eexists. align_trace.
+      simpl. intros. fwd. destruct q'.
+      + fwd. eexists. eexists. intuition eauto. eexists. align_trace.
+      + intuition. eexists. align_trace.
     - eapply if_true; intuition eauto. eapply weaken. 1: eapply IHexec.
       simpl. intros. fwd. intuition eauto. subst_exprs. eexists. align_trace.
     - eapply if_false; intuition eauto. eapply weaken. 1: eapply IHexec.
       simpl. intros. fwd. intuition eauto. subst_exprs. eexists. align_trace.
     - econstructor; intuition eauto. fwd. eapply weaken. 1: eapply H1; eauto.
       simpl. intros. fwd. intuition eauto. eexists. align_trace.
-    - eapply while_true; eauto. simpl. intros. fwd. eapply weaken. 1: eapply H3; eauto.
-      simpl. intros. fwd. intuition eauto. subst_exprs. eexists. align_trace.
-    - econstructor; intuition eauto. fwd. specialize H3 with (1 := H4p0). fwd.
-      eexists. intuition eauto. eexists. intuition eauto. subst_exprs.
-      eexists. align_trace.
+    - eapply while_true; eauto; subst_exprs.
+      + simpl. intros. fwd. eapply weaken. 1: eapply H3; eauto.
+        simpl. intros. fwd. intuition eauto. eexists. align_trace.
+    - econstructor; intuition eauto. fwd. specialize H3 with (1 := H4p0).
+      subst_exprs.
+      destruct q'.
+      + fwd. eexists. intuition eauto. eexists. intuition eauto. 
+        eexists. align_trace.
+      + intuition auto. eexists. align_trace.
     - econstructor; intuition eauto. specialize H2 with (1 := H3). fwd.
       eexists. intuition eauto. subst_exprs. eexists. align_trace.
   Qed.
 
-  Lemma exec_ext (pick_sp1: PickSp) s k t m l mc post :
-    exec (pick_sp := pick_sp1) s k t m l mc post ->
+  Lemma exec_ext (pick_sp1: PickSp) s q aep k t m l mc post :
+    exec (pick_sp := pick_sp1) s q aep k t m l mc post ->
     forall pick_sp2,
     (forall k', pick_sp1 (k' ++ k) = pick_sp2 (k' ++ k)) ->
-    exec (pick_sp := pick_sp2) s k t m l mc post.
+    exec (pick_sp := pick_sp2) s q aep k t m l mc post.
   Proof.
     intros H1 pick_sp2. induction H1; intros; try solve [econstructor; eauto].
     - econstructor; eauto. intros. replace (pick_sp1 k) with (pick_sp2 k) in *.
@@ -422,11 +502,11 @@ Module exec. Section WithParams.
       intros. eassert (H2' := H2 (_ ++ _ :: _)). rewrite <- app_assoc in H2'. eapply H2'.
     - econstructor. 1: eapply exec_extends_trace; eauto. simpl. intros. fwd.
       eapply H0; eauto. intros. repeat rewrite app_assoc. apply H2.
-    - eapply while_true; intuition eauto.
-      { eapply exec_extends_trace. eapply IHexec. subst_exprs.
-        intros. simpl. rewrite associate_one_left. rewrite app_assoc. apply H4. }
-      simpl in *. fwd. eapply H3; eauto. intros. subst_exprs.
-      rewrite associate_one_left. repeat rewrite app_assoc. auto.
+    - eapply while_true. 1,2: eassumption.
+      + eapply exec_extends_trace. eapply IHexec. subst_exprs.
+        intros. simpl. rewrite associate_one_left. rewrite app_assoc. apply H4.
+      + simpl in *. intros. fwd. eapply H3; eauto. intros. subst_exprs.
+        rewrite associate_one_left. repeat rewrite app_assoc. auto.
     - econstructor. 4: eapply exec_extends_trace. all: intuition eauto.
       { eapply IHexec. subst_exprs. intros.
         rewrite associate_one_left. repeat rewrite app_assoc. auto. }
@@ -442,13 +522,13 @@ Module exec. Section WithParams.
     repeat (rewrite rev_app_distr || cbn [rev app] || rewrite rev_involutive);
     repeat rewrite <- app_assoc; reflexivity.
 
-  Lemma exec_to_other_trace (pick_sp: PickSp) s k1 k2 t m l mc post :
-    exec s k1 t m l mc post ->
+  Lemma exec_to_other_trace (pick_sp: PickSp) s q aep k1 k2 t m l mc post :
+    exec s q aep k1 t m l mc post ->
     exec (pick_sp := fun k => pick_sp (rev (skipn (length k2) (rev k)) ++ k1))
-      s k2 t m l mc (fun k2' t' m' l' mc' =>
-                       exists k'',
-                         k2' = k'' ++ k2 /\
-                           post (k'' ++ k1) t' m' l' mc').
+      s q aep k2 t m l mc (fun q' aep' k2' t' m' l' mc' =>
+                             exists k'',
+                               k2' = k'' ++ k2 /\
+                                 post q' aep' (k'' ++ k1) t' m' l' mc').
   Proof.
     intros H. generalize dependent k2. induction H; intros.
     - econstructor. exists nil. eauto.
@@ -465,8 +545,10 @@ Module exec. Section WithParams.
       rewrite List.skipn_app_r in * by (rewrite rev_length; reflexivity).
       simpl in *. eapply weaken.
       { eapply exec_ext with (pick_sp1 := _). 1: eapply H1; eauto. solve_picksps_equal. }
-      simpl. intros. fwd. eexists _, _. intuition eauto. eexists (_ ++ _ :: nil).
-      rewrite <- app_assoc. simpl. rewrite <- (app_assoc _ _ k). simpl. eauto.
+      simpl. intros. fwd. destruct q'.
+      + fwd. eexists _, _. intuition eauto. eexists (_ ++ _ :: nil).
+        rewrite <- app_assoc. simpl. rewrite <- (app_assoc _ _ k). simpl. eauto.
+      + eexists. split; [align_trace|]. rewrite <- app_assoc. auto.
     - apply expr_to_other_trace in H. fwd. eapply if_true; intuition eauto.
       eapply weaken.
       { eapply exec_ext with (pick_sp1 := _). 1: eapply IHexec. solve_picksps_equal. }
@@ -487,31 +569,35 @@ Module exec. Section WithParams.
     - apply expr_to_other_trace in H. fwd. eapply while_false; intuition.
       eexists (_ :: _). intuition.
     - apply expr_to_other_trace in H. fwd. eapply while_true; intuition.
-      { eapply exec_ext with (pick_sp1 := _). 1: eapply IHexec. solve_picksps_equal. }
-      cbv beta in *. fwd. eapply weaken.
-      { eapply exec_ext with (pick_sp1 := _). 1: eapply H3; eauto. solve_picksps_equal. }
-      simpl. intros. fwd. eexists (_ ++ _ ++ _ :: _).
-      repeat rewrite <- (app_assoc _ _ k2). repeat rewrite <- (app_assoc _ _ k).
-      intuition.
+      + eapply exec_ext with (pick_sp1 := _). 1: eapply IHexec. solve_picksps_equal.
+      + cbv beta in *. fwd. eapply weaken.
+        { eapply exec_ext with (pick_sp1 := _). 1: eapply H3; eauto. solve_picksps_equal. }
+        simpl. intros. fwd. eexists (_ ++ _ ++ _ :: _).
+        repeat rewrite <- (app_assoc _ _ k2). repeat rewrite <- (app_assoc _ _ k).
+        intuition.
     - apply call_args_to_other_trace in H0.
       fwd. econstructor; intuition eauto.
       { eapply exec_ext with (pick_sp1 := _). 1: eapply IHexec; eauto. solve_picksps_equal. }
-      cbv beta in *. fwd. apply H3 in H0p2.
-      fwd. exists retvs. intuition. exists l'. intuition. eexists (_ ++ _ :: _).
-      repeat rewrite <- (app_assoc _ _ k2). repeat rewrite <- (app_assoc _ _ k).
-      intuition.
+      cbv beta in *. fwd. apply H3 in H0p2. destruct q'.
+      + fwd. exists retvs. intuition. exists l'. intuition. eexists (_ ++ _ :: _).
+        repeat rewrite <- (app_assoc _ _ k2). repeat rewrite <- (app_assoc _ _ k).
+        intuition.
+      + eexists. split; [align_trace|]. rewrite <- app_assoc. assumption.
     - apply call_args_to_other_trace in H0. fwd. econstructor; intuition eauto.
       apply H2 in H0. fwd. exists l'. intuition. eexists (_ :: _).
       intuition.
+    - econstructor; eauto. exists nil. auto.
+    - apply exec_A. eauto.
+    - eapply exec_E. eauto.     
   Qed.
 
   End WithEnv.
 
   Lemma extend_env {pick_sp: PickSp} : forall e1 e2,
       map.extends e2 e1 ->
-      forall c k t m l mc post,
-      exec e1 c k t m l mc post ->
-      exec e2 c k t m l mc post.
+      forall c q aep k t m l mc post,
+      exec e1 c q aep k t m l mc post ->
+      exec e2 c q aep k t m l mc post.
   Proof. induction 2; try solve [econstructor; eauto]. Qed.
 
   End WithParams.
@@ -524,18 +610,18 @@ Section WithParams.
 
   Implicit Types (l: locals) (m: mem).
 
-  Definition call e fname k t m args mc post :=
+  Definition call e fname q aep k t m args mc post :=
     exists argnames retnames body,
       map.get e fname = Some (argnames, retnames, body) /\
       exists l, map.of_list_zip argnames args = Some l /\
-        exec e body k t m l mc (fun k' t' m' l' mc' => exists rets,
+        exec e body q aep k t m l mc (fun q' aep' k' t' m' l' mc' => exists rets,
           map.getmany_of_list l' retnames = Some rets /\ post k' t' m' rets mc').
 
-  Lemma weaken_call: forall e fname k t m args mc post1,
-      call e fname k t m args mc post1 ->
+  Lemma weaken_call: forall e fname q aep k t m args mc post1,
+      call e fname q aep k t m args mc post1 ->
       forall (post2: leakage -> trace -> mem -> list word -> MetricLog -> Prop),
       (forall k' t' m' rets mc', post1 k' t' m' rets mc' -> post2 k' t' m' rets mc') ->
-      call e fname k t m args mc post2.
+      call e fname q aep k t m args mc post2.
   Proof.
     unfold call. intros. fwd.
     do 4 eexists. 1: eassumption.
@@ -546,9 +632,9 @@ Section WithParams.
 
   Lemma extend_env_call: forall e1 e2,
       map.extends e2 e1 ->
-      forall f k t m rets mc post,
-      call e1 f k t m rets mc post ->
-      call e2 f k t m rets mc post.
+      forall f q aep k t m rets mc post,
+      call e1 f q aep k t m rets mc post ->
+      call e2 f q aep k t m rets mc post.
   Proof.
     unfold call. intros. fwd. repeat eexists.
     - eapply H. eassumption.
