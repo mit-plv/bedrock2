@@ -36,7 +36,7 @@ Definition br_full_sub :=
       diff -= borrow
     }.
 
-Local Instance spec_of_full_sub : spec_of "br_full_sub" :=
+#[export] Instance spec_of_full_sub : spec_of "br_full_sub" :=
   fnspec! "br_full_sub" x y borrow ~> diff out_borrow,
     { requires t m :=
         (* This pre-condition is not required in order to ensure the
