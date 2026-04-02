@@ -22,7 +22,7 @@ Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Monads.
 Require Import riscv.Spec.Machine.
 
-Arguments Jal (_)%Z (_)%Z. (* needed when inside a (_)%sep *)
+Arguments Jal (_)%_Z (_)%_Z. (* needed when inside a (_)%_sep *)
 
 Section Proofs.
   Context {iset: Decode.InstructionSet}.

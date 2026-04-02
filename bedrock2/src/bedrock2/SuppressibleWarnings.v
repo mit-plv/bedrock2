@@ -1,6 +1,6 @@
 Declare Scope message_scope.
 Definition warning_marker{T: Type}(msg: T) := msg.
-Arguments warning_marker {T} msg%message_scope.
+Arguments warning_marker {T} msg%_message_scope.
 
 (* Call this tactic to obtain a pattern-matchable representation of the warning *)
 Ltac unexplain := unfold warning_marker in *.

@@ -26,11 +26,11 @@ Declare Scope sep_scope.
 Infix "*" := sep : sep_scope.
 
 Delimit Scope sep_scope with sep.
-Arguments impl1 {T} (_)%sep (_)%sep.
-Arguments iff1 {T} (_)%sep (_)%sep.
+Arguments impl1 {T} (_)%_sep (_)%_sep.
+Arguments iff1 {T} (_)%_sep (_)%_sep.
 
 (* TODO does not get rid of %sep in printing as intended *)
-Arguments sep {key} {value} {map} (_)%sep (_)%sep.
+Arguments sep {key} {value} {map} (_)%_sep (_)%_sep.
 
 Definition bytes_per_word{width}{BW: Bitwidth width}: Z := Memory.bytes_per_word width.
 
