@@ -583,6 +583,7 @@ Section FlatToRiscv1.
       (tup : tuple)
       (stmt_leakage : forall othertup, lt_tuple othertup tup -> list LeakageEvent * word)
       : list LeakageEvent * word.
+    Proof.
       refine (
           match tup as x return tup = x -> _ with
           | (s, k, rk_so_far, mypos, sp_val, stackoffset, f) =>
@@ -732,7 +733,7 @@ Section FlatToRiscv1.
                     end
               end eq_refl
           end eq_refl).
-      Proof. (*copied verbatim from spilling*)
+        (*from here copied verbatim from spilling*)
         Unshelve.
         all: intros.
         all: cbv [lt_tuple project_tuple].
