@@ -28,8 +28,8 @@ Close Scope sepapp_bullets_scope.
 Close Scope zlist_scope.
 Close Scope list_scope.
 Undelimit Scope list_scope.
-Arguments sepapps {width}%Z_scope {BW word mem} l _ _.
-Arguments cons {A}%type_scope a _.
+Arguments sepapps {width}%_Z_scope {BW word mem} l _ _.
+Arguments cons {A}%_type_scope a _.
 *)
 
 Definition node_t_alt_alt(r: node): word -> mem -> Prop :=
