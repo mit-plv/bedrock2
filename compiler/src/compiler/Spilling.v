@@ -227,6 +227,7 @@ Section Spilling.
     (tup : stmt * leakage * leakage * word * (leakage (*skip*) -> leakage (*sk_so_far*) -> leakage * word))
     (stmt_leakage : forall othertup, lt_tuple othertup tup -> leakage * word)
     : leakage * word.
+  Proof.
     refine (
         match tup as x return tup = x -> _ with
         | (s, k, sk_so_far, fpval, f) =>
@@ -369,7 +370,6 @@ Section Spilling.
                     end
               end eq_refl
         end%nat eq_refl).
-  Proof.
     Unshelve.
       all: intros.
       all: cbv [lt_tuple project_tuple].

@@ -523,6 +523,7 @@ Section WithArguments1.
     (tup : leakage * stmt var * list var * (leakage -> leakage))
     (dtransform_stmt_trace : forall othertup, lt_tuple othertup tup -> leakage)
     : leakage.
+  Proof.
     refine (
         match tup as x return tup = x -> _ with
         | (kH, s, u, f) =>
@@ -649,7 +650,6 @@ Section WithArguments1.
               | SSkip => fun _ => f nil
               end eq_refl
         end eq_refl).
-    Proof.
       Unshelve.
       all: cbv [lt_tuple project_tuple].
       all: subst.
