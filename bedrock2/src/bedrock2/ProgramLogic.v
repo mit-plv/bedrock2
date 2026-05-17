@@ -146,7 +146,7 @@ Ltac straightline_cleanup :=
   | |- forall _, _ => intros
   | |- let _ := _ in _ => intros
   | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
-  | _ => progress (cbn [Semantics.interp_binop] in * )
+  | _ => progress (cbn [Semantics.interp_binop])
   | H: exists _, _ |- _ => tryif is_context_variable H then fail else destruct H
   | H: _ /\ _ |- _ => tryif is_context_variable H then fail else destruct H
   | x := ?y |- ?G => is_var y; subst x
