@@ -21,9 +21,9 @@ Section WeakestPrecondition.
        when trying to use Proper_load, or, due to COQBUG https://github.com/coq/coq/issues/11487,
        we'd get a typechecking failure at Qed time. *)
     repeat match goal with x : ?T |- _ => first
-      [  constr_eq T X; move x before pick_sp
-       | constr_eq T X; move x before ext_spec
-       | constr_eq T X; move x before locals
+      [  constr_eq x pick_sp
+       | constr_eq x ext_spec
+       | constr_eq x locals
        | constr_eq T X; move x at top
        | revert x ] end;
     match goal with x : X |- _ => induction x end;
@@ -83,6 +83,30 @@ Section WeakestPrecondition.
   Context {locals_ok : map.ok locals}.
   Context {ext_spec_ok : LeakageSemantics.ext_spec.ok ext_spec}.
 
+  Ltac ind_on X ::=
+    intros;
+    (* Note: Comment below dates from when we were using a parameter record p *)
+    (* Note: "before p" means actually "after p" when reading from top to bottom, because,
+       as the manual points out, "before" and "after" are with respect to the direction of
+       the move, and we're moving hypotheses upwards here.
+       We need to make sure not to revert/clear p, because the other lemmas depend on it.
+       If we still reverted/cleared p, we'd get errors like
+       "Error: Proper_load depends on the variable p which is not declared in the context."
+       when trying to use Proper_load, or, due to COQBUG https://github.com/coq/coq/issues/11487,
+       we'd get a typechecking failure at Qed time. *)
+    repeat match goal with x : ?T |- _ => first
+      [  constr_eq x ext_spec_ok
+       | constr_eq x locals_ok
+       | constr_eq x mem_ok
+       | constr_eq x word_ok
+       | constr_eq x pick_sp
+       | constr_eq x ext_spec
+       | constr_eq x locals
+       | constr_eq T X; move x at top
+       | revert x ] end;
+    match goal with x : X |- _ => induction x end;
+    intros.
+
   Global Instance Proper_cmd :
     Proper (
      (pointwise_relation _ (
@@ -112,7 +136,7 @@ Section WeakestPrecondition.
     { destruct H1 as (?&?&?&?). eexists. eexists. split.
       { eapply Proper_expr; eauto; cbv [pointwise_relation Basics.impl]; eauto. }
       { intuition eauto 6. } }
-    { eapply H4; eauto. simpl. intros. eauto. }
+    { match goal with h : _ |- _ => solve [eapply h; eauto; simpl; intros; eauto] end. }
     { eapply LeakageSemantics.exec.weaken; eassumption. }
     { destruct H1 as (?&?&?&?). eexists. eexists. split.
       { eapply Proper_list_map'; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl]; intuition eauto 2.

@@ -89,7 +89,10 @@ Section ForeverSafe.
       runsTo (mcomp_sat (run1 iset)) st safe1 ->
       mcomp_sat (run1 iset) st (fun st' => runsTo (mcomp_sat (run1 iset)) st' safe1).
   Proof.
-    induction 1; rename P into safe1.
+    (* avoid induction generalizing safe1 which prevents using run_pong
+       alternative: pose proof run_pong before induction then use the resulting hyp *)
+    remember safe1 as safe1' eqn:E in |-*. apply eq_sym in E.
+    induction 1; rename P into safe1'; subst safe1'.
     - pose proof (run_1_2 _ H) as P. inversion P.
       + exfalso. eapply exclusive; eauto.
       + eapply mcomp_sat_weaken. 2: eassumption.
@@ -98,7 +101,7 @@ Section ForeverSafe.
     - eapply mcomp_sat_weaken. 2: eassumption.
       intros.
       eapply H0. assumption.
-  Fail Qed. Abort. (* TODO report *)
+  Succeed Qed. Abort.
 
   (* one step of invariant preservation: *)
   Lemma runsTo_safe1_inv: forall (st: RiscvMachineL),
