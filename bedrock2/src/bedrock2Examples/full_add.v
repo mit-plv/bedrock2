@@ -17,7 +17,7 @@ From bedrock2 Require Import WeakestPrecondition ProgramLogic BasicC64Semantics.
 Import coqutil.Word.Interface.
 Require Import bedrock2.ZnWords.
 
-Local Instance spec_of_full_add : spec_of "br_full_add" :=
+#[export] Instance spec_of_full_add : spec_of "br_full_add" :=
   fnspec! "br_full_add" x y carry ~> sum carry_out,
     { (* The required upper bound on `carry` isn't necessary for the
          current `br_full_add` to support the `ensures` clause, but

@@ -27,7 +27,7 @@ Definition br_full_mul :=
       low = (second_halfword_w_oflow << n) + (ll & M)
     }.
 
-Local Instance spec_of_full_mul : spec_of "br_full_mul" :=
+#[export] Instance spec_of_full_mul : spec_of "br_full_mul" :=
   fnspec! "br_full_mul" a b ~> low high,
     { requires t m := True;
       ensures T M :=
