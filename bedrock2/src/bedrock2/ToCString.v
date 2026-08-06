@@ -222,9 +222,17 @@ Fixpoint c_cmd (indent : string) (c : cmd) : string :=
   | cmd.stackalloc x n body =>
     (* Extend the lifetime of the allocation until the end of ambient block,
      * favoring readability over timely deallocation (which clang et al don't
-     * do anyway. However, name collisions can cause compilation errors. *)
+     * do anyway. However, name collisions can cause compilation errors.
+     *
+     * Emit as a word-sized array with 64-byte alignment so downstream code
+     * accessing the buffer through aligned word loads/stores avoids the
+     * unaligned-access slow path on architectures that have one. Size is
+     * rounded up to a multiple of 8 bytes. Zero-initialization preserves
+     * the previous semantics (bedrock2's [stackalloc] only requires
+     * arbitrary contents, but downstream code may have observed zeros). *)
     let tmp := "_br_stackalloc_"++x in
-    indent ++ "uint8_t "++tmp++"["++c_lit n++"] = {0}; "++x++" = (br_word_t)&"++tmp++";"++LF++
+    let nwords := c_lit (BinInt.Z.div (BinInt.Z.add n 7) 8) in
+    indent ++ "uint64_t "++tmp++"["++nwords++"] __attribute__((aligned(64))) = {0}; "++x++" = (br_word_t)"++tmp++";"++LF++
     c_cmd indent body
   | cmd.set x (expr.inlinetable s t ei) =>
   indent ++ "{ " ++ c_inlinetable t ++ " " ++ x ++ " = " ++ c_loadtable s (c_expr ei) ++ "; }" ++ LF
