@@ -342,7 +342,7 @@ Ltac straightline :=
     change G;
     unshelve (idtac; repeat match goal with
                      | |- Markers.split (?P /\ Markers.right ?Q) =>
-                       split; [eabstract (repeat straightline) | change Q]
+                       split; [solve [repeat straightline] | change Q]
                      | |- exists _, _ => letexists
                      end); []
   | |- Markers.split ?G => change G; split
