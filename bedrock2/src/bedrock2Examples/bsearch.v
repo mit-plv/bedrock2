@@ -12,7 +12,6 @@ From coqutil.Tactics Require Import syntactic_unify.
 From coqutil.Tactics Require Import rdelta.
 
 Require Import bedrock2.AbsintWordToZ.
-Strategy -1000 [word]. (* TODO where should this go? *)
 
 Declare Scope word_scope.
 

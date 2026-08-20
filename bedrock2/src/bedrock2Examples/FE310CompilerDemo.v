@@ -12,6 +12,7 @@ Notation MMOutput := "MMOutput"%string.
 From coqutil.Map Require SortedListWord SortedListString Z_keyed_SortedListMap Empty_set_keyed_map.
 From coqutil Require Import Word.Interface Word.Naive Datatypes.String.
 Require Import coqutil.Word.Bitwidth32.
+Require Import bedrock2.BasicC32Semantics.
 Require Import bedrock2.Semantics.
 Import List.ListNotations.
 
@@ -20,12 +21,6 @@ Definition hfrosccfg  := 0x10008000.
 Definition gpio0_base := 0x10012000. Definition gpio0_pastend := 0x10013000.
 Definition uart0_base := 0x10013000. Definition uart0_pastend := 0x10014000.
 Definition uart0_rxdata := 0x10013004. Definition uart0_txdata  := 0x10013000.
-
-#[global] Instance word: word.word 32 := Naive.word32.
-#[global] Instance mem: Interface.map.map word Byte.byte := SortedListWord.map _ _.
-#[global] Instance locals: Interface.map.map String.string word := SortedListString.map _.
-#[global] Instance env: Interface.map.map String.string (list String.string * list String.string * cmd) :=
-  SortedListString.map _.
 
 #[global] Instance ext_spec: ExtSpec :=
   fun t mGive action args post =>
@@ -176,14 +171,6 @@ Ltac t :=
            end]
   | _ => solve [trivial]
   end.
-
-(* TODO COQBUG? why does typeclass search not succeed here?
-   It used to work with primitive projections on *)
-Local Instance mapok: map.ok mem := SortedListWord.ok Naive.word32 _.
-
-Local Instance wordok: word.ok word := Naive.word32_ok.
-
-Local Instance localsok: map.ok locals := SortedListString.ok _.
 
 Lemma swap_chars_over_uart_correct m :
   WeakestPrecondition.cmd map.empty swap_chars_over_uart nil m map.empty
