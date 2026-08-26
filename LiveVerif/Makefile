@@ -50,7 +50,7 @@ c_tests: ex
 
 all: noex ex c_tests
 
-COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject -docroot LiveVerif $(COQMF_ARGS)
+COQ_MAKEFILE := "$(COQBIN)rocq" makefile -f _CoqProject -docroot LiveVerif $(COQMF_ARGS)
 
 Makefile.coq.noex: force _CoqProject
 	@echo "Generating Makefile.coq.noex"

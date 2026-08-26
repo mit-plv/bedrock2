@@ -73,7 +73,7 @@ ex: Makefile.coq.ex $(VS_EX) noex
 all: noex ex test
 test: special/BytedumpTest.out special/stackloop.out special/stacknondet.out special/ToCStringTest.out special/TypecheckExprToCString.out # special/TypecheckExprToCString-32.out special/TypecheckExprToCString-64.out
 
-COQ_MAKEFILE := $(COQBIN)coq_makefile -docroot bedrock2 $(COQMF_ARGS)
+COQ_MAKEFILE := "$(COQBIN)rocq" makefile -docroot bedrock2 $(COQMF_ARGS)
 
 Makefile.coq.noex: _CoqProject.noex
 	$(COQ_MAKEFILE) -f _CoqProject.noex -o Makefile.coq.noex

@@ -48,7 +48,7 @@ _CoqProject: force
 endif
 
 Makefile.coq: _CoqProject
-	$(COQBIN)coq_makefile -docroot LiveVerif $(COQMF_ARGS) -f _CoqProject -o Makefile.coq
+	"$(COQBIN)rocq" makefile -docroot LiveVerif $(COQMF_ARGS) -f _CoqProject -o Makefile.coq
 
 coq: Makefile.coq $(ALL_VS)
 	$(MAKE) --no-print-directory -f Makefile.coq
