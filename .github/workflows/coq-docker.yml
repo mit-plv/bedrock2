@@ -16,6 +16,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+        - env: { COQ_VERSION: "9.0", DOCKER_COQ_VERSION: "9.0" }
+          os: 'ubuntu-latest'
+        - env: { COQ_VERSION: "9.1", DOCKER_COQ_VERSION: "9.1" }
+          os: 'ubuntu-latest'
+        - env: { COQ_VERSION: "9.2", DOCKER_COQ_VERSION: "9.2" }
+          os: 'ubuntu-latest'
         - env: { COQ_VERSION: "master", DOCKER_COQ_VERSION: "dev" }
           os: 'ubuntu-latest'
 
