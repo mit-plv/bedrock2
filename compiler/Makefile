@@ -52,7 +52,7 @@ ex: Makefile.coq.ex $(VS_EX) noex
 
 all: noex ex
 
-COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject -docroot compiler $(COQMF_ARGS)
+COQ_MAKEFILE := "$(COQBIN)rocq" makefile -f _CoqProject -docroot compiler $(COQMF_ARGS)
 
 Makefile.coq.noex: force _CoqProject
 	@echo "Generating Makefile.coq.noex"
@@ -63,7 +63,7 @@ Makefile.coq.ex: force _CoqProject
 	@$(COQ_MAKEFILE) $(VS_EX) -o Makefile.coq.ex
 
 src/compiler/examples/swap_bytes_over_uart.hex: src/compiler/examples/swap_bytes_over_uart_hexdump.v _CoqProject src/compiler/examples/FE310Compiler.vo
-	coqc -q $(shell cat _CoqProject) $< > $@
+	"$(COQBIN)rocq" compile -q $(shell cat _CoqProject) $< > $@
 src/compiler/examples/swap_bytes_over_uart.bin: src/compiler/examples/swap_bytes_over_uart.hex
 	xxd -r -p $< > $@
 src/compiler/examples/swap_bytes_over_uart.elf: src/compiler/examples/swap_bytes_over_uart.bin
