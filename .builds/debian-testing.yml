@@ -5,5 +5,5 @@ sources:
   - https://git.sr.ht/~andres/bedrock2
 tasks:
   - build: |
-      coqc --version
+      rocq --version
       VERBOSE=1 make -C bedrock2 -j"$(nproc)"

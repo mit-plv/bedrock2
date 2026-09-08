@@ -17,7 +17,9 @@ fi
 
 rm -f "$VFILE.*.manglenames"
 
-if coqc -mangle-names HH "$@" &>/dev/null ; then
+COQC_CMD="${COQBIN}rocq compile"
+
+if $COQC_CMD -mangle-names HH "$@" &>/dev/null ; then
     echo "[manglenames] SUCCESS: $VFILE does not depend on auto-generated names"
     touch "$VFILE.SUCCESS.manglenames"
 else
@@ -26,4 +28,4 @@ else
 fi
 
 # To make sure we don't confuse other files depending on $VFILE, we recompile in any case:
-coqc "$@"
+$COQC_CMD "$@"
