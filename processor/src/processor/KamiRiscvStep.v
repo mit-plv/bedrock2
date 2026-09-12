@@ -1,3 +1,4 @@
+From Stdlib Require Import Zmod.
 From Coq Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
@@ -175,14 +176,25 @@ Section WordZ.
     destruct (Nat.eq_0_gt_0_cases a).
     1: {
       subst.
-      rewrite (shatter_word_0 w); simpl.
       cbv [evalSignExtendTrunc].
+      pose proof (@Word.unsigned_range _ w) as HR.
+      assert (Hp: 2 ^ Z.of_nat 0 = 1) by reflexivity.
+      assert (Hu: Zmod.unsigned w = 0) by blia.
+      assert (Hs: Zmod.signed w = 0) by (rewrite Word.signed_eqn, Hu; reflexivity).
       destruct (lt_dec 0 b).
-      - try (change eq_rec with (fun A x (P:A -> Set) => @eq_rect A x P); cbn).
-        rewrite wzero_eq_rect.
-        apply eq_sym, wzero'_def.
+      - apply Word.unsigned_inj.
+        rewrite Word.unsigned_eq_rec, Word.unsigned_sext, Word.unsigned_ZToWord,
+                KamiWord.Z_of_wordToN, Hs, Hu.
+        replace (signExtend (Z.of_nat 0) 0) with 0 by reflexivity.
+        pose proof (Word.pow2_pos_Z (0 + (b - 0))); pose proof (Word.pow2_pos_Z b).
+        rewrite !Z.mod_0_l by blia; reflexivity.
       - assert (b = 0%nat) by blia; subst.
-        reflexivity.
+        apply Word.unsigned_inj.
+        match goal with
+        | |- Zmod.unsigned ?l = Zmod.unsigned ?r =>
+          pose proof (@Word.unsigned_range _ l); pose proof (@Word.unsigned_range _ r)
+        end.
+        blia.
     }
 
     pose proof (signExtend_unsigned_signed (Z.of_nat a) ltac:(blia)).
@@ -423,20 +435,14 @@ Section WordZ.
     intros.
     cbv [sll MachineWidth_XLEN word.slu word wordW KamiWord.word].
     cbv [kunsigned word.of_Z kofZ].
-    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; blia].
-    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
-    2: { split; [blia|].
-         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
-         rewrite NatLib.Z_of_N_Npow2.
-         apply Z.pow_lt_mono_r; try (simpl; blia).
-    }
-    rewrite Z.mod_small.
-    2: { split; [blia|].
-         change width with (Z.of_N 32).
-         apply N2Z.inj_lt, wordToN_bound.
-    }
-    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
-    rewrite wordToN_to_nat.
+    f_equal.
+    rewrite !KamiWord.Z_of_wordToN, Word.unsigned_ZToWord.
+    pose proof (@Word.unsigned_range _ n) as HR.
+    assert (H5: 2 ^ Z.of_nat 5 = 32) by reflexivity.
+    assert (Hw: 2 ^ Z.of_nat (Z.to_nat width) = 4294967296) by reflexivity.
+    assert (Hw': width = 32) by reflexivity.
+    rewrite (Z.mod_small (Zmod.unsigned n) (2 ^ Z.of_nat (Z.to_nat width))) by blia.
+    rewrite (Z.mod_small (Zmod.unsigned n) width) by blia.
     reflexivity.
   Qed.
 
@@ -447,20 +453,14 @@ Section WordZ.
     intros.
     cbv [srl MachineWidth_XLEN word.sru word wordW KamiWord.word].
     cbv [kunsigned word.of_Z kofZ].
-    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; blia].
-    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
-    2: { split; [blia|].
-         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
-         rewrite NatLib.Z_of_N_Npow2.
-         apply Z.pow_lt_mono_r; try (simpl; blia).
-    }
-    rewrite Z.mod_small.
-    2: { split; [blia|].
-         change width with (Z.of_N 32).
-         apply N2Z.inj_lt, wordToN_bound.
-    }
-    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
-    rewrite wordToN_to_nat.
+    f_equal.
+    rewrite !KamiWord.Z_of_wordToN, Word.unsigned_ZToWord.
+    pose proof (@Word.unsigned_range _ n) as HR.
+    assert (H5: 2 ^ Z.of_nat 5 = 32) by reflexivity.
+    assert (Hw: 2 ^ Z.of_nat (Z.to_nat width) = 4294967296) by reflexivity.
+    assert (Hw': width = 32) by reflexivity.
+    rewrite (Z.mod_small (Zmod.unsigned n) (2 ^ Z.of_nat (Z.to_nat width))) by blia.
+    rewrite (Z.mod_small (Zmod.unsigned n) width) by blia.
     reflexivity.
   Qed.
 
@@ -471,20 +471,14 @@ Section WordZ.
     intros.
     cbv [sra MachineWidth_XLEN word.srs word wordW KamiWord.word].
     cbv [kunsigned word.of_Z kofZ].
-    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; blia].
-    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
-    2: { split; [blia|].
-         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
-         rewrite NatLib.Z_of_N_Npow2.
-         apply Z.pow_lt_mono_r; try (simpl; blia).
-    }
-    rewrite Z.mod_small.
-    2: { split; [blia|].
-         change width with (Z.of_N 32).
-         apply N2Z.inj_lt, wordToN_bound.
-    }
-    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
-    rewrite wordToN_to_nat.
+    f_equal.
+    rewrite !KamiWord.Z_of_wordToN, Word.unsigned_ZToWord.
+    pose proof (@Word.unsigned_range _ n) as HR.
+    assert (H5: 2 ^ Z.of_nat 5 = 32) by reflexivity.
+    assert (Hw: 2 ^ Z.of_nat (Z.to_nat width) = 4294967296) by reflexivity.
+    assert (Hw': width = 32) by reflexivity.
+    rewrite (Z.mod_small (Zmod.unsigned n) (2 ^ Z.of_nat (Z.to_nat width))) by blia.
+    rewrite (Z.mod_small (Zmod.unsigned n) width) by blia.
     reflexivity.
   Qed.
 
@@ -984,7 +978,7 @@ Section Equiv.
     - rewrite map.get_put_same.
       destruct_one_match; [|blia].
       rewrite (rewrite_weq eq_refl).
-      reflexivity.
+      rewrite uwordToZ_kunsigned; reflexivity.
     - rewrite map.get_put_diff by assumption.
       rewrite H.
       destruct_one_match; [|reflexivity].
@@ -2015,7 +2009,7 @@ Section Equiv.
         cbv [LittleEndianList.le_combine].
         rewrite Z.shiftl_0_l, Z.lor_0_r.
         rewrite byte.unsigned_of_Z.
-        cbv [uwordToZ].
+        rewrite ?uwordToZ_kunsigned.
         rewrite byte_wrap_word_8.
         rewrite ?(wplus_comm _ (wzero' _)), ?wplus_unit; trivial.
       }
@@ -2024,7 +2018,7 @@ Section Equiv.
         rewrite split1_combine_16.
         rewrite Z.shiftl_0_l, Z.lor_0_r.
         rewrite ?byte.unsigned_of_Z.
-        cbv [uwordToZ]; rewrite ?byte_wrap_word_8.
+        rewrite ?uwordToZ_kunsigned; rewrite ?byte_wrap_word_8.
         rewrite @kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
         rewrite Z.lor_comm.
         rewrite ?(wplus_comm _ (wzero' _)), ?wplus_unit; trivial.
@@ -2035,7 +2029,7 @@ Section Equiv.
         rewrite split1_combine.
         rewrite Z.shiftl_0_l, Z.lor_0_r.
         rewrite byte.unsigned_of_Z.
-        cbv [uwordToZ].
+        rewrite ?uwordToZ_kunsigned.
         rewrite byte_wrap_word_8.
         rewrite ?(wplus_comm _ (wzero' _)), ?wplus_unit; trivial.
       }
@@ -2045,7 +2039,7 @@ Section Equiv.
         rewrite split1_combine_16.
         rewrite Z.shiftl_0_l, Z.lor_0_r.
         rewrite ?byte.unsigned_of_Z.
-        cbv [uwordToZ]; rewrite ?byte_wrap_word_8.
+        rewrite ?uwordToZ_kunsigned; rewrite ?byte_wrap_word_8.
         rewrite @kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
         rewrite Z.lor_comm.
         rewrite ?(wplus_comm _ (wzero' _)), ?wplus_unit; trivial.
@@ -2054,7 +2048,7 @@ Section Equiv.
       { (* lw *)
         rewrite !Z.shiftl_0_l, !Z.lor_0_r.
         rewrite !byte.unsigned_of_Z.
-        cbv [uwordToZ]; rewrite !byte_wrap_word_8.
+        rewrite ?uwordToZ_kunsigned; rewrite !byte_wrap_word_8.
 
         change 8 with (Z.of_nat 8%nat).
         setoid_rewrite Z.lor_comm at 3.

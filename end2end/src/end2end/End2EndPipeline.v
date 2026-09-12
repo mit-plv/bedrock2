@@ -69,6 +69,22 @@ Definition kami_mem_contains_bytes(bs: list Coq.Init.Byte.byte){memSizeLg}(from:
            (mem: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg)): Prop :=
   List.map (get_kamiMemInit mem) (seq 0 (List.length bs)) = bs.
 
+(* Stated on its own rather than discharged inline: Kami's Word.v registers
+   ZifyNat/ZifyN globally, so inside the [end2end] proof below [lia] translates
+   every [nat] and [N] hypothesis of a very large context, and the certificate
+   it builds there overflows the kernel stack at [Qed]. *)
+Lemma imem_heap_stack_lengths:
+  forall (li : nat) (imb ssb msl : Z),
+    0 <= ssb -> 0 <= imb -> Z.of_nat li <= imb -> imb <= msl - ssb ->
+    Z.of_nat li
+    + Z.of_nat (Nat.min (Z.to_nat imb - li) (Z.to_nat msl - li))
+    + Z.of_nat (Nat.min (Z.to_nat (msl - imb - ssb))
+                        (Z.to_nat msl - li - (Z.to_nat imb - li)))
+    = msl - ssb.
+Proof.
+  intros li imb ssb msl Hssb Himb Hli Hheap. blia.
+Qed.
+
 Section Connect.
 
   Context (instrMemSizeLg memSizeLg stack_size_in_bytes: Z).
@@ -213,7 +229,10 @@ Section Connect.
           (seq from len))).
   Proof.
     induction len; intros.
-    - cbv. auto.
+    - (* a bare [cbv] here reduces through [Zmod.of_Z], which duplicates
+         subterms at every nesting level; stay at the list level. *)
+      cbn [seq map map.of_list]; unfold LowerPipeline.ptsto_bytes;
+        cbn [array]; unfold emp; auto.
     - unfold LowerPipeline.ptsto_bytes, riscvMemInit_values in *.
       cbn [seq map array map.of_list].
       match goal with
@@ -474,7 +493,17 @@ Section Connect.
             rewrite ?skipn_length.
             let word_ok := constr:(_ : word.ok _) in simpl_word_exprs word_ok.
             f_equal.
-            blia.
+            assert (HL: Datatypes.length riscvMemInit_all_values
+                        = Z.to_nat (2 ^ memSizeLg)). {
+              unfold riscvMemInit_all_values.
+              rewrite List.map_length, List.seq_length; reflexivity.
+            }
+            rewrite HL.
+            apply imem_heap_stack_lengths;
+              [ exact (proj1 stack_size_bounds)
+              | eapply Z.le_trans; [exact Bounds_instrs|exact Bounds_unused_imem]
+              | exact Bounds_unused_imem
+              | exact Bounds_heap ].
           }
           cbn [seps]. reflexivity.
         }
