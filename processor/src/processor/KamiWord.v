@@ -2,6 +2,7 @@ Require Import Coq.ZArith.ZArith Coq.ZArith.BinIntDef Coq.ZArith.BinInt coqutil.
 Require Import coqutil.sanity coqutil.Tactics.forward coqutil.Word.Interface. Import word.
 Require Import Kami.Lib.Word.
 Require riscv.Utility.Utility.
+Require coqutil.Word.Naive.
 From coqutil Require Import destr div_mod_to_equations.
 From Stdlib Require Import Zmod.
 
@@ -154,136 +155,64 @@ Section WithWidth.
   Local Notation sz := (Z.to_nat width).
 
   Definition kword: Type := Kami.Lib.Word.word sz.
-  Definition kunsigned(x: kword): Z := Z.of_N (wordToN x).
+  Definition kunsigned(x: kword): Z := Zmod.unsigned x.
   Definition ksigned (x: kword): Z := Zmod.signed x.
   Definition kofZ (z: Z): kword := bits.of_Z (Z.of_nat sz) z.
 
-  Definition riscvZdivu(x y: Z): Z :=
-    if y =? 0 then 2 ^ width - 1 else Z.div x y.
+  (* The bridge to Kami's legacy [wordToN]-spelled lemma family. *)
+  Lemma kunsigned_wordToN: forall x: kword, kunsigned x = Z.of_N (wordToN x).
+  Proof. intros; symmetry; apply Z_of_wordToN. Qed.
 
-  Definition riscvZdivs(x y: Z): Z :=
-    if (x =? - 2 ^ (width - 1)) && (y =? - 1) then x
-    else if y =? 0 then - 1 else Z.quot x y.
-
-  Definition riscvZmodu(x y: Z): Z :=
-    if y =? 0 then x else Z.modulo x y.
-
-  Definition riscvZmods(x y: Z): Z :=
-    if y =? 0 then x else Z.rem x y.
-
-  Instance word : word.word width := {|
+  (** The word instance is coqutil's [Naive.word], field for field: this record
+      is [Naive.word width] with its [rep] spelled [Kami.Lib.Word.word (Z.to_nat
+      width)] instead of [bits width].  The two are convertible whenever [width]
+      is a numeral (every use is at 32 or 8), so [KamiWord.word 32 = Naive.word
+      32] holds by [eq_refl], and every field agrees with what the Kami
+      processor computes ([Zmod.udiv x 0 = 2^width-1], [Zmod.umod x 0 = x], and
+      Naive masks shift amounts with [mod width] at power-of-two widths, which
+      is RISC-V's convention).  Spelling [rep] the Kami way matters: Kami's API is indexed by a
+      [nat] size, and unification cannot recover [?sz] from [bits width], so
+      [wordToN a] for [a : word] would need an annotation at every use. *)
+  Local Notation Nv := (Naive.word (Z.of_nat sz)).
+  Definition word : word.word width := {|
     rep := kword;
-    unsigned := kunsigned;
-    signed := ksigned;
-    of_Z := kofZ;
-
-    add := Zmod.add;
-    sub := Zmod.sub;
-    opp := Zmod.opp;
-
-    or  := Zmod.or;
-    and := Zmod.and;
-    xor := Zmod.xor;
-    not := Zmod.not;
-
-    (* "x and not y" *)
-    ndn x y := kofZ (Z.ldiff (kunsigned x) (kunsigned y));
-
-    mul := Zmod.mul;
-    mulhss x y := kofZ (Z.mul (ksigned x) (ksigned y) / 2^width);
-    mulhsu x y := kofZ (Z.mul (ksigned x) (kunsigned y) / 2^width);
-    mulhuu x y := kofZ (Z.mul (kunsigned x) (kunsigned y) / 2^width);
-
-    divu x y := kofZ (riscvZdivu (kunsigned x) (kunsigned y));
-    divs x y := kofZ (riscvZdivs (ksigned x) (ksigned y));
-    modu x y := kofZ (riscvZmodu (kunsigned x) (kunsigned y));
-    mods x y := kofZ (riscvZmods (ksigned x) (ksigned y));
-
-    (* shifts only look at the lowest 5-6 bits of the shift amount *)
-    slu x y := Zmod.slu x (Z.of_nat (Z.to_nat ((kunsigned y) mod width)));
-    sru x y := Zmod.sru x (Z.of_nat (Z.to_nat ((kunsigned y) mod width)));
-    srs x y := Zmod.srs x (Z.of_nat (Z.to_nat ((kunsigned y) mod width)));
-
-    eqb := Zmod.eqb;
-    ltu x y := Z.ltb (Zmod.unsigned x) (Zmod.unsigned y);
-    lts x y := Z.ltb (Zmod.signed x) (Zmod.signed y);
-
-    sextend oldwidth z := kofZ ((kunsigned z + 2^(oldwidth-1)) mod 2^oldwidth - 2^(oldwidth-1));
-
+    unsigned := @word.unsigned _ Nv;
+    signed := @word.signed _ Nv;
+    of_Z := @word.of_Z _ Nv;
+    add := @word.add _ Nv;
+    sub := @word.sub _ Nv;
+    opp := @word.opp _ Nv;
+    or := @word.or _ Nv;
+    and := @word.and _ Nv;
+    xor := @word.xor _ Nv;
+    not := @word.not _ Nv;
+    ndn := @word.ndn _ Nv;
+    mul := @word.mul _ Nv;
+    mulhss := @word.mulhss _ Nv;
+    mulhsu := @word.mulhsu _ Nv;
+    mulhuu := @word.mulhuu _ Nv;
+    divu := @word.divu _ Nv;
+    divs := @word.divs _ Nv;
+    modu := @word.modu _ Nv;
+    mods := @word.mods _ Nv;
+    slu := @word.slu _ Nv;
+    sru := @word.sru _ Nv;
+    srs := @word.srs _ Nv;
+    eqb := @word.eqb _ Nv;
+    ltu := @word.ltu _ Nv;
+    lts := @word.lts _ Nv;
+    sextend := @word.sextend _ Nv;
   |}.
 
-  (* [Z.of_nat sz] is only propositionally [width], and it also occurs in the
-     (implicit) modulus of every [Zmod.unsigned] below, where rewriting it would
-     be ill-typed.  So the width arithmetic always goes from [width] to
-     [Z.of_nat sz], never the other way. *)
-  Local Lemma sz_pos: (0 < sz)%nat.
-  Proof using width_nonneg. eapply (Znat.Z2Nat.inj_lt 0); blia. Qed.
-
-  Local Lemma pow2_sz: 2 ^ Z.of_nat sz = 2 ^ width.
-  Proof using width_nonneg. f_equal; apply Znat.Z2Nat.id; blia. Qed.
-
-  Local Lemma pow2_sz_pred: 2 ^ (Z.of_nat sz - 1) = 2 ^ (width - 1).
-  Proof using width_nonneg. f_equal; rewrite Znat.Z2Nat.id; blia. Qed.
-
-  Instance ok : word.ok word.
+  (* [Naive.ok] transported along [Z.of_nat (Z.to_nat width) = width]; the
+     abstraction is well typed because no field type of [word.word] mentions the
+     width, only [rep]. *)
+  Lemma ok : word.ok word.
   Proof using width_nonneg.
-    pose proof sz_pos as AA.
-    split; trivial.
-    all: cbv [rep unsigned signed of_Z add sub opp or and xor not
-                  ndn mul mulhss mulhsu mulhuu divu divs modu mods slu sru srs
-                  eqb ltu lts sextend word wrap swrap
-                  kword kunsigned ksigned kofZ]; intros.
-    all: rewrite <- ?pow2_sz, <- ?pow2_sz_pred in *.
-    all: rewrite ?Z_of_wordToN in *.
-
-    { apply Zmod.unsigned_of_Z. }
-    { rewrite wordToZ_ZToWord_full by exact AA; reflexivity. }
-    { apply Zmod.of_Z_unsigned. }
-    { apply Zmod.unsigned_add. }
-    { apply Zmod.unsigned_sub. }
-    { apply Zmod.unsigned_opp. }
-    { rewrite <- bits.unsigned_or; symmetry; apply unsigned_mod_id. }
-    { rewrite <- bits.unsigned_and; symmetry; apply unsigned_mod_id. }
-    { rewrite <- bits.unsigned_xor; symmetry; apply unsigned_mod_id. }
-    { apply unsigned_wnot_mod. }
-    { apply Zmod.unsigned_of_Z. }
-    { apply Zmod.unsigned_mul. }
-    { rewrite wordToZ_ZToWord_full by exact AA; reflexivity. }
-    { rewrite wordToZ_ZToWord_full by exact AA; reflexivity. }
-    { apply Zmod.unsigned_of_Z. }
-
-    { rewrite Zmod.unsigned_of_Z.
-      cbv [riscvZdivu]; destr (Zmod.unsigned y =? 0); [blia|reflexivity]. }
-    { rewrite wordToZ_ZToWord_full by exact AA.
-      cbv [riscvZdivs]; rewrite <- ?pow2_sz_pred.
-      destr (Zmod.signed x =? - 2 ^ (Z.of_nat sz - 1)); cbn [andb].
-      { destr (Zmod.signed y =? -1); [blia|].
-        destr (Zmod.signed y =? 0); [blia|reflexivity]. }
-      { destr (Zmod.signed y =? 0); [blia|reflexivity]. } }
-    { rewrite Zmod.unsigned_of_Z.
-      cbv [riscvZmodu]; destr (Zmod.unsigned y =? 0); [blia|reflexivity]. }
-    { rewrite wordToZ_ZToWord_full by exact AA.
-      cbv [riscvZmods]; destr (Zmod.signed y =? 0); [blia|reflexivity]. }
-
-    { pose proof (@unsigned_range _ y).
-      rewrite (Z.mod_small (Zmod.unsigned y) width) by blia.
-      rewrite unsigned_wlshift, (Znat.Z2Nat.id (Zmod.unsigned y)) by blia.
-      rewrite Z.shiftl_mul_pow2 by blia; reflexivity. }
-    { pose proof (@unsigned_range _ x); pose proof (@unsigned_range _ y).
-      pose proof (Z.pow_pos_nonneg 2 (Zmod.unsigned y) ltac:(blia) ltac:(blia)).
-      rewrite (Z.mod_small (Zmod.unsigned y) width) by blia.
-      rewrite unsigned_wrshift, (Znat.Z2Nat.id (Zmod.unsigned y)) by blia.
-      rewrite Z.shiftr_div_pow2 by blia.
-      symmetry; apply Z.mod_small.
-      split; [apply Z.div_pos; blia|apply Z.div_lt_upper_bound; [blia|Lia.nia]]. }
-    { pose proof (@unsigned_range _ y).
-      rewrite (Z.mod_small (Zmod.unsigned y) width) by blia.
-      rewrite wrshifta_ZToWord, wordToZ_ZToWord_full by exact AA.
-      rewrite (Znat.Z2Nat.id (Zmod.unsigned y)) by blia.
-      rewrite Z.shiftr_div_pow2 by blia; reflexivity. }
-
-    { apply weqb_eqb. }
-    { reflexivity. }
+    assert (Hw: Z.of_nat sz = width) by (apply Znat.Z2Nat.id; blia).
+    cbv [word kword Kami.Lib.Word.word].
+    rewrite Hw.
+    exact (Naive.ok width width_nonneg).
   Qed.
 End WithWidth.
 Arguments word : clear implicits.
@@ -292,6 +221,31 @@ Arguments kword : clear implicits.
 
 #[global] Existing Instance word.
 #[global] Existing Instance ok.
+
+(* At the widths in use the two instances are the same term. *)
+Lemma word32_Naive: word 32 = Naive.word 32. Proof. reflexivity. Qed.
+Lemma word8_Naive: word 8 = Naive.word 8. Proof. reflexivity. Qed.
+
+(* The instance's fields in Kami's spelling, all by conversion.  [rewrite] with
+   these keeps goals in the vocabulary of Kami's lemma library without exposing
+   the instance record (which a [cbv] through [KamiWord.word] would do). *)
+Section Spelling.
+  Context {width : Z}.
+  Local Notation sz := (Z.to_nat width).
+  Local Notation W := (word width).
+  Lemma unsigned_eq (x: kword width): @word.unsigned width W x = Zmod.unsigned x. Proof. reflexivity. Qed.
+  Lemma signed_eq (x: kword width): @word.signed width W x = Zmod.signed x. Proof. reflexivity. Qed.
+  Lemma of_Z_eq (z: Z): @word.of_Z width W z = bits.of_Z (Z.of_nat sz) z. Proof. reflexivity. Qed.
+  Lemma add_eq (x y: kword width): @word.add width W x y = Zmod.add x y. Proof. reflexivity. Qed.
+  Lemma sub_eq (x y: kword width): @word.sub width W x y = Zmod.sub x y. Proof. reflexivity. Qed.
+  Lemma mul_eq (x y: kword width): @word.mul width W x y = Zmod.mul x y. Proof. reflexivity. Qed.
+  Lemma opp_eq (x: kword width): @word.opp width W x = Zmod.opp x. Proof. reflexivity. Qed.
+  Lemma and_eq (x y: kword width): @word.and width W x y = Zmod.and x y. Proof. reflexivity. Qed.
+  Lemma or_eq (x y: kword width): @word.or width W x y = Zmod.or x y. Proof. reflexivity. Qed.
+  Lemma xor_eq (x y: kword width): @word.xor width W x y = Zmod.xor x y. Proof. reflexivity. Qed.
+  Lemma not_eq (x: kword width): @word.not width W x = Zmod.not x. Proof. reflexivity. Qed.
+  Lemma eqb_eq (x y: kword width): @word.eqb width W x y = Zmod.eqb x y. Proof. reflexivity. Qed.
+End Spelling.
 
 
 Open Scope Z_scope.

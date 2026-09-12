@@ -385,7 +385,7 @@ Section Equiv.
       apply Nat2Z.inj_lt.
       rewrite N_nat_Z, N_Z_nat_conversions.Nat2Z.inj_pow.
       rewrite Z2Nat.id by blia.
-      apply Z.ltb_lt; assumption.
+      apply Z.ltb_lt; rewrite <-kunsigned_wordToN; assumption.
     }
     erewrite Properties.map.get_of_list_In_NoDup; trivial.
     1: eapply NoDup_nth_error; intros i j ?.
@@ -409,6 +409,7 @@ Section Equiv.
                                   | None => 0%Z
                                   end)) in HX.
         cbv beta iota in HX.
+        rewrite ?kofZ_eq in HX.
         pose proof Z.pow_le_mono_r 2 memSizeLg 31 eq_refl ltac:(blia);
         pose proof N_Z_nat_conversions.Z2Nat.inj_pow 2 memSizeLg ltac:(blia) ltac:(blia);
         change (Z.to_nat 2) with 2%nat in *.
@@ -439,8 +440,7 @@ Section Equiv.
       eapply word.unsigned_inj.
       rewrite word.unsigned_of_Z.
       cbv [word.wrap]; rewrite <-word.wrap_unsigned; f_equal.
-      unfold word.unsigned, word, wordW, KamiWord.word, kword, kunsigned.
-      rewrite wordToN_nat, nat_N_Z; reflexivity.
+      rewrite kunsigned_eq, kunsigned_wordToN, wordToN_nat, nat_N_Z; reflexivity.
     }
     Unshelve. all: exact O.
   Qed.
@@ -519,7 +519,7 @@ Section Equiv.
       rewrite NatLib.Z_of_N_Npow2 in Hx.
       assert (2 ^ BinInt.Z.of_nat (2 + Z.to_nat instrMemSizeLg) < 2 ^ memSizeLg)
         by (apply Z.pow_lt_mono_r; blia).
-      cbv [kunsigned] in *.
+      rewrite kunsigned_wordToN in *.
       blia.
   Qed.
 
@@ -574,6 +574,7 @@ Section Equiv.
         cbv [instrMemSize].
         rewrite N_Z_nat_conversions.Nat2Z.inj_pow.
         rewrite Nat2Z.inj_add, Z2Nat.id by blia.
+        rewrite <-kunsigned_wordToN, <-kunsigned_eq.
         apply H0.
       + apply mmio_init_xaddrs_disjoint.
       + apply riscvRegsInit_sound; assumption.

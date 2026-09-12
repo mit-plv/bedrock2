@@ -39,7 +39,7 @@ Require Import compilerExamples.MMIO.
 Require Import riscv.Platform.FE310ExtSpec.
 Require Import compiler.FlatToRiscvDef.
 Require Import coqutil.Tactics.rdelta.
-Require Import end2end.KamiRiscvWordProperties.
+Require Import compiler.NaiveRiscvWordProperties.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import compiler.SeparationLogic.
 Require Import compiler.ToplevelLoop.
@@ -50,10 +50,9 @@ Local Open Scope Z_scope.
 
 Require Import Coq.Classes.Morphisms.
 
-#[global] Instance word_riscv_ok: @RiscvWordProperties.word.riscv_ok 32 KamiWord.wordW.
-refine (@KamiRiscvWordProperties.kami_word_riscv_ok 5 _ _).
-all: cbv; congruence.
-Qed.
+(* [KamiWord.wordW] at width 32 is [Naive.word 32] by conversion. *)
+#[global] Instance word_riscv_ok: @RiscvWordProperties.word.riscv_ok 32 KamiWord.wordW :=
+  naive_word_riscv_ok 5.
 
 #[global] Existing Instance SortedListString.map.
 #[global] Existing Instance SortedListString.ok.

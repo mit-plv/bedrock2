@@ -35,6 +35,32 @@ Qed.
 #[global] Instance word: word 32 := @KamiWord.wordW width.
 #[global] Instance word_ok: word.ok word := @KamiWord.wordWok width width_cases.
 
+(* The instance's operations in Kami's spelling ([kunsigned], [Zmod.add],
+   [ZToWord]), by conversion; the proofs below rewrite with these to stay in the
+   vocabulary of Kami's lemma library.  Stated at [word] (not [KamiWord.word])
+   so that the implicit size comes out as [Z.to_nat width], the spelling of
+   every Kami-side term. *)
+Lemma kunsigned_eq: forall x: word, word.unsigned x = kunsigned x.
+Proof. reflexivity. Qed.
+Lemma ksigned_eq: forall x: word, word.signed x = Zmod.signed x.
+Proof. reflexivity. Qed.
+Lemma kofZ_eq: forall z, @word.of_Z _ word z = bits.of_Z (Z.of_nat (Z.to_nat width)) z.
+Proof. reflexivity. Qed.
+Lemma kadd_eq: forall x y: word, word.add x y = Zmod.add x y.
+Proof. reflexivity. Qed.
+Lemma ksub_eq: forall x y: word, word.sub x y = Zmod.sub x y.
+Proof. reflexivity. Qed.
+Lemma kmul_eq: forall x y: word, word.mul x y = Zmod.mul x y.
+Proof. reflexivity. Qed.
+Lemma kand_eq: forall x y: word, word.and x y = Zmod.and x y.
+Proof. reflexivity. Qed.
+Lemma kor_eq: forall x y: word, word.or x y = Zmod.or x y.
+Proof. reflexivity. Qed.
+Lemma kxor_eq: forall x y: word, word.xor x y = Zmod.xor x y.
+Proof. reflexivity. Qed.
+Lemma keqb_eq: forall x y: word, word.eqb x y = Zmod.eqb x y.
+Proof. reflexivity. Qed.
+
 Section FetchOk.
   Fixpoint alignedXAddrsRange (base: nat) (n: nat): XAddrs (width := width) :=
     match n with
@@ -203,42 +229,39 @@ Section FetchOk.
       destruct (Z.ltb_spec (kunsigned rpc) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2 in H0.
-      cbv [kunsigned] in H1.
+      rewrite kunsigned_wordToN in H1.
       blia.
     }
 
     assert (Z.ltb (kunsigned (rpc ^+ Zmod.of_Z _ 1)) (Z.pow 2 memSizeLg) = true) as Hrpc1.
     { destruct H0 as [_ [? _]].
-      cbv [word.add word wordW KamiWord.word] in H0.
-      cbv [word.of_Z kofZ] in H0.
+      rewrite kadd_eq, kofZ_eq in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
       destruct (Z.ltb_spec (kunsigned (rpc ^+ Zmod.of_Z _ 1)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2 in H0.
-      cbv [kunsigned] in H1.
+      rewrite kunsigned_wordToN in H1.
       blia.
     }
 
     assert (Z.ltb (kunsigned (rpc ^+ Zmod.of_Z _ 1 ^+ Zmod.of_Z _ 1))
                   (Z.pow 2 memSizeLg) = true) as Hrpc2.
     { destruct H0 as [_ [_ [? _]]].
-      cbv [word.add word wordW KamiWord.word] in H0.
-      cbv [word.of_Z kofZ] in H0.
+      rewrite kadd_eq, kofZ_eq in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
       rewrite <-Zmod.add_assoc.
       change (bits.of_Z (Z.of_nat nwidth) 1 ^+ bits.of_Z (Z.of_nat nwidth) 1) with (bits.of_Z (Z.of_nat nwidth) 2).
       destruct (Z.ltb_spec (kunsigned (rpc ^+ Zmod.of_Z _ 2)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2 in H0.
-      cbv [kunsigned] in H1.
+      rewrite kunsigned_wordToN in H1.
       blia.
     }
 
     assert (Z.ltb (kunsigned (rpc ^+ Zmod.of_Z _ 1 ^+ Zmod.of_Z _ 1 ^+ Zmod.of_Z _ 1))
                   (Z.pow 2 memSizeLg) = true) as Hrpc3.
     { destruct H0 as [_ [_ [_ ?]]].
-      cbv [word.add word wordW KamiWord.word] in H0.
-      cbv [word.of_Z kofZ] in H0.
+      rewrite kadd_eq, kofZ_eq in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
       rewrite <-Zmod.add_assoc.
       change (bits.of_Z (Z.of_nat nwidth) 1 ^+ bits.of_Z (Z.of_nat nwidth) 1) with (bits.of_Z (Z.of_nat nwidth) 2).
@@ -247,7 +270,7 @@ Section FetchOk.
       destruct (Z.ltb_spec (kunsigned (rpc ^+ Zmod.of_Z _ 3)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2 in H0.
-      cbv [kunsigned] in H1.
+      rewrite kunsigned_wordToN in H1.
       blia.
     }
 
