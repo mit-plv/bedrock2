@@ -1277,7 +1277,10 @@ Section Equiv.
     |clear; intro; discriminate
     |try (solve [trivial])
     |cbv [RiscvMachine.getNextPc];
-     try (eapply pc_related_plus4; try eassumption; red; eauto; fail)
+     (* [simple eapply]: plain [eapply] unfolds the word operations while
+        unifying, and takes minutes to fail on the goals this lemma does not
+        apply to. *)
+     try (simple eapply pc_related_plus4; try eassumption; red; eauto; fail)
     |solve [trivial]
     |try (solve [trivial]);
      try (eapply regs_related_put;
