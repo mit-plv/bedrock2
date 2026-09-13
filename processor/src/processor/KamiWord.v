@@ -77,7 +77,7 @@ Section KamiWordFacts.
     forall {sz} (w: word sz),
       wnot (wnot w) = w.
   Proof.
-    intros; apply unsigned_inj; rewrite !unsigned_wnot.
+    intros; apply Zmod.unsigned_inj; rewrite !unsigned_wnot.
     pose proof (@unsigned_range _ w); blia.
   Qed.
 
@@ -122,7 +122,7 @@ Section KamiWordFacts.
   Lemma ZToWord_zero:
     forall n, ZToWord n 0 = wzero n.
   Proof.
-    intros; apply unsigned_inj.
+    intros; apply Zmod.unsigned_inj.
     rewrite unsigned_ZToWord, unsigned_wzero.
     pose proof (pow2_pos_Z n); apply Z.mod_0_l; blia.
   Qed.
@@ -135,7 +135,7 @@ Section KamiWordFacts.
     intros sz1 sz2 w1 w2 H.
     apply (f_equal (@Zmod.unsigned _)) in H.
     rewrite unsigned_split1, unsigned_wzero in H.
-    apply unsigned_inj.
+    apply Zmod.unsigned_inj.
     rewrite !unsigned_split1, unsigned_wplus.
     rewrite Z.mod_mod_divide by (exists (2 ^ Z.of_nat sz2); rewrite pow2_add_Z; ring).
     rewrite Zplus_mod, H, Z.add_0_r, Zmod_mod; reflexivity.
@@ -221,8 +221,8 @@ Section WithWidth.
     srs x y := wrshifta x (Z.to_nat ((kunsigned y) mod width));
 
     eqb := @weqb sz;
-    ltu x y := if wlt_dec x y then true else false;
-    lts x y := if wslt_dec x y then true else false;
+    ltu x y := Z.ltb (uwordToZ x) (uwordToZ y);
+    lts x y := Z.ltb (wordToZ x) (wordToZ y);
 
     sextend oldwidth z := kofZ ((kunsigned z + 2^(oldwidth-1)) mod 2^oldwidth - 2^(oldwidth-1));
 
@@ -254,7 +254,7 @@ Section WithWidth.
 
     { apply unsigned_ZToWord. }
     { rewrite wordToZ_ZToWord_full by exact AA; reflexivity. }
-    { apply ofZ_unsigned. }
+    { apply Zmod.of_Z_unsigned. }
     { apply unsigned_wplus. }
     { apply unsigned_wminus. }
     { apply unsigned_wneg. }
@@ -299,11 +299,7 @@ Section WithWidth.
       rewrite Z.shiftr_div_pow2 by blia; reflexivity. }
 
     { apply weqb_eqb. }
-    { pose proof (@Z_of_wordToN _ x); pose proof (@Z_of_wordToN _ y).
-      case (wlt_dec x y) as [Hlt|Hlt]; cbv [wlt] in Hlt;
-        destruct (Z.ltb_spec (Zmod.unsigned x) (Zmod.unsigned y)); trivial; exfalso; blia. }
-    { case (wslt_dec x y) as [Hlt|Hlt]; cbv [wslt] in Hlt;
-        destruct (Z.ltb_spec (wordToZ x) (wordToZ y)); trivial; exfalso; blia. }
+    { reflexivity. }
   Qed.
 End WithWidth.
 Arguments word : clear implicits.

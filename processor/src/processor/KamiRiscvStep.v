@@ -182,14 +182,14 @@ Section WordZ.
       assert (Hu: Zmod.unsigned w = 0) by blia.
       assert (Hs: Zmod.signed w = 0) by (rewrite Word.signed_eqn, Hu; reflexivity).
       destruct (lt_dec 0 b).
-      - apply Word.unsigned_inj.
+      - apply Zmod.unsigned_inj.
         rewrite Word.unsigned_eq_rec, Word.unsigned_sext, Word.unsigned_ZToWord,
                 KamiWord.Z_of_wordToN, Hs, Hu.
         replace (signExtend (Z.of_nat 0) 0) with 0 by reflexivity.
         pose proof (Word.pow2_pos_Z (0 + (b - 0))); pose proof (Word.pow2_pos_Z b).
         rewrite !Z.mod_0_l by blia; reflexivity.
       - assert (b = 0%nat) by blia; subst.
-        apply Word.unsigned_inj.
+        apply Zmod.unsigned_inj.
         match goal with
         | |- Zmod.unsigned ?l = Zmod.unsigned ?r =>
           pose proof (@Word.unsigned_range _ l); pose proof (@Word.unsigned_range _ r)
@@ -679,23 +679,11 @@ Section Equiv.
       cbv [width]; blia.
     }
 
-    split; intros.
-    - destruct_one_match_hyp; [discriminate|clear H].
-      unfold wlt in n; apply N.nlt_ge in n.
-      rewrite wordToN_NToWord_2 in n by assumption.
-      apply N2Z.inj_le in n.
-      rewrite N2Z.inj_pow in n.
-      rewrite Z2N.id in n; [|blia].
-      assumption.
-
-    - destruct_one_match; [exfalso|reflexivity].
-      unfold wlt in w.
-      rewrite wordToN_NToWord_2 in w by assumption.
-      apply N2Z.inj_lt in w.
-      rewrite N2Z.inj_pow in w.
-      rewrite Z2N.id in w; [|blia].
-      apply Z.lt_nge in w; elim w.
-      assumption.
+    rewrite !uwordToZ_kunsigned, wordToN_NToWord_2 by assumption.
+    rewrite N2Z.inj_pow, Z2N.id by blia.
+    cbv [kunsigned]; split; intros.
+    - apply Z.ltb_ge in H; assumption.
+    - apply Z.ltb_ge; assumption.
   Qed.
 
   Lemma is_mmio_sound:
@@ -3215,6 +3203,17 @@ Section Equiv.
     all: idtac "KamiRiscv: [kamiStep_sound_case_execNm] starting the Qed...".
   Time Qed.
 
+  (* Kami's [Lt]/[Slt] evaluate to [Z.ltb]; the riscv side's comparison
+     fact [E0] decides the test. *)
+  Ltac branch_cmp_red E0 :=
+    cbv [word.unsigned word.signed word wordW KamiWord.word kunsigned ksigned] in E0;
+    rewrite ?uwordToZ_kunsigned;
+    match goal with
+    | |- context [(?a <? ?b)%Z] =>
+      first [ rewrite (proj2 (Z.ltb_lt a b)) by exact E0
+            | rewrite (proj2 (Z.ltb_ge a b)) by exact E0 ]
+    end.
+
   Lemma kamiStep_sound_case_execNmZ:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
@@ -3508,7 +3507,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wslt_dec _ _); [|exfalso; apply n; apply E0].
+      branch_cmp_red E0.
       subst addr sbimm12.
       split. {
         apply AddrAligned_consistent. rewrite E1. reflexivity.
@@ -3527,8 +3526,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wslt_dec _ _).
-      { exfalso. eapply Z.le_ngt in E0. apply E0. apply w. }
+      branch_cmp_red E0.
       apply pc_related_plus4; red; eauto.
     }
 
@@ -3536,8 +3534,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wslt_dec _ _).
-      { exfalso. eapply Z.le_ngt in E0. apply E0. apply w. }
+      branch_cmp_red E0.
       subst addr sbimm12.
       split. {
         apply AddrAligned_consistent. rewrite E1. reflexivity.
@@ -3556,7 +3553,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wslt_dec _ _); [|exfalso; apply n; apply E0].
+      branch_cmp_red E0.
       apply pc_related_plus4; red; eauto.
     }
 
@@ -3564,16 +3561,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wlt_dec _ _).
-      2: {
-        exfalso.
-        lazymatch type of E0 with
-        | word.unsigned ?x < word.unsigned ?y =>
-            change (Z.of_N (wordToN x) < Z.of_N (wordToN y)) in E0
-        end.
-        eapply N2Z.inj_lt in E0.
-        apply n. apply E0.
-      }
+      branch_cmp_red E0.
       subst addr sbimm12.
       split. {
         apply AddrAligned_consistent. rewrite E1. reflexivity.
@@ -3592,14 +3580,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wlt_dec _ _). {
-        exfalso.
-        lazymatch type of E0 with
-        | word.unsigned ?x <= word.unsigned ?y =>
-            change (Z.of_N (wordToN x) <= Z.of_N (wordToN y)) in E0
-        end.
-        eapply N2Z.inj_le in E0. eapply N.lt_nge in w. apply w. apply E0.
-      }
+      branch_cmp_red E0.
       apply pc_related_plus4; red; eauto.
     }
 
@@ -3607,14 +3588,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wlt_dec _ _). {
-        exfalso.
-        lazymatch type of E0 with
-        | word.unsigned ?x <= word.unsigned ?y =>
-            change (Z.of_N (wordToN x) <= Z.of_N (wordToN y)) in E0
-        end.
-        eapply N2Z.inj_le in E0. eapply N.lt_nge in w. apply w. apply E0.
-      }
+      branch_cmp_red E0.
       subst addr sbimm12.
       split. {
         apply AddrAligned_consistent. rewrite E1. reflexivity.
@@ -3633,8 +3607,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wlt_dec _ _).
-      2: { exfalso. apply n. eapply N2Z.inj_lt. apply E0. }
+      branch_cmp_red E0.
       apply pc_related_plus4; red; eauto.
     }
 
