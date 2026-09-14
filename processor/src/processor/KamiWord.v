@@ -44,7 +44,7 @@ Section KamiWordFacts.
 
   Lemma wrshifta_ZToWord: forall sz (w: Word.word sz) n,
       wrshifta w n = ZToWord sz (wordToZ w / 2 ^ Z.of_nat n).
-  Proof. reflexivity. Qed.
+  Proof. intros; cbv [Zmod.srs]; rewrite Z.shiftr_div_pow2 by blia; reflexivity. Qed.
 
   Lemma weqb_eqb: forall sz (x y: Word.word sz),
       weqb x y = Z.eqb (Zmod.unsigned x) (Zmod.unsigned y).

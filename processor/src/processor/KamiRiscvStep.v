@@ -135,7 +135,7 @@ Section WordZ.
     intros.
     cbv [evalZeroExtendTrunc].
     destruct (lt_dec _ _); [clear H|blia].
-    apply wordToZ_inj.
+    apply Zmod.signed_inj.
     rewrite wordToZ_eq_rect.
     destruct b as [|b]; [blia|].
     rewrite wordToZ_ZToWord.
@@ -205,7 +205,7 @@ Section WordZ.
 
     cbv [evalSignExtendTrunc].
     destruct (lt_dec _ _).
-    - apply wordToZ_inj.
+    - apply Zmod.signed_inj.
       rewrite wordToZ_eq_rect, sext_wordToZ.
       destruct b as [|b]; [blia|].
       apply eq_sym, wordToZ_ZToWord.
@@ -2068,7 +2068,7 @@ Section Equiv.
         { subst v.
           rewrite <-?Zmod.add_assoc, ?(Zmod.add_comm _ (wzero' _)), ?wplus_unit.
           repeat f_equal.
-          apply wordToZ_inj; rewrite ?wordToZ_combine_WO; trivial.
+          apply Zmod.signed_inj; rewrite ?wordToZ_combine_WO; trivial.
         }
       }
 

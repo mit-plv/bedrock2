@@ -58,21 +58,21 @@ Section KamiRiscvWord.
     - pose proof (word.unsigned_range y) as R1.
       pose proof (word.unsigned_range z) as R2.
       rewrite Z.log2_pow2 by trivial.
-      do 2 f_equal.
+      do 3 f_equal.
       change kunsigned with (word.unsigned (width:= 2 ^ log2width)).
       apply unsigned_of_Z_mod_idemp.
 
     - pose proof (word.unsigned_range y) as R1.
       pose proof (word.unsigned_range z) as R2.
       rewrite Z.log2_pow2 by trivial.
-      do 2 f_equal.
+      do 3 f_equal.
       change kunsigned with (word.unsigned (width:= 2 ^ log2width)).
       apply unsigned_of_Z_mod_idemp.
 
     - pose proof (word.signed_range y) as R1.
       pose proof (word.unsigned_range z) as R2.
       rewrite Z.log2_pow2 by trivial.
-      do 2 f_equal.
+      do 3 f_equal.
       change kunsigned with (word.unsigned (width:= 2 ^ log2width)).
       apply unsigned_of_Z_mod_idemp.
 
