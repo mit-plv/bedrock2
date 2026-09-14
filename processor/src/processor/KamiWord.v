@@ -49,7 +49,7 @@ Section KamiWordFacts.
   Lemma weqb_eqb: forall sz (x y: Word.word sz),
       weqb x y = Z.eqb (Zmod.unsigned x) (Zmod.unsigned y).
   Proof.
-    intros; cbv [weqb].
+    intros.
     destruct (Zmod.eqb_spec x y) as [E|E];
       destruct (Z.eqb_spec (Zmod.unsigned x) (Zmod.unsigned y)) as [E2|E2];
       try reflexivity.
@@ -71,14 +71,6 @@ Section KamiWordFacts.
     apply Znat.N2Z.inj.
     rewrite Znat.N2Z.inj_mod, !Z_of_wordToN, NatLib.Z_of_N_Npow2.
     apply unsigned_split1.
-  Qed.
-
-  Lemma wnot_idempotent:
-    forall {sz} (w: word sz),
-      wnot (wnot w) = w.
-  Proof.
-    intros; apply Zmod.unsigned_inj; rewrite !unsigned_wnot.
-    pose proof (@unsigned_range _ w); blia.
   Qed.
 
   Lemma wordToN_eq_rect:
@@ -119,14 +111,6 @@ Section KamiWordFacts.
     apply Z_pow_add_lor; blia.
   Qed.
 
-  Lemma ZToWord_zero:
-    forall n, ZToWord n 0 = wzero n.
-  Proof.
-    intros; apply Zmod.unsigned_inj.
-    rewrite unsigned_ZToWord, unsigned_wzero.
-    pose proof (pow2_pos_Z n); apply Z.mod_0_l; blia.
-  Qed.
-
   Lemma split1_wplus_silent:
     forall sz1 sz2 (w1 w2: Word.word (sz1 + sz2)),
       split1 sz1 sz2 w2 = wzero _ ->
@@ -134,9 +118,9 @@ Section KamiWordFacts.
   Proof.
     intros sz1 sz2 w1 w2 H.
     apply (f_equal (@Zmod.unsigned _)) in H.
-    rewrite unsigned_split1, unsigned_wzero in H.
+    rewrite unsigned_split1, Zmod.unsigned_0 in H.
     apply Zmod.unsigned_inj.
-    rewrite !unsigned_split1, unsigned_wplus.
+    rewrite !unsigned_split1, Zmod.unsigned_add.
     rewrite Z.mod_mod_divide by (exists (2 ^ Z.of_nat sz2); rewrite pow2_add_Z; ring).
     rewrite Zplus_mod, H, Z.add_0_r, Zmod_mod; reflexivity.
   Qed.
@@ -146,7 +130,7 @@ Section KamiWordFacts.
   Proof.
     cbv [sumbool_rect].
     destruct (weq _ _), (weqb _ _) eqn:?;
-                                   try match goal with H : _ |- _ => eapply weqb_true_iff in H end;
+                                   try match goal with H : _ |- _ => eapply Zmod.eqb_eq in H end;
       trivial; congruence.
   Qed.
 
@@ -154,7 +138,7 @@ Section KamiWordFacts.
     sumbool_rect (fun _ => bool) (fun _ => true) (fun _ => false) (@weq n x y) = weqb x y.
   Proof. rewrite sumbool_rect_weq; destruct (weqb x y); trivial. Qed.
 
-  Lemma unsigned_eqb n x y : Z.eqb (Z.of_N (wordToN x)) (Z.of_N (wordToN y)) = @weqb n x y.
+  Lemma unsigned_eqb n (x y : Word.word n) : Z.eqb (Z.of_N (wordToN x)) (Z.of_N (wordToN y)) = weqb x y.
   Proof. rewrite !Z_of_wordToN; symmetry; apply weqb_eqb. Qed.
 
   Lemma unsigned_split1_mod:
@@ -171,8 +155,8 @@ Section WithWidth.
 
   Definition kword: Type := Kami.Lib.Word.word sz.
   Definition kunsigned(x: kword): Z := Z.of_N (wordToN x).
-  Definition ksigned: kword -> Z := @wordToZ sz.
-  Definition kofZ: Z -> kword := ZToWord sz.
+  Definition ksigned (x: kword): Z := wordToZ x.
+  Definition kofZ (z: Z): kword := ZToWord sz z.
 
   Definition riscvZdivu(x y: Z): Z :=
     if y =? 0 then 2 ^ width - 1 else Z.div x y.
@@ -193,19 +177,19 @@ Section WithWidth.
     signed := ksigned;
     of_Z := kofZ;
 
-    add := @wplus sz;
-    sub := @wminus sz;
-    opp := @wneg sz;
+    add := Zmod.add;
+    sub := Zmod.sub;
+    opp := Zmod.opp;
 
-    or  := @wor sz;
-    and := @wand sz;
-    xor := @wxor sz;
-    not := @wnot sz;
+    or  := Zmod.or;
+    and := Zmod.and;
+    xor := Zmod.xor;
+    not := Zmod.not;
 
     (* "x and not y" *)
     ndn x y := kofZ (Z.ldiff (kunsigned x) (kunsigned y));
 
-    mul := @wmult sz;
+    mul := Zmod.mul;
     mulhss x y := kofZ (Z.mul (ksigned x) (ksigned y) / 2^width);
     mulhsu x y := kofZ (Z.mul (ksigned x) (kunsigned y) / 2^width);
     mulhuu x y := kofZ (Z.mul (kunsigned x) (kunsigned y) / 2^width);
@@ -220,7 +204,7 @@ Section WithWidth.
     sru x y := wrshift x (Z.to_nat ((kunsigned y) mod width));
     srs x y := wrshifta x (Z.to_nat ((kunsigned y) mod width));
 
-    eqb := @weqb sz;
+    eqb := Zmod.eqb;
     ltu x y := Z.ltb (uwordToZ x) (uwordToZ y);
     lts x y := Z.ltb (wordToZ x) (wordToZ y);
 
@@ -252,23 +236,23 @@ Section WithWidth.
     all: rewrite <- ?pow2_sz, <- ?pow2_sz_pred in *.
     all: rewrite ?Z_of_wordToN in *.
 
-    { apply unsigned_ZToWord. }
+    { apply Zmod.unsigned_of_Z. }
     { rewrite wordToZ_ZToWord_full by exact AA; reflexivity. }
     { apply Zmod.of_Z_unsigned. }
-    { apply unsigned_wplus. }
-    { apply unsigned_wminus. }
-    { apply unsigned_wneg. }
-    { rewrite <- unsigned_wor; symmetry; apply unsigned_mod_id. }
-    { rewrite <- unsigned_wand; symmetry; apply unsigned_mod_id. }
-    { rewrite <- unsigned_wxor; symmetry; apply unsigned_mod_id. }
+    { apply Zmod.unsigned_add. }
+    { apply Zmod.unsigned_sub. }
+    { apply Zmod.unsigned_opp. }
+    { rewrite <- bits.unsigned_or; symmetry; apply unsigned_mod_id. }
+    { rewrite <- bits.unsigned_and; symmetry; apply unsigned_mod_id. }
+    { rewrite <- bits.unsigned_xor; symmetry; apply unsigned_mod_id. }
     { apply unsigned_wnot_mod. }
-    { apply unsigned_ZToWord. }
-    { apply unsigned_wmult. }
+    { apply Zmod.unsigned_of_Z. }
+    { apply Zmod.unsigned_mul. }
     { rewrite wordToZ_ZToWord_full by exact AA; reflexivity. }
     { rewrite wordToZ_ZToWord_full by exact AA; reflexivity. }
-    { apply unsigned_ZToWord. }
+    { apply Zmod.unsigned_of_Z. }
 
-    { rewrite unsigned_ZToWord.
+    { rewrite Zmod.unsigned_of_Z.
       cbv [riscvZdivu]; destr (Zmod.unsigned y =? 0); [blia|reflexivity]. }
     { rewrite wordToZ_ZToWord_full by exact AA.
       cbv [riscvZdivs]; rewrite <- ?pow2_sz_pred.
@@ -276,7 +260,7 @@ Section WithWidth.
       { destr (wordToZ y =? -1); [blia|].
         destr (wordToZ y =? 0); [blia|reflexivity]. }
       { destr (wordToZ y =? 0); [blia|reflexivity]. } }
-    { rewrite unsigned_ZToWord.
+    { rewrite Zmod.unsigned_of_Z.
       cbv [riscvZmodu]; destr (Zmod.unsigned y =? 0); [blia|reflexivity]. }
     { rewrite wordToZ_ZToWord_full by exact AA.
       cbv [riscvZmods]; destr (wordToZ y =? 0); [blia|reflexivity]. }

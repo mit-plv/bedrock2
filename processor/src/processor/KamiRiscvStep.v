@@ -38,6 +38,8 @@ Require Export processor.KamiProc.
 Require Import processor.Consistency.
 
 Local Open Scope Z_scope.
+#[local] Arguments Z.pow : simpl never.
+#[local] Arguments Z.of_nat : simpl never.
 
 (* workaround for `rewrite` bug:
    https://github.com/coq/coq/issues/1811#issuecomment-1320064508 *)
@@ -183,7 +185,7 @@ Section WordZ.
       assert (Hs: Zmod.signed w = 0) by (rewrite Word.signed_eqn, Hu; reflexivity).
       destruct (lt_dec 0 b).
       - apply Zmod.unsigned_inj.
-        rewrite Word.unsigned_eq_rec, Word.unsigned_sext, Word.unsigned_ZToWord,
+        rewrite Word.unsigned_eq_rec, Word.unsigned_sext, Zmod.unsigned_of_Z,
                 KamiWord.Z_of_wordToN, Hs, Hu.
         replace (signExtend (Z.of_nat 0) 0) with 0 by reflexivity.
         pose proof (Word.pow2_pos_Z (0 + (b - 0))); pose proof (Word.pow2_pos_Z b).
@@ -220,7 +222,7 @@ Section WordZ.
         apply Z.pow_lt_mono_r; blia.
 
     - assert (a = b) by blia; subst a.
-      rewrite ZToWord_wordToZ.
+      rewrite Zmod.of_Z_signed.
       apply wordToN_inj.
       rewrite wordToN_split1.
       cbv [eq_rec_r eq_rec].
@@ -436,7 +438,7 @@ Section WordZ.
     cbv [sll MachineWidth_XLEN word.slu word wordW KamiWord.word].
     cbv [kunsigned word.of_Z kofZ].
     f_equal.
-    rewrite !KamiWord.Z_of_wordToN, Word.unsigned_ZToWord.
+    rewrite !KamiWord.Z_of_wordToN, Zmod.unsigned_of_Z.
     pose proof (@Word.unsigned_range _ n) as HR.
     assert (H5: 2 ^ Z.of_nat 5 = 32) by reflexivity.
     assert (Hw: 2 ^ Z.of_nat (Z.to_nat width) = 4294967296) by reflexivity.
@@ -454,7 +456,7 @@ Section WordZ.
     cbv [srl MachineWidth_XLEN word.sru word wordW KamiWord.word].
     cbv [kunsigned word.of_Z kofZ].
     f_equal.
-    rewrite !KamiWord.Z_of_wordToN, Word.unsigned_ZToWord.
+    rewrite !KamiWord.Z_of_wordToN, Zmod.unsigned_of_Z.
     pose proof (@Word.unsigned_range _ n) as HR.
     assert (H5: 2 ^ Z.of_nat 5 = 32) by reflexivity.
     assert (Hw: 2 ^ Z.of_nat (Z.to_nat width) = 4294967296) by reflexivity.
@@ -472,7 +474,7 @@ Section WordZ.
     cbv [sra MachineWidth_XLEN word.srs word wordW KamiWord.word].
     cbv [kunsigned word.of_Z kofZ].
     f_equal.
-    rewrite !KamiWord.Z_of_wordToN, Word.unsigned_ZToWord.
+    rewrite !KamiWord.Z_of_wordToN, Zmod.unsigned_of_Z.
     pose proof (@Word.unsigned_range _ n) as HR.
     assert (H5: 2 ^ Z.of_nat 5 = 32) by reflexivity.
     assert (Hw: 2 ^ Z.of_nat (Z.to_nat width) = 4294967296) by reflexivity.
@@ -623,7 +625,7 @@ Section Equiv.
     cbv [MinimalMMIO.signedByteTupleToReg].
     change (8 * Z.of_nat 4) with 32; rewrite H0.
     cbv [word.of_Z word wordW KamiWord.word kofZ].
-    rewrite ZToWord_wordToZ.
+    rewrite Zmod.of_Z_signed.
     econstructor.
   Qed.
 
@@ -638,7 +640,7 @@ Section Equiv.
     cbv [MinimalMMIO.signedByteTupleToReg].
     change (8 * Z.of_nat 4) with 32; rewrite H0.
     cbv [word.of_Z word wordW KamiWord.word kofZ].
-    rewrite ZToWord_wordToZ.
+    rewrite Zmod.of_Z_signed.
     econstructor.
   Qed.
 
@@ -858,14 +860,14 @@ Section Equiv.
     intros.
     apply Bool.negb_false_iff in H.
     cbv [reg_eqb MachineWidth_XLEN word.eqb word wordW KamiWord.word] in H.
-    apply weqb_sound in H.
+    apply Zmod.eqb_eq in H.
     cbv [remu word.modu riscvZmodu kofZ kunsigned] in H.
     simpl in H; cbn in H.
     change (Pos.to_nat 32) with 32%nat in H.
     match type of H with
     | _ = ?rhs =>
       change rhs with (wzero 32) in H;
-        rewrite <-ZToWord_zero in H
+        rewrite <-Zmod.of_Z_0 in H
     end.
     apply f_equal with (f:= @wordToZ _) in H.
 
@@ -892,6 +894,12 @@ Section Equiv.
     rewrite Z.div_1_r.
     assumption.
   Qed.
+
+  Ltac addr_aligned_by_remu :=
+    apply AddrAligned_consistent;
+    match goal with
+    | H : remu _ _ = _ |- _ => rewrite H; reflexivity
+    end.
 
   Lemma mem_related_load_Z_Some:
     forall kmem rmem,
@@ -1005,14 +1013,14 @@ Section Equiv.
     }
     destruct_one_match.
     1: { exfalso.
-         rewrite <-?wplus_assoc in e.
+         rewrite <-?Zmod.add_assoc in e.
          apply evalZeroExtendTrunc_bound_eq in e; [subst|assumption..].
          apply filter_In in H6; destruct H6 as [_ ?].
          apply Bool.negb_true_iff, word.eqb_false in H6; auto.
     }
     destruct_one_match.
     1: { exfalso.
-         rewrite <-?wplus_assoc in e.
+         rewrite <-?Zmod.add_assoc in e.
          apply evalZeroExtendTrunc_bound_eq in e; [subst|assumption..].
          apply filter_In in H7; destruct H7 as [_ ?].
          apply Bool.negb_true_iff, word.eqb_false in H7; auto.
@@ -1815,7 +1823,7 @@ Section Equiv.
         cbv [int32ToReg
                MachineWidth_XLEN word.of_Z word wordW KamiWord.word kofZ].
         setoid_rewrite signExtend_combine_split_signed.
-        apply eq_sym, ZToWord_wordToZ.
+        apply eq_sym, Zmod.of_Z_signed.
       }
       Unshelve. all : try exact 32%nat; try exact (word.of_Z 0).
 
@@ -2002,7 +2010,7 @@ Section Equiv.
         rewrite byte.unsigned_of_Z.
         rewrite ?uwordToZ_kunsigned.
         rewrite byte_wrap_word_8.
-        rewrite ?(wplus_comm _ (wzero' _)), ?wplus_unit; trivial.
+        rewrite ?(Zmod.add_comm _ (wzero' _)), ?wplus_unit; trivial.
       }
 
       { (* lh *)
@@ -2012,7 +2020,7 @@ Section Equiv.
         rewrite ?uwordToZ_kunsigned; rewrite ?byte_wrap_word_8.
         rewrite @kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
         rewrite Z.lor_comm.
-        rewrite ?(wplus_comm _ (wzero' _)), ?wplus_unit; trivial.
+        rewrite ?(Zmod.add_comm _ (wzero' _)), ?wplus_unit; trivial.
       }
 
       { (* lbu *)
@@ -2022,7 +2030,7 @@ Section Equiv.
         rewrite byte.unsigned_of_Z.
         rewrite ?uwordToZ_kunsigned.
         rewrite byte_wrap_word_8.
-        rewrite ?(wplus_comm _ (wzero' _)), ?wplus_unit; trivial.
+        rewrite ?(Zmod.add_comm _ (wzero' _)), ?wplus_unit; trivial.
       }
 
       { (* lhu *)
@@ -2033,7 +2041,7 @@ Section Equiv.
         rewrite ?uwordToZ_kunsigned; rewrite ?byte_wrap_word_8.
         rewrite @kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
         rewrite Z.lor_comm.
-        rewrite ?(wplus_comm _ (wzero' _)), ?wplus_unit; trivial.
+        rewrite ?(Zmod.add_comm _ (wzero' _)), ?wplus_unit; trivial.
       }
 
       { (* lw *)
@@ -2058,7 +2066,7 @@ Section Equiv.
           apply eq_sym, kami_evalSignExtendTrunc_32.
         }
         { subst v.
-          rewrite <-?wplus_assoc, ?(wplus_comm _ (wzero' _)), ?wplus_unit.
+          rewrite <-?Zmod.add_assoc, ?(Zmod.add_comm _ (wzero' _)), ?wplus_unit.
           repeat f_equal.
           apply wordToZ_inj; rewrite ?wordToZ_combine_WO; trivial.
         }
@@ -3032,7 +3040,7 @@ Section Equiv.
     { (* [pc_related_and_valid] for `JAL` *)
       subst newPC jimm20.
       split. {
-        apply AddrAligned_consistent. rewrite E0. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
       cbv [Utility.add
@@ -3047,7 +3055,7 @@ Section Equiv.
     { (* [pc_related_and_valid] for `JALR` *)
       subst newPC oimm12 v0 rs1.
       split. {
-        apply AddrAligned_consistent. rewrite E. reflexivity.
+        addr_aligned_by_remu.
       }
       red.
       cbv [MachineWidth_XLEN
@@ -3065,7 +3073,7 @@ Section Equiv.
     all: try subst val; cbv [ZToReg MachineWidth_XLEN]; cbn [evalBinBitBool].
     all: eapply (word.unsigned_inj (word := word)).
     all: rewrite <-?ZToWord_Z_of_N.
-    all: change (ZToWord 32) with (@word.of_Z 32 word).
+    all: change (ZToWord 32 ?z) with (@word.of_Z 32 word z).
     all: rewrite ?word.unsigned_of_Z.
 
     { (* lui *)
@@ -3103,7 +3111,7 @@ Section Equiv.
       subst oimm20.
       unfold Utility.add.
       eapply f_equal.
-      rewrite wplus_comm; eapply f_equal2; [|reflexivity].
+      rewrite Zmod.add_comm; eapply f_equal2; [|reflexivity].
       rewrite signExtend_word_of_Z_nop.
       eapply (word.unsigned_inj (word := word)).
       match goal with
@@ -3416,7 +3424,7 @@ Section Equiv.
     { (* jal *)
       subst newPC jimm20.
       split. {
-        apply AddrAligned_consistent. rewrite E0. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
       cbv [Utility.add
@@ -3431,7 +3439,7 @@ Section Equiv.
     { (* jalr *)
       subst newPC oimm12 v0 rs1.
       split. {
-        apply AddrAligned_consistent. rewrite E. reflexivity.
+        addr_aligned_by_remu.
       }
       red.
       cbv [MachineWidth_XLEN
@@ -3445,7 +3453,7 @@ Section Equiv.
     { (* beq(eq) *)
       subst newPC sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E1. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
       cbv [Utility.add
@@ -3479,7 +3487,7 @@ Section Equiv.
       { cbv [negb].
         subst addr sbimm12.
         split. {
-          apply AddrAligned_consistent. rewrite E1. reflexivity.
+          addr_aligned_by_remu.
         }
         clear; red.
         cbv [Utility.add
@@ -3510,7 +3518,7 @@ Section Equiv.
       branch_cmp_red E0.
       subst addr sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E1. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
       cbv [Utility.add
@@ -3537,7 +3545,7 @@ Section Equiv.
       branch_cmp_red E0.
       subst addr sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E1. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
       cbv [negb Utility.add
@@ -3564,7 +3572,7 @@ Section Equiv.
       branch_cmp_red E0.
       subst addr sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E1. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
       cbv [Utility.add
@@ -3591,7 +3599,7 @@ Section Equiv.
       branch_cmp_red E0.
       subst addr sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E1. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
       cbv [negb Utility.add

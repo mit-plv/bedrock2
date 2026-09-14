@@ -225,7 +225,7 @@ Section FetchOk.
       cbv [word.add word wordW KamiWord.word] in H0.
       cbv [word.of_Z kofZ] in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
-      rewrite <-wplus_assoc.
+      rewrite <-Zmod.add_assoc.
       change (ZToWord nwidth 1 ^+ ZToWord nwidth 1) with (ZToWord nwidth 2).
       destruct (Z.ltb_spec (kunsigned (rpc ^+ ZToWord _ 2)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
@@ -240,9 +240,9 @@ Section FetchOk.
       cbv [word.add word wordW KamiWord.word] in H0.
       cbv [word.of_Z kofZ] in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
-      rewrite <-wplus_assoc.
+      rewrite <-Zmod.add_assoc.
       change (ZToWord nwidth 1 ^+ ZToWord nwidth 1) with (ZToWord nwidth 2).
-      rewrite <-wplus_assoc.
+      rewrite <-Zmod.add_assoc.
       change (ZToWord nwidth 1 ^+ ZToWord nwidth 2) with (ZToWord nwidth 3).
       destruct (Z.ltb_spec (kunsigned (rpc ^+ ZToWord _ 3)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.

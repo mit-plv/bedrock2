@@ -198,7 +198,7 @@ Section Parametrized.
 
     clear -e n.
     assert (pinitOfsv = wones _).
-    { rewrite <-wnot_idempotent with (w:= pinitOfsv).
+    { rewrite <-(bits.not_not pinitOfsv).
       rewrite e.
       apply wnot_zero.
     }
