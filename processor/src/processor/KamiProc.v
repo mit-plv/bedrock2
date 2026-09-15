@@ -58,7 +58,7 @@ Section Parametrized.
             rf := evalConstT (rfInit procInit);
             pinit := false;
             pgm := evalVec (mapVec (@evalConstT _)
-                                   (replicate (ConstBit (wzero _)) iaddrSize));
+                                   (replicate (ConstBit (Zmod.zero)) iaddrSize));
             mem := evalConstT memInit |}.
   Proof.
     simpl; unfold pRegsToT.
@@ -197,10 +197,10 @@ Section Parametrized.
     apply H19; [reflexivity|].
 
     clear -e n.
-    assert (pinitOfsv = wones _).
-    { rewrite <-wnot_idempotent with (w:= pinitOfsv).
+    assert (pinitOfsv = (Zmod.opp Zmod.one)).
+    { rewrite <-(bits.not_not pinitOfsv).
       rewrite e.
-      apply wnot_zero.
+      apply bits.not_0.
     }
     subst.
 

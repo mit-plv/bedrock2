@@ -335,7 +335,7 @@ Section Equiv.
   Definition riscvMemInit : mem := map.of_list (List.map
     (fun i : nat =>
       (word.of_Z (Z.of_nat i),
-       byte.of_Z (uwordToZ (evalConstT kamiMemInit $i))))
+       byte.of_Z (Zmod.unsigned (evalConstT kamiMemInit $i))))
     (seq 0 (2 ^ Z.to_nat memSizeLg))).
 
   Instance kword32: coqutil.Word.Interface.word 32 := KamiWord.word 32.
@@ -402,14 +402,21 @@ Section Equiv.
         2: etransitivity; [eapply nth_error_nth'|];
             rewrite ?seq_length, ?seq_nth; trivial.
         intros HX.
-        injection HX; clear HX; intros HX.
-        eapply (f_equal (@wordToZ _)) in HX.
+        (* [injection] would take the equality apart down to the [Zmod]
+           representative; project out of the option instead. *)
+        eapply (f_equal (fun o => match o with
+                                  | Some w => @Zmod.signed _ w
+                                  | None => 0%Z
+                                  end)) in HX.
+        cbv beta iota in HX.
         pose proof Z.pow_le_mono_r 2 memSizeLg 31 eq_refl ltac:(blia);
         pose proof N_Z_nat_conversions.Z2Nat.inj_pow 2 memSizeLg ltac:(blia) ltac:(blia);
         change (Z.to_nat 2) with 2%nat in *.
-        rewrite 2wordToZ_ZToWord'' in HX; try split;
-         change (BinInt.Z.of_nat (Pos.to_nat 32) - 1) with 31;
-         blia. }
+        assert (Hwpos: (0 < BinInt.Z.to_nat width)%nat)
+          by (change (BinInt.Z.to_nat width) with 32%nat; blia).
+        assert (Hwz: BinInt.Z.of_nat (BinInt.Z.to_nat width) = 32) by reflexivity.
+        rewrite 2wordToZ_ZToWord'' in HX by (rewrite ?Hwz; blia).
+        blia. }
       { rewrite (proj2 (nth_error_None _ _)); try congruence.
         rewrite map_length, seq_length; blia. } }
     { replace (evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) addr)
