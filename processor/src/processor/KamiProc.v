@@ -58,7 +58,7 @@ Section Parametrized.
             rf := evalConstT (rfInit procInit);
             pinit := false;
             pgm := evalVec (mapVec (@evalConstT _)
-                                   (replicate (ConstBit (wzero _)) iaddrSize));
+                                   (replicate (ConstBit (Zmod.zero)) iaddrSize));
             mem := evalConstT memInit |}.
   Proof.
     simpl; unfold pRegsToT.

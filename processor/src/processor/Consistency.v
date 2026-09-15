@@ -125,7 +125,7 @@ Section FetchOk.
     forall addr: kword width,
       map.get rmem addr =
       if Z.ltb (kunsigned addr) (Z.pow 2 memSizeLg)
-      then Some (byte.of_Z (uwordToZ (kmem (evalZeroExtendTrunc _ addr))))
+      then Some (byte.of_Z (Zmod.unsigned (kmem (evalZeroExtendTrunc _ addr))))
       else None.
 
   Definition RiscvXAddrsSafe
@@ -207,44 +207,44 @@ Section FetchOk.
       blia.
     }
 
-    assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1)) (Z.pow 2 memSizeLg) = true) as Hrpc1.
+    assert (Z.ltb (kunsigned (rpc ^+ Zmod.of_Z _ 1)) (Z.pow 2 memSizeLg) = true) as Hrpc1.
     { destruct H0 as [_ [? _]].
       cbv [word.add word wordW KamiWord.word] in H0.
       cbv [word.of_Z kofZ] in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
-      destruct (Z.ltb_spec (kunsigned (rpc ^+ ZToWord _ 1)) (Z.pow 2 memSizeLg)); [reflexivity|].
+      destruct (Z.ltb_spec (kunsigned (rpc ^+ Zmod.of_Z _ 1)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2 in H0.
       cbv [kunsigned] in H1.
       blia.
     }
 
-    assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1))
+    assert (Z.ltb (kunsigned (rpc ^+ Zmod.of_Z _ 1 ^+ Zmod.of_Z _ 1))
                   (Z.pow 2 memSizeLg) = true) as Hrpc2.
     { destruct H0 as [_ [_ [? _]]].
       cbv [word.add word wordW KamiWord.word] in H0.
       cbv [word.of_Z kofZ] in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
       rewrite <-Zmod.add_assoc.
-      change (ZToWord nwidth 1 ^+ ZToWord nwidth 1) with (ZToWord nwidth 2).
-      destruct (Z.ltb_spec (kunsigned (rpc ^+ ZToWord _ 2)) (Z.pow 2 memSizeLg)); [reflexivity|].
+      change (bits.of_Z (Z.of_nat nwidth) 1 ^+ bits.of_Z (Z.of_nat nwidth) 1) with (bits.of_Z (Z.of_nat nwidth) 2).
+      destruct (Z.ltb_spec (kunsigned (rpc ^+ Zmod.of_Z _ 2)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2 in H0.
       cbv [kunsigned] in H1.
       blia.
     }
 
-    assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1 ^+ ZToWord _ 1))
+    assert (Z.ltb (kunsigned (rpc ^+ Zmod.of_Z _ 1 ^+ Zmod.of_Z _ 1 ^+ Zmod.of_Z _ 1))
                   (Z.pow 2 memSizeLg) = true) as Hrpc3.
     { destruct H0 as [_ [_ [_ ?]]].
       cbv [word.add word wordW KamiWord.word] in H0.
       cbv [word.of_Z kofZ] in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
       rewrite <-Zmod.add_assoc.
-      change (ZToWord nwidth 1 ^+ ZToWord nwidth 1) with (ZToWord nwidth 2).
+      change (bits.of_Z (Z.of_nat nwidth) 1 ^+ bits.of_Z (Z.of_nat nwidth) 1) with (bits.of_Z (Z.of_nat nwidth) 2).
       rewrite <-Zmod.add_assoc.
-      change (ZToWord nwidth 1 ^+ ZToWord nwidth 2) with (ZToWord nwidth 3).
-      destruct (Z.ltb_spec (kunsigned (rpc ^+ ZToWord _ 3)) (Z.pow 2 memSizeLg)); [reflexivity|].
+      change (bits.of_Z (Z.of_nat nwidth) 1 ^+ bits.of_Z (Z.of_nat nwidth) 2) with (bits.of_Z (Z.of_nat nwidth) 3).
+      destruct (Z.ltb_spec (kunsigned (rpc ^+ Zmod.of_Z _ 3)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2 in H0.
       cbv [kunsigned] in H1.
@@ -253,9 +253,9 @@ Section FetchOk.
 
     cbv [Memory.footprint HList.tuple.unfoldn].
     - pose proof (H rpc); rewrite Hrpc0 in H1.
-      pose proof (H (rpc ^+ ZToWord _ 1)); rewrite Hrpc1 in H2.
-      pose proof (H (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1)); rewrite Hrpc2 in H3.
-      pose proof (H (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1 ^+ ZToWord _ 1)); rewrite Hrpc3 in H4.
+      pose proof (H (rpc ^+ Zmod.of_Z _ 1)); rewrite Hrpc1 in H2.
+      pose proof (H (rpc ^+ Zmod.of_Z _ 1 ^+ Zmod.of_Z _ 1)); rewrite Hrpc2 in H3.
+      pose proof (H (rpc ^+ Zmod.of_Z _ 1 ^+ Zmod.of_Z _ 1 ^+ Zmod.of_Z _ 1)); rewrite Hrpc3 in H4.
 
       (*
       cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2
@@ -267,7 +267,7 @@ Section FetchOk.
       rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 0%nat).
       rewrite !byte.unsigned_of_Z.
       cbv [byte.wrap].
-      change (@uwordToZ (BinInt.Z.to_nat 8)) with (@word.unsigned 8 _).
+      change (@Zmod.unsigned (BinInt.Z.to_nat 8)) with (@word.unsigned 8 _).
       rewrite !(@Properties.word.wrap_unsigned 8 _ word8ok).
       reflexivity.
   Qed.

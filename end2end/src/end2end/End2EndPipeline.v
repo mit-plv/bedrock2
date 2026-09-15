@@ -1,3 +1,4 @@
+From Stdlib Require Import Zmod.
 Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
@@ -62,7 +63,7 @@ Qed.
 Definition get_kamiMemInit{memSizeLg: Z}
   (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg))
   (n: nat): Byte.byte :=
-  byte.of_Z (Kami.Lib.Word.uwordToZ
+  byte.of_Z (Zmod.unsigned
                (Kami.Semantics.evalConstT (kamiMemInit _ memInit) (Kami.Lib.Word.natToWord _ n))).
 
 Definition kami_mem_contains_bytes(bs: list Coq.Init.Byte.byte){memSizeLg}(from: KamiWord.word 32)
@@ -224,7 +225,7 @@ Section Connect.
         (map (get_kamiMemInit memInit) (seq from len))
         (map.of_list (map
           (fun i => (word.of_Z (BinIntDef.Z.of_nat i),
-                     byte.of_Z (Word.uwordToZ (Semantics.evalConstT (kamiMemInit memSizeLg memInit)
+                     byte.of_Z (Zmod.unsigned (Semantics.evalConstT (kamiMemInit memSizeLg memInit)
                          (Word.natToWord (BinIntDef.Z.to_nat memSizeLg) i)))))
           (seq from len))).
   Proof.

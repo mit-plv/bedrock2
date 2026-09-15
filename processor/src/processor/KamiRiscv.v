@@ -335,7 +335,7 @@ Section Equiv.
   Definition riscvMemInit : mem := map.of_list (List.map
     (fun i : nat =>
       (word.of_Z (Z.of_nat i),
-       byte.of_Z (uwordToZ (evalConstT kamiMemInit $i))))
+       byte.of_Z (Zmod.unsigned (evalConstT kamiMemInit $i))))
     (seq 0 (2 ^ Z.to_nat memSizeLg))).
 
   Instance kword32: coqutil.Word.Interface.word 32 := KamiWord.word 32.
@@ -405,7 +405,7 @@ Section Equiv.
         (* [injection] would take the equality apart down to the [Zmod]
            representative; project out of the option instead. *)
         eapply (f_equal (fun o => match o with
-                                  | Some w => @wordToZ _ w
+                                  | Some w => @Zmod.signed _ w
                                   | None => 0%Z
                                   end)) in HX.
         cbv beta iota in HX.
