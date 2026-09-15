@@ -197,10 +197,10 @@ Section Parametrized.
     apply H19; [reflexivity|].
 
     clear -e n.
-    assert (pinitOfsv = wones _).
+    assert (pinitOfsv = (Zmod.opp Zmod.one)).
     { rewrite <-(bits.not_not pinitOfsv).
       rewrite e.
-      apply wnot_zero.
+      apply bits.not_0.
     }
     subst.
 
