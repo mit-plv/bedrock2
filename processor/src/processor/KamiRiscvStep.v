@@ -315,20 +315,14 @@ Section WordZ.
     forall (w1 w2: word),
       (w1 < w2)%word <-> kunsigned w1 < kunsigned w2.
   Proof.
-    cbv [kunsigned]; intros.
-    apply N2Z.inj_lt.
+    cbv [kunsigned wlt]; intros; rewrite !Z_of_wordToN; reflexivity.
   Qed.
 
   Lemma wle_kunsigned:
     forall (w1 w2: word),
       (w1 <= w2)%word <-> kunsigned w1 <= kunsigned w2.
   Proof.
-    cbv [kunsigned]; intros; split; intros.
-    - apply N2Z.inj_le.
-      cbv [wlt] in H; blia.
-    - intro Hx.
-      apply N2Z.inj_le in H.
-      cbv [wlt] in Hx; blia.
+    cbv [kunsigned wlt]; intros; rewrite !Z_of_wordToN; split; intro; blia.
   Qed.
 
   Lemma kami_evalZeroExtendTrunc_32:
@@ -2010,7 +2004,7 @@ Section Equiv.
         rewrite byte.unsigned_of_Z.
         rewrite ?uwordToZ_kunsigned.
         rewrite byte_wrap_word_8.
-        rewrite ?(Zmod.add_comm _ (wzero' _)), ?wplus_unit; trivial.
+        rewrite ?(Zmod.add_comm _ (Zmod.zero)), ?wplus_unit; trivial.
       }
 
       { (* lh *)
@@ -2020,7 +2014,7 @@ Section Equiv.
         rewrite ?uwordToZ_kunsigned; rewrite ?byte_wrap_word_8.
         rewrite @kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
         rewrite Z.lor_comm.
-        rewrite ?(Zmod.add_comm _ (wzero' _)), ?wplus_unit; trivial.
+        rewrite ?(Zmod.add_comm _ (Zmod.zero)), ?wplus_unit; trivial.
       }
 
       { (* lbu *)
@@ -2030,7 +2024,7 @@ Section Equiv.
         rewrite byte.unsigned_of_Z.
         rewrite ?uwordToZ_kunsigned.
         rewrite byte_wrap_word_8.
-        rewrite ?(Zmod.add_comm _ (wzero' _)), ?wplus_unit; trivial.
+        rewrite ?(Zmod.add_comm _ (Zmod.zero)), ?wplus_unit; trivial.
       }
 
       { (* lhu *)
@@ -2041,7 +2035,7 @@ Section Equiv.
         rewrite ?uwordToZ_kunsigned; rewrite ?byte_wrap_word_8.
         rewrite @kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
         rewrite Z.lor_comm.
-        rewrite ?(Zmod.add_comm _ (wzero' _)), ?wplus_unit; trivial.
+        rewrite ?(Zmod.add_comm _ (Zmod.zero)), ?wplus_unit; trivial.
       }
 
       { (* lw *)
@@ -2066,7 +2060,7 @@ Section Equiv.
           apply eq_sym, kami_evalSignExtendTrunc_32.
         }
         { subst v.
-          rewrite <-?Zmod.add_assoc, ?(Zmod.add_comm _ (wzero' _)), ?wplus_unit.
+          rewrite <-?Zmod.add_assoc, ?(Zmod.add_comm _ (Zmod.zero)), ?wplus_unit.
           repeat f_equal.
           apply Zmod.signed_inj; rewrite ?wordToZ_combine_WO; trivial.
         }
