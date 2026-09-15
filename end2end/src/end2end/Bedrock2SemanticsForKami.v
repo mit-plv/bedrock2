@@ -4,7 +4,7 @@ Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListSt
 Require Import coqutil.Word.Interface coqutil.Map.SortedListWord.
 Require Import processor.KamiWord.
 Require Import compiler.RiscvWordProperties.
-Require Import end2end.KamiRiscvWordProperties.
+Require Import compiler.NaiveRiscvWordProperties.
 Require Import compilerExamples.MMIO.
 
 Import Strings.String List.ListNotations.
@@ -16,10 +16,8 @@ Definition MMIOWRITE : string := "MMIOWRITE".
 #[global] Instance word: word.word 32 := KamiWord.word 32.
 #[global] Instance word_ok: word.ok word := KamiWord.ok 32 eq_refl.
 
-#[global] Instance word_riscv_ok: word.riscv_ok word.
-refine (@kami_word_riscv_ok 5 _ _).
-all: cbv; congruence.
-Qed.
+(* [KamiWord.word 32] is [Naive.word 32] by conversion. *)
+#[global] Instance word_riscv_ok: word.riscv_ok word := naive_word_riscv_ok 5.
 
 #[global] Instance mem: Interface.map.map word Byte.byte := SortedListWord.map _ _.
 #[global] Instance mem_ok: Interface.map.ok mem := SortedListWord.ok _ _.
