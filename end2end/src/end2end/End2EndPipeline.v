@@ -1,3 +1,4 @@
+From Stdlib Require Import Zmod.
 Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
@@ -29,7 +30,6 @@ Require Import compiler.RiscvEventLoop.
 Require Import compiler.ForeverSafe.
 Require Import compiler.GoFlatToRiscv.
 Require Import coqutil.Tactics.Simp.
-Require Import processor.KamiWord.
 Require Import processor.KamiRiscvStep.
 Require Import processor.KamiRiscv.
 Require Import bedrock2.Syntax bedrock2.Semantics.
@@ -38,7 +38,6 @@ Require Import compilerExamples.MMIO.
 Require Import riscv.Platform.FE310ExtSpec.
 Require Import compiler.FlatToRiscvDef.
 Require Import coqutil.Tactics.rdelta.
-Require Import end2end.KamiRiscvWordProperties.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import compiler.SeparationLogic.
 Require Import compiler.ToplevelLoop.
@@ -49,11 +48,6 @@ Local Open Scope Z_scope.
 
 Require Import Coq.Classes.Morphisms.
 
-#[global] Instance word_riscv_ok: @RiscvWordProperties.word.riscv_ok 32 KamiWord.wordW.
-refine (@KamiRiscvWordProperties.kami_word_riscv_ok 5 _ _).
-all: cbv; congruence.
-Qed.
-
 #[global] Existing Instance SortedListString.map.
 #[global] Existing Instance SortedListString.ok.
 
@@ -62,10 +56,10 @@ Qed.
 Definition get_kamiMemInit{memSizeLg: Z}
   (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg))
   (n: nat): Byte.byte :=
-  byte.of_Z (Kami.Lib.Word.uwordToZ
+  byte.of_Z (Zmod.unsigned
                (Kami.Semantics.evalConstT (kamiMemInit _ memInit) (Kami.Lib.Word.natToWord _ n))).
 
-Definition kami_mem_contains_bytes(bs: list Coq.Init.Byte.byte){memSizeLg}(from: KamiWord.word 32)
+Definition kami_mem_contains_bytes(bs: list Coq.Init.Byte.byte){memSizeLg}(from: bits 32)
            (mem: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg)): Prop :=
   List.map (get_kamiMemInit mem) (seq 0 (List.length bs)) = bs.
 
@@ -73,20 +67,20 @@ Section Connect.
 
   Context (instrMemSizeLg memSizeLg stack_size_in_bytes: Z).
 
-  Context {Registers: map.map Register (KamiWord.word 32)}
+  Context {Registers: map.map Register (bits 32)}
           {Registers_ok: map.ok Registers}
-          {mem: map.map (KamiWord.word 32) byte}
+          {mem: map.map (bits 32) byte}
           {mem_ok: map.ok mem}.
 
   Let instrMemSizeBytes: Z := 2 ^ (2 + instrMemSizeLg).
 
   Definition ml: MemoryLayout (width := 32) := {|
-    code_start := word.of_Z 0;
-    code_pastend := word.of_Z instrMemSizeBytes;
-    heap_start := word.of_Z instrMemSizeBytes;
-    heap_pastend := word.of_Z (2 ^ memSizeLg - stack_size_in_bytes);
-    stack_start := word.of_Z (2 ^ memSizeLg - stack_size_in_bytes);
-    stack_pastend := word.of_Z (2 ^ memSizeLg);
+    code_start := bits.of_Z _ 0;
+    code_pastend := bits.of_Z _ instrMemSizeBytes;
+    heap_start := bits.of_Z _ instrMemSizeBytes;
+    heap_pastend := bits.of_Z _ (2 ^ memSizeLg - stack_size_in_bytes);
+    stack_start := bits.of_Z _ (2 ^ memSizeLg - stack_size_in_bytes);
+    stack_pastend := bits.of_Z _ (2 ^ memSizeLg);
   |}.
 
   Context (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
@@ -101,11 +95,6 @@ Section Connect.
     KamiRiscv.p4mm instrMemSizeLg memSizeLg (proj1 instrMemSizeLg_bounds)
                    (proj2 instrMemSizeLg_bounds)
                    memInit.
-
-  Add Ring wring : (word.ring_theory (word := Consistency.word))
-      (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := Consistency.word)),
-       constants [word_cst]).
 
   Definition states_related :=
     states_related instrMemSizeLg memSizeLg (proj1 instrMemSizeLg_bounds) (proj2 instrMemSizeLg_bounds).
@@ -145,8 +134,7 @@ Section Connect.
     constructor;
       unfold ml, code_start, code_pastend, heap_start, heap_pastend, stack_start, stack_pastend.
     - reflexivity.
-    - rewrite word.unsigned_of_Z.
-      unfold word.wrap.
+    - rewrite Zmod.unsigned_of_Z.
       etransitivity.
       1: exact (ToplevelLoop.mod_2width_mod_bytes_per_word (2 ^ memSizeLg - stack_size_in_bytes)).
       change bytes_per_word with 4.
@@ -155,27 +143,24 @@ Section Connect.
         rewrite Z.pow_add_r by blia.
         apply mod4_0.mod4_mul4_r.
       + exact stack_size_div.
-    - rewrite word.unsigned_of_Z.
-      unfold word.wrap.
+    - rewrite Zmod.unsigned_of_Z.
       etransitivity.
       1: exact (ToplevelLoop.mod_2width_mod_bytes_per_word (2 ^ memSizeLg)).
       replace memSizeLg with (memSizeLg - 2 + 2) by blia.
       rewrite Z.pow_add_r by blia.
       apply mod4_0.mod4_mul4_r.
-    - rewrite word.unsigned_of_Z. change (word.wrap 0) with 0.
-      eapply proj1. eapply word.unsigned_range.
+    - rewrite Zmod.unsigned_of_Z. change (0 mod 2 ^ 32) with 0.
+      eapply proj1. eapply bits.unsigned_range. blia.
     - reflexivity.
-    - rewrite ?word.unsigned_of_Z. unfold word.wrap.
+    - rewrite ?Zmod.unsigned_of_Z.
       pose proof (Z.pow_nonneg 2 (2 + instrMemSizeLg)).
-      change width with 32 in *.
       assert (2 ^ memSizeLg < 2 ^ 32). {
         apply Z.pow_lt_mono_r; blia.
       }
       rewrite ?Z.mod_small; try split; try apply Z.pow_nonneg; try blia.
     - reflexivity.
-    - rewrite ?word.unsigned_of_Z. unfold word.wrap.
+    - rewrite ?Zmod.unsigned_of_Z.
       pose proof (Z.pow_nonneg 2 (2 + instrMemSizeLg)).
-      change width with 32 in *.
       assert (2 ^ memSizeLg < 2 ^ 32). {
         apply Z.pow_lt_mono_r; blia.
       }
@@ -204,16 +189,19 @@ Section Connect.
   Lemma riscvMemInit_to_seplog_aux: forall len from,
       Z.of_nat from + Z.of_nat len <= 2 ^ memSizeLg ->
       LowerPipeline.ptsto_bytes
-        (word.of_Z (width := width) (Z.of_nat from))
+        (bits.of_Z width (Z.of_nat from))
         (map (get_kamiMemInit memInit) (seq from len))
         (map.of_list (map
-          (fun i => (word.of_Z (BinIntDef.Z.of_nat i),
-                     byte.of_Z (Word.uwordToZ (Semantics.evalConstT (kamiMemInit memSizeLg memInit)
+          (fun i => (bits.of_Z width (BinIntDef.Z.of_nat i),
+                     byte.of_Z (Zmod.unsigned (Semantics.evalConstT (kamiMemInit memSizeLg memInit)
                          (Word.natToWord (BinIntDef.Z.to_nat memSizeLg) i)))))
           (seq from len))).
   Proof.
     induction len; intros.
-    - cbv. auto.
+    - (* a bare [cbv] here reduces through [Zmod.of_Z], which duplicates
+         subterms at every nesting level; stay at the list level. *)
+      cbn [seq map map.of_list]; unfold LowerPipeline.ptsto_bytes;
+        cbn [array]; unfold emp; auto.
     - unfold LowerPipeline.ptsto_bytes, riscvMemInit_values in *.
       cbn [seq map array map.of_list].
       match goal with
@@ -227,7 +215,7 @@ Section Connect.
       ssplit; cycle 1.
       + specialize (IHlen (S from)).
         replace (Z.of_nat (S from)) with (Z.of_nat from + 1) in IHlen by blia.
-        rewrite word.ring_morph_add in IHlen.
+        rewrite Zmod.of_Z_add in IHlen.
         apply IHlen. blia.
       + unfold ptsto. reflexivity.
       + unfold map.split, map.disjoint. split; [reflexivity|].
@@ -239,16 +227,15 @@ Section Connect.
         subst.
         rewrite get_of_list_not_In in H0.
         * discriminate.
-        * simpl. apply Word.weq.
+        * apply (@Word.weq 32%nat).
         * exact mem_ok.
         * intro C.
           rewrite map_map in C.
           unfold fst in C.
           apply in_map_iff in C.
           destruct C as [ from' [E C] ].
-          apply (f_equal word.unsigned) in E.
-          do 2 rewrite word.unsigned_of_Z in E.
-          unfold word.wrap in E.
+          apply (f_equal Zmod.unsigned) in E.
+          do 2 rewrite Zmod.unsigned_of_Z in E.
           change width with 32 in *.
           rewrite (Z.mod_small (Z.of_nat from)) in E. 2: {
             split; [blia|].
@@ -265,7 +252,7 @@ Section Connect.
   Qed.
 
   Lemma riscvMemInit_to_seplog:
-    (LowerPipeline.ptsto_bytes (word.of_Z 0) riscvMemInit_all_values)
+    (LowerPipeline.ptsto_bytes (bits.of_Z width 0) riscvMemInit_all_values)
     (riscvMemInit memSizeLg memInit).
   Proof.
     intros.
@@ -296,9 +283,9 @@ Section Connect.
     (* Assumptions on the compiler level: *)
     forall (instrs: list Instruction) positions (required_stack_space: Z),
     compile_prog compile_ext_call ml funimplsList = Success (instrs, positions, required_stack_space) ->
-    required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word ->
-    word.unsigned (code_start ml) + Z.of_nat (Datatypes.length (instrencode instrs)) <=
-      word.unsigned (code_pastend ml) ->
+    required_stack_space <= Zmod.unsigned (Zmod.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word ->
+    Zmod.unsigned (code_start ml) + Z.of_nat (Datatypes.length (instrencode instrs)) <=
+      Zmod.unsigned (code_pastend ml) ->
     bvalidInstructions iset instrs = true ->
     valid_src_funs funimplsList = true ->
     (* Assumptions on the Kami level: *)
@@ -377,15 +364,14 @@ Section Connect.
       + assumption.
       + assumption.
       + assumption.
-      + pose proof word.eqb_spec.
+      + pose proof Zmod.eqb_spec.
         cbv [imem LowerPipeline.mem_available].
         unfold code_start, code_pastend, heap_start, heap_pastend, stack_start, stack_pastend, ml in *.
         assert (Bounds_instrs: 0 <= Z.of_nat (Datatypes.length (instrencode instrs))) by blia.
         assert (Bounds_unused_imem: Z.of_nat (Datatypes.length (instrencode instrs)) <= instrMemSizeBytes). {
           move L at bottom.
-          rewrite ?word.unsigned_of_Z in L.
-          change (word.wrap 0) with 0 in L.
-          unfold word.wrap in L.
+          rewrite ?Zmod.unsigned_of_Z in L.
+          change (0 mod 2 ^ 32) with 0 in L.
           rewrite (Z.mod_small instrMemSizeBytes) in L. 1: blia.
           split.
           - apply Z.pow_nonneg. blia.
@@ -457,30 +443,40 @@ Section Connect.
           }
           cancel.
           cancel_seps_at_indices 0%nat 0%nat. {
-            f_equal.
-            ring.
+            reflexivity.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
             f_equal.
-            rewrite firstn_length.
-            rewrite skipn_length.
-            let word_ok := constr:(_ : word.ok _) in simpl_word_exprs word_ok.
-            f_equal.
-            blia.
+            simpl_word_exprs.
+            reflexivity.
+          }
+          assert (HL: Datatypes.length riscvMemInit_all_values
+                      = Z.to_nat (2 ^ memSizeLg)). {
+            unfold riscvMemInit_all_values.
+            rewrite List.map_length, List.seq_length; reflexivity.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
             f_equal.
             rewrite ?firstn_length.
             rewrite ?skipn_length.
-            let word_ok := constr:(_ : word.ok _) in simpl_word_exprs word_ok.
+            simpl_word_exprs.
             f_equal.
-            blia.
+            rewrite HL.
+            clear -Bounds_unused_imem Bounds_heap stack_size_bounds; blia.
+          }
+          cancel_seps_at_indices 0%nat 0%nat. {
+            f_equal.
+            rewrite ?firstn_length.
+            rewrite ?skipn_length.
+            simpl_word_exprs.
+            f_equal.
+            rewrite HL.
+            clear -Bounds_instrs Bounds_unused_imem Bounds_heap stack_size_bounds; blia.
           }
           cbn [seps]. reflexivity.
         }
-        all: repeat rewrite ?word.unsigned_sub, ?word.unsigned_add,
-                            ?firstn_length, ?skipn_length, ?word.unsigned_of_Z;
-             unfold word.wrap;
+        all: repeat rewrite ?Zmod.unsigned_sub, ?Zmod.unsigned_add,
+                            ?firstn_length, ?skipn_length, ?Zmod.unsigned_of_Z;
              change width with 32 in *.
         all: try (
           Z.div_mod_to_equations;
@@ -491,11 +487,10 @@ Section Connect.
                    pose proof (fun u : x => conj (H u) (H' u)); clear H H'
                  end;
           blia).
-      + change (word.unsigned (code_start ml)) with 0.
-        assert (Hend: code_pastend ml = word.of_Z instrMemSizeBytes) by reflexivity.
+      + change (Zmod.unsigned (code_start ml)) with 0.
+        assert (Hend: code_pastend ml = bits.of_Z 32 instrMemSizeBytes) by reflexivity.
         setoid_rewrite Hend.
-        rewrite word.unsigned_of_Z.
-        cbv [word.wrap].
+        rewrite Zmod.unsigned_of_Z.
         rewrite Z.mod_small. 2: {
           split.
           - apply Z.pow_nonneg; blia.

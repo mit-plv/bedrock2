@@ -1,13 +1,13 @@
 Require Import Coq.Lists.List.
 Require Import Coq.ZArith.ZArith.
-Require Import coqutil.Word.Naive coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Datatypes.List.
 Require Import bedrock2.ReversedListNotations.
 
 Import ListNotations.
 Open Scope Z_scope.
 
-Notation word := Naive.word32.
+Notation word := (bits 32).
 
 Inductive MMIO :=
 | MMInput(addr value: word)
@@ -55,16 +55,16 @@ Notation "'INs' [ addrs ] 'const' cs ;; P" :=
   (INs [ addrs ] vs st (vs = cs);; P)
     (at level 11, P at level 11, left associativity): trace_scope.
 
-Example addr100: word := word.of_Z 100.
-Example value42: word := word.of_Z 42.
+Example addr100: word := bits.of_Z _ 100.
+Example value42: word := bits.of_Z _ 42.
 
 Goal forall t, (IN[addr100] v st (v = value42) ;; ForeverSilent) t.
 Abort.
 
 (* Read as "This program first makes a load request at addr100, and if you answer this request
    with a small enough value, it will output its square, and then not output anything more" *)
-Goal forall t, (IN[addr100] v st (word.unsigned v < 2 ^ 16);;
-                OUT[addr100] r st (word.unsigned r = word.unsigned v * word.unsigned v);;
+Goal forall t, (IN[addr100] v st (Zmod.unsigned v < 2 ^ 16);;
+                OUT[addr100] r st (Zmod.unsigned r = Zmod.unsigned v * Zmod.unsigned v);;
                 ForeverSilent) t.
 Abort.
 
@@ -81,8 +81,8 @@ Definition FirstPrgAddr: word. Admitted.
    FirstPrgAddr through FirstProgAddr+(length prog), and if you answer these requests with
    the values of prg, then the rest of the processor's IO behavior will satisfy traceProp". *)
 Goal forall prg t,
-  (IN[GetPrgSzAddr] const (word.of_Z (Z.of_nat (length prg)));;
-   INs[List.unfoldn (word.add (word.of_Z 4)) (length prg) FirstPrgAddr] const prg;;
+  (IN[GetPrgSzAddr] const (bits.of_Z _ (Z.of_nat (length prg)));;
+   INs[List.unfoldn (Zmod.add 4) (length prg) FirstPrgAddr] const prg;;
    execProp) t.
 Proof.
   intros.
