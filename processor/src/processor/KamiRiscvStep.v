@@ -1,3 +1,4 @@
+From Stdlib Require Import Zmod.
 From Coq Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
@@ -11,7 +12,6 @@ Require Export coqutil.Word.Bitwidth32.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.rdelta.
-Require Import processor.KamiWord.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.
@@ -37,6 +37,11 @@ Require Export processor.KamiProc.
 Require Import processor.Consistency.
 
 Local Open Scope Z_scope.
+Local Notation nwidth := (Z.to_nat width).
+#[local] Existing Instance BW.
+#[local] Arguments Z.pow : simpl never.
+#[local] Arguments Z.of_nat : simpl never.
+#[local] Arguments Z.to_nat : simpl never.
 
 (* workaround for `rewrite` bug:
    https://github.com/coq/coq/issues/1811#issuecomment-1320064508 *)
@@ -46,7 +51,14 @@ Local Ltac subst_after_destr H ::= idtac.
 
 (** Consistency between the Kami word and the Z-based word *)
 Section WordZ.
-  Local Hint Mode word.word - : typeclass_instances.
+
+  Lemma sumbool_rect_bool_weq n (x y: Word.word n):
+    sumbool_rect (fun _ => bool) (fun _ => true) (fun _ => false) (weq x y) = Zmod.eqb x y.
+  Proof. cbv [sumbool_rect]; rewrite (if_weq_eqb x y true false); destruct (Zmod.eqb x y); reflexivity. Qed.
+
+  Lemma unsigned_eqb n (x y: Word.word n):
+    Z.eqb (Z.of_N (wordToN x)) (Z.of_N (wordToN y)) = Zmod.eqb x y.
+  Proof. cbv [Zmod.eqb]; rewrite !Z_of_N_wordToN; reflexivity. Qed.
 
   Lemma bitSlice_range_ex:
     forall z n m,
@@ -54,7 +66,6 @@ Section WordZ.
   Proof.
     intros.
     rewrite bitSlice_alt by blia.
-    unfold bitSlice'.
     apply Z.mod_pos_bound.
     apply Z.pow_pos_nonneg; blia.
   Qed.
@@ -66,7 +77,6 @@ Section WordZ.
     rewrite bitSlice_alt by blia.
     rewrite wordToN_split1.
     rewrite N2Z.inj_mod by apply NatLib.Npow2_not_zero.
-    cbv [bitSlice'].
     rewrite NatLib.Z_of_N_Npow2.
     rewrite Z.pow_0_r, Z.sub_0_r, Z.div_1_r.
     reflexivity.
@@ -79,7 +89,6 @@ Section WordZ.
     rewrite bitSlice_alt by blia.
     rewrite wordToN_split2.
     rewrite N2Z.inj_div.
-    cbv [bitSlice'].
     rewrite NatLib.Z_of_N_Npow2.
     rewrite Z.mod_small; [reflexivity|].
     rewrite Z.add_simpl_l.
@@ -101,7 +110,6 @@ Section WordZ.
     rewrite unsigned_split2_as_bitSlice.
     rewrite unsigned_split1_as_bitSlice.
     rewrite ?bitSlice_alt by blia.
-    cbv [bitSlice'].
     simpl; rewrite Z.sub_0_r, Z.div_1_r, Z.add_simpl_l.
     rewrite Z.mod_small with (b:= 2 ^ Z.of_nat b).
     - rewrite Nat2Z.inj_add, Z.pow_add_r by blia.
@@ -124,15 +132,22 @@ Section WordZ.
           apply Z.pow_pos_nonneg; blia.
   Qed.
 
+  (* The register-index side goals of [regs_related_get] are stated with
+     [Zmod.unsigned] rather than [wordToN]. *)
+  Lemma unsigned_split2_split1_as_bitSlice' a b c x :
+    Z.of_N (wordToN (split2 a b (split1 (a+b) c x))) =
+    bitSlice (Zmod.unsigned x) (Z.of_nat a) (Z.of_nat a + Z.of_nat b).
+  Proof. rewrite unsigned_split2_split1_as_bitSlice, Z_of_N_wordToN; reflexivity. Qed.
+
   Lemma kami_evalZeroExtendTrunc:
     forall {a} (w: Word.word a) b,
       (a < b)%nat ->
-      evalZeroExtendTrunc b w = ZToWord b (Z.of_N (wordToN w)).
+      evalZeroExtendTrunc b w = bits.of_Z (Z.of_nat b) (Z.of_N (wordToN w)).
   Proof.
     intros.
     cbv [evalZeroExtendTrunc].
     destruct (lt_dec _ _); [clear H|blia].
-    apply wordToZ_inj.
+    apply Zmod.signed_inj.
     rewrite wordToZ_eq_rect.
     destruct b as [|b]; [blia|].
     rewrite wordToZ_ZToWord.
@@ -147,55 +162,54 @@ Section WordZ.
       apply Z.pow_le_mono_r; blia.
   Qed.
 
-  Section __.
-    Variable a: Z.
-    Hypothesis (Ha: 0 < a).
-    Instance kworda: coqutil.Word.Interface.word a := KamiWord.word a.
-    Instance kworda_ok: word.ok kworda. eapply KamiWord.ok. assumption. Qed.
-
-    Lemma signExtend_unsigned_signed:
-      forall (w: kword a),
-        signExtend a (Z.of_N (wordToN w)) = wordToZ w.
-    Proof.
-      intros.
-      change (Z.of_N (wordToN w)) with (word.unsigned w).
-      change (wordToZ w) with (word.signed w).
-      pose proof (word.signed_eq_swrap_unsigned w).
-      auto.
-    Qed.
-  End __.
+  Lemma signExtend_unsigned_signed:
+    forall sz (w: Word.word sz),
+      signExtend (Z.of_nat sz) (Z.of_N (wordToN w)) = Zmod.signed w.
+  Proof.
+    intros.
+    rewrite Z_of_N_wordToN, <-Zmod.smod_unsigned, word.smodulo_pow2.
+    reflexivity.
+  Qed.
 
   Lemma kami_evalSignExtendTrunc:
     forall {a} (w: Word.word a) b,
       (a <= b)%nat ->
       evalSignExtendTrunc b w =
-      ZToWord b (signExtend (Z.of_nat a) (Z.of_N (wordToN w))).
+      bits.of_Z (Z.of_nat b) (signExtend (Z.of_nat a) (Z.of_N (wordToN w))).
   Proof.
     intros.
     destruct (Nat.eq_0_gt_0_cases a).
     1: {
       subst.
-      rewrite (shatter_word_0 w); simpl.
       cbv [evalSignExtendTrunc].
+      pose proof (@Word.unsigned_range _ w) as HR.
+      assert (Hp: 2 ^ Z.of_nat 0 = 1) by reflexivity.
+      assert (Hu: Zmod.unsigned w = 0) by blia.
+      assert (Hs: Zmod.signed w = 0) by (rewrite Word.signed_eqn, Hu; reflexivity).
       destruct (lt_dec 0 b).
-      - try (change eq_rec with (fun A x (P:A -> Set) => @eq_rect A x P); cbn).
-        rewrite wzero_eq_rect.
-        apply eq_sym, wzero'_def.
+      - apply Zmod.unsigned_inj.
+        rewrite Word.unsigned_eq_rec, Word.unsigned_sext, Zmod.unsigned_of_Z,
+                Z_of_N_wordToN, Hs, Hu.
+        replace (signExtend (Z.of_nat 0) 0) with 0 by reflexivity.
+        pose proof (Word.pow2_pos_Z (0 + (b - 0))); pose proof (Word.pow2_pos_Z b).
+        rewrite !Z.mod_0_l by blia; reflexivity.
       - assert (b = 0%nat) by blia; subst.
-        reflexivity.
+        apply Zmod.unsigned_inj.
+        match goal with
+        | |- Zmod.unsigned ?l = Zmod.unsigned ?r =>
+          pose proof (@Word.unsigned_range _ l); pose proof (@Word.unsigned_range _ r)
+        end.
+        blia.
     }
 
-    pose proof (signExtend_unsigned_signed (Z.of_nat a) ltac:(blia)).
-    cbv [kword] in H1.
-    rewrite Nat2Z.id in H1; rewrite H1; clear H1.
+    rewrite signExtend_unsigned_signed.
 
     cbv [evalSignExtendTrunc].
     destruct (lt_dec _ _).
-    - apply wordToZ_inj.
+    - apply Zmod.signed_inj.
       rewrite wordToZ_eq_rect, sext_wordToZ.
       destruct b as [|b]; [blia|].
       apply eq_sym, wordToZ_ZToWord.
-      cbv [kword] in w.
       destruct a as [|a]; [blia|].
       pose proof (wordToZ_size' w); destruct H1.
       split.
@@ -208,7 +222,7 @@ Section WordZ.
         apply Z.pow_lt_mono_r; blia.
 
     - assert (a = b) by blia; subst a.
-      rewrite ZToWord_wordToZ.
+      rewrite Zmod.of_Z_signed.
       apply wordToN_inj.
       rewrite wordToN_split1.
       cbv [eq_rec_r eq_rec].
@@ -217,14 +231,13 @@ Section WordZ.
       apply wordToN_bound.
   Qed.
 
-  Lemma kunsigned_split2_shiftr:
+  Lemma unsigned_split2_shiftr:
     forall {sz1 sz2} (w: Word.word (sz1 + sz2)),
       Z.of_N (wordToN (split2 _ _ w)) = Z.shiftr (Z.of_N (wordToN w)) (Z.of_nat sz1).
   Proof.
     intros.
     rewrite unsigned_split2_as_bitSlice.
     rewrite bitSlice_alt by blia.
-    cbv [bitSlice'].
     rewrite Z.mod_small.
     - apply eq_sym, Z.shiftr_div_pow2; blia.
     - split.
@@ -240,7 +253,7 @@ Section WordZ.
           assumption.
   Qed.
 
-  Lemma kunsigned_byte_split1:
+  Lemma unsigned_byte_split1:
     forall {sz} (w: Word.word (8 + sz)),
       byte.of_Z (Z.of_N (wordToN w)) =
       byte.of_Z (Z.of_N (wordToN (split1 _ _ w))).
@@ -289,7 +302,6 @@ Section WordZ.
     intros.
     rewrite ?bitSlice_alt by blia.
     rewrite bitSlice_alt in H0 by blia.
-    cbv [bitSlice'] in *.
     replace (n + 1 - n) with 1 in H0 by blia.
     apply Z.testbit_false in H0; [|blia].
     bitblast.Z.bitblast; cbn.
@@ -297,24 +309,18 @@ Section WordZ.
     subst; auto.
   Qed.
 
-  Lemma wlt_kunsigned:
+  Lemma wlt_unsigned:
     forall (w1 w2: word),
-      (w1 < w2)%word <-> kunsigned w1 < kunsigned w2.
+      (w1 < w2)%word <-> Zmod.unsigned w1 < Zmod.unsigned w2.
   Proof.
-    cbv [kunsigned]; intros.
-    apply N2Z.inj_lt.
+    reflexivity.
   Qed.
 
-  Lemma wle_kunsigned:
+  Lemma wle_unsigned:
     forall (w1 w2: word),
-      (w1 <= w2)%word <-> kunsigned w1 <= kunsigned w2.
+      (w1 <= w2)%word <-> Zmod.unsigned w1 <= Zmod.unsigned w2.
   Proof.
-    cbv [kunsigned]; intros; split; intros.
-    - apply N2Z.inj_le.
-      cbv [wlt] in H; blia.
-    - intro Hx.
-      apply N2Z.inj_le in H.
-      cbv [wlt] in Hx; blia.
+    cbv [wlt]; intros; split; intro; blia.
   Qed.
 
   Lemma kami_evalZeroExtendTrunc_32:
@@ -333,22 +339,21 @@ Section WordZ.
     apply split1_0.
   Qed.
 
-  Lemma kunsigned_combine_shiftl_lor:
+  Lemma unsigned_combine_shiftl_lor:
     forall {sa} (a: Word.word sa) {sb} (b: Word.word sb),
       Z.of_N (wordToN (Word.combine a b)) =
       Z.lor (Z.shiftl (Z.of_N (wordToN b)) (Z.of_nat sa)) (Z.of_N (wordToN a)).
   Proof.
     intros.
-    rewrite Z_of_wordToN_combine_alt, Z.lor_comm.
-    rewrite nat_N_Z.
+    rewrite Z_of_N_wordToN_combine, Z.lor_comm.
     reflexivity.
   Qed.
 
   Lemma signExtend_word_of_Z_nop:
-    forall z, word.of_Z (width:= 32) (signExtend 32 z) = word.of_Z (width:= 32) z.
+    forall z, bits.of_Z (Z.of_nat nwidth) (signExtend 32 z) = bits.of_Z (Z.of_nat nwidth) z.
   Proof.
     intros.
-    apply word.of_Z_inj_mod.
+    apply bits.of_Z_inj.
     unfold signExtend.
     (* TODO remove once we're on Coq 8.12 *)
     repeat match goal with
@@ -360,13 +365,13 @@ Section WordZ.
 
   Lemma signExtend_combine_split_signed:
     forall (w: Word.word 32),
-      signExtend 32 (LittleEndian.combine 4 (LittleEndian.split 4 (wordToZ w))) = wordToZ w.
+      signExtend 32 (LittleEndian.combine 4 (LittleEndian.split 4 (Zmod.signed w))) = Zmod.signed w.
   Proof.
     intros.
     rewrite LittleEndian.combine_split.
-    change (wordToZ w) with (word.signed w).
-    etransitivity. 2: eapply word.swrap_signed.
-    unfold word.swrap, signExtend.
+    etransitivity. 2: eapply Zmod.smod_signed.
+    rewrite word.smodulo_pow2.
+    unfold signExtend.
     (* TODO remove once we're on Coq 8.12 *)
     repeat match goal with
            | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
@@ -377,14 +382,14 @@ Section WordZ.
 
   Lemma signExtend_combine_split_unsigned:
     forall (w: Word.word 32),
-      signExtend 32 (LittleEndian.combine 4 (LittleEndian.split 4 (Z.of_N (wordToN w)))) = wordToZ w.
+      signExtend 32 (LittleEndian.combine 4 (LittleEndian.split 4 (Z.of_N (wordToN w)))) = Zmod.signed w.
   Proof.
     intros.
     rewrite LittleEndian.combine_split.
-    change (wordToZ w) with (word.signed w).
-    change (Z.of_N (wordToN w)) with (word.unsigned w).
-    rewrite word.signed_eq_swrap_unsigned.
-    unfold word.swrap, signExtend.
+    rewrite Z_of_N_wordToN.
+    etransitivity. 2: eapply Zmod.smod_unsigned.
+    rewrite word.smodulo_pow2.
+    unfold signExtend.
     (* TODO remove once we're on Coq 8.12 *)
     repeat match goal with
            | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
@@ -418,80 +423,31 @@ Section WordZ.
 
   Lemma wlshift_sll:
     forall (w: word) (n: Word.word 5),
-      wlshift w #n = sll (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
+      Zmod.slu w (Z.of_nat #n) = sll (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
   Proof.
-    intros.
-    cbv [sll MachineWidth_XLEN word.slu word wordW KamiWord.word].
-    cbv [kunsigned word.of_Z kofZ].
-    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; blia].
-    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
-    2: { split; [blia|].
-         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
-         rewrite NatLib.Z_of_N_Npow2.
-         apply Z.pow_lt_mono_r; try (simpl; blia).
-    }
-    rewrite Z.mod_small.
-    2: { split; [blia|].
-         change width with (Z.of_N 32).
-         apply N2Z.inj_lt, wordToN_bound.
-    }
-    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
-    rewrite wordToN_to_nat.
-    reflexivity.
+    intros; cbv [sll MachineWidth_XLEN].
+    rewrite Z_of_nat_wordToNat, Z_of_N_wordToN; reflexivity.
   Qed.
 
   Lemma wrshift_srl:
     forall (w: word) (n: Word.word 5),
-      wrshift w #n = srl (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
+      Zmod.sru w (Z.of_nat #n) = srl (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
   Proof.
-    intros.
-    cbv [srl MachineWidth_XLEN word.sru word wordW KamiWord.word].
-    cbv [kunsigned word.of_Z kofZ].
-    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; blia].
-    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
-    2: { split; [blia|].
-         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
-         rewrite NatLib.Z_of_N_Npow2.
-         apply Z.pow_lt_mono_r; try (simpl; blia).
-    }
-    rewrite Z.mod_small.
-    2: { split; [blia|].
-         change width with (Z.of_N 32).
-         apply N2Z.inj_lt, wordToN_bound.
-    }
-    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
-    rewrite wordToN_to_nat.
-    reflexivity.
+    intros; cbv [srl MachineWidth_XLEN].
+    rewrite Z_of_nat_wordToNat, Z_of_N_wordToN; reflexivity.
   Qed.
 
   Lemma wrshifta_sra:
-    forall w (n: Word.word 5),
-      wrshifta w #n = sra (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
+    forall (w: word) (n: Word.word 5),
+      Zmod.srs w (Z.of_nat #n) = sra (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
   Proof.
-    intros.
-    cbv [sra MachineWidth_XLEN word.srs word wordW KamiWord.word].
-    cbv [kunsigned word.of_Z kofZ].
-    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; blia].
-    rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
-    2: { split; [blia|].
-         etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
-         rewrite NatLib.Z_of_N_Npow2.
-         apply Z.pow_lt_mono_r; try (simpl; blia).
-    }
-    rewrite Z.mod_small.
-    2: { split; [blia|].
-         change width with (Z.of_N 32).
-         apply N2Z.inj_lt, wordToN_bound.
-    }
-    rewrite N_Z_nat_conversions.N_to_Z_to_nat.
-    rewrite wordToN_to_nat.
-    reflexivity.
+    intros; cbv [sra MachineWidth_XLEN].
+    rewrite Z_of_nat_wordToNat, Z_of_N_wordToN; reflexivity.
   Qed.
 
 End WordZ.
 
 Section Equiv.
-  Local Hint Mode word.word - : typeclass_instances.
 
   Context {Registers: map.map Z word}
           {mem: map.map word byte}.
@@ -516,13 +472,13 @@ Section Equiv.
   Definition kamiMemInit := ConstVector memInit.
   Local Definition kamiProc :=
     @KamiProc.proc instrMemSizeLg memSizeLg Hinstr kamiMemInit (kami_AbsMMIO (Z.to_N memSizeLg)).
-  Local Definition kamiStMk := @KamiProc.mk (Z.to_nat width)
+  Local Definition kamiStMk := @KamiProc.mk nwidth
                                             (Z.to_nat memSizeLg)
                                             (Z.to_nat instrMemSizeLg)
                                             rv32InstBytes rv32DataBytes rv32RfIdx.
   Local Notation kamiXAddrs := (kamiXAddrs instrMemSizeLg).
   Local Notation rv32Fetch :=
-    (rv32Fetch (Z.to_nat width)
+    (rv32Fetch nwidth
                (Z.to_nat instrMemSizeLg)
                (width_inst_valid Hinstr)).
   Local Hint Extern 0 => exact (kami_AbsMMIO (Z.to_N memSizeLg)) : typeclass_instances.
@@ -542,7 +498,7 @@ Section Equiv.
   (** * Relations between Kami and riscv-coq *)
 
   Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
-    word.of_Z (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
+    bits.of_Z _ (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
 
   Definition mmioLoadEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n): LogItem :=
     ((m, "MMIOREAD"%string, [addr]), (m, [signedByteTupleToReg v])).
@@ -571,7 +527,7 @@ Section Equiv.
       traces_related t t' ->
       traces_related (e :: t) (e' :: t').
 
-  Definition pc_related_and_valid (kpc rpc: kword width) :=
+  Definition pc_related_and_valid (kpc rpc: word) :=
     AddrAligned rpc /\ pc_related kpc rpc.
 
   Inductive states_related: KamiMachine * list Event -> RiscvMachine -> Prop :=
@@ -582,7 +538,7 @@ Section Equiv.
         (pinit = false -> riscvXAddrs = kamiXAddrs) ->
         (pinit = true -> RiscvXAddrsSafe instrMem kdataMem riscvXAddrs) ->
         pc_related_and_valid kpc rpc ->
-        nrpc = word.add rpc (word.of_Z 4) ->
+        nrpc = Zmod.add rpc 4 ->
         regs_related krf rrf ->
         mem_related _ kdataMem rdataMem ->
         states_related
@@ -605,7 +561,7 @@ Section Equiv.
         klbl.(calls) =
         FMap.M.add
           "mmioExec"%string
-          (existT SignT {| arg := Struct (RqFromProc (Z.to_nat width) rv32DataBytes);
+          (existT SignT {| arg := Struct (RqFromProc nwidth rv32DataBytes);
                            ret := Struct (RsToProc rv32DataBytes) |} (argV, retV))
           (FMap.M.empty _) ->
         e = (if argV (Fin.FS Fin.F1)
@@ -621,30 +577,28 @@ Section Equiv.
   Lemma events_related_mmioLoadEvent:
     forall addr1 v1 addr2 (v2: HList.tuple byte 4),
       addr1 = addr2 ->
-      signExtend 32 (LittleEndian.combine _ v2) = wordToZ v1 ->
+      signExtend 32 (LittleEndian.combine _ v2) = Zmod.signed v1 ->
       events_related ("ld"%string, addr1, v1) (MinimalMMIO.mmioLoadEvent addr2 v2).
   Proof.
     intros; subst.
     cbv [MinimalMMIO.mmioLoadEvent].
     cbv [MinimalMMIO.signedByteTupleToReg].
     change (8 * Z.of_nat 4) with 32; rewrite H0.
-    cbv [word.of_Z word wordW KamiWord.word kofZ].
-    rewrite ZToWord_wordToZ.
+    rewrite Zmod.of_Z_signed.
     econstructor.
   Qed.
 
   Lemma events_related_mmioStoreEvent:
     forall addr1 v1 addr2 (v2: HList.tuple byte 4),
       addr1 = addr2 ->
-      signExtend 32 (LittleEndian.combine _ v2) = wordToZ v1 ->
+      signExtend 32 (LittleEndian.combine _ v2) = Zmod.signed v1 ->
       events_related ("st"%string, addr1, v1) (MinimalMMIO.mmioStoreEvent addr2 v2).
   Proof.
     intros; subst.
     cbv [MinimalMMIO.mmioStoreEvent].
     cbv [MinimalMMIO.signedByteTupleToReg].
     change (8 * Z.of_nat 4) with 32; rewrite H0.
-    cbv [word.of_Z word wordW KamiWord.word kofZ].
-    rewrite ZToWord_wordToZ.
+    rewrite Zmod.of_Z_signed.
     econstructor.
   Qed.
 
@@ -669,43 +623,31 @@ Section Equiv.
   Qed.
 
   Lemma is_mmio_spec:
-    forall a, evalExpr (isMMIO type a) = true <-> 2 ^ memSizeLg <= kunsigned a.
+    forall a, evalExpr (isMMIO type a) = true <-> 2 ^ memSizeLg <= Zmod.unsigned a.
   Proof.
     intros.
+    rewrite <-Z_of_N_wordToN.
     cbv [isMMIO kami_AbsMMIO].
     cbv [evalExpr evalUniBool evalBinBitBool evalConstT].
     rewrite Bool.negb_true_iff.
 
-    assert (2 ^ Z.to_N memSizeLg < NatLib.Npow2 (BinInt.Z.to_nat width))%N as Hlt.
+    assert (2 ^ Z.to_N memSizeLg < NatLib.Npow2 nwidth)%N as Hlt.
     { apply N2Z.inj_lt.
       rewrite NatLib.Z_of_N_Npow2, N2Z.inj_pow.
       apply Z.pow_lt_mono_r; [blia|apply Nat2Z.is_nonneg|].
       rewrite Z2N.id; [|blia].
-      rewrite Z2Nat.id; [|blia].
       cbv [width]; blia.
     }
 
+    rewrite <-!Z_of_N_wordToN, wordToN_NToWord_2 by assumption.
+    rewrite N2Z.inj_pow, Z2N.id by blia.
     split; intros.
-    - destruct_one_match_hyp; [discriminate|clear H].
-      unfold wlt in n; apply N.nlt_ge in n.
-      rewrite wordToN_NToWord_2 in n by assumption.
-      apply N2Z.inj_le in n.
-      rewrite N2Z.inj_pow in n.
-      rewrite Z2N.id in n; [|blia].
-      assumption.
-
-    - destruct_one_match; [exfalso|reflexivity].
-      unfold wlt in w.
-      rewrite wordToN_NToWord_2 in w by assumption.
-      apply N2Z.inj_lt in w.
-      rewrite N2Z.inj_pow in w.
-      rewrite Z2N.id in w; [|blia].
-      apply Z.lt_nge in w; elim w.
-      assumption.
+    - apply Z.ltb_ge in H; assumption.
+    - apply Z.ltb_ge; assumption.
   Qed.
 
   Lemma is_mmio_sound:
-    forall a, isMMIOAddr a -> evalExpr (isMMIO type a) = true.
+    forall (a: word), isMMIOAddr a -> evalExpr (isMMIO type a) = true.
   Proof.
     intros.
     apply is_mmio_spec.
@@ -722,13 +664,12 @@ Section Equiv.
   Qed.
 
   Lemma mmio_mem_disjoint:
-    forall addr, isMMIOAddr addr -> kunsigned addr < 2 ^ memSizeLg -> False.
+    forall (addr: word), isMMIOAddr addr -> Zmod.unsigned addr < 2 ^ memSizeLg -> False.
   Proof.
     intros.
     cbv [isMMIOAddr isMMIOAligned FE310_mmio] in H.
     cbv [isOTP isPRCI isGPIO0 isUART0 isSPI1] in H.
-    simpl in H.
-    assert (kunsigned addr < 2 ^ 16).
+    assert (Zmod.unsigned addr < 2 ^ 16).
     { eapply Z.lt_le_trans; [eassumption|].
       apply Z.pow_le_mono_r; [blia|assumption].
     }
@@ -747,7 +688,7 @@ Section Equiv.
 
     cbv [toAddr rv32Fetch rv32ToAddr eq_rect_r].
     rewrite evalExpr_bit_eq_rect.
-    unfold kunsigned.
+    rewrite <-Z_of_N_wordToN.
     rewrite wordToN_eq_rect.
     cbv [evalExpr evalBinBit evalConstT].
     rewrite ?wordToN_combine, ?wordToN_0.
@@ -840,7 +781,7 @@ Section Equiv.
   Lemma pc_related_plus4:
     forall kpc rpc,
       pc_related_and_valid kpc rpc ->
-      pc_related_and_valid (kpc ^+ $4) (word.add rpc (word.of_Z 4)).
+      pc_related_and_valid (kpc ^+ $4) (Zmod.add rpc 4).
   Proof.
     cbv [pc_related_and_valid]; intros.
     destruct H; split.
@@ -875,28 +816,12 @@ Section Equiv.
   Proof.
     intros.
     apply Bool.negb_false_iff in H.
-    cbv [reg_eqb MachineWidth_XLEN word.eqb word wordW KamiWord.word] in H.
-    apply weqb_sound in H.
-    cbv [remu word.modu riscvZmodu kofZ kunsigned] in H.
-    simpl in H; cbn in H.
-    change (Pos.to_nat 32) with 32%nat in H.
-    match type of H with
-    | _ = ?rhs =>
-      change rhs with (wzero 32) in H;
-        rewrite <-ZToWord_zero in H
-    end.
-    apply f_equal with (f:= @wordToZ _) in H.
-
-    rewrite wordToZ_ZToWord in H.
-    2: {
-      apply nat_power_of_two_boundary_shrink with (n:= 3%nat); [simpl|blia].
-      match goal with
-      | |- _ <= ?z mod 4 < _ =>
-        pose proof (Z.mod_bound_or z 4 ltac:(discriminate)); blia
-      end.
-    }
-    rewrite wordToZ_ZToWord in H
-      by (apply nat_power_of_two_boundary_shrink with (n:= 3%nat); simpl; blia).
+    cbv [reg_eqb remu ZToReg MachineWidth_XLEN] in H.
+    apply Zmod.eqb_eq in H.
+    apply (f_equal Zmod.unsigned) in H.
+    assert (Hw: 2 ^ width = 4294967296) by reflexivity.
+    rewrite Zmod.unsigned_umod, !bits.unsigned_of_Z_small in H by (rewrite Hw; blia).
+    rewrite <-Z_of_N_wordToN in H.
 
     cbv [AddrAligned].
     apply wordToN_inj.
@@ -906,10 +831,16 @@ Section Equiv.
     | |- context [@wordToN ?sz _] => change sz with 32%nat
     end.
     rewrite bitSlice_alt by blia.
-    cbv [bitSlice']; cbn.
+    cbn.
     rewrite Z.div_1_r.
     assumption.
   Qed.
+
+  Ltac addr_aligned_by_remu :=
+    apply AddrAligned_consistent;
+    match goal with
+    | H : remu _ _ = _ |- _ => rewrite H; reflexivity
+    end.
 
   Lemma mem_related_load_Z_Some:
     forall kmem rmem,
@@ -917,14 +848,14 @@ Section Equiv.
       forall sz addr z,
         sz <> O ->
         Memory.load_Z rmem addr sz = Some z ->
-        kunsigned addr < Z.pow 2 memSizeLg.
+        Zmod.unsigned addr < Z.pow 2 memSizeLg.
   Proof.
     intros.
     specialize (H addr); destruct_one_match_hyp; trivial; exfalso.
     cbv [Memory.load_Z] in *; destruct_one_match_hyp; Option.inversion_option.
     epose proof Memory.length_load_bytes _ _ _ _ ltac:(eassumption).
     eapply Memory.nth_error_load_bytes with (i:=O) in E0; [|blia].
-    rewrite word.add_0_r, H in E0.
+    rewrite Zmod.add_0_r, H in E0.
     destruct l; cbn [length] in *; try blia; discriminate.
   Qed.
 
@@ -934,7 +865,7 @@ Section Equiv.
       forall addr bs m',
         length bs <> O ->
         Map.Memory.store_bytes rmem addr bs = Some m' ->
-        kunsigned addr < Z.pow 2 memSizeLg.
+        Zmod.unsigned addr < Z.pow 2 memSizeLg.
   Proof.
     intros * Rmem * Hnz.
     specialize (mem_related_load_Z_Some kmem rmem Rmem (length bs) addr).
@@ -943,14 +874,15 @@ Section Equiv.
   Qed.
 
   Lemma evalZeroExtendTrunc_bound_eq:
-    forall (a b: kword width),
-      kunsigned a < 2 ^ memSizeLg ->
-      kunsigned b < 2 ^ memSizeLg ->
+    forall (a b: word),
+      Zmod.unsigned a < 2 ^ memSizeLg ->
+      Zmod.unsigned b < 2 ^ memSizeLg ->
       evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) a =
       evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) b ->
       a = b.
   Proof.
     cbv [evalZeroExtendTrunc]; intros.
+    rewrite <-Z_of_N_wordToN in H, H0.
     destruct (lt_dec _ _);
       [apply Z2Nat.inj_le in Hkmem2; [|blia..]; blia|].
 
@@ -972,8 +904,8 @@ Section Equiv.
     forall kmem rmem,
       mem_related memSizeLg kmem rmem ->
       forall (na: word) kval rval,
-        kunsigned na < 2 ^ memSizeLg ->
-        rval = byte.of_Z (word.unsigned (width := 8) kval) ->
+        Zmod.unsigned na < 2 ^ memSizeLg ->
+        rval = byte.of_Z (Zmod.unsigned kval) ->
         mem_related memSizeLg
                     (fun w => if weq w (evalZeroExtendTrunc _ na) then kval
                               else kmem w)
@@ -994,12 +926,12 @@ Section Equiv.
   Qed.
 
   Lemma combineBytes_word_removeXAddr:
-    forall xaddrs a ra,
-      kunsigned a < 2 ^ memSizeLg ->
-      kunsigned (a ^+ (word.of_Z 1)) < 2 ^ memSizeLg ->
-      kunsigned (a ^+ (word.of_Z 2)) < 2 ^ memSizeLg ->
-      kunsigned (a ^+ (word.of_Z 3)) < 2 ^ memSizeLg ->
-      kunsigned ra < 2 ^ memSizeLg ->
+    forall xaddrs (a ra: word),
+      Zmod.unsigned a < 2 ^ memSizeLg ->
+      Zmod.unsigned (Zmod.add a 1) < 2 ^ memSizeLg ->
+      Zmod.unsigned (Zmod.add a 2) < 2 ^ memSizeLg ->
+      Zmod.unsigned (Zmod.add a 3) < 2 ^ memSizeLg ->
+      Zmod.unsigned ra < 2 ^ memSizeLg ->
       isXAddr4 a (removeXAddr ra xaddrs) ->
       forall kmemd rv,
         combineBytes
@@ -1023,14 +955,14 @@ Section Equiv.
     }
     destruct_one_match.
     1: { exfalso.
-         rewrite <-?wplus_assoc in e.
+         rewrite <-?Zmod.add_assoc in e.
          apply evalZeroExtendTrunc_bound_eq in e; [subst|assumption..].
          apply filter_In in H6; destruct H6 as [_ ?].
          apply Bool.negb_true_iff, word.eqb_false in H6; auto.
     }
     destruct_one_match.
     1: { exfalso.
-         rewrite <-?wplus_assoc in e.
+         rewrite <-?Zmod.add_assoc in e.
          apply evalZeroExtendTrunc_bound_eq in e; [subst|assumption..].
          apply filter_In in H7; destruct H7 as [_ ?].
          apply Bool.negb_true_iff, word.eqb_false in H7; auto.
@@ -1042,7 +974,7 @@ Section Equiv.
     forall kmemi kmemd xaddrs,
       RiscvXAddrsSafe kmemi kmemd xaddrs ->
       forall ra rv,
-        kunsigned ra < 2 ^ memSizeLg ->
+        Zmod.unsigned ra < 2 ^ memSizeLg ->
         RiscvXAddrsSafe
           kmemi (fun w => if weq w (evalZeroExtendTrunc _ ra) then rv else kmemd w)
           (removeXAddr ra xaddrs).
@@ -1073,7 +1005,7 @@ Section Equiv.
              apply kamiXAddrs_isXAddr1_bound in H; apply N2Z.inj_lt in H
            end.
     apply combineBytes_word_removeXAddr with (xaddrs:= xaddrs); try assumption.
-    all: etransitivity; eassumption.
+    all: rewrite <-Z_of_N_wordToN; etransitivity; eassumption.
   Qed.
 
   Lemma RiscvXAddrsSafe_removeXAddr_sound:
@@ -1142,13 +1074,30 @@ Section Equiv.
     let x := rdelta x in
     let t := isZcst x in
     constr_eq t true.
+  (* [BitsPerByte] stays folded: it names a word width, and Kami's lemmas match
+     a modulus as [2 ^ Z.of_nat ?sz]. *)
   Ltac natcstP x :=
+    assert_fails (constr_eq x BitsPerByte);
     let x := rdelta x in
     let t := isnatcst x in
     constr_eq t true.
   Ltac boolcstP x :=
     let x := rdelta x in
     first [constr_eq x true | constr_eq x false].
+
+  (* Folded in let-bound bodies as well as in hypothesis types, so that a word's
+     modulus [2 ^ Z.of_nat n] is spelled the same in both. *)
+  Ltac fold_Z_of_nat :=
+    repeat match goal with
+           | H : context [ Z.of_nat ?n ] |- _ =>
+             natcstP n;
+             let nn := eval cbv in (Z.of_nat n) in
+             change (Z.of_nat n) with nn in H
+           | H := context [ Z.of_nat ?n ] |- _ =>
+             natcstP n;
+             let nn := eval cbv in (Z.of_nat n) in
+             change (Z.of_nat n) with nn in (value of H)
+           end.
 
   Ltac eval2 op arg1P arg2P :=
     repeat match goal with
@@ -1184,11 +1133,7 @@ Section Equiv.
         change C in H
     | |- let x := _ in _ => intro
     | x := ?y |- _ => first [is_var y|is_const y|is_ind y|is_constructor y]; subst x
-    | H : context G [ Z.of_nat ?n ] |- _ =>
-        natcstP n;
-        let nn := eval cbv in (Z.of_nat n) in
-        let e := context G [nn] in
-        change e in H
+    | _ => progress fold_Z_of_nat
     | _ => progress eval2 Z.add zcstP zcstP
     | _ => progress eval2 Z.eqb zcstP zcstP
     | H: ?t = ?t -> _ |- _ => specialize (H eq_refl)
@@ -1197,6 +1142,16 @@ Section Equiv.
     | H: _ /\ _ |- _ => destruct H
     | _ => destruct_if_by_contradiction
     end.
+
+  (* The modulus of a Kami word may have been folded to a literal, which Kami's
+     [2 ^ Z.of_nat ?sz] lemmas no longer match; the word's type still says [sz]. *)
+  Ltac unsigned_to_wordToN :=
+    repeat match goal with
+           | |- context [@Zmod.unsigned _ ?x] =>
+             lazymatch type of x with
+             | Word.word ?sz => rewrite <-(Z_of_N_wordToN (sz:=sz) x)
+             end
+           end.
 
   (* simplification for riscv-coq semantics (execution) *)
   Ltac r :=
@@ -1234,7 +1189,7 @@ Section Equiv.
     repeat
       match goal with
       | |- context [Z.of_N (wordToN (@Word.combine ?sz1 _ ?sz2 _))] =>
-        rewrite @kunsigned_combine_shiftl_lor with (sa:= sz1) (sb:= sz2)
+        rewrite @unsigned_combine_shiftl_lor with (sa:= sz1) (sb:= sz2)
       end;
     repeat rewrite ?unsigned_split2_split1_as_bitSlice,
     ?unsigned_split1_as_bitSlice,
@@ -1249,7 +1204,9 @@ Section Equiv.
              let zz := eval cbv in (Z.add z1 z2) in
              change (Z.add z1 z2) with zz
            | _ => repeat rewrite ?Z.lor_0_r, ?Z.shiftl_lor, ?Z.shiftl_shiftl by blia
-           end.
+           end;
+    (* the riscv-coq side spells the instruction fields with [Zmod.unsigned] *)
+    rewrite ?Z_of_N_wordToN.
 
   Ltac prove_KamiLabelR_silent :=
     split; [|split];
@@ -1262,19 +1219,19 @@ Section Equiv.
     repeat
       (try (erewrite <-regs_related_get
               with (w:= split2 15 5 (split1 (15 + 5) 12 _));
-            [|eauto; fail|eassumption|eapply unsigned_split2_split1_as_bitSlice; fail]);
+            [|eauto; fail|eassumption|eapply unsigned_split2_split1_as_bitSlice'; fail]);
        try (erewrite <-regs_related_get
               with (w:= split2 20 5 (split1 (20 + 5) 7 _));
-            [|eauto; fail|eassumption|eapply unsigned_split2_split1_as_bitSlice; fail])).
+            [|eauto; fail|eassumption|eapply unsigned_split2_split1_as_bitSlice'; fail])).
 
   Ltac regs_get_red H :=
     repeat
       (try (erewrite <-regs_related_get
               with (w:= split2 15 5 (split1 (15 + 5) 12 _)) in H;
-            [|eauto; fail|eassumption|eapply unsigned_split2_split1_as_bitSlice; fail]);
+            [|eauto; fail|eassumption|eapply unsigned_split2_split1_as_bitSlice'; fail]);
        try (erewrite <-regs_related_get
               with (w:= split2 20 5 (split1 (20 + 5) 7 _)) in H;
-            [|eauto; fail|eassumption|eapply unsigned_split2_split1_as_bitSlice; fail])).
+            [|eauto; fail|eassumption|eapply unsigned_split2_split1_as_bitSlice'; fail])).
 
   Ltac prove_states_related :=
     econstructor;
@@ -1283,12 +1240,15 @@ Section Equiv.
     |clear; intro; discriminate
     |try (solve [trivial])
     |cbv [RiscvMachine.getNextPc];
-     try (eapply pc_related_plus4; try eassumption; red; eauto; fail)
+     (* [simple eapply]: plain [eapply] unfolds the word operations while
+        unifying, and takes minutes to fail on the goals this lemma does not
+        apply to. *)
+     try (simple eapply pc_related_plus4; try eassumption; red; eauto; fail)
     |solve [trivial]
     |try (solve [trivial]);
      try (eapply regs_related_put;
           [solve [trivial]|solve [trivial]|..];
-          erewrite ?regs_related_get, ?unsigned_split2_split1_as_bitSlice by eauto;
+          erewrite ?regs_related_get, ?unsigned_split2_split1_as_bitSlice' by eauto;
           trivial)
     |try (solve [trivial])].
 
@@ -1447,26 +1407,24 @@ Section Equiv.
       repeat (match goal with
               | [ |- context G [Z.of_N (@wordToN ?n ?x)] ] =>
                 let nn := eval cbv in (Z.of_nat n) in
-                let e := context G [@kunsigned nn x] in
-                change e
-              | [ |- context G [kunsigned (@natToWord ?n ?x)] ] =>
+                rewrite (Z_of_N_wordToN x)
+              | [ |- context G [Zmod.unsigned (@natToWord ?n ?x)] ] =>
                 let xx := eval cbv in (Z.of_nat x) in
                 let e := context G [xx] in
                 change e
-              | [ |- context G [kunsigned (@WS ?b ?n ?t)] ] =>
-                let xx := eval cbv in (kunsigned (width:= Z.of_nat (S n)) (WS b t)) in
+              | [ |- context G [Zmod.unsigned (@WS ?b ?n ?t)] ] =>
+                let xx := eval cbv in (Zmod.unsigned (WS b t)) in
                 let e := context G [xx] in
                 change e
               | [H: context G [Z.of_N (@wordToN ?n ?x)] |- _] =>
                 let nn := eval cbv in (Z.of_nat n) in
-                let e := context G [@kunsigned nn x] in
-                change e in H
-              | [H: context G [kunsigned (@natToWord ?n ?x)] |- _] =>
+                rewrite (Z_of_N_wordToN x) in H
+              | [H: context G [Zmod.unsigned (@natToWord ?n ?x)] |- _] =>
                 let xx := eval cbv in (Z.of_nat x) in
                 let e := context G [xx] in
                 change e in H
-              | [H: context G [kunsigned (@WS ?b ?n ?t)] |- _] =>
-                let xx := eval cbv in (kunsigned (width:= Z.of_nat (S n)) (WS b t)) in
+              | [H: context G [Zmod.unsigned (@WS ?b ?n ?t)] |- _] =>
+                let xx := eval cbv in (Zmod.unsigned (WS b t)) in
                 let e := context G [xx] in
                 change e in H
               end).
@@ -1520,7 +1478,7 @@ Section Equiv.
            | [H: context [evalSignExtendTrunc _ _] |- _] =>
              rewrite kami_evalSignExtendTrunc in H by (compute; blia)
            end;
-    cbv [kunsigned] in *;
+    rewrite <-?Z_of_N_wordToN in *;
     repeat match goal with
            | [H: context [Z.to_nat ?z] |- _] =>
              let t := isZcst z in
@@ -1539,12 +1497,7 @@ Section Equiv.
              is_var w; rewrite unsigned_split2_as_bitSlice
                          with (a:= va) (b:= vb) (x:= w) in H
            end;
-    repeat match goal with
-           | H : context [ Z.of_nat ?n ] |- _ =>
-             natcstP n;
-             let nn := eval cbv in (Z.of_nat n) in
-             change (Z.of_nat n) with nn in H
-           end;
+    fold_Z_of_nat;
     repeat match goal with
            | H : context [ Z.add ?x ?y ] |- _ =>
              let t := isZcst x in constr_eq t true;
@@ -1554,7 +1507,7 @@ Section Equiv.
            end;
     repeat match goal with
            | H : context [ Z.of_N (@wordToN ?w ?x) ] |- _ =>
-             change (Z.of_N (@wordToN w x)) with (@kunsigned 32 x) in H
+             rewrite (Z_of_N_wordToN (sz:=nwidth) x) in H
            end.
 
   Ltac eval_decode :=
@@ -1659,9 +1612,9 @@ Section Equiv.
       subst inst'. rewrite H11 in *.
       rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
       { rewrite LittleEndianList.length_le_split; simpl Z.mul.
-        clear; match goal with |- context [kunsigned ?x] => pose proof wordToN_bound x; set x in * end; 
-        cbv [kunsigned]. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
-        change (BinInt.Z.to_nat width) with 32%nat. Lia.lia. }
+        clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
+        rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
+        change nwidth with 32%nat. Lia.lia. }
 
 
       (** Begin symbolic evaluation of Kami decode/execute *)
@@ -1742,18 +1695,18 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
-      all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
+      all: set (v' := if Z.eq_dec rs1 0 then Zmod.zero
                       else match map.get rrf rs1 with
                            | Some x => x
-                           | None => word.of_Z 0
+                           | None => Zmod.zero
                            end).
       all: try (assert (getReg rrf rs1 = v') as Hv'; [|rewrite Hv' in *]).
       
       1,3,5,7,9:
         subst v'; unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
       [ Lia.lia
-      | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
-        change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+      | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20 as HR;
+        change (bitSlice (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20) with rs1 in HR;
         Lia.lia ].
 
       (** Consistency proof for each instruction *)
@@ -1776,11 +1729,8 @@ Section Equiv.
                   apply eq_sym, is_mmio_spec in Heqic;
                   eapply mem_related_load_Z_Some in Hlv; [|eassumption|discriminate];
                   clear -Heqic Hlv;
-                  cbv [Utility.add
-                         ZToReg MachineWidth_XLEN
-                         word.add word wordW KamiWord.word
-                         word.of_Z kofZ] in Hlv;
-                  try change (BinInt.Z.to_nat width) with (Pos.to_nat 32) in Hlv;
+                  cbv [Utility.add ZToReg MachineWidth_XLEN] in Hlv;
+                  try change (Pos.to_nat 32) with nwidth in Heqic;
                   blia
                 end).
 
@@ -1789,7 +1739,7 @@ Section Equiv.
              let Hpost := fresh "Hpost" in
              destruct H as [? [? [[? ?] Hpost]]];
                cbv [MMIOReadOK FE310_mmio] in Hpost;
-               epose proof (Hpost (LittleEndian.split _ (wordToZ _)) ltac:(trivial)); clear Hpost
+               epose proof (Hpost (LittleEndian.split _ (Zmod.signed _)) ltac:(trivial)); clear Hpost
            end.
       all: match goal with H: isMMIOAligned _ _ |- _ =>
            try (exfalso; clear -H; destruct H as [? ?]; discriminate) end.
@@ -1805,7 +1755,7 @@ Section Equiv.
       2: {
         unfold setReg; repeat destruct_one_match; try reflexivity; exfalso;
         [ Lia.lia
-        | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 7 12 as HR;
+        | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 7 12 as HR;
           Lia.lia ].
       }
       rt.
@@ -1822,17 +1772,17 @@ Section Equiv.
         { rewrite kami_evalZeroExtendTrunc_32.
           rewrite kami_evalSignExtendTrunc by (cbv; blia).
           rewrite unsigned_split2_as_bitSlice.
+          rewrite ?Z_of_N_wordToN.
           reflexivity.
         }
         { apply signExtend_combine_split_signed. }
       }
       { 
-        cbv [int32ToReg
-               MachineWidth_XLEN word.of_Z word wordW KamiWord.word kofZ].
+        cbv [int32ToReg MachineWidth_XLEN].
         setoid_rewrite signExtend_combine_split_signed.
-        apply eq_sym, ZToWord_wordToZ.
+        apply eq_sym, Zmod.of_Z_signed.
       }
-      Unshelve. all : try exact 32%nat; try exact (word.of_Z 0).
+      Unshelve. all : try exact 32%nat; try exact (Zmod.zero : word).
 
     - (** load *)
       block_subst kupd.
@@ -1849,9 +1799,9 @@ Section Equiv.
       rewrite H11 in *.
       rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
       { rewrite LittleEndianList.length_le_split; simpl Z.mul.
-        clear; match goal with |- context [kunsigned ?x] => pose proof wordToN_bound x; set x in * end; 
-        cbv [kunsigned]. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
-        change (BinInt.Z.to_nat width) with 32%nat. Lia.lia. }
+        clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
+        rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
+        change nwidth with 32%nat. Lia.lia. }
 
       (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
@@ -1930,18 +1880,18 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
-      all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
+      all: set (v' := if Z.eq_dec rs1 0 then Zmod.zero
                       else match map.get rrf rs1 with
                            | Some x => x
-                           | None => word.of_Z 0
+                           | None => Zmod.zero
                            end).
       all: try (assert (getReg rrf rs1 = v') as Hv'; [|rewrite Hv' in *]).
 
       1,3,5,7,9:
         subst v'; unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
       [ Lia.lia
-      | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
-        change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+      | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20 as HR;
+        change (bitSlice (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20) with rs1 in HR;
         Lia.lia ].
 
       (** Consistency proof for each instruction *)
@@ -1977,7 +1927,7 @@ Section Equiv.
                 then rrf
                 else map.put rrf rd newval) in *;
                [ | unfold setReg; repeat destruct_one_match; try reflexivity; exfalso;
-                   pose proof bitSlice_range_ex (@kunsigned 32 kinst) 7 12 as HR;
+                   pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 7 12 as HR;
                    Lia.lia ]
            end.
 
@@ -1989,21 +1939,17 @@ Section Equiv.
       all: prove_states_related.
 
       all: regs_get_red_goal.
-      all: cbv [int8ToReg int16ToReg uInt8ToReg uInt16ToReg int32ToReg
-                          MachineWidth_XLEN word.of_Z word wordW KamiWord.word kofZ].
+      all: cbv [int8ToReg int16ToReg uInt8ToReg uInt16ToReg int32ToReg MachineWidth_XLEN].
       all: subst v' oimm12 rs1.
       all: regs_get_red Hlv.
-      all: cbv [Utility.add
-                  ZToReg MachineWidth_XLEN
-                  word.add word wordW KamiWord.word
-                  word.of_Z kofZ] in Hlv;
+      all: cbv [Utility.add ZToReg MachineWidth_XLEN] in Hlv;
         cbv [map.getmany_of_tuple
                Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2
                HList.tuple.unfoldn HList.tuple.map HList.tuple.option_all] in Hlv.
       all: match goal with
            | [Hmr': mem_related _ _ _ |- _] => clear -Hlv Hmr'; rename Hmr' into Hmr
            end.
-      all : cbv [Memory.load_Z Map.Memory.load_bytes ] in *; cbn -[split1 split2 Z.of_nat] in Hlv.
+      all : cbv [Memory.load_Z Map.Memory.load_bytes ] in *; cbn -[split1 split2 Z.of_nat Zmod.add Zmod.of_Z] in Hlv.
       all : repeat destruct_one_match_hyp; repeat Option.inversion_option; subst; erewrite Hmr in *.
       all: repeat match goal with
            | H : (if _ <? _ then Some _ else None) = Some _ |- _ =>
@@ -2015,19 +1961,19 @@ Section Equiv.
         cbv [LittleEndianList.le_combine].
         rewrite Z.shiftl_0_l, Z.lor_0_r.
         rewrite byte.unsigned_of_Z.
-        cbv [uwordToZ].
+        unsigned_to_wordToN.
         rewrite byte_wrap_word_8.
-        rewrite ?(wplus_comm _ (wzero' _)), ?wplus_unit; trivial.
+        rewrite ?(Zmod.add_comm _ (Zmod.zero)), ?wplus_unit; trivial.
       }
 
       { (* lh *)
         rewrite split1_combine_16.
         rewrite Z.shiftl_0_l, Z.lor_0_r.
         rewrite ?byte.unsigned_of_Z.
-        cbv [uwordToZ]; rewrite ?byte_wrap_word_8.
-        rewrite @kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
+        unsigned_to_wordToN; rewrite ?byte_wrap_word_8.
+        rewrite @unsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
         rewrite Z.lor_comm.
-        rewrite ?(wplus_comm _ (wzero' _)), ?wplus_unit; trivial.
+        rewrite ?(Zmod.add_comm _ (Zmod.zero)), ?wplus_unit; trivial.
       }
 
       { (* lbu *)
@@ -2035,9 +1981,9 @@ Section Equiv.
         rewrite split1_combine.
         rewrite Z.shiftl_0_l, Z.lor_0_r.
         rewrite byte.unsigned_of_Z.
-        cbv [uwordToZ].
+        unsigned_to_wordToN.
         rewrite byte_wrap_word_8.
-        rewrite ?(wplus_comm _ (wzero' _)), ?wplus_unit; trivial.
+        rewrite ?(Zmod.add_comm _ (Zmod.zero)), ?wplus_unit; trivial.
       }
 
       { (* lhu *)
@@ -2045,27 +1991,27 @@ Section Equiv.
         rewrite split1_combine_16.
         rewrite Z.shiftl_0_l, Z.lor_0_r.
         rewrite ?byte.unsigned_of_Z.
-        cbv [uwordToZ]; rewrite ?byte_wrap_word_8.
-        rewrite @kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
+        unsigned_to_wordToN; rewrite ?byte_wrap_word_8.
+        rewrite @unsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
         rewrite Z.lor_comm.
-        rewrite ?(wplus_comm _ (wzero' _)), ?wplus_unit; trivial.
+        rewrite ?(Zmod.add_comm _ (Zmod.zero)), ?wplus_unit; trivial.
       }
 
       { (* lw *)
         rewrite !Z.shiftl_0_l, !Z.lor_0_r.
         rewrite !byte.unsigned_of_Z.
-        cbv [uwordToZ]; rewrite !byte_wrap_word_8.
+        unsigned_to_wordToN; rewrite !byte_wrap_word_8.
 
         change 8 with (Z.of_nat 8%nat).
         setoid_rewrite Z.lor_comm at 3.
-        rewrite <-@kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
+        rewrite <-@unsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 8%nat).
         setoid_rewrite Z.lor_comm at 2.
-        rewrite <-@kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 16%nat).
+        rewrite <-@unsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 16%nat).
         setoid_rewrite Z.lor_comm.
-        rewrite <-@kunsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 24%nat).
+        rewrite <-@unsigned_combine_shiftl_lor with (sa:= 8%nat) (sb:= 24%nat).
 
         match goal with
-        | |- ?lw = ZToWord _ (signExtend _ (Z.of_N (wordToN ?rw))) =>
+        | |- ?lw = Zmod.of_Z _ (signExtend _ (Z.of_N (wordToN ?rw))) =>
           set (v:= lw); replace rw with v
         end.
         { clearbody v.
@@ -2073,9 +2019,9 @@ Section Equiv.
           apply eq_sym, kami_evalSignExtendTrunc_32.
         }
         { subst v.
-          rewrite <-?wplus_assoc, ?(wplus_comm _ (wzero' _)), ?wplus_unit.
+          rewrite <-?Zmod.add_assoc, ?(Zmod.add_comm _ (Zmod.zero)), ?wplus_unit.
           repeat f_equal.
-          apply wordToZ_inj; rewrite ?wordToZ_combine_WO; trivial.
+          apply Zmod.signed_inj; rewrite ?wordToZ_combine_WO; trivial.
         }
       }
 
@@ -2121,9 +2067,9 @@ Section Equiv.
       rewrite H11 in *.
       rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
       { rewrite LittleEndianList.length_le_split; simpl Z.mul.
-        clear; match goal with |- context [kunsigned ?x] => pose proof wordToN_bound x; set x in * end; 
-        cbv [kunsigned]. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
-        change (BinInt.Z.to_nat width) with 32%nat. Lia.lia. }
+        clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
+        rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
+        change nwidth with 32%nat. Lia.lia. }
 
       (** Begin symbolic evaluation of Kami decode/execute *)
       kami_cbn_hint Heqic.
@@ -2199,18 +2145,18 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
-      all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
+      all: set (v' := if Z.eq_dec rs1 0 then Zmod.zero
                       else match map.get rrf rs1 with
                            | Some x => x
-                           | None => word.of_Z 0
+                           | None => Zmod.zero
                            end).
       all: try (assert (getReg rrf rs1 = v') as Hv'; [|rewrite Hv' in *]).
 
       1,3,5,7,9:
         subst v'; unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
       [ Lia.lia
-      | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
-        change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+      | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20 as HR;
+        change (bitSlice (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20) with rs1 in HR;
         Lia.lia ].
 
       (** Consistency proof for each instruction *)
@@ -2233,11 +2179,8 @@ Section Equiv.
                   apply eq_sym, is_mmio_spec in Heqic;
                   eapply mem_related_load_Z_Some in Hlv; [|eassumption|discriminate];
                   clear -Heqic Hlv;
-                  cbv [Utility.add
-                         ZToReg MachineWidth_XLEN
-                         word.add word wordW KamiWord.word
-                         word.of_Z kofZ] in Hlv;
-                  try change (BinInt.Z.to_nat width) with (Pos.to_nat 32) in Hlv;
+                  cbv [Utility.add ZToReg MachineWidth_XLEN] in Hlv;
+                  try change (Pos.to_nat 32) with nwidth in Heqic;
                   blia
                 end).
 
@@ -2246,7 +2189,7 @@ Section Equiv.
              let Hpost := fresh "Hpost" in
              destruct H as [? [? [[? ?] Hpost]]];
                cbv [MMIOReadOK FE310_mmio] in Hpost;
-               epose proof (Hpost (LittleEndian.split _ (wordToZ _)) ltac:(trivial)); clear Hpost
+               epose proof (Hpost (LittleEndian.split _ (Zmod.signed _)) ltac:(trivial)); clear Hpost
            end.
       all: match goal with H: isMMIOAligned _ _ |- _ =>
            try (exfalso; clear -H; destruct H as [? ?]; discriminate) end.
@@ -2277,6 +2220,7 @@ Section Equiv.
         { rewrite kami_evalZeroExtendTrunc_32.
           rewrite kami_evalSignExtendTrunc by (cbv; blia).
           rewrite unsigned_split2_as_bitSlice.
+          rewrite ?Z_of_N_wordToN.
           reflexivity.
         }
         { apply signExtend_combine_split_signed. }
@@ -2297,9 +2241,9 @@ Section Equiv.
       rewrite H11 in *.
       rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
       { rewrite LittleEndianList.length_le_split; simpl Z.mul.
-        clear; match goal with |- context [kunsigned ?x] => pose proof wordToN_bound x; set x in * end; 
-        cbv [kunsigned]. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
-        change (BinInt.Z.to_nat width) with 32%nat. Lia.lia. }
+        clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
+        rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
+        change nwidth with 32%nat. Lia.lia. }
 
       (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
@@ -2374,18 +2318,18 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
-      all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
+      all: set (v' := if Z.eq_dec rs1 0 then Zmod.zero
                       else match map.get rrf rs1 with
                            | Some x => x
-                           | None => word.of_Z 0
+                           | None => Zmod.zero
                            end).
       all: try (assert (getReg rrf rs1 = v') as Hv'; [|rewrite Hv' in *]).
 
       1,3,5,7,9:
         subst v'; unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
       [ Lia.lia
-      | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
-        change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+      | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20 as HR;
+        change (bitSlice (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20) with rs1 in HR;
         Lia.lia ].
 
       (** Consistency proof for each instruction *)
@@ -2419,7 +2363,7 @@ Section Equiv.
                 then rrf
                 else map.put rrf rd newval) in *;
                [ | unfold setReg; repeat destruct_one_match; try reflexivity;
-                   pose proof bitSlice_range_ex (@kunsigned 32 kinst) 7 12 as HR;
+                   pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 7 12 as HR;
                    exfalso; Lia.lia ]
            end.
 
@@ -2471,9 +2415,9 @@ Section Equiv.
       rewrite H11 in *.
       rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
       { rewrite LittleEndianList.length_le_split; simpl Z.mul.
-        clear; match goal with |- context [kunsigned ?x] => pose proof wordToN_bound x; set x in * end; 
-        cbv [kunsigned]. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
-        change (BinInt.Z.to_nat width) with 32%nat. Lia.lia. }
+        clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
+        rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
+        change nwidth with 32%nat. Lia.lia. }
 
       (** Begin symbolic evaluation of Kami decode/execute *)
       kami_cbn_hint Heqic.
@@ -2540,34 +2484,34 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
-      all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
+      all: set (v' := if Z.eq_dec rs1 0 then Zmod.zero
                       else match map.get rrf rs1 with
                            | Some x => x
-                           | None => word.of_Z 0
+                           | None => Zmod.zero
                            end).
       all: try (assert (getReg rrf rs1 = v') as Hv'; [|rewrite Hv' in *]).
       1,3,5:
         subst v'; unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
       [ Lia.lia
-      | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
-        change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+      | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20 as HR;
+        change (bitSlice (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20) with rs1 in HR;
         Lia.lia ].
 
       all: repeat rt.
       all: subst v; rewrite Hv' in *.
       all: subst v0.      
-      all: set (v2' := if Z.eq_dec rs2 0 then word.of_Z 0
+      all: set (v2' := if Z.eq_dec rs2 0 then Zmod.zero
          else match map.get rrf rs2 with
               | Some x => x
-              | None => word.of_Z 0
+              | None => Zmod.zero
               end).
       all: try (assert (getReg rrf rs2 = v2') as Hv2'; [|rewrite Hv2' in *]).
       1,3,5:
         subst v2'; unfold getReg; repeat destruct_one_match; try reflexivity;
             exfalso;
             [ Lia.lia
-            | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 20 25 as HR;
-              change (bitSlice (@kunsigned 32 kinst) 20 25) with rs2 in HR;
+            | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 20 25 as HR;
+              change (bitSlice (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 20 25) with rs2 in HR;
               Lia.lia ].
 
       (** Consistency proof for each instruction *)
@@ -2584,7 +2528,7 @@ Section Equiv.
                end.
       all: rt.
 
-      all: rewrite @kunsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat) in *.
+      all: rewrite @unsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat) in *.
       all: simpl_bit_manip.
       all: try (subst v' simm12;
                 regs_get_red Hst;
@@ -2619,14 +2563,14 @@ Section Equiv.
         { rewrite kami_evalZeroExtendTrunc_32.
           rewrite kami_evalSignExtendTrunc_32.
           rewrite kami_evalSignExtendTrunc by (cbv; blia).
-          rewrite @kunsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat).
+          rewrite @unsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat).
           rewrite unsigned_split2_split1_as_bitSlice.
           rewrite unsigned_split2_as_bitSlice.
+          rewrite ?Z_of_N_wordToN.
           reflexivity.
         }
         { subst v2'; regs_get_red_goal.
-          cbv [regToInt32
-                 MachineWidth_XLEN word.unsigned word wordW KamiWord.word kofZ].
+          cbv [regToInt32 MachineWidth_XLEN]; rewrite <-?Z_of_N_wordToN.
           setoid_rewrite signExtend_combine_split_unsigned.
           reflexivity.
         }
@@ -2651,9 +2595,9 @@ Section Equiv.
       rewrite H11 in *.
       rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
       { rewrite LittleEndianList.length_le_split; simpl Z.mul.
-        clear; match goal with |- context [kunsigned ?x] => pose proof wordToN_bound x; set x in * end; 
-        cbv [kunsigned]. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
-        change (BinInt.Z.to_nat width) with 32%nat. Lia.lia. }
+        clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
+        rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
+        change nwidth with 32%nat. Lia.lia. }
 
       (** Symbolic evaluation of Kami decode/execute *)
       clear Heqic0.
@@ -2721,34 +2665,34 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
-      all: set (v' := if Z.eq_dec rs1 0 then word.of_Z 0
+      all: set (v' := if Z.eq_dec rs1 0 then Zmod.zero
                       else match map.get rrf rs1 with
                            | Some x => x
-                           | None => word.of_Z 0
+                           | None => Zmod.zero
                            end).
       all: try (assert (getReg rrf rs1 = v') as Hv'; [|rewrite Hv' in *]).
       1,3,5:
         subst v'; unfold getReg; repeat destruct_one_match; try reflexivity; exfalso;
       [ Lia.lia
-      | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
-        change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+      | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20 as HR;
+        change (bitSlice (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20) with rs1 in HR;
         Lia.lia ].
 
       all: repeat rt.
       all: subst v; rewrite Hv' in *.
       all: subst v0.      
-      all: set (v2' := if Z.eq_dec rs2 0 then word.of_Z 0
+      all: set (v2' := if Z.eq_dec rs2 0 then Zmod.zero
          else match map.get rrf rs2 with
               | Some x => x
-              | None => word.of_Z 0
+              | None => Zmod.zero
               end).
       all: try (assert (getReg rrf rs2 = v2') as Hv2'; [|rewrite Hv2' in *]).
       1,3,5:
         subst v2'; unfold getReg; repeat destruct_one_match; try reflexivity;
             exfalso;
             [ Lia.lia
-            | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 20 25 as HR;
-              change (bitSlice (@kunsigned 32 kinst) 20 25) with rs2 in HR;
+            | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 20 25 as HR;
+              change (bitSlice (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 20 25) with rs2 in HR;
               Lia.lia ].
 
       (** Consistency proof for each instruction *)
@@ -2803,9 +2747,7 @@ Section Equiv.
 
       (* -- prove preservation of [mem_related] for {sb, sh, sw} *)
       all: apply mem_related_put. [|assumption
-                                   |cbv [word.unsigned];
-                                    unfold KamiWord.word;
-                                    setoid_rewrite <-kunsigned_byte_split1;
+                                   |setoid_rewrite <-unsigned_byte_split1;
                                     reflexivity].
 
       { (* sb *) assumption. }
@@ -2821,23 +2763,18 @@ Section Equiv.
           erewrite H12 in E1.
           destruct_one_match_hyp; [|discriminate].
           assumption.
-        }./processor/src/processor/KamiRiscvStep.v
-        { cbv [word.unsigned].
-          unfold KamiWord.word.
-          setoid_rewrite <-kunsigned_byte_split1.
-          rewrite ?kunsigned_split2_shiftr.
+        }
+        { setoid_rewrite <-unsigned_byte_split1.
+          rewrite ?unsigned_split2_shiftr.
           reflexivity.
         }
       }
       { (* sw *)
         repeat (apply mem_related_put;
-                [| |cbv [word.unsigned];
-                    unfold KamiWord.word;
-                    setoid_rewrite <-kunsigned_byte_split1;
-                    rewrite ?kunsigned_split2_shiftr;
+                [| |setoid_rewrite <-unsigned_byte_split1;
+                    rewrite ?unsigned_split2_shiftr;
                     reflexivity]).
         1: assumption.
-        all: cbv [word.add word wordW KamiWord.word word.of_Z kofZ].
         all: match goal with
              | [Hmr: mem_related _ _ _ |- _] => clear -Hlv Hmr
              end.
@@ -2898,9 +2835,9 @@ Section Equiv.
     rewrite H11 in *.
     rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
     { rewrite LittleEndianList.length_le_split; simpl Z.mul.
-      clear; match goal with |- context [kunsigned ?x] => pose proof wordToN_bound x; set x in * end; 
-      cbv [kunsigned]. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
-      change (BinInt.Z.to_nat width) with 32%nat. Lia.lia. }
+      clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
+      rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
+      change nwidth with 32%nat. Lia.lia. }
 
     (** Symbolic evaluation of Kami decode/execute *)
     kami_cbn_all.
@@ -2935,9 +2872,9 @@ Section Equiv.
 
     (* -- filter out load/store/branch instructions (not handled by [execNm]) *)
     all: try match goal with
-             | [H: negb (kunsigned $0 =? 0) = true |- _] => exfalso; clear -H; discriminate
-             | [H: (kunsigned opLd =? _) = true |- _] => exfalso; clear -H; discriminate
-             | [H: (kunsigned opSt =? _) = true |- _] => exfalso; clear -H; discriminate
+             | [H: negb (Zmod.unsigned $0 =? 0) = true |- _] => exfalso; clear -H; discriminate
+             | [H: (Zmod.unsigned opLd =? _) = true |- _] => exfalso; clear -H; discriminate
+             | [H: (Zmod.unsigned opSt =? _) = true |- _] => exfalso; clear -H; discriminate
              end.
 
     (* -- further simplification *)
@@ -2983,29 +2920,29 @@ Section Equiv.
              match goal with
              | H: let _ := getReg ?rff ?rs1 in _ |- _ =>
                  (replace (getReg rrf rs1) with
-                   (if Z.eq_dec rs1 0 then word.of_Z 0
+                   (if Z.eq_dec rs1 0 then Zmod.zero
                     else match map.get rrf rs1 with
                          | Some x => x
-                         | None => word.of_Z 0
+                         | None => Zmod.zero
                          end) in *
                      by (
                        unfold getReg; repeat destruct_one_match; try reflexivity;
                        exfalso;
                        [ Lia.lia
-                       | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
+                       | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20 as HR;
                          Lia.lia ]))
              | H: let _ := getReg ?rff ?rs2 in _ |- _ =>
                  (replace (getReg rrf rs2) with
-                   (if Z.eq_dec rs2 0 then word.of_Z 0
+                   (if Z.eq_dec rs2 0 then Zmod.zero
                     else match map.get rrf rs2 with
                          | Some x => x
-                         | None => word.of_Z 0
+                         | None => Zmod.zero
                          end) in *
                      by (
                        unfold getReg; repeat destruct_one_match; try reflexivity;
                        exfalso;
                        [ Lia.lia
-                       | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 20 25 as HR;
+                       | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 20 25 as HR;
                          Lia.lia ]))
              | H: let _ := setReg ?rd ?newval ?rrf in _ |- _ =>
                  replace (setReg rd newval rrf) with
@@ -3015,7 +2952,7 @@ Section Equiv.
                  [ | unfold setReg; repeat destruct_one_match; try reflexivity;
                      exfalso;
                      [ Lia.lia
-                     | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 7 12 as HR;
+                     | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 7 12 as HR;
                        Lia.lia ]
                  ]
              | _ => r || t
@@ -3033,7 +2970,7 @@ Section Equiv.
              | H : Z.eqb _ _ = false |- _ => eapply Z.eqb_neq in H
              end;
       try (case (Z.eq_dec rd 0) as [X|_];
-           [match goal with H : bitSlice (kunsigned _) 7 12 <> _ |- _ => case (H X) end|]).
+           [match goal with H : bitSlice (Zmod.unsigned _) 7 12 <> _ |- _ => case (H X) end|]).
     all: try subst regs; try subst kupd.
 
     (** Proving simulation; solve trivial goals first *)
@@ -3047,13 +2984,10 @@ Section Equiv.
     { (* [pc_related_and_valid] for `JAL` *)
       subst newPC jimm20.
       split. {
-        apply AddrAligned_consistent. rewrite E0. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
-      cbv [Utility.add
-             ZToReg MachineWidth_XLEN
-             word.add word wordW KamiWord.word
-             word.of_Z kofZ].
+      cbv [Utility.add ZToReg MachineWidth_XLEN].
       repeat f_equal.
       simpl_bit_combine_Z.
       apply Z_lor_comm_four_variant_1.
@@ -3062,13 +2996,10 @@ Section Equiv.
     { (* [pc_related_and_valid] for `JALR` *)
       subst newPC oimm12 v0 rs1.
       split. {
-        apply AddrAligned_consistent. rewrite E. reflexivity.
+        addr_aligned_by_remu.
       }
       red.
-      cbv [MachineWidth_XLEN
-             ZToReg Utility.add and
-             word.add word.and word wordW KamiWord.word
-             word.of_Z kofZ].
+      cbv [MachineWidth_XLEN ZToReg Utility.add and].
       regs_get_red_goal.
       reflexivity.
     }
@@ -3078,21 +3009,24 @@ Section Equiv.
              | [H: _ {| getMachine := _ |} |- _] => clear H
              end.
     all: try subst val; cbv [ZToReg MachineWidth_XLEN]; cbn [evalBinBitBool].
-    all: eapply (word.unsigned_inj (word := word)).
+    all: eapply Zmod.unsigned_inj.
     all: rewrite <-?ZToWord_Z_of_N.
-    all: change (ZToWord 32) with (@word.of_Z 32 word).
-    all: rewrite ?word.unsigned_of_Z.
+    (* At syntactic occurrences only: a bare [rewrite] would also see through
+       Kami's [combine], which unfolds to an [of_Z]. *)
+    all: repeat match goal with
+                | |- context [Zmod.unsigned (Zmod.of_Z ?m ?z)] =>
+                  rewrite (Zmod.unsigned_of_Z (m := m) z)
+                end.
 
     { (* lui *)
       clear.
       match goal with
-      | |- context[@word.unsigned ?a ?b ?x] =>
-        change (@word.unsigned a b x) with (Z.of_N (wordToN x))
+      | |- Zmod.unsigned ?x = _ =>
+        rewrite <-(Z_of_N_wordToN (sz:=12 + 20) x)
       end.
       rewrite wordToN_combine.
-      change (wordToN (ZToWord 12 0) ) with 0%N.
+      change (wordToN (bits.of_Z (Z.of_nat 12) 0) ) with 0%N.
       rewrite N.add_0_l.
-      cbv [word.wrap].
       cbv [imm20].
       rewrite N2Z.inj_mul.
       change (Z.of_N (NatLib.Npow2 12)) with (2^12)%Z.
@@ -3100,15 +3034,16 @@ Section Equiv.
       t.
       change ((Z.of_nat 12)) with 12%Z.
       rewrite Z.shiftl_mul_pow2 by blia.
-      cbv [kunsigned].
+      rewrite <-?Z_of_N_wordToN.
       change (12 + 20)%nat with 32%nat.
-      change (Z.to_nat 32) with 32%nat.
+      try change (Z.to_nat 32) with 32%nat.
       set (x := bitSlice (Z.of_N (@wordToN 32 kinst)) 12 32).
       cbv [signExtend].
       change (2 ^ (32 - 1)) with (2^31).
       rewrite Zminus_mod_idemp_l.
       replace (x * 2 ^ 12 + 2 ^ 31 - 2 ^ 31) with (x * 2 ^ 12) by blia.
       rewrite Z.mod_small; try ring.
+      change (Z.of_nat nwidth) with 32.
       pose proof bitSlice_range_ex (Z.of_N (@wordToN 32 kinst)) 12 32.
       blia.
     }
@@ -3118,27 +3053,29 @@ Section Equiv.
       subst oimm20.
       unfold Utility.add.
       eapply f_equal.
-      rewrite wplus_comm; eapply f_equal2; [|reflexivity].
+      rewrite Zmod.add_comm; eapply f_equal2; [|reflexivity].
       rewrite signExtend_word_of_Z_nop.
-      eapply (word.unsigned_inj (word := word)).
+      eapply Zmod.unsigned_inj.
       match goal with
-      | |- context[@word.unsigned ?a ?b ?x] =>
-        change (@word.unsigned a b x) with (Z.of_N (wordToN x))
+      | |- Zmod.unsigned ?x = _ =>
+        rewrite <-(Z_of_N_wordToN (sz:=12 + 20) x), <-(Z_of_N_wordToN (sz:=32) kinst)
       end.
-      rewrite Z_of_wordToN_combine_alt.
-      change (Z.of_N (wordToN (ZToWord 12 0))) with 0%Z.
+      rewrite Z_of_N_wordToN_combine.
+      change (Z.of_N (wordToN (bits.of_Z (Z.of_nat 12) 0))) with 0%Z.
       rewrite Z.lor_0_l.
       rewrite unsigned_split2_as_bitSlice.
       t.
       change (Z.of_nat 12) with 12.
-      change (Z.of_N (N.of_nat 12)) with 12.
-      rewrite word.unsigned_of_Z; cbv [word.wrap]; symmetry; eapply Z.mod_small.
+      rewrite Zmod.unsigned_of_Z; symmetry; eapply Z.mod_small.
       pose proof bitSlice_range_ex (Z.of_N (@wordToN 32 kinst)) 12 32 ltac:(blia).
       rewrite Z.shiftl_mul_pow2 by blia.
       change (12 + 20)%nat with 32%nat.
+      change (Z.of_nat nwidth) with 32.
       change (2^32) with (2^(32-12) * 2^12).
       blia.
     }
+
+    all: try (cbv [signed_less_than ltu]; reflexivity).
 
     { (* slli *)
       subst v shamt6 rs1.
@@ -3149,7 +3086,7 @@ Section Equiv.
       | [ |- context [bitSlice ?w ?a ?b] ] =>
         replace (bitSlice w a b)
           with (Z.of_N (wordToN (split2 20 5 (split1 (20 + 5) 7 kinst))))
-          by (rewrite unsigned_split2_split1_as_bitSlice;
+          by (rewrite unsigned_split2_split1_as_bitSlice';
               apply bitSlice_lsb_0; [blia|assumption])
       end.
       rewrite wlshift_sll.
@@ -3165,7 +3102,7 @@ Section Equiv.
       | [ |- context [bitSlice ?w ?a ?b] ] =>
         replace (bitSlice w a b)
           with (Z.of_N (wordToN (split2 20 5 (split1 (20 + 5) 7 kinst))))
-          by (rewrite unsigned_split2_split1_as_bitSlice;
+          by (rewrite unsigned_split2_split1_as_bitSlice';
               apply bitSlice_lsb_0; [blia|assumption])
       end.
       rewrite wrshift_srl.
@@ -3181,7 +3118,7 @@ Section Equiv.
       | [ |- context [bitSlice ?w ?a ?b] ] =>
         replace (bitSlice w a b)
           with (Z.of_N (wordToN (split2 20 5 (split1 (20 + 5) 7 kinst))))
-          by (rewrite unsigned_split2_split1_as_bitSlice;
+          by (rewrite unsigned_split2_split1_as_bitSlice';
               apply bitSlice_lsb_0; [blia|assumption])
       end.
       rewrite wrshifta_sra.
@@ -3193,7 +3130,7 @@ Section Equiv.
       regs_get_red_goal.
       cbv [regToShamt].
       rewrite wlshift_sll.
-      rewrite unsigned_split1_mod.
+      rewrite wordToN_split1, N2Z.inj_mod, NatLib.Z_of_N_Npow2, Z_of_N_wordToN.
       reflexivity.
     }
 
@@ -3202,7 +3139,7 @@ Section Equiv.
       regs_get_red_goal.
       cbv [regToShamt].
       rewrite wrshift_srl.
-      rewrite unsigned_split1_mod.
+      rewrite wordToN_split1, N2Z.inj_mod, NatLib.Z_of_N_Npow2, Z_of_N_wordToN.
       reflexivity.
     }
 
@@ -3211,12 +3148,21 @@ Section Equiv.
       regs_get_red_goal.
       cbv [regToShamt].
       rewrite wrshifta_sra.
-      rewrite unsigned_split1_mod.
+      rewrite wordToN_split1, N2Z.inj_mod, NatLib.Z_of_N_Npow2, Z_of_N_wordToN.
       reflexivity.
     }
 
     all: idtac "KamiRiscv: [kamiStep_sound_case_execNm] starting the Qed...".
   Time Qed.
+
+  (* Kami's [Lt]/[Slt] evaluate to [Z.ltb]; the riscv side's comparison
+     fact [E0] decides the test. *)
+  Ltac branch_cmp_red E0 :=
+    match goal with
+    | |- context [(?a <? ?b)%Z] =>
+      first [ rewrite (proj2 (Z.ltb_lt a b)) by exact E0
+            | rewrite (proj2 (Z.ltb_ge a b)) by exact E0 ]
+    end.
 
   Lemma kamiStep_sound_case_execNmZ:
     forall km1 t0 rm1 post kupd cs
@@ -3255,9 +3201,9 @@ Section Equiv.
     rewrite H11 in *.
     rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
     { rewrite LittleEndianList.length_le_split; simpl Z.mul.
-      clear; match goal with |- context [kunsigned ?x] => pose proof wordToN_bound x; set x in * end; 
-      cbv [kunsigned]. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
-      change (BinInt.Z.to_nat width) with 32%nat. Lia.lia. }
+      clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
+      rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
+      change nwidth with 32%nat. Lia.lia. }
 
     (** Symbolic evaluation of Kami decode/execute *)
     kami_cbn_all.
@@ -3284,8 +3230,8 @@ Section Equiv.
 
     (* -- filter out load/store instructions (not handled by [execNm]) *)
     all: try match goal with
-             | [H: (kunsigned opLd =? _) = true |- _] => exfalso; clear -H; discriminate
-             | [H: (kunsigned opSt =? _) = true |- _] => exfalso; clear -H; discriminate
+             | [H: (Zmod.unsigned opLd =? _) = true |- _] => exfalso; clear -H; discriminate
+             | [H: (Zmod.unsigned opSt =? _) = true |- _] => exfalso; clear -H; discriminate
              end.
 
     (* -- further simplification *)
@@ -3314,7 +3260,7 @@ Section Equiv.
            | context [Z.eqb (bitSlice _ 0 7) ?c] =>
              destruct (Z.eqb_spec
                          (bitSlice
-                            (kunsigned (width:= Zpos (xO (xO (xO (xO (xO xH)))))) kinst)
+                            (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst)
                             0 7) c)
            end;
          repeat match goal with
@@ -3351,29 +3297,29 @@ Section Equiv.
     all: repeat match goal with
                 | H: let _ := getReg ?rff ?rs1 in _ |- _ =>
                     (replace (getReg rrf rs1) with
-                      (if Z.eq_dec rs1 0 then word.of_Z 0
+                      (if Z.eq_dec rs1 0 then Zmod.zero
                        else match map.get rrf rs1 with
                             | Some x => x
-                            | None => word.of_Z 0
+                            | None => Zmod.zero
                             end) in *
                         by (
                           unfold getReg; repeat destruct_one_match; try reflexivity;
                           exfalso;
                           [ Lia.lia
-                          | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
+                          | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 15 20 as HR;
                             Lia.lia ]))
                 | H: let _ := getReg ?rff ?rs2 in _ |- _ =>
                     (replace (getReg rrf rs2) with
-                      (if Z.eq_dec rs2 0 then word.of_Z 0
+                      (if Z.eq_dec rs2 0 then Zmod.zero
                        else match map.get rrf rs2 with
                             | Some x => x
-                            | None => word.of_Z 0
+                            | None => Zmod.zero
                             end) in *
                         by (
                           unfold getReg; repeat destruct_one_match; try reflexivity;
                           exfalso;
                           [ Lia.lia
-                          | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 20 25 as HR;
+                          | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 20 25 as HR;
                             Lia.lia ]))
                 | H: let _ := setReg ?rd ?newval ?rrf in _ |- _ =>
                     replace (setReg rd newval rrf) with
@@ -3382,9 +3328,9 @@ Section Equiv.
                      else map.put rrf rd newval) in *;
                     [ | unfold setReg; repeat destruct_one_match; try reflexivity;
                         exfalso;
-                       [ try (replace (bitSlice (@kunsigned 32 kinst) 7 12) with 0 in *; []);
+                       [ try (replace (bitSlice (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 7 12) with 0 in *; []);
                          Lia.lia
-                       | pose proof bitSlice_range_ex (@kunsigned 32 kinst) 7 12 as HR;
+                       | pose proof bitSlice_range_ex (@Zmod.unsigned (2 ^ Z.of_nat nwidth) kinst) 7 12 as HR;
                          Lia.lia ]
                     ]
                 | _ => r || t
@@ -3401,7 +3347,7 @@ Section Equiv.
              | H : Z.eqb _ _ = false |- _ => eapply Z.eqb_neq in H
              end;
       try (case (Z.eq_dec rd 0) as [X|_];
-           [match goal with H : bitSlice (kunsigned _) 7 12 <> _ |- _ => case (H X) end|]).
+           [match goal with H : bitSlice (Zmod.unsigned _) 7 12 <> _ |- _ => case (H X) end|]).
     all: try subst regs; try subst kupd.
 
     (** Proving simulation; solve trivial goals first *)
@@ -3420,13 +3366,10 @@ Section Equiv.
     { (* jal *)
       subst newPC jimm20.
       split. {
-        apply AddrAligned_consistent. rewrite E0. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
-      cbv [Utility.add
-             ZToReg MachineWidth_XLEN
-             word.add word wordW KamiWord.word
-             word.of_Z kofZ].
+      cbv [Utility.add ZToReg MachineWidth_XLEN].
       repeat f_equal.
       simpl_bit_combine_Z.
       apply Z_lor_comm_four_variant_1.
@@ -3435,13 +3378,10 @@ Section Equiv.
     { (* jalr *)
       subst newPC oimm12 v0 rs1.
       split. {
-        apply AddrAligned_consistent. rewrite E. reflexivity.
+        addr_aligned_by_remu.
       }
       red.
-      cbv [MachineWidth_XLEN
-             ZToReg Utility.add and
-             word.add word.and word wordW KamiWord.word
-             word.of_Z kofZ].
+      cbv [MachineWidth_XLEN ZToReg Utility.add and].
       regs_get_red_goal.
       reflexivity.
     }
@@ -3449,13 +3389,10 @@ Section Equiv.
     { (* beq(eq) *)
       subst newPC sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E1. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
-      cbv [Utility.add
-             ZToReg MachineWidth_XLEN
-             word.add word wordW KamiWord.word
-             word.of_Z kofZ].
+      cbv [Utility.add ZToReg MachineWidth_XLEN].
       repeat f_equal.
       simpl_bit_combine_Z.
       apply Z_lor_comm_four_variant_2.
@@ -3464,7 +3401,7 @@ Section Equiv.
     { (* beq(eq-neq contradiction) *)
       exfalso; subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      apply N2Z.inj, wordToN_inj in e1; auto.
+      apply Zmod.unsigned_inj in e1; auto.
     }
 
     { (* beq(eq-neq contradiction) *)
@@ -3478,18 +3415,15 @@ Section Equiv.
       end.
       { exfalso; subst v v0 v1 v2 rs1 rs2.
         regs_get_red E0.
-        apply N2Z.inj, wordToN_inj in e1; auto.
+        apply Zmod.unsigned_inj in e1; auto.
       }
       { cbv [negb].
         subst addr sbimm12.
         split. {
-          apply AddrAligned_consistent. rewrite E1. reflexivity.
+          addr_aligned_by_remu.
         }
         clear; red.
-        cbv [Utility.add
-               ZToReg MachineWidth_XLEN
-               word.add word wordW KamiWord.word
-               word.of_Z kofZ].
+        cbv [Utility.add ZToReg MachineWidth_XLEN].
         repeat f_equal.
         simpl_bit_combine_Z.
         apply Z_lor_comm_four_variant_2.
@@ -3511,16 +3445,13 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wslt_dec _ _); [|exfalso; apply n; apply E0].
+      branch_cmp_red E0.
       subst addr sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E1. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
-      cbv [Utility.add
-             ZToReg MachineWidth_XLEN
-             word.add word wordW KamiWord.word
-             word.of_Z kofZ].
+      cbv [Utility.add ZToReg MachineWidth_XLEN].
       repeat f_equal.
       simpl_bit_combine_Z.
       apply Z_lor_comm_four_variant_2.
@@ -3530,8 +3461,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wslt_dec _ _).
-      { exfalso. eapply Z.le_ngt in E0. apply E0. apply w. }
+      branch_cmp_red E0.
       apply pc_related_plus4; red; eauto.
     }
 
@@ -3539,17 +3469,13 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wslt_dec _ _).
-      { exfalso. eapply Z.le_ngt in E0. apply E0. apply w. }
+      branch_cmp_red E0.
       subst addr sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E1. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
-      cbv [negb Utility.add
-                ZToReg MachineWidth_XLEN
-                word.add word wordW KamiWord.word
-                word.of_Z kofZ].
+      cbv [negb Utility.add ZToReg MachineWidth_XLEN].
       repeat f_equal.
       simpl_bit_combine_Z.
       apply Z_lor_comm_four_variant_2.
@@ -3559,7 +3485,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wslt_dec _ _); [|exfalso; apply n; apply E0].
+      branch_cmp_red E0.
       apply pc_related_plus4; red; eauto.
     }
 
@@ -3567,25 +3493,13 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wlt_dec _ _).
-      2: {
-        exfalso.
-        lazymatch type of E0 with
-        | word.unsigned ?x < word.unsigned ?y =>
-            change (Z.of_N (wordToN x) < Z.of_N (wordToN y)) in E0
-        end.
-        eapply N2Z.inj_lt in E0.
-        apply n. apply E0.
-      }
+      branch_cmp_red E0.
       subst addr sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E1. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
-      cbv [Utility.add
-             ZToReg MachineWidth_XLEN
-             word.add word wordW KamiWord.word
-             word.of_Z kofZ].
+      cbv [Utility.add ZToReg MachineWidth_XLEN].
       repeat f_equal.
       simpl_bit_combine_Z.
       apply Z_lor_comm_four_variant_2.
@@ -3595,14 +3509,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wlt_dec _ _). {
-        exfalso.
-        lazymatch type of E0 with
-        | word.unsigned ?x <= word.unsigned ?y =>
-            change (Z.of_N (wordToN x) <= Z.of_N (wordToN y)) in E0
-        end.
-        eapply N2Z.inj_le in E0. eapply N.lt_nge in w. apply w. apply E0.
-      }
+      branch_cmp_red E0.
       apply pc_related_plus4; red; eauto.
     }
 
@@ -3610,23 +3517,13 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wlt_dec _ _). {
-        exfalso.
-        lazymatch type of E0 with
-        | word.unsigned ?x <= word.unsigned ?y =>
-            change (Z.of_N (wordToN x) <= Z.of_N (wordToN y)) in E0
-        end.
-        eapply N2Z.inj_le in E0. eapply N.lt_nge in w. apply w. apply E0.
-      }
+      branch_cmp_red E0.
       subst addr sbimm12.
       split. {
-        apply AddrAligned_consistent. rewrite E1. reflexivity.
+        addr_aligned_by_remu.
       }
       clear; red.
-      cbv [negb Utility.add
-                ZToReg MachineWidth_XLEN
-                word.add word wordW KamiWord.word
-                word.of_Z kofZ].
+      cbv [negb Utility.add ZToReg MachineWidth_XLEN].
       repeat f_equal.
       simpl_bit_combine_Z.
       apply Z_lor_comm_four_variant_2.
@@ -3636,8 +3533,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       subst v v0 v1 v2 rs1 rs2.
       regs_get_red E0.
-      destruct (wlt_dec _ _).
-      2: { exfalso. apply n. eapply N2Z.inj_lt. apply E0. }
+      branch_cmp_red E0.
       apply pc_related_plus4; red; eauto.
     }
 
