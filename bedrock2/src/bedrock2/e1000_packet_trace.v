@@ -2,7 +2,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.Strings.String. Local Open Scope string_scope.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Datatypes.ZList.
 Require Import bedrock2.ReversedListNotations. Local Open Scope list_scope.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
@@ -13,8 +13,9 @@ Require Import bedrock2.e1000_state.
 Require Import bedrock2.e1000_read_write_step.
 
 Section WithMem.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
 
   Inductive packet_event: Type :=
   (* a packet satisfying separation logic predicate p was received: *)

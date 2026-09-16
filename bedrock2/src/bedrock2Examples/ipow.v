@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith coqutil.Z.div_mod_to_equations.
+Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.NotationsCustomEntry.
 Import Syntax BinInt String List.ListNotations ZArith.
 Require Import coqutil.Z.Lia.
@@ -14,13 +14,12 @@ Definition ipow := func! (x, e) ~> ret {
 }.
 
 From bedrock2 Require Import Semantics BasicC64Semantics WeakestPrecondition ProgramLogic.
-From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
-Import Interface.word.
+From coqutil Require Import Word.Properties Word.Bitwidth Tactics.letexists.
 
 #[export] Instance spec_of_ipow : spec_of "ipow" :=
   fnspec! "ipow" x e ~> v,
   { requires t m := True;
-    ensures t' m' := unsigned v = unsigned x ^ unsigned e mod 2^64 }.
+    ensures t' m' := Zmod.unsigned v = Zmod.unsigned x ^ Zmod.unsigned e mod 2^64 }.
 
 Module Z.
   Lemma pow_mod x n m (Hnz: m <> 0) : (x mod m)^n mod m = x^n mod m.
@@ -51,10 +50,12 @@ Require Import bedrock2.AbsintWordToZ coqutil.Z.Lia.
 
 Ltac t :=
   repeat match goal with x := _ |- _ => subst x end;
-  repeat match goal with |- context [word.unsigned ?e] => progress (idtac; let H := rbounded (word.unsigned e) in idtac) end;
-  repeat match goal with G: context [word.unsigned ?e] |- _ => progress (idtac; let H := rbounded (word.unsigned e) in idtac) end;
-  repeat match goal with |- context [word.unsigned ?e] => progress (idtac; let H := unsigned.zify_expr e in try rewrite H) end;
-  repeat match goal with G: context [word.unsigned ?e] |- _ => progress (idtac; let H := unsigned.zify_expr e in try rewrite H in G) end;
+  try rewrite ?shamt_of_Z_small in * by lia;
+  try rewrite ?Zmod.unsigned_sru, ?Z.shiftr_div_pow2 in * by lia;
+  repeat match goal with |- context [Zmod.unsigned ?e] => progress (idtac; let H := rbounded (Zmod.unsigned e) in idtac) end;
+  repeat match goal with G: context [Zmod.unsigned ?e] |- _ => progress (idtac; let H := rbounded (Zmod.unsigned e) in idtac) end;
+  repeat match goal with |- context [Zmod.unsigned ?e] => progress (idtac; let H := unsigned.zify_expr e in try rewrite H) end;
+  repeat match goal with G: context [Zmod.unsigned ?e] |- _ => progress (idtac; let H := unsigned.zify_expr e in try rewrite H in G) end;
   repeat match goal with H: absint_eq ?x ?x |- _ => clear H end;
   cbv [absint_eq] in *.
 
@@ -66,9 +67,9 @@ Proof.
   refine ((Loops.tailrec
     (* types of ghost variables*) HList.polymorphic_list.nil
     (* program variables *) (["e";"ret";"x"] : list String.string))
-    (fun v t m e ret x => PrimitivePair.pair.mk (v = word.unsigned e) (* precondition *)
+    (fun v t m e ret x => PrimitivePair.pair.mk (v = Zmod.unsigned e) (* precondition *)
     (fun   T M E RET X => T = t /\ M = m /\ (* postcondition *)
-        word.unsigned RET = word.unsigned ret * word.unsigned x ^ word.unsigned e mod 2^64))
+        Zmod.unsigned RET = Zmod.unsigned ret * Zmod.unsigned x ^ Zmod.unsigned e mod 2^64))
     (fun n m => 0 <= n < m) (* well_founded relation *)
     _ _ _ _ _);
     (* TODO wrap this into a tactic with the previous refine *)
@@ -91,7 +92,7 @@ Proof.
       {
         repeat (straightline || (split; trivial; [])). all:t.
         { (* measure decreases *)
-          set (word.unsigned x0) in *. (* WHY does blia need this? *)
+          set (Zmod.unsigned x'0) in *. (* WHY does blia need this? *)
           Z.div_mod_to_equations; blia. }
         { (* invariant preserved *)
           rewrite H3; clear H3. rename H0 into Hbit.
@@ -100,11 +101,10 @@ Proof.
           epose proof (Z.div_mod _ 2 ltac:(discriminate)) as Heq; rewrite Hbit in Heq.
           rewrite Heq at 2; clear Hbit Heq.
           (* rewriting with equivalence modulo ... *)
-          rewrite !word.unsigned_mul.
-          unfold word.wrap.
+          rewrite !Zmod.unsigned_mul.
           rewrite ?Z.mul_mod_idemp_l by discriminate.
           rewrite <-(Z.mul_mod_idemp_r _ (_^_)), Z.pow_mod by discriminate.
-          rewrite ?Z.pow_add_r by (pose proof word.unsigned_range x0; Z.div_mod_to_equations; blia).
+          rewrite ?Z.pow_add_r by (pose proof (bits.unsigned_range x'0 width_nonneg); Z.div_mod_to_equations; blia).
           rewrite ?Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. } }
@@ -112,7 +112,7 @@ Proof.
         repeat (straightline || (split; trivial; [])).
         all: t.
         { (* measure decreases *)
-          set (word.unsigned x0) in *. (* WHY does blia need this? *)
+          set (Zmod.unsigned x'0) in *. (* WHY does blia need this? *)
           Z.div_mod_to_equations; blia. }
         { (* invariant preserved *)
           rewrite H3; clear H3. rename H0 into Hbit.
@@ -120,13 +120,12 @@ Proof.
           epose proof (Z.div_mod _ 2 ltac:(discriminate)) as Heq; rewrite Hbit in Heq.
           rewrite Heq at 2; clear Hbit Heq.
           (* rewriting with equivalence modulo ... *)
-          rewrite !word.unsigned_mul, ?Z.mul_mod_idemp_l by discriminate.
-          cbv [word.wrap].
+          rewrite !Zmod.unsigned_mul, ?Z.mul_mod_idemp_l by discriminate.
           rewrite <-(Z.mul_mod_idemp_r _ (_^_)), Z.pow_mod by discriminate.
           rewrite ?Z.add_0_r, Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. } } }
-    { (* postcondition *) rewrite H, Z.pow_0_r, Z.mul_1_r, word.wrap_unsigned; auto. } }
+    { (* postcondition *) rewrite H, Z.pow_0_r, Z.mul_1_r, bits.mod_to_Z; auto. } }
 
   repeat straightline.
 

@@ -12,12 +12,12 @@ Example addsub_test := func! () ~> ret {
 }.
 
 From bedrock2 Require Import WeakestPrecondition ProgramLogic BasicC64Semantics.
-Import coqutil.Word.Interface.
+Import coqutil.Word.Bitwidth.
 
 Local Instance spec_of_addsub : spec_of "addsub" :=
   fnspec! "addsub" a b ~> x y,
   { requires m t := True; ensures M T := m=M /\ t=T /\
-    x = word.add a b /\ y = word.sub a b }.
+    x = Zmod.add a b /\ y = Zmod.sub a b }.
 
 Lemma addsub_correct : program_logic_goal_for_function! addsub.
 Proof. repeat straightline. Qed.

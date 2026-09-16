@@ -1,6 +1,6 @@
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.dlet.
 Require Import Coq.Classes.Morphisms BinIntDef.
-Require Import coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Interface. Import map.
+Require Import coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Bitwidth. Import map.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Properties.
 Require Import coqutil.Tactics.destr.
@@ -13,10 +13,12 @@ Require Import bedrock2.MetricLogging.
 Require Import bedrock2.MetricCosts.
 
 Section Loops.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: Semantics.ExtSpec}.
-  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {mem_ok : map.ok mem}.
   Context {locals_ok : map.ok locals}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
@@ -31,10 +33,10 @@ Section Loops.
       (exists v, inv v t m l mc) /\
       (forall v t m l mc, inv v t m l mc ->
         exists bv bmc, dexpr m l e mc (bv, bmc) /\
-        (word.unsigned bv <> 0%Z -> cmd call c t m l bmc (fun t' m' l' mc' =>
+        (Zmod.unsigned bv <> 0%Z -> cmd call c t m l bmc (fun t' m' l' mc' =>
           exists v', inv v' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc')
             /\ lt v' v)) /\
-        (word.unsigned bv = 0%Z -> post t m l
+        (Zmod.unsigned bv = 0%Z -> post t m l
           (cost_loop_false isRegStr UNK (Some UNK) bmc)))) ->
      cmd call (cmd.while e c) t m l mc post.
   Proof.
@@ -44,7 +46,7 @@ Section Loops.
     eapply (well_founded_ind Hwf). intros.
     specialize Hbody with (1 := HInit) (mc := mc). destruct Hbody as (bv & bmc & Hb & Ht & Hf).
     eapply expr_sound in Hb. destruct Hb as (bv' & bmc' & Hb & Heq). inversion Heq. subst bv' bmc'.
-    destr.destr (Z.eqb (word.unsigned bv) 0).
+    destr.destr (Z.eqb (Zmod.unsigned bv) 0).
     - specialize Hf with (1 := E). eapply exec.while_false; try eassumption.
     - specialize Ht with (1 := E). eapply sound_cmd in Ht.
       eapply exec.while_true; eauto.
@@ -62,12 +64,12 @@ Section Loops.
     (Hbody: forall v g t m l mc,
       P v g t m l mc ->
       exists brv brmc, expr m l e mc (eq (brv, brmc)) /\
-      (word.unsigned brv <> 0%Z -> cmd call c t m l brmc
+      (Zmod.unsigned brv <> 0%Z -> cmd call c t m l brmc
         (fun t' m' l' mc' => exists v' g',
           P v' g' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc') /\
           lt v' v /\
           (forall t'' m'' l'' mc'', Q v' g' t'' m'' l'' mc'' -> Q v g t'' m'' l'' mc''))) /\
-      (word.unsigned brv = 0%Z -> Q v g t m l
+      (Zmod.unsigned brv = 0%Z -> Q v g t m l
         (cost_loop_false isRegStr UNK (Some UNK) brmc)))
     (Hpost: forall t m l mc, Q v0 g0 t m l mc -> post t m l mc)
     : cmd call (cmd.while e c) t m l mc post.
@@ -98,12 +100,12 @@ Section Loops.
     (Hbody: forall v g t m l mc,
       P v g t m l mc ->
       exists brv brmc, expr m l e mc (eq (brv, brmc)) /\
-      (word.unsigned brv <> 0%Z -> cmd call c t m l brmc
+      (Zmod.unsigned brv <> 0%Z -> cmd call c t m l brmc
         (fun t' m' l' mc' => exists v' g',
           P v' g' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc') /\
           lt v' v /\
           (forall t'' m'' l'' mc'', Q v' g' t'' m'' l'' mc'' -> Q v g t'' m'' l'' mc''))) /\
-      (word.unsigned brv = 0%Z -> cmd call rest t m l
+      (Zmod.unsigned brv = 0%Z -> cmd call rest t m l
         (cost_loop_false isRegStr UNK (Some UNK) brmc) (Q v g)))
     : cmd call (cmd.seq (cmd.while e c) rest) t m l mc (Q v0 g0).
   Proof.
@@ -158,7 +160,7 @@ Section Loops.
       repeat (match goal with H : _ |- _ => eapply IHks in H end); inversion H; subst; clear H.
     cbn [map.putmany_of_tuple tuple.of_list length].
     match goal with H : _ |- _ => rewrite H; clear H end.
-    assert (map.get m a = Some r -> put (remove m a) a r = m). {
+    assert (map.get m a = Some z -> put (remove m a) a z = m). {
       intro A.
       apply map_ext.
       intro k.
@@ -195,11 +197,11 @@ Section Loops.
     (Hbody : forall v t m l mc,
       invariant v t m l mc ->
       exists brv brmc, expr m l e mc (eq (Datatypes.pair brv brmc)) /\
-         (word.unsigned brv <> 0 ->
+         (Zmod.unsigned brv <> 0 ->
           cmd fs c t m l brmc (fun t m l mc => exists v',
             invariant v' t m l (cost_loop_true isRegStr UNK (Some UNK) mc)
               /\ lt v' v)) /\
-         (word.unsigned brv = 0 -> post t m l
+         (Zmod.unsigned brv = 0 -> post t m l
            (cost_loop_false isRegStr UNK (Some UNK) brmc)))
     : cmd fs (cmd.while e c) t m l mc post.
   Proof.
@@ -223,13 +225,13 @@ Section Loops.
       tuple.apply (invariant v t m mc) localstuple ->
       let l := reconstruct variables localstuple in
       exists brv brmc, expr m l e mc (eq (Datatypes.pair brv brmc)) /\
-         (word.unsigned brv <> 0 ->
+         (Zmod.unsigned brv <> 0 ->
           cmd call c t m l brmc (fun t m l mc =>
             Markers.unique (Markers.left (tuple.existss (fun localstuple =>
               enforce variables localstuple l /\
               Markers.right (Markers.unique (exists v',
                 tuple.apply (invariant v' t m (cost_loop_true isRegStr UNK (Some UNK) mc)) localstuple /\ lt v' v))))))) /\
-         (word.unsigned brv = 0 -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc))))
+         (Zmod.unsigned brv = 0 -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc))))
     : cmd call (cmd.while e c) t m l mc post.
   Proof.
     eapply (while_localsmap (fun v t m l mc =>
@@ -271,7 +273,7 @@ Section Loops.
       match tuple.apply (hlist.apply (spec v) g t m) l mc with S_ =>
       S_.(1) ->
       Markers.unique (Markers.left (exists brv brmc, expr m localsmap e mc (eq (Datatypes.pair brv brmc)) /\ Markers.right (
-      (word.unsigned brv <> 0%Z -> cmd call c t m localsmap brmc
+      (Zmod.unsigned brv <> 0%Z -> cmd call c t m localsmap brmc
         (fun t' m' localsmap' mc' =>
           Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
           Markers.unique (Markers.left (hlist.existss (fun g' => exists v',
@@ -279,7 +281,7 @@ Section Loops.
           S'.(1) /\ Markers.right (
             lt v' v /\
             forall T M, hlist.foralls (fun L => forall MC, tuple.apply (S'.(2) T M) L MC -> tuple.apply (S_.(2) T M) L MC)) end))))))))) /\
-      (word.unsigned brv = 0%Z -> tuple.apply (S_.(2) t m) l (cost_loop_false isRegStr UNK (Some UNK) brmc)))))end))))
+      (Zmod.unsigned brv = 0%Z -> tuple.apply (S_.(2) t m) l (cost_loop_false isRegStr UNK (Some UNK) brmc)))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0 mc).(2) with Q0 => forall t m mc, hlist.foralls (fun l =>  tuple.apply (Q0 t m) l mc -> post t m (reconstruct variables l) mc)end)
     , cmd call (cmd.while e c) t m localsmap mc post ).
   Proof.
@@ -316,13 +318,13 @@ Section Loops.
       let S := spec v t m l mc in let (P, Q) := S in
       P ->
       exists br mc', expr m l e mc (eq (Datatypes.pair br mc')) /\
-      (word.unsigned br <> 0%Z -> cmd call c t m l mc'
+      (Zmod.unsigned br <> 0%Z -> cmd call c t m l mc'
         (fun t' m' l' mc''=> exists v',
           let S' := spec v' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc'') in let '(P', Q') := S' in
           P' /\
           lt v' v /\
           forall T M L MC, Q' T M L MC -> Q T M L MC)) /\
-      (word.unsigned br = 0%Z -> Q t m l (cost_loop_false isRegStr UNK (Some UNK) mc')))
+      (Zmod.unsigned br = 0%Z -> Q t m l (cost_loop_false isRegStr UNK (Some UNK) mc')))
     (Hpost : forall t m l mc, Q0 t m l mc -> post t m l mc)
     : cmd call (cmd.while e c) t m l mc post.
   Proof.
@@ -362,23 +364,23 @@ Section Loops.
     {measure : Type} (invariant:measure->_->_->_->_->Prop) lt
     (Hwf : well_founded lt)
     (Henter : exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc))
-      /\ (word.unsigned br <> 0 -> exists v', invariant v' t m l brmc)
-      /\ (word.unsigned br = 0%Z -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))
+      /\ (Zmod.unsigned br <> 0 -> exists v', invariant v' t m l brmc)
+      /\ (Zmod.unsigned br = 0%Z -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))
     (Hbody : forall v t m l mc, invariant v t m l mc ->
        cmd call c t m l mc (fun t m l mc =>
          exists br brmc, expr m l e (cost_loop_true isRegStr UNK (Some UNK) mc) (eq (Datatypes.pair br brmc))
-         /\ (word.unsigned br <> 0 -> exists v', invariant v' t m l brmc /\ lt v' v)
-         /\ (word.unsigned br =  0 -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc))))
+         /\ (Zmod.unsigned br <> 0 -> exists v', invariant v' t m l brmc /\ lt v' v)
+         /\ (Zmod.unsigned br =  0 -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc))))
     : cmd call (cmd.while e c) t m l mc post.
   Proof.
     eapply wp_while.
     eexists (option measure), (with_bottom lt), (fun ov t m l mc =>
       exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc))
-      /\ ((word.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v t m l brmc)
-      /\ (word.unsigned br =  0 -> ov = None /\ post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))).
+      /\ ((Zmod.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v t m l brmc)
+      /\ (Zmod.unsigned br =  0 -> ov = None /\ post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))).
     split; auto using well_founded_with_bottom; []. split.
     { destruct Henter as [br [brmc [He [Henterm Henter0]]]].
-      destruct (BinInt.Z.eq_dec (word.unsigned br) 0).
+      destruct (BinInt.Z.eq_dec (Zmod.unsigned br) 0).
       { exists None, br, brmc; split; trivial.
         split; intros; try contradiction; split; eauto. }
       { destruct (Henterm n) as [v Hinv].
@@ -390,7 +392,7 @@ Section Loops.
     { intros Hc; destruct (Hcontinue Hc) as (v&?&Hinv); subst.
       eapply Proper_cmd; [ |eapply Hbody; eassumption].
       intros t' m' l' mc' (br'&brmc'&Ebr'&Hinv'&Hpost').
-      destruct (BinInt.Z.eq_dec (word.unsigned br') 0).
+      destruct (BinInt.Z.eq_dec (Zmod.unsigned br') 0).
       { exists None; split; try constructor.
         exists br', brmc'; split; trivial; [].
         split; intros; try contradiction.
@@ -412,14 +414,14 @@ Section Loops.
     lt (Hwf : well_founded lt)
     {post : _->_->_->_-> Prop}
     (Henter : exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc))
-      /\ (word.unsigned br <> 0 -> exists v', tuple.apply (invariant v' t m brmc) localstuple)
-      /\ (word.unsigned br = 0%Z -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))
+      /\ (Zmod.unsigned br <> 0 -> exists v', tuple.apply (invariant v' t m brmc) localstuple)
+      /\ (Zmod.unsigned br = 0%Z -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))
     (Hbody : forall v t m mc, tuple.foralls (fun localstuple =>
       tuple.apply (invariant v t m mc) localstuple ->
        cmd call c t m (reconstruct variables localstuple) mc (fun t m l mc =>
          exists br brmc, expr m l e (cost_loop_true isRegStr UNK (Some UNK) mc) (eq (Datatypes.pair br brmc))
-         /\ (word.unsigned br <> 0 -> Markers.unique (Markers.left (tuple.existss (fun localstuple => enforce variables localstuple l /\ Markers.right (Markers.unique (exists v', tuple.apply (invariant v' t m brmc) localstuple /\ lt v' v))))))
-         /\ (word.unsigned br =  0 -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))))
+         /\ (Zmod.unsigned br <> 0 -> Markers.unique (Markers.left (tuple.existss (fun localstuple => enforce variables localstuple l /\ Markers.right (Markers.unique (exists v', tuple.apply (invariant v' t m brmc) localstuple /\ lt v' v))))))
+         /\ (Zmod.unsigned br =  0 -> post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))))
     : cmd call (cmd.while e c) t m l mc post.
   Proof.
     eapply (atleastonce_localsmap (fun v t m l mc => exists localstuple, Logic.and (enforce variables localstuple l) (tuple.apply (invariant v t m mc) localstuple))); eauto.
@@ -452,23 +454,23 @@ Section Loops.
       let S := spec v t m l mc in let (P, Q) := S in
       P ->
       exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc)) /\
-      (word.unsigned br <> 0%Z -> cmd call c t m l brmc
+      (Zmod.unsigned br <> 0%Z -> cmd call c t m l brmc
         (fun t' m' l' mc' =>
           (exists br brmc,
             expr m' l' e (cost_loop_true isRegStr UNK (Some UNK) mc') (eq (Datatypes.pair br brmc))
-            /\ word.unsigned br = 0 /\ Q t' m' l' (cost_loop_false isRegStr UNK (Some UNK) brmc)) \/
+            /\ Zmod.unsigned br = 0 /\ Q t' m' l' (cost_loop_false isRegStr UNK (Some UNK) brmc)) \/
           exists v', let S' := spec v' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc') in let '(P', Q') := S' in
           P' /\
           lt v' v /\
           forall T M L MC, Q' T M L MC -> Q T M L MC)) /\
-      (word.unsigned br = 0%Z -> Q t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))
+      (Zmod.unsigned br = 0%Z -> Q t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)))
     (Hpost : forall t m l mc, Q0 t m l mc -> post t m l mc)
     : cmd call (cmd.while e c) t m l mc post.
   Proof.
     eapply wp_while.
     eexists (option measure), (with_bottom lt), (fun v t m l mc =>
       match v with
-      | None => exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc)) /\ word.unsigned br = 0 /\ Q0 t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)
+      | None => exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc)) /\ Zmod.unsigned br = 0 /\ Q0 t m l (cost_loop_false isRegStr UNK (Some UNK) brmc)
       | Some v =>
           let S := spec v t m l mc in let '(P, Q) := S in
           P /\ forall T M L MC, Q T M L MC -> Q0 T M L MC
@@ -503,16 +505,16 @@ Section Loops.
       match tuple.apply (hlist.apply (spec v) g t m) l mc with S_ =>
       S_.(1) ->
       Markers.unique (Markers.left (exists br brmc, expr m localsmap e mc (eq (Datatypes.pair br brmc)) /\ Markers.right (
-      (word.unsigned br <> 0%Z -> cmd call c t m localsmap brmc
+      (Zmod.unsigned br <> 0%Z -> cmd call c t m localsmap brmc
         (fun t' m' localsmap' mc' =>
           Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
-          Markers.unique (Markers.left (exists br brmc, expr m' localsmap' e (cost_loop_true isRegStr UNK (Some UNK) mc') (eq (Datatypes.pair br brmc)) /\ Markers.right ( word.unsigned br = 0 /\ tuple.apply (S_.(2) t' m') l' (cost_loop_false isRegStr UNK (Some UNK) brmc)) ) ) \/
+          Markers.unique (Markers.left (exists br brmc, expr m' localsmap' e (cost_loop_true isRegStr UNK (Some UNK) mc') (eq (Datatypes.pair br brmc)) /\ Markers.right ( Zmod.unsigned br = 0 /\ tuple.apply (S_.(2) t' m') l' (cost_loop_false isRegStr UNK (Some UNK) brmc)) ) ) \/
           Markers.unique (Markers.left (hlist.existss (fun g' => exists v',
           match tuple.apply (hlist.apply (spec v') g' t' m') l' (cost_loop_true isRegStr UNK (Some UNK) mc') with S' =>
           S'.(1) /\ Markers.right (
             lt v' v /\
             forall T M, hlist.foralls (fun L => forall MC, tuple.apply (S'.(2) T M) L MC -> tuple.apply (S_.(2) T M) L MC)) end))))))))) /\
-      (word.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l (cost_loop_false isRegStr UNK (Some UNK) brmc)))))end))))
+      (Zmod.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l (cost_loop_false isRegStr UNK (Some UNK) brmc)))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0 mc).(2) with Q0 => forall t m, hlist.foralls (fun l => forall mc, tuple.apply (Q0 t m) l mc -> post t m (reconstruct variables l) mc)end)
     , cmd call (cmd.while e c) t m localsmap mc post).
   Proof.
@@ -522,7 +524,7 @@ Section Loops.
       exists li, localsmapi = reconstruct variables li /\
       match vi with
       | None => exists br brmc, expr mi localsmapi e mci (eq (Datatypes.pair br brmc))
-      /\ word.unsigned br = 0 /\ tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0 mc).(2) ti mi) li (cost_loop_false isRegStr UNK (Some UNK) brmc)
+      /\ Zmod.unsigned br = 0 /\ tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0 mc).(2) ti mi) li (cost_loop_false isRegStr UNK (Some UNK) brmc)
       | Some vi => exists gi, match tuple.apply (hlist.apply (spec vi) gi ti mi) li mci with S_ =>
       S_.(1) /\ forall T M L MC, tuple.apply (S_.(2) T M) L MC ->
         tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0 mc).(2) T M) L MC end end).
@@ -550,14 +552,14 @@ Section Loops.
   Qed.
 
   Lemma while_zero_iterations {e c t l mc brmc} {m : mem} {post : _->_->_->_-> Prop}
-    (HCond: expr m l e mc (eq (Datatypes.pair (word.of_Z 0) brmc)))
+    (HCond: expr m l e mc (eq (Datatypes.pair (bits.of_Z width 0) brmc)))
     (HPost: post t m l (cost_loop_false isRegStr UNK (Some UNK) brmc))
     : cmd call (cmd.while e c) t m l mc post.
   Proof.
     eapply (while_localsmap (fun n t' m' l' mc' => t' = t /\ m' = m /\ l' = l /\ mc' = mc) (PeanoNat.Nat.lt_wf 0) 0%nat).
     1: unfold split; auto. intros *. intros (? & ? & ? & ?). subst.
     eexists. eexists. split. 1: exact HCond.
-    rewrite Properties.word.unsigned_of_Z_0.
+    rewrite Zmod.unsigned_0.
     split; intros; congruence.
   Qed.
 
@@ -573,11 +575,11 @@ Section Loops.
     (Hpre : (P v0 t l mc * R0) m)
     (Hbody : forall v t m l mc R, (P v t l mc * R) m ->
       exists br brmc, expr m l e mc (eq (Datatypes.pair br brmc)) /\
-      (word.unsigned br <> 0%Z -> cmd call c t m l brmc
+      (Zmod.unsigned br <> 0%Z -> cmd call c t m l brmc
         (fun t' m' l' mc' => exists v' dR, (P v' t' l' (cost_loop_true isRegStr UNK (Some UNK) mc') * (R * dR)) m' /\
           lt v' v /\
           forall T L MC, Q v' T L MC * dR ==> Q v T L MC)) /\
-      (word.unsigned br = 0%Z -> (Q v t l (cost_loop_false isRegStr UNK (Some UNK) brmc) * R) m))
+      (Zmod.unsigned br = 0%Z -> (Q v t l (cost_loop_false isRegStr UNK (Some UNK) brmc) * R) m))
     (Hpost : forall t m l mc, (Q v0 t l mc * R0) m -> post t m l mc)
     : cmd call (cmd.while e c) t m l mc post.
   Proof.

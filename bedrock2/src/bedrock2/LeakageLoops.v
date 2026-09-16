@@ -2,7 +2,7 @@ From Coq Require Import List.
 Import ListNotations.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.dlet.
 From Coq Require Import Classes.Morphisms BinIntDef.
-Require Import coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Interface. Import map.
+Require Import coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Bitwidth. Import map.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Properties.
 Require Import coqutil.Tactics.destr.
@@ -11,10 +11,12 @@ From bedrock2 Require Import Syntax Semantics LeakageSemantics Markers.
 From bedrock2 Require Import LeakageWeakestPrecondition LeakageWeakestPreconditionProperties.
 
 Section Loops.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: LeakageSemantics.ExtSpec} {pick_sp: PickSp}.
-  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {mem_ok : map.ok mem}.
   Context {locals_ok : map.ok locals}.
   Context {ext_spec_ok : LeakageSemantics.ext_spec.ok ext_spec}.
 
@@ -27,9 +29,9 @@ Section Loops.
       (exists v, inv v k t m l) /\
       (forall v k t m l, inv v k t m l ->
         exists b k', dexpr m l k e b k' /\
-        (word.unsigned b <> 0%Z -> cmd call c (leak_bool true :: k') t m l (fun k'' t' m l =>
+        (Zmod.unsigned b <> 0%Z -> cmd call c (leak_bool true :: k') t m l (fun k'' t' m l =>
           exists v', inv v' k'' t' m l /\ lt v' v)) /\
-        (word.unsigned b = 0%Z -> post (leak_bool false :: k') t m l))) ->
+        (Zmod.unsigned b = 0%Z -> post (leak_bool false :: k') t m l))) ->
      cmd call (cmd.while e c) k t m l post.
   Proof.
     intros. destruct H as (measure & lt & inv & Hwf & HInit & Hbody).
@@ -38,7 +40,7 @@ Section Loops.
     eapply (well_founded_ind Hwf). intros.
     specialize Hbody with (1 := HInit). destruct Hbody as (b & k' & Hexpr & Ht & Hf).
     eapply expr_sound in Hexpr. destruct Hexpr as (b' & k'' & Hb & Hk' & ?). subst b' k''.
-    destr.destr (Z.eqb (word.unsigned b) 0).
+    destr.destr (Z.eqb (Zmod.unsigned b) 0).
     - specialize Hf with (1 := E). eapply exec.while_false; eassumption.
     - specialize Ht with (1 := E). eapply sound_cmd in Ht.
       eapply exec.while_true; eauto.
@@ -56,12 +58,12 @@ Section Loops.
     (Hbody: forall v g k t m l,
       P v g k t m l ->
       exists br k', dexpr m l k e br k' /\
-      (word.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m l
+      (Zmod.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m l
         (fun k'' t' m' l' => exists v' g',
           P v' g' k'' t' m' l' /\
           lt v' v /\
           (forall k''' t'' m'' l'', Q v' g' k''' t'' m'' l'' -> Q v g k''' t'' m'' l''))) /\
-      (word.unsigned br = 0%Z -> Q v g (leak_bool false :: k') t m l))
+      (Zmod.unsigned br = 0%Z -> Q v g (leak_bool false :: k') t m l))
     (Hpost: forall k t m l, Q v0 g0 k t m l -> post k t m l)
     : cmd call (cmd.while e c) k t m l post.
   Proof.
@@ -91,12 +93,12 @@ Section Loops.
     (Hbody: forall v g k t m l,
       P v g k t m l ->
       exists br k', dexpr m l k e br k' /\
-      (word.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m l
+      (Zmod.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m l
         (fun k'' t' m' l' => exists v' g',
           P v' g' k'' t' m' l' /\
           lt v' v /\
           (forall k''' t'' m'' l'', Q v' g' k''' t'' m'' l'' -> Q v g k''' t'' m'' l''))) /\
-      (word.unsigned br = 0%Z -> cmd call rest (leak_bool false :: k') t m l (Q v g)))
+      (Zmod.unsigned br = 0%Z -> cmd call rest (leak_bool false :: k') t m l (Q v g)))
     : cmd call (cmd.seq (cmd.while e c) rest) k t m l (Q v0 g0).
   Proof.
     cbn. eapply tailrec_localsmap_1ghost with
@@ -150,7 +152,7 @@ Section Loops.
       repeat (match goal with H : _ |- _ => eapply IHks in H end); inversion H; subst; clear H.
     cbn [map.putmany_of_tuple tuple.of_list length].
     match goal with H : _ |- _ => rewrite H; clear H end.
-    assert (map.get m a = Some r -> put (remove m a) a r = m). {
+    assert (map.get m a = Some z -> put (remove m a) a z = m). {
       intro A.
       apply map_ext.
       intro k.
@@ -187,9 +189,9 @@ Section Loops.
     (Hbody : forall v k t m l,
       invariant v k t m l ->
       exists br k', dexpr m l k e br k' /\
-         (word.unsigned br <> 0 ->
+         (Zmod.unsigned br <> 0 ->
           cmd fs c (leak_bool true :: k') t m l (fun k t m l => exists v', invariant v' k t m l /\ lt v' v)) /\
-         (word.unsigned br = 0 -> post (leak_bool false :: k') t m l))
+         (Zmod.unsigned br = 0 -> post (leak_bool false :: k') t m l))
     : cmd fs (cmd.while e c) k t m l post.
   Proof.
     eapply wp_while.
@@ -212,13 +214,13 @@ Section Loops.
       tuple.apply (invariant v k t m) localstuple ->
       let l := reconstruct variables localstuple in
       exists br k', dexpr m l k e br k' /\
-         (word.unsigned br <> 0 ->
+         (Zmod.unsigned br <> 0 ->
           cmd call c (leak_bool true :: k') t m l (fun k t m l =>
             Markers.unique (Markers.left (tuple.existss (fun localstuple =>
               enforce variables localstuple l /\
               Markers.right (Markers.unique (exists v',
                 tuple.apply (invariant v' k t m) localstuple /\ lt v' v))))))) /\
-         (word.unsigned br = 0 -> post (leak_bool false :: k') t m l)))
+         (Zmod.unsigned br = 0 -> post (leak_bool false :: k') t m l)))
     : cmd call (cmd.while e c) k t m l post.
   Proof.
     eapply (while_localsmap (fun v k t m l =>
@@ -257,7 +259,7 @@ Section Loops.
       match tuple.apply (hlist.apply (spec v) g k t m) l with S_ =>
       S_.(1) ->
       Markers.unique (Markers.left (exists br k', dexpr m localsmap k e br k' /\ Markers.right (
-      (word.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m localsmap
+      (Zmod.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m localsmap
         (fun k'' t' m' localsmap' =>
           Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
           Markers.unique (Markers.left (hlist.existss (fun g' => exists v',
@@ -265,7 +267,7 @@ Section Loops.
           S'.(1) /\ Markers.right (
             lt v' v /\
             forall K T M, hlist.foralls (fun L => tuple.apply (S'.(2) K T M) L -> tuple.apply (S_.(2) K T M) L)) end))))))))) /\
-      (word.unsigned br = 0%Z -> tuple.apply (S_.(2) (leak_bool false :: k') t m) l))))end))))
+      (Zmod.unsigned br = 0%Z -> tuple.apply (S_.(2) (leak_bool false :: k') t m) l))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 k t m) l0).(2) with Q0 => forall k t m, hlist.foralls (fun l =>  tuple.apply (Q0 k t m) l -> post k t m (reconstruct variables l))end)
     , cmd call (cmd.while e c) k t m localsmap post ).
   Proof.
@@ -302,13 +304,13 @@ Section Loops.
       let S := spec v k t m l in let (P, Q) := S in
       P ->
       exists br k', dexpr m l k e br k' /\
-      (word.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m l
+      (Zmod.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m l
         (fun k' t' m' l' => exists v',
           let S' := spec v' k' t' m' l' in let '(P', Q') := S' in
           P' /\
           lt v' v /\
           forall K T M L, Q' K T M L -> Q K T M L)) /\
-      (word.unsigned br = 0%Z -> Q (leak_bool false :: k') t m l))
+      (Zmod.unsigned br = 0%Z -> Q (leak_bool false :: k') t m l))
     (Hpost : forall k t m l, Q0 k t m l -> post k t m l)
     : cmd call (cmd.while e c) k t m l post.
   Proof.
@@ -350,23 +352,23 @@ Section Loops.
     (Hwf : well_founded lt)
     (v0 : measure)
     (Henter : exists br k', dexpr m l k e br k' /\
-                         (word.unsigned br = 0%Z -> post (leak_bool false :: k') t m l) /\
-                         (word.unsigned br <> 0%Z -> invariant v0 (leak_bool true :: k') t m l))
+                         (Zmod.unsigned br = 0%Z -> post (leak_bool false :: k') t m l) /\
+                         (Zmod.unsigned br <> 0%Z -> invariant v0 (leak_bool true :: k') t m l))
     (Hbody : forall v k t m l, invariant v k t m l ->
        cmd call c k t m l (fun k t m l =>
          exists br k', dexpr m l k e br k' /\
-         (word.unsigned br <> 0 -> exists v', invariant v' (leak_bool true :: k') t m l /\ lt v' v) /\
-         (word.unsigned br =  0 -> post (leak_bool false :: k') t m l)))
+         (Zmod.unsigned br <> 0 -> exists v', invariant v' (leak_bool true :: k') t m l /\ lt v' v) /\
+         (Zmod.unsigned br =  0 -> post (leak_bool false :: k') t m l)))
     : cmd call (cmd.while e c) k t m l post.
   Proof.
     eapply wp_while.
     eexists (option measure), (with_bottom lt), (fun ov k t m l =>
       exists br k', dexpr m l k e br k' /\
-      ((word.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v (leak_bool true :: k') t m l) /\
-      (word.unsigned br = 0 -> ov = None /\ post (leak_bool false :: k') t m l))).
+      ((Zmod.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v (leak_bool true :: k') t m l) /\
+      (Zmod.unsigned br = 0 -> ov = None /\ post (leak_bool false :: k') t m l))).
     split; auto using well_founded_with_bottom; []. split.
     { destruct Henter as (br & k' & He & Henterfalse & Hentertrue).
-      destruct (BinInt.Z.eq_dec (word.unsigned br) 0).
+      destruct (BinInt.Z.eq_dec (Zmod.unsigned br) 0).
       { exists None, br, k'; split; trivial.
         split; intros; try contradiction; split; eauto. }
       { exists (Some v0), br, k'.
@@ -377,7 +379,7 @@ Section Loops.
     { intros Hc; destruct (Hcontinue Hc) as (v&?&Hinv); subst.
       eapply Proper_cmd; [ |eapply Hbody; eassumption].
       intros k'' t' m' l' (br'&k'2&Ebr'&Hinv'&Hpost').
-      destruct (BinInt.Z.eq_dec (word.unsigned br') 0).
+      destruct (BinInt.Z.eq_dec (Zmod.unsigned br') 0).
       { exists None; split; try constructor.
         exists br', k'2; split; trivial; [].
         split; intros; try contradiction.
@@ -400,21 +402,21 @@ Section Loops.
       let S := spec v k t m l in let (P, Q) := S in
       P ->
       exists br k', dexpr m l k e br k' /\
-      (word.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m l
+      (Zmod.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m l
         (fun k'' t' m' l' =>
-          (exists br k''', dexpr m' l' k'' e br k''' /\ word.unsigned br = 0 /\ Q (leak_bool false :: k''') t' m' l') \/
+          (exists br k''', dexpr m' l' k'' e br k''' /\ Zmod.unsigned br = 0 /\ Q (leak_bool false :: k''') t' m' l') \/
           exists v', let S' := spec v' k'' t' m' l' in let '(P', Q') := S' in
           P' /\
           lt v' v /\
           forall K T M L, Q' K T M L -> Q K T M L)) /\
-      (word.unsigned br = 0%Z -> Q (leak_bool false :: k') t m l))
+      (Zmod.unsigned br = 0%Z -> Q (leak_bool false :: k') t m l))
     (Hpost : forall k t m l, Q0 k t m l -> post k t m l)
     : cmd call (cmd.while e c) k t m l post.
   Proof.
     eapply wp_while.
     eexists (option measure), (with_bottom lt), (fun v k t m l =>
       match v with
-      | None => exists br k', dexpr m l k e br k' /\ word.unsigned br = 0 /\ Q0 (leak_bool false :: k') t m l
+      | None => exists br k', dexpr m l k e br k' /\ Zmod.unsigned br = 0 /\ Q0 (leak_bool false :: k') t m l
       | Some v =>
           let S := spec v k t m l in let '(P, Q) := S in
           P /\ forall K T M L, Q K T M L -> Q0 K T M L
@@ -449,16 +451,16 @@ Section Loops.
       match tuple.apply (hlist.apply (spec v) g k t m) l with S_ =>
       S_.(1) ->
       Markers.unique (Markers.left (exists br k', dexpr m localsmap k e br k' /\ Markers.right (
-      (word.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m localsmap
+      (Zmod.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m localsmap
         (fun k'' t' m' localsmap' =>
           Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
-          Markers.unique (Markers.left (exists br k''', dexpr m' localsmap' k'' e br k''' /\ Markers.right ( word.unsigned br = 0 /\ tuple.apply (S_.(2) (leak_bool false :: k''') t' m') l') ) ) \/
+          Markers.unique (Markers.left (exists br k''', dexpr m' localsmap' k'' e br k''' /\ Markers.right ( Zmod.unsigned br = 0 /\ tuple.apply (S_.(2) (leak_bool false :: k''') t' m') l') ) ) \/
           Markers.unique (Markers.left (hlist.existss (fun g' => exists v',
           match tuple.apply (hlist.apply (spec v') g' k'' t' m') l' with S' =>
           S'.(1) /\ Markers.right (
             lt v' v /\
             forall K T M, hlist.foralls (fun L => tuple.apply (S'.(2) K T M) L -> tuple.apply (S_.(2) K T M) L)) end))))))))) /\
-      (word.unsigned br = 0%Z -> tuple.apply (S_.(2) (leak_bool false :: k') t m) l))))end))))
+      (Zmod.unsigned br = 0%Z -> tuple.apply (S_.(2) (leak_bool false :: k') t m) l))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 k t m) l0).(2) with Q0 => forall k t m, hlist.foralls (fun l =>  tuple.apply (Q0 k t m) l -> post k t m (reconstruct variables l))end)
     , cmd call (cmd.while e c) k t m localsmap post ).
   Proof.
@@ -468,7 +470,7 @@ Section Loops.
       exists li, localsmapi = reconstruct variables li /\
               match vi with
               | None => exists br ki', dexpr mi localsmapi ki e br ki' /\
-                                   word.unsigned br = 0 /\ tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 k t m) l0).(2) (leak_bool false :: ki') ti mi) li
+                                   Zmod.unsigned br = 0 /\ tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 k t m) l0).(2) (leak_bool false :: ki') ti mi) li
               | Some vi => exists gi,
                   match tuple.apply (hlist.apply (spec vi) gi ki ti mi) li with
                   | S_ =>
@@ -510,14 +512,14 @@ Section Loops.
     {post : _->_->_->_-> Prop}
     (v0 : measure)
     (Henter : exists br k', dexpr m l k e br k' /\
-                         (word.unsigned br = 0%Z -> post (leak_bool false :: k') t m l) /\
-    (word.unsigned br <> 0%Z -> tuple.apply (invariant v0 (leak_bool true :: k') t m) localstuple))
+                         (Zmod.unsigned br = 0%Z -> post (leak_bool false :: k') t m l) /\
+    (Zmod.unsigned br <> 0%Z -> tuple.apply (invariant v0 (leak_bool true :: k') t m) localstuple))
     (Hbody : forall v k t m, tuple.foralls (fun localstuple =>
       tuple.apply (invariant v k t m) localstuple ->
        cmd call c k t m (reconstruct variables localstuple) (fun k t m l =>
          exists br k', dexpr m l k e br k' /\
-         (word.unsigned br <> 0 -> Markers.unique (Markers.left (tuple.existss (fun localstuple => enforce variables localstuple l /\ Markers.right (Markers.unique (exists v', tuple.apply (invariant v' (leak_bool true :: k') t m) localstuple /\ lt v' v)))))) /\
-         (word.unsigned br =  0 -> post (leak_bool false :: k') t m l))))
+         (Zmod.unsigned br <> 0 -> Markers.unique (Markers.left (tuple.existss (fun localstuple => enforce variables localstuple l /\ Markers.right (Markers.unique (exists v', tuple.apply (invariant v' (leak_bool true :: k') t m) localstuple /\ lt v' v)))))) /\
+         (Zmod.unsigned br =  0 -> post (leak_bool false :: k') t m l))))
     : cmd call (cmd.while e c) k t m l post.
   Proof.
     destruct Henter as (br & k' & Hbr & Henterfalse & Hentertrue).
@@ -538,14 +540,14 @@ Section Loops.
   Qed.
 
   Lemma while_zero_iterations {e c k t l} {m : mem} {post : _->_->_->_-> Prop}
-    (HCondPost: exists k', dexpr m l k e (word.of_Z 0) k' /\ post (leak_bool false :: k') t m l)
+    (HCondPost: exists k', dexpr m l k e (bits.of_Z width 0) k' /\ post (leak_bool false :: k') t m l)
     : cmd call (cmd.while e c) k t m l post.
   Proof.
     destruct HCondPost as (k' & HCond & Hpost).
     eapply (while_localsmap (fun n k' t' m' l' => k' = k /\ t' = t /\ m' = m /\ l' = l) (PeanoNat.Nat.lt_wf 0) 0%nat).
     1: unfold split; auto. intros *. intros (? & ? & ? & ?). subst.
     eexists. eexists. split. 1: exact HCond.
-    rewrite Properties.word.unsigned_of_Z_0.
+    rewrite Zmod.unsigned_0.
     split; intros; congruence.
   Qed.
 
@@ -561,11 +563,11 @@ Section Loops.
     (Hpre : (P v0 k t l * R0) m)
     (Hbody : forall v k t m l R, (P v k t l * R) m ->
       exists br k', dexpr m l k e br k' /\
-      (word.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m l
+      (Zmod.unsigned br <> 0%Z -> cmd call c (leak_bool true :: k') t m l
         (fun k'' t' m' l' => exists v' dR, (P v' k'' t' l' * (R * dR)) m' /\
           lt v' v /\
           forall K T L, Q v' K T L * dR ==> Q v K T L)) /\
-      (word.unsigned br = 0%Z -> (Q v (leak_bool false :: k') t l * R) m))
+      (Zmod.unsigned br = 0%Z -> (Q v (leak_bool false :: k') t l * R) m))
     (Hpost : forall k t m l, (Q v0 k t l * R0) m -> post k t m l)
     : cmd call (cmd.while e c) k t m l post.
   Proof.

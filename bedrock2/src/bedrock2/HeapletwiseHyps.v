@@ -1,6 +1,7 @@
 Require Import Coq.Logic.PropExtensionality Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Lists.List. Import ListNotations. Open Scope list_scope.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.syntactic_unify.
@@ -781,7 +782,7 @@ Ltac purified_hyp h t :=
   | with_mem ?m ?pred => purified_hyp_of_pred h pred m
   | ?pred ?m =>
       lazymatch type of m with
-      | @map.rep (@Interface.word.rep _ _) Byte.byte _ => purified_hyp_of_pred h pred m
+      | @map.rep (Zmod _) Byte.byte _ => purified_hyp_of_pred h pred m
       | _ => constr:(mk_nothing_to_purify)
       end
   | _ => constr:(mk_nothing_to_purify)
@@ -1481,7 +1482,7 @@ Section HeapletwiseHypsTests.
        (scalar a va ⋆ Ra)%sep m /\ (scalar b vb ⋆ Rb)%sep m /\ (scalar c vc ⋆ Rc)%sep m ->
        call functions "indirect_add" t m [a; b; c]
          (fun (t' : trace) (m' : mem) (rets : list word) =>
-          rets = [] /\ t = t' /\ (scalar a (word.add vb vc) ⋆ Ra)%sep m')
+          rets = [] /\ t = t' /\ (scalar a (Zmod.add vb vc) ⋆ Ra)%sep m')
 
 *)
 

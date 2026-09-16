@@ -52,7 +52,7 @@ Record headers_upto_udp_t: Set := {
   only_udp_header: udp_header_t;
 }.
 
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.to_from_anybytes.
@@ -62,9 +62,9 @@ Require Import coqutil.Tactics.fwd.
 Section BigEndian.
   Local Open Scope Z_scope.
   Import OfListWord.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {word_ok: word.ok word}
-          {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
 
   Definition byte_list_pred_at(P: list Byte.byte -> Prop)(addr: word)(m: mem): Prop :=
     exists bs, m = map.of_list_word_at addr bs /\ P bs /\ Z.of_nat (length bs) <= 2^width.
@@ -116,9 +116,9 @@ Local Open Scope sepapp_bullets_scope.
 
 Section WithMem.
   Local Open Scope Z_scope.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {word_ok: word.ok word}
-          {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
 
   Definition ethernet_header(r: ethernet_header_t): word -> mem -> Prop := .**/
     typedef struct __attribute__ ((__packed__)) {

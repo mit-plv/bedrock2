@@ -14,7 +14,7 @@ Definition br_full_add :=
     }.
 
 From bedrock2 Require Import WeakestPrecondition ProgramLogic BasicC64Semantics.
-Import coqutil.Word.Interface.
+Import coqutil.Word.Bitwidth.
 Require Import bedrock2.ZnWords.
 
 #[export] Instance spec_of_full_add : spec_of "br_full_add" :=
@@ -23,23 +23,22 @@ Require Import bedrock2.ZnWords.
          current `br_full_add` to support the `ensures` clause, but
          it does formalize an expected condition that future
          implementations should be free to leverage. *)
-      requires t m := word.unsigned carry < 2;
+      requires t m := Zmod.unsigned carry < 2;
       ensures T M :=
         M = m /\ T = t /\
-          word.unsigned sum + 2^64 * word.unsigned carry_out =
-            word.unsigned x + word.unsigned carry + word.unsigned y
+          Zmod.unsigned sum + 2^64 * Zmod.unsigned carry_out =
+            Zmod.unsigned x + Zmod.unsigned carry + Zmod.unsigned y
     }.
 
 Require Import coqutil.Tactics.Tactics.
 
 Lemma add_ltu_as_adder : forall a b : BasicC64Semantics.word,
-    word.unsigned a + word.unsigned b =
-      2^64 * (if word.ltu (word.add a b) b then 1 else 0) +
-          word.unsigned (word.add a b).
+    Zmod.unsigned a + Zmod.unsigned b =
+      2^64 * (if Zmod.unsigned (Zmod.add a b) <? Zmod.unsigned b then 1 else 0) +
+          Zmod.unsigned (Zmod.add a b).
 Proof.
   intros.
-  rewrite word.unsigned_ltu.
-  destr (word.unsigned (word.add a b) <? word.unsigned b);
+  destr (Zmod.unsigned (Zmod.add a b) <? Zmod.unsigned b);
     ZnWords.
 Qed.
 
@@ -55,7 +54,7 @@ Proof.
   repeat
     (match goal with
      | X := _ |- _  => subst X end).
-  destruct (word.ltu (word.add x'0 carry) carry);
-    destruct (word.ltu (word.add (word.add x'0 carry) y) y);
+  destruct (Zmod.unsigned (Zmod.add x'0 carry) <? Zmod.unsigned carry);
+    destruct (Zmod.unsigned (Zmod.add (Zmod.add x'0 carry) y) <? Zmod.unsigned y);
     ZnWords.
 Qed.

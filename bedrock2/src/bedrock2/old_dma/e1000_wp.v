@@ -14,7 +14,7 @@ Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth.
 Require coqutil.Map.SortedListZ.
 Require Import coqutil.Datatypes.ZList.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
@@ -30,8 +30,9 @@ Require Import bedrock2.e1000_state.
 Require Import bedrock2.old_dma.circular_buffer_slice_based_on_list_of_addrs.
 
 Section WithMem.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
 
 (* Operations:
 

@@ -7,7 +7,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.Datatypes.List.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics coqutil.Datatypes.Option.
-Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndianList.
+Require Import BinIntDef coqutil.Word.Bitwidth coqutil.Word.LittleEndianList.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Byte.
 
@@ -21,29 +21,29 @@ Definition bytes_per {width} sz :=
     | access_size.word => Z.to_nat (bytes_per_word width)
   end%nat.
 
-Definition load {width} {word : word width} {mem : map.map word byte}
-  sz (m : mem) (a: word): option word :=
+Definition load {width} {mem : map.map (bits width) byte}
+  sz (m : mem) (a: bits width): option (bits width) :=
   match load_Z m a (bytes_per (width:=width) sz) with
-  | Some z => Some (word.of_Z z)
+  | Some z => Some (bits.of_Z width z)
   | None => None
   end.
 
-Definition store {width} {word : word width} {mem : map.map word byte}
-  sz (m : mem) (a v : word) : option mem :=
-  store_Z m a (bytes_per (width:=width) sz) (word.unsigned v).
+Definition store {width} {mem : map.map (bits width) byte}
+  sz (m : mem) (a v : bits width) : option mem :=
+  store_Z m a (bytes_per (width:=width) sz) (Zmod.unsigned v).
 
-Definition anybytes {width} {word : word width} {mem : map.map word byte}
-  (a : word) (n : Z) (m : mem) :=
+Definition anybytes {width} {mem : map.map (bits width) byte}
+  (a : bits width) (n : Z) (m : mem) :=
   exists bs: list byte, map.of_list_word_at a bs = m /\
   Z.of_nat (length bs) = n /\ Z.of_nat (length bs) <= 2 ^ width.
 
-Lemma anybytes_unique_domain {width} {word : word width} {mem : map.map word byte}
-  {mem_ok: map.ok mem} {word_ok: word.ok word} a n (m1 m2 : mem) :
+Lemma anybytes_unique_domain {width} {BW: Bitwidth width} {mem : map.map (bits width) byte}
+  {mem_ok: map.ok mem} a n (m1 m2 : mem) :
   anybytes a n m1 -> anybytes a n m2 -> map.same_domain m1 m2.
 Proof.
   cbv [anybytes]; intros (?&?&?) (?&?&?); subst.
   cbv [map.same_domain map.sub_domain].
-  setoid_rewrite @map.get_of_list_word_at; try exact _; split; intros *.
+  setoid_rewrite (map.get_of_list_word_at width_pos); split; intros *.
   2: destruct List.nth_error eqn:A, (List.nth_error x) eqn:B.
   1: destruct List.nth_error eqn:A, (List.nth_error x0) eqn:B.
   all: intros; try congruence; eauto.
@@ -54,10 +54,12 @@ Qed.
 
 Module Deprecated. (* The below functions needlessly use tuples for what can be done with lists *)
 Section Deprecated.
-  Context {width: Z} {word: word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   (* deprecated since 2025 *)
   Definition footprint(a: word)(sz: nat): tuple word sz :=
-    tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.
+    tuple.unfoldn (fun w => Zmod.add w (bits.of_Z width 1)) sz a.
 
   (* deprecated since 2025 *)
   Definition load_bytes(sz: nat)(m: mem)(addr: word): option (tuple byte sz) :=
@@ -75,18 +77,17 @@ Section Deprecated.
     end.
 
   Context {mem_ok: map.ok mem}.
-  Context {word_ok: word.ok word}.
 
   Lemma to_list_footprint a sz :
     tuple.to_list (footprint a sz) = coqutil.Map.Memory.footprint a sz.
   Proof.
     revert a; induction sz; cbn; intros; f_equal.
-    { rewrite Properties.word.add_0_r; trivial. }
+    { rewrite Zmod.add_0_r; trivial. }
     { cbv [footprint] in IHsz. rewrite IHsz, <-List.seq_shift, List.map_map.
       eapply List.map_ext; intros.
-      rewrite Nat2Z.inj_succ; cbv [BinInt.Z.succ]; rewrite Properties.word.ring_morph_add.
-      rewrite <-!Properties.word.add_assoc; f_equal.
-      rewrite Properties.word.add_comm; f_equal. }
+      rewrite Nat2Z.inj_succ; cbv [BinInt.Z.succ]; rewrite Zmod.of_Z_add.
+      rewrite <-!Zmod.add_assoc; f_equal.
+      rewrite Zmod.add_comm; f_equal. }
   Qed.
 
   Lemma to_list_load_bytes sz m a :
@@ -100,7 +101,7 @@ Section Deprecated.
   Proof.
     cbv [unchecked_store_bytes coqutil.Map.Memory.unchecked_store_bytes].
     revert a; induction sz; cbn; intros; rewrite ?map.of_list_word_nil, ?map.putmany_empty_r; trivial.
-    rewrite map.of_list_word_at_cons, <-map.put_putmany_commute; f_equal.
+    rewrite (map.of_list_word_at_cons width_pos), <-map.put_putmany_commute; f_equal.
     erewrite <-IHsz; trivial.
   Qed.
 

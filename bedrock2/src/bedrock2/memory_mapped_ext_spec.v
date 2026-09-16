@@ -8,7 +8,7 @@ Require Import coqutil.Byte.
 Require Import coqutil.Tactics.fwd coqutil.Tactics.autoforward.
 Require coqutil.Datatypes.String.
 Require Import coqutil.Map.Interface coqutil.Map.Domain.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Word.Properties.
 Require Import bedrock2.Semantics bedrock2.LeakageSemantics.
 Require Import bedrock2.SemanticsRelations.
@@ -26,25 +26,25 @@ Proof.
 Qed.
 
 Class MemoryMappedExtCalls{width: Z}{BW: Bitwidth width}
-                          {word: word.word width}{mem: map.map word Byte.byte} := {
+                          {mem: map.map (bits width) Byte.byte} := {
   read_step: forall (sz: nat),
     trace -> (* trace of events that happened so far *)
-    word -> (* address to be read *)
+    bits width -> (* address to be read *)
     (tuple byte sz -> mem -> Prop) -> (* postcondition on returned value and memory *)
     Prop;
   write_step: forall (sz: nat),
     trace -> (* trace of events that happened so far *)
-    word -> (* address to be written *)
+    bits width -> (* address to be written *)
     tuple byte sz -> (* value to be written *)
     mem -> (* memory whose ownership is passed to the external world *)
     Prop;
-  mmio_addrs: word -> Prop;
+  mmio_addrs: bits width -> Prop;
 }.
 
 Section WithMem.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {mem: map.map word Byte.byte}.
-  Context {word_ok: word.ok word}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
 
   (* Note: This ext_spec is crafted in such a way that no matter how liberal
      read_step and write_step are, all ext calls allowed by this ext_spec can
@@ -56,16 +56,16 @@ Section WithMem.
       ((action = "memory_mapped_extcall_read" ++ String.of_nat (n * 8) /\
         exists addr, args = [addr] /\ mGive = map.empty /\
                      read_step n t addr (fun v mRcv =>
-                         post mRcv [word.of_Z (LittleEndian.combine n v)] [addr])) \/
+                         post mRcv [bits.of_Z width (LittleEndian.combine n v)] [addr])) \/
        (action = "memory_mapped_extcall_write" ++ String.of_nat (n * 8) /\
-        exists addr v, args = [addr; word.of_Z (LittleEndian.combine n v)] /\
+        exists addr v, args = [addr; bits.of_Z width (LittleEndian.combine n v)] /\
                        write_step n t addr v mGive /\
                     post map.empty nil [addr])).
   
-  Definition ext_spec{mmio_ext_calls: MemoryMappedExtCalls} : Semantics.ExtSpec := @deleakaged_ext_spec _ _ _ _ leakage_ext_spec.
+  Definition ext_spec{mmio_ext_calls: MemoryMappedExtCalls} : Semantics.ExtSpec := @deleakaged_ext_spec _ _ _ leakage_ext_spec.
 
   Definition footprint_list(addr: word)(n: nat): list word :=
-    List.unfoldn (word.add (word.of_Z 1)) n addr.
+    List.unfoldn (Zmod.add (bits.of_Z width 1)) n addr.
 
   Class MemoryMappedExtCallsOk(ext_calls: MemoryMappedExtCalls): Prop := {
     weaken_read_step: forall t addr n post1 post2,
@@ -117,7 +117,7 @@ Section WithMem.
     - (* mGive unique *)
       unfold leakage_ext_spec. intros. fwd. destruct H1p1; destruct H2p1; fwd; try congruence.
       inversion H1p1. fwd. subst n0.
-      eapply (f_equal word.unsigned) in H2.
+      eapply (f_equal Zmod.unsigned) in H2.
       pose proof (LittleEndian.combine_bound v).
       pose proof (LittleEndian.combine_bound v0).
       assert (2 ^ (8 * Z.of_nat n) <= 2 ^ width). {
@@ -127,7 +127,7 @@ Section WithMem.
         end;
         cbv; congruence.
       }
-      rewrite 2word.unsigned_of_Z_nowrap in H2 by lia.
+      rewrite 2bits.unsigned_of_Z_small in H2 by lia.
       apply LittleEndian.combine_inj in H2. subst v0.
       eauto using write_step_unique_mGive.
     - (* weaken *)

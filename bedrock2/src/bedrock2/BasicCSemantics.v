@@ -1,20 +1,13 @@
 Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
-Require Import coqutil.Word.Interface coqutil.Map.SortedListWord.
-Require Import coqutil.Word.Naive.
+Require Import coqutil.Word.Bitwidth coqutil.Map.SortedListWord.
 
-(* Local because it automatically adds arbitrary word size instance. *)
-#[local] Hint Extern 0 (word.word ?width) => exact (Naive.word width) : typeclass_instances.
+#[export] Hint Extern 0 (Interface.map.map (bits ?width) Coq.Init.Byte.byte) =>
+  exact (SortedListWord.map width Coq.Init.Byte.byte) : typeclass_instances.
 
-#[export] Instance word_ok {width} {BW : Bitwidth.Bitwidth width}: word.ok (Naive.word width).
-Proof. destruct Bitwidth.width_cases as [W|W]; symmetry in W; destruct W; [exact word32_ok | exact word64_ok]. Defined.
-
-#[export] Hint Extern 0 (Interface.map.map (@word.rep _ (Naive.word _)) Coq.Init.Byte.byte) =>
-  exact (@SortedListWord.map _ _ word_ok _) : typeclass_instances.
-
-#[export] Hint Extern 0 (coqutil.Map.Interface.map.ok (SortedListWord.map (@word.rep _ (Naive.word _)) _)) =>
-  exact (SortedListWord.ok _ _) : typeclass_instances.
+#[export] Hint Extern 0 (coqutil.Map.Interface.map.ok (SortedListWord.map ?width _)) =>
+  exact (SortedListWord.ok width _) : typeclass_instances.
 
 #[export] Hint Extern 0 (Interface.map.map String.string ?value) =>
   exact (SortedListString.map value) : typeclass_instances.
@@ -26,8 +19,8 @@ Proof. destruct Bitwidth.width_cases as [W|W]; symmetry in W; destruct W; [exact
 #[export] Instance weaken_ext_spec width {BW : Bitwidth.Bitwidth width} :
   Morphisms.Proper
     (Morphisms.respectful
-       (Morphisms.pointwise_relation (@Interface.map.rep (Naive.word width) (Coq.Init.Byte.byte) _)
-          (Morphisms.pointwise_relation (list (Naive.word width)) Basics.impl))
+       (Morphisms.pointwise_relation (@Interface.map.rep (bits width) (Coq.Init.Byte.byte) _)
+          (Morphisms.pointwise_relation (list (bits width)) Basics.impl))
        Basics.impl) (fun post => False).
 Proof.
   cbn in *.
@@ -35,38 +28,33 @@ Proof.
   intros.
   assumption.
 Qed.
-#[export] Instance ext_spec_ok width {BW : Bitwidth.Bitwidth width}:
+(* Stated as a lemma: the Instance command would fill in the weaken field by
+   typeclass search and leave its Bitwidth premise as a stray obligation. *)
+Lemma ext_spec_ok width {BW : Bitwidth.Bitwidth width}:
     Semantics.ext_spec.ok (fun _ _ _ _ _ => False).
 Proof.
   constructor; intros; try contradiction.
-  apply weaken_ext_spec.
+  exact (weaken_ext_spec width).
 Qed.
+#[export] Existing Instance ext_spec_ok.
 
 Section TypeclassTests.
   Variable width : Z.
   Context {BW : Bitwidth.Bitwidth width}.
 
-  (* word *)
-  Goal word.word width.
-    typeclasses eauto.
-  Qed.
-  Goal word.ok (Naive.word width).
-    typeclasses eauto.
-  Qed.
-
   (* mem *)
-  Goal (Interface.map.map (Naive.word width) (Coq.Init.Byte.byte)).
+  Goal (Interface.map.map (bits width) (Coq.Init.Byte.byte)).
     typeclasses eauto.
   Qed.
-  Goal coqutil.Map.Interface.map.ok (SortedListWord.map (Naive.word width) (Coq.Init.Byte.byte)).
+  Goal coqutil.Map.Interface.map.ok (SortedListWord.map width (Coq.Init.Byte.byte)).
     typeclasses eauto.
   Qed.
 
   (* locals *)
-  Goal (Interface.map.map String.string (Naive.word width)).
+  Goal (Interface.map.map String.string (bits width)).
     typeclasses eauto.
   Qed.
-  Goal (coqutil.Map.Interface.map.ok (SortedListString.map (Naive.word width))).
+  Goal (coqutil.Map.Interface.map.ok (SortedListString.map (bits width))).
     typeclasses eauto.
   Qed.
 

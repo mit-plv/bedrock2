@@ -5,7 +5,7 @@ From bedrock2 Require Import NotationsCustomEntry ProgramLogic Map.Separation Ar
 Require bedrock2Examples.Demos.
 Definition bsearch := Demos.bsearch.
 
-From coqutil Require Import Datatypes.List Word.Interface Map.Interface. (* coercions word and rep *)
+From coqutil Require Import Datatypes.List Word.Bitwidth Map.Interface. (* coercions word and rep *)
 From bedrock2 Require Import Semantics BasicC64Semantics.
 
 From coqutil.Tactics Require Import syntactic_unify.
@@ -15,13 +15,13 @@ Require Import bedrock2.AbsintWordToZ.
 
 Declare Scope word_scope.
 
-Local Infix "^+" := word.add  (at level 50, left associativity) : word_scope.
-Local Infix "^-" := word.sub  (at level 50, left associativity) : word_scope.
-Local Infix "^<<" := word.slu  (at level 37, left associativity) : word_scope.
-Local Infix "^>>" := word.sru  (at level 37, left associativity) : word_scope.
-Local Notation "/_" := word.of_Z       (* smaller angle: squeeze a Z into a word *)
+Local Infix "^+" := Zmod.add  (at level 50, left associativity) : word_scope.
+Local Infix "^-" := Zmod.sub  (at level 50, left associativity) : word_scope.
+Local Infix "^<<" := Zmod.slu  (at level 37, left associativity) : word_scope.
+Local Infix "^>>" := Zmod.sru  (at level 37, left associativity) : word_scope.
+Local Notation "/_" := (Zmod.of_Z (2 ^ 64))       (* smaller angle: squeeze a Z into a word *)
  : word_scope.
-Local Notation "\_" := word.unsigned   (* supposed to be a denotation bracket;
+Local Notation "\_" := Zmod.unsigned   (* supposed to be a denotation bracket;
                                           or bigger angle: let a word fly into the large Z space *)
  : word_scope.
 
@@ -33,11 +33,11 @@ From bedrock2 Require Import Semantics BasicC64Semantics.
 Import HList List.
 #[export] Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
   forall left right target xs R t m,
-    sep (array scalar (word.of_Z 8) left xs) R m ->
+    sep (array scalar 8 left xs) R m ->
     \_ (right ^- left) = 8*Z.of_nat (Datatypes.length xs) ->
     WeakestPrecondition.call functions
       "bsearch"%string t m (left::right::target::nil)%list
-      (fun t' m' rets => t=t' /\ sep (array scalar (word.of_Z 8) left xs) R m' /\ exists i, rets = (i::nil)%list /\
+      (fun t' m' rets => t=t' /\ sep (array scalar 8 left xs) R m' /\ exists i, rets = (i::nil)%list /\
       ((*sorted*)False -> True)
       ).
 
@@ -53,10 +53,10 @@ Proof.
   refine (
     tailrec (HList.polymorphic_list.cons _ (HList.polymorphic_list.cons _ HList.polymorphic_list.nil)) ("left"::"right"::"target"::nil)%list%string
         (fun l xs R t m left right target => PrimitivePair.pair.mk
-                                               (sep (array scalar (word.of_Z 8) left xs) R m /\
+                                               (sep (array scalar 8 left xs) R m /\
                                                 \_ (right ^- left) = 8*Z.of_nat (Datatypes.length xs) /\
                                                 List.length xs = l)
-        (fun        T M LEFT RIGHT TARGET => T = t /\ sep (array scalar (word.of_Z 8) left xs) R M))
+        (fun        T M LEFT RIGHT TARGET => T = t /\ sep (array scalar 8 left xs) R M))
         lt _ _ _ _ _ _ _);
     cbn [reconstruct map.putmany_of_list HList.tuple.to_list
          HList.hlist.foralls HList.tuple.foralls
@@ -114,7 +114,7 @@ Proof.
   { repeat straightline. }
 
   Unshelve.
-  all: exact (word.of_Z 0).
+  all: exact Zmod.zero.
 
   all:fail "remaining subgoals".
 Qed.

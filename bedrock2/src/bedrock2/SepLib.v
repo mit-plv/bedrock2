@@ -1,6 +1,6 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
-Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.OfListWord coqutil.Map.Memory coqutil.Word.LittleEndianList.
 Require Import coqutil.Datatypes.ZList. Import ZList.List.ZIndexNotations.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
@@ -18,7 +18,7 @@ Existing Class PredicateSize.
 
 Ltac can_have_PredicateSize PredTp :=
   lazymatch PredTp with
-  | @word.rep ?wi ?wo -> @map.rep (@word.rep ?wi ?wo) Coq.Init.Byte.byte _ -> Prop => idtac
+  | Zmod ?m -> @map.rep (Zmod ?m) Coq.Init.Byte.byte _ -> Prop => idtac
   | ?V -> ?P => can_have_PredicateSize P
   end.
 
@@ -37,21 +37,21 @@ Notation invisible_cast T x :=
 
 Notation sizeof p := (invisible_cast (PredicateSize p) _).
 
-Definition array{width}{BW: Bitwidth width}{word: word width}
-  {mem: map.map word Byte.byte}[T: Type]
-  (elem: T -> word -> mem -> Prop){elemSize: PredicateSize elem}
-  (n: Z)(vs: list T)(addr: word): mem -> Prop :=
+Definition array{width}{BW: Bitwidth width}
+  {mem: map.map (bits width) Byte.byte}[T: Type]
+  (elem: T -> bits width -> mem -> Prop){elemSize: PredicateSize elem}
+  (n: Z)(vs: list T)(addr: bits width): mem -> Prop :=
   sep (emp (len vs = n))
-      (array (fun a v => elem v a) (word.of_Z elemSize) addr vs).
+      (array (fun a v => elem v a) (bits.of_Z width elemSize) addr vs).
 
 (* Note: We don't pass a list ?vs to the pattern, because the length is already given by n *)
 #[export] Hint Extern 1
-  (PredicateSize (@array ?width ?BW ?word ?mem ?T ?elem ?elemSize ?n)) =>
+  (PredicateSize (@array ?width ?BW ?mem ?T ?elem ?elemSize ?n)) =>
   exact (n * elemSize) : typeclass_instances.
 
-Lemma purify_array{width}{BW: Bitwidth width}{word: word width}{word_ok: word.ok word}
-  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}[T: Type] elem
-  {elemSize: PredicateSize elem}(n: Z)(vs: list T)(addr: word):
+Lemma purify_array{width}{BW: Bitwidth width}
+  {mem: map.map (bits width) Byte.byte}{mem_ok: map.ok mem}[T: Type] elem
+  {elemSize: PredicateSize elem}(n: Z)(vs: list T)(addr: bits width):
   purify (array elem n vs addr) (len vs = n). (* TODO also n <= 2^width or n < 2^width? *)
 Proof.
   unfold purify, array. intros. eapply sep_emp_l in H. apply H.
@@ -60,11 +60,11 @@ Qed.
 
 (* for concrete lists: *)
 Lemma purify_array_and_elems{width}{BW: Bitwidth width}
-  {word: word width}{word_ok: word.ok word}
-  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}[T: Type] elem
+  
+  {mem: map.map (bits width) Byte.byte}{mem_ok: map.ok mem}[T: Type] elem
   {elemSize: PredicateSize elem}{P: Prop}
-  (n: Z)(vs: list T)(addr: word):
-  purify (bedrock2.Array.array (fun a v => elem v a) (word.of_Z elemSize) addr vs) P ->
+  (n: Z)(vs: list T)(addr: bits width):
+  purify (bedrock2.Array.array (fun a v => elem v a) (bits.of_Z width elemSize) addr vs) P ->
   purify (array elem n vs addr) (len vs = n /\ P).
 Proof.
   unfold purify, array. intros. eapply sep_emp_l in H0. split. 1: apply H0.
@@ -85,10 +85,10 @@ Ltac is_concrete_list l :=
 (* for non-concrete lists.
    Note: not registered as a hint because usually not needed *)
 Lemma purify_array_ith_elem{width}{BW: Bitwidth width}
-  {word: word width}{word_ok: word.ok word}
-  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}[T: Type] elem
+  
+  {mem: map.map (bits width) Byte.byte}{mem_ok: map.ok mem}[T: Type] elem
   {elemSize: PredicateSize elem}{P: T -> Prop}{inh: Inhabited.inhabited T}
-  (n: Z)(vs: list T)(addr: word):
+  (n: Z)(vs: list T)(addr: bits width):
   (forall v a, purify (elem v a) (P v)) ->
   purify (array elem n vs addr) (forall i, 0 <= i < len vs -> P (List.get vs i)).
 Proof.
@@ -123,8 +123,8 @@ Ltac nbits_to_exact_nbytes nbits :=
   exact sz.
 
 
-Definition uint{width}{BW: Bitwidth width}{word: word width}{mem: map.map word Byte.byte}
-  (nbits: Z)(v: Z)(addr: word): mem -> Prop :=
+Definition uint{width}{BW: Bitwidth width}{mem: map.map (bits width) Byte.byte}
+  (nbits: Z)(v: Z)(addr: bits width): mem -> Prop :=
   sep (emp (0 <= v < 2 ^ nbits))
       (le_split (Z.to_nat (nbits_to_nbytes nbits)) v $@ addr ).
 
@@ -132,8 +132,8 @@ Definition uint{width}{BW: Bitwidth width}{word: word width}{mem: map.map word B
   nbits_to_exact_nbytes nbits
 : typeclass_instances.
 
-Lemma purify_uint{width}{BW: Bitwidth width}{word: word width}{word_ok: word.ok word}
-  {mem: map.map word Byte.byte}{mem_ok: map.ok mem} nbits v a:
+Lemma purify_uint{width}{BW: Bitwidth width}
+  {mem: map.map (bits width) Byte.byte}{mem_ok: map.ok mem} nbits v a:
   purify (uint nbits v a) (0 <= v < 2 ^ nbits).
 Proof.
   unfold purify, uint. intros. eapply sep_emp_l in H. apply proj1 in H. exact H.
@@ -141,15 +141,15 @@ Qed.
 #[export] Hint Resolve purify_uint : purify.
 
 
-Definition uintptr{width}{BW: Bitwidth width}{word: word width}{mem: map.map word Byte.byte}
-                  (v a: word): mem -> Prop := scalar a v.
+Definition uintptr{width}{BW: Bitwidth width}{mem: map.map (bits width) Byte.byte}
+                  (v a: bits width): mem -> Prop := scalar a v.
 
-#[export] Hint Extern 1 (PredicateSize (@uintptr ?width ?BW ?word ?mem)) =>
+#[export] Hint Extern 1 (PredicateSize (@uintptr ?width ?BW ?mem)) =>
   nbits_to_exact_nbytes width
 : typeclass_instances.
 
-Lemma purify_uintptr{width}{BW: Bitwidth width}{word: word width}
-  {mem: map.map word Byte.byte} v a:
+Lemma purify_uintptr{width}{BW: Bitwidth width}
+  {mem: map.map (bits width) Byte.byte} v a:
   purify (uintptr v a) True.
 Proof. unfold purify. intros. constructor. Qed.
 #[export] Hint Resolve purify_uintptr : purify.
@@ -165,11 +165,11 @@ Proof. unfold purify. intros. constructor. Qed.
 
 
 Definition pointer_to{width}{BW: Bitwidth width}
-  {word: word width}{mem: map.map word Byte.byte}
-  (P: word -> mem -> Prop)(pointerAddr: word): mem -> Prop :=
+  {mem: map.map (bits width) Byte.byte}
+  (P: bits width -> mem -> Prop)(pointerAddr: bits width): mem -> Prop :=
   ex1 (fun targetAddr => sep (uintptr targetAddr pointerAddr) (P targetAddr)).
 
-#[export] Hint Extern 1 (PredicateSize (@pointer_to ?width ?BW ?word ?mem ?pred)) =>
+#[export] Hint Extern 1 (PredicateSize (@pointer_to ?width ?BW ?mem ?pred)) =>
   nbits_to_exact_nbytes width
 : typeclass_instances.
 
@@ -188,8 +188,10 @@ Proof. unfold anyval, is_emp, impl1, emp, ex1. intros. firstorder idtac. Qed.
 : typeclass_instances.
 
 Section WithMem.
-  Context {width} {BW: Bitwidth width} {word: word width} {mem: map.map word Byte.byte}
-          {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {width} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}
+          {mem_ok: map.ok mem}.
 
   Lemma purify_anyval_array T (elem: T -> word -> mem -> Prop) {sz: PredicateSize elem} n a:
     purify (array elem n ? a) (0 <= n).
@@ -218,12 +220,12 @@ Section WithMem.
      and use vs[:i] ++ vs[i:], resulting in the lemma split_array below *)
     Lemma merge_array: forall n1 n2 vs1 vs2 a m,
         sep (array elem n1 vs1 a)
-          (array elem n2 vs2 (word.add a (word.of_Z (sz * n1)))) m ->
+          (array elem n2 vs2 (Zmod.add a (bits.of_Z width (sz * n1)))) m ->
         array elem (n1 + n2) (vs1 ++ vs2) a m.
     Proof.
       unfold array. intros.
       pose proof (Array.array_append (fun (a0 : word) (v : T) => elem v a0)
-                    (word.of_Z sz) vs1 vs2 a) as A.
+                    (bits.of_Z width sz) vs1 vs2 a) as A.
       eapply iff1ToEq in A.
       rewrite A. clear A.
       rewrite sep_assoc_eq in H.
@@ -235,9 +237,9 @@ Section WithMem.
       destruct H as [? H]. subst n2.
       eapply sep_emp_l. split.
       1: rewrite List.app_length; lia.
-      rewrite word.ring_morph_mul.
-      rewrite word.of_Z_unsigned.
-      rewrite <- word.ring_morph_mul.
+      rewrite Zmod.of_Z_mul.
+      rewrite Zmod.of_Z_unsigned.
+      rewrite <- Zmod.of_Z_mul.
       eapply sep_comm in H.
       exact H.
     Qed.
@@ -246,7 +248,7 @@ Section WithMem.
         0 <= i <= len vs ->
         array elem n vs a m ->
         sep (array elem i vs[:i] a)
-          (array elem (n-i) vs[i:] (word.add a (word.of_Z (sz * i)))) m.
+          (array elem (n-i) vs[i:] (Zmod.add a (bits.of_Z width (sz * i)))) m.
     Proof.
       unfold array. intros.
       eapply sep_emp_l in H0. destruct H0.
@@ -261,9 +263,9 @@ Section WithMem.
       eapply sep_emp_l.
       split.
       { subst. apply List.len_from. assumption. }
-      rewrite word.ring_morph_mul in H1.
-      rewrite word.of_Z_unsigned in H1.
-      rewrite <- word.ring_morph_mul in H1.
+      rewrite Zmod.of_Z_mul in H1.
+      rewrite Zmod.of_Z_unsigned in H1.
+      rewrite <- Zmod.of_Z_mul in H1.
       rewrite List.len_upto in H1 by assumption.
       apply sep_comm.
       exact H1.
@@ -293,7 +295,7 @@ Section WithMem.
 
     Lemma merge_anyval_array: forall n1 n2 addr m,
         sep (array elem n1 ? addr)
-            (array elem n2 ? (word.add addr (word.of_Z (sz * n1)))) m ->
+            (array elem n2 ? (Zmod.add addr (bits.of_Z width (sz * n1)))) m ->
         (array elem (n1 + n2) ? addr) m.
     Proof.
       unfold anyval. intros * Hm.
@@ -307,7 +309,7 @@ Section WithMem.
         0 <= i <= n ->
         (array elem n ? addr) m ->
         sep (array elem i ? addr)
-            (array elem (n-i) ? (word.add addr (word.of_Z (sz * i)))) m.
+            (array elem (n-i) ? (Zmod.add addr (bits.of_Z width (sz * i)))) m.
     Proof.
       intros * B Hm.
       destruct Hm as [bs Hm].
@@ -336,14 +338,14 @@ Section WithMem.
     eapply sep_emp_l. split. 1: eapply Byte.byte.unsigned_range.
     change (Z.to_nat _) with 1%nat.
     cbv [le_split] in *. rewrite Byte.byte.of_Z_unsigned.
-    cbv [sepclause_of_map ptsto] in *. rewrite map.of_list_word_singleton. auto.
+    cbv [sepclause_of_map ptsto] in *. rewrite (map.of_list_word_singleton width_pos). auto.
   Qed.
 
   Lemma uint8_to_ptsto: forall a b m, uint 8 b a m -> ptsto a (Byte.byte.of_Z b) m.
   Proof.
     intros a b m [Hle Hb]%sep_emp_l; revert Hb.
     change (Z.to_nat _) with 1%nat.
-    cbv [le_split]. rewrite map.of_list_word_singleton.
+    cbv [le_split]. rewrite (map.of_list_word_singleton width_pos).
     cbv [sepclause_of_map ptsto]; auto.
   Qed.
 
@@ -366,31 +368,31 @@ Section WithMem.
     unfold anyval. intros. destruct H as (bs & H).
     unfold array in H. eapply sep_emp_l in H. destruct H as (? & H). subst n.
     eapply impl1_array in H.
-    - eapply (array_map ptsto Byte.byte.of_Z addr bs (word.of_Z 1)) in H.
+    - eapply (array_map ptsto Byte.byte.of_Z addr bs (bits.of_Z width 1)) in H.
       eapply array_1_to_anybytes in H. rewrite List.map_length in H. exact H.
     - clear m bs addr H. unfold impl1. eapply uint8_to_ptsto.
   Qed.
 
   Lemma uint_to_uintptr: forall a z,
-      impl1 (uint width z a) (uintptr (word.of_Z z) a).
+      impl1 (uint width z a) (uintptr (bits.of_Z width z) a).
   Proof.
     unfold uint, uintptr. intros.
     eapply impl1_l_sep_emp. intros.
     unfold scalar, truncated_word, truncated_scalar.
-    rewrite word.unsigned_of_Z_nowrap by assumption.
+    rewrite bits.unsigned_of_Z_small by assumption.
     unfold nbits_to_nbytes, Memory.bytes_per, Memory.bytes_per_word.
-    rewrite Z.max_r by apply word.width_nonneg.
+    rewrite Z.max_r by apply width_nonneg.
     reflexivity.
   Qed.
 
   Lemma uintptr_to_uint: forall a w,
-      impl1 (uintptr w a) (uint width (word.unsigned w) a) .
+      impl1 (uintptr w a) (uint width (Zmod.unsigned w) a) .
   Proof.
     unfold uint, uintptr. intros.
-    eapply impl1_r_sep_emp. split. 1: eapply word.unsigned_range.
+    eapply impl1_r_sep_emp. split. 1: eapply (bits.unsigned_range _ width_nonneg).
     unfold scalar, truncated_word, truncated_scalar.
     unfold nbits_to_nbytes, Memory.bytes_per, Memory.bytes_per_word.
-    rewrite Z.max_r by apply word.width_nonneg.
+    rewrite Z.max_r by apply width_nonneg.
     reflexivity.
   Qed.
 End WithMem.
@@ -401,7 +403,7 @@ Notation "'EX' x .. y , p" := (ex1 (fun x => .. (ex1 (fun y => p)) ..))
   : type_scope.
 
 #[export] Hint Extern 1
-  (PredicateSize (anyval (@array ?width ?BW ?word ?mem ?T ?elem ?elemSize ?n))) =>
+  (PredicateSize (anyval (@array ?width ?BW ?mem ?T ?elem ?elemSize ?n))) =>
   exact (n * elemSize) : typeclass_instances.
 
 #[export] Hint Resolve purify_anyval_array : purify.

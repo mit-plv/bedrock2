@@ -1,11 +1,10 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import bedrock2.ZnWords.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Datatypes.Inhabited.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 
-Local Hint Mode Word.Interface.word - : typeclass_instances.
 Notation len := List.length.
 Coercion Z.of_nat : nat >-> Z.
 
@@ -16,23 +15,23 @@ Fixpoint ands(Ps: list Prop): Prop :=
   end.
 
 Section ZnWordTests.
-  Context {word: word.word 32} {word_ok: word.ok word}.
+  Local Notation word := (bits 32).
 
   Goal forall (left0 right : word) (xs : list word),
-    word.unsigned (word.sub right left0) = 8 * Z.of_nat (Datatypes.length xs) ->
+    Zmod.unsigned (Zmod.sub right left0) = 8 * Z.of_nat (Datatypes.length xs) ->
     forall (x : list word) (x1 x2 : word),
-    word.unsigned (word.sub x2 x1) = 8 * Z.of_nat (Datatypes.length x) ->
-    word.unsigned (word.sub x2 x1) <> 0 ->
-    word.unsigned
-      (word.sub x2
-         (word.add
-            (word.add x1 (word.slu (word.sru (word.sub x2 x1) (word.of_Z 4)) (word.of_Z 3)))
-            (word.of_Z 8))) =
+    Zmod.unsigned (Zmod.sub x2 x1) = 8 * Z.of_nat (Datatypes.length x) ->
+    Zmod.unsigned (Zmod.sub x2 x1) <> 0 ->
+    Zmod.unsigned
+      (Zmod.sub x2
+         (Zmod.add
+            (Zmod.add x1 (Zmod.slu (Zmod.sru (Zmod.sub x2 x1) 4) 3))
+            (bits.of_Z 32 8))) =
     8 *
     Z.of_nat
       (Datatypes.length x -
-       S (Z.to_nat (word.unsigned (word.sub (word.add x1 (word.slu (word.sru (word.sub x2 x1)
-           (word.of_Z 4)) (word.of_Z 3))) x1) / word.unsigned (word.of_Z 8)))).
+       S (Z.to_nat (Zmod.unsigned (Zmod.sub (Zmod.add x1 (Zmod.slu (Zmod.sru (Zmod.sub x2 x1)
+           4) 3)) x1) / Zmod.unsigned (bits.of_Z 32 8)))).
   Proof.
     intros. ZnWords.
   Qed.
@@ -59,9 +58,9 @@ Section ZnWordTests.
   Qed.
 
   Goal forall (a a' SZ: word) (T: Type) (f: T -> nat) (vs1: T),
-      word.unsigned (word.sub a' a) mod word.unsigned SZ = 0 ->
-      f vs1 = Z.to_nat (word.unsigned (word.sub a' a) / word.unsigned SZ) ->
-      word.add a (word.of_Z (word.unsigned (word.of_Z (word := word) (word.unsigned SZ))
+      Zmod.unsigned (Zmod.sub a' a) mod Zmod.unsigned SZ = 0 ->
+      f vs1 = Z.to_nat (Zmod.unsigned (Zmod.sub a' a) / Zmod.unsigned SZ) ->
+      Zmod.add a (bits.of_Z 32 (Zmod.unsigned (bits.of_Z 32 (Zmod.unsigned SZ))
                              * Z.of_nat (f vs1))) = a'.
   Proof.
     intros.
@@ -73,3 +72,35 @@ Section ZnWordTests.
   Qed.
 
 End ZnWordTests.
+
+Section ZnWordTests64.
+  Local Notation word := (bits 64).
+
+  (* A word disequality must survive as a disequality on the unsigned values. *)
+  Goal forall (w : word) (l : Z),
+    w <> bits.of_Z 64 0 ->
+    (0 < \[w] < 2 ^ 64 -> 0 <= l < 64) ->
+    0 <= l <= 64.
+  Proof. intros. ZnWords. Qed.
+
+  (* The result of a bitwise operation is known to lie below 2 ^ 64. *)
+  Goal forall a b c : word,
+    \[a] + 2 ^ 64 * \[b] = \[Zmod.and c (bits.of_Z 64 4294967295)] -> \[b] < 1.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall a b c d : word,
+    \[a] + 2 ^ 64 * \[b] = \[Zmod.or c d] -> \[b] < 1.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall a b c d : word,
+    \[a] + 2 ^ 64 * \[b] = \[Zmod.xor c d] -> \[b] < 1.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall a b c : word,
+    \[a] + 2 ^ 64 * \[b] = \[Zmod.not c] -> \[b] < 1.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall a b c d : word,
+    \[a] + 2 ^ 64 * \[b] = \[Zmod.add c d] -> \[b] < 1.
+  Proof. intros. ZnWords. Qed.
+End ZnWordTests64.

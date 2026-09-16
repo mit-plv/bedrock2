@@ -3,34 +3,35 @@ Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 
-Record RegisterSpec{width: Z}{BW: Bitwidth width}{word: word.word width} := {
-  initial_register_value: option word;
-  register_address: word;
+Record RegisterSpec{width: Z}{BW: Bitwidth width} := {
+  initial_register_value: option (bits width);
+  register_address: bits width;
 }.
 
-Record RegisterBehavior{width: Z}{BW: Bitwidth width}{word: word.word width} := {
+Record RegisterBehavior{width: Z}{BW: Bitwidth width} := {
   read: Prop;
-  write: word -> Prop;
+  write: bits width -> Prop;
 }.
 
 Section WithMem.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
 
   Definition get_rw_reg_in_event(e: LogItem)(addr: word): option word :=
     let '((mGive, action, args), (mRcv, rets)) := e in
     if String.eqb action "MMIOWRITE" then
       match args with
-      | cons a (cons v nil) => if word.eqb a addr then Some v else None
+      | cons a (cons v nil) => if Zmod.eqb a addr then Some v else None
       | _ => None
       end
     else if String.eqb action "MMIOREAD" then
       match args with
       | cons a nil =>
-          if word.eqb a addr then
+          if Zmod.eqb a addr then
             match rets with
             | cons v nil => Some v
             | _ => None
@@ -41,13 +42,13 @@ Section WithMem.
     else None.
 
   Definition InitializedRegister(addr initial: Z): RegisterSpec := {|
-    initial_register_value := Some (word.of_Z initial);
-    register_address := word.of_Z addr;
+    initial_register_value := Some (bits.of_Z width initial);
+    register_address := bits.of_Z width addr;
   |}.
 
   Definition UninitializedRegister(addr: Z): RegisterSpec := {|
     initial_register_value := None;
-    register_address := word.of_Z addr;
+    register_address := bits.of_Z width addr;
   |}.
 
 
@@ -95,7 +96,7 @@ Section WithMem.
           end
       end.
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {mem_ok: map.ok mem}.
 
   Lemma uninitialized_rw_reg_unique: forall t addr val1 val2,
       uninitialized_rw_reg val1 addr t ->
@@ -181,7 +182,7 @@ Section WithMem.
       | cons (r, b) tail =>
           match args with
           | cons addr args' =>
-              if word.eqb (register_address r) addr then
+              if Zmod.eqb (register_address r) addr then
                 match args' with
                 | nil => action = "MMIOREAD"%string /\ b.(read)
                 | cons val nil => action = "MMIOWRITE"%string /\ b.(write) val

@@ -1,7 +1,7 @@
 (* Z-ify word expressions in an undoable (unzify) way *)
 
 Require Import Coq.ZArith.ZArith Coq.micromega.Lia.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Tactics.Tactics.
@@ -230,7 +230,7 @@ End ZOps.
    but we don't return the name of that hyp, but an eq_refl instead, because we want
    to detect "no simplifications made" by matching for eq_refl. *)
 Ltac zify_unsigned_nop e :=
-  let pf := constr:(@eq_refl _ (word.unsigned e)) in
+  let pf := constr:(@eq_refl _ (Zmod.unsigned e)) in
   let n := fresh "__Zrange_0" in
   let __ := unique_pose_proof_name n pf in pf.
 
@@ -248,7 +248,7 @@ Ltac zify_nop e := constr:(@eq_refl _ e).
 
 Ltac zify_prop_nop e := constr:(iff_refl e).
 
-Ltac zify_term wok e :=
+Ltac zify_term bw e :=
   (*
   let __ := match constr:(Set) with
             | _ => idtac "zify_term" e "{"
@@ -258,27 +258,27 @@ Ltac zify_term wok e :=
   lazymatch e with
   | ?f1 ?a0 =>
       lazymatch f1 with
-      | @word.unsigned _ _ => zify_unsigned wok a0
-      | @word.signed _ _ =>
-          let p := zify_unsigned wok a0 in
+      | @Zmod.unsigned _ => zify_unsigned bw a0
+      | @Zmod.signed _ =>
+          let p := zify_unsigned bw a0 in
           let n := fresh "__Zrange_0" in
           unique_pose_proof_name n (word.signed_eq_unsigned_wrap_for_lia _ _ p)
-      | Z.of_nat => zify_of_nat wok a0
-      | Z.opp => zify_app1 wok e f1 a0
+      | Z.of_nat => zify_of_nat bw a0
+      | Z.opp => zify_app1 bw e f1 a0
       | ?f2 ?a1 =>
           lazymatch f2 with
-          | Z.add     => zify_app2 wok e f2 a1 a0
-          | Z.sub     => zify_app2 wok e f2 a1 a0
-          | Z.mul     => zify_app2 wok e f2 a1 a0
-          | Z.div     => zify_div_mod_expr wok e f2 a1 a0
-          | Z.modulo  => zify_div_mod_expr wok e f2 a1 a0
-          | Z.min     => let pa0 := zify_term wok a0 in
-                         let pa1 := zify_term wok a1 in
+          | Z.add     => zify_app2 bw e f2 a1 a0
+          | Z.sub     => zify_app2 bw e f2 a1 a0
+          | Z.mul     => zify_app2 bw e f2 a1 a0
+          | Z.div     => zify_div_mod_expr bw e f2 a1 a0
+          | Z.modulo  => zify_div_mod_expr bw e f2 a1 a0
+          | Z.min     => let pa0 := zify_term bw a0 in
+                         let pa1 := zify_term bw a1 in
                          let n := fresh "__Zspecmin_0" in
                          let __ := unique_pose_proof_name n (Z_min_spec_eq pa1 pa0) in
                          zify_nop e
-          | Z.max     => let pa0 := zify_term wok a0 in
-                         let pa1 := zify_term wok a1 in
+          | Z.max     => let pa0 := zify_term bw a0 in
+                         let pa1 := zify_term bw a1 in
                          let n := fresh "__Zspecmax_0" in
                          let __ := unique_pose_proof_name n (Z_max_spec_eq pa1 pa0) in
                          zify_nop e
@@ -290,10 +290,10 @@ Ltac zify_term wok e :=
     | true => ?a
     | false => ?b
     end =>
-      lazymatch zify_lia_bool wok c with
+      lazymatch zify_lia_bool bw c with
       | tt => zify_nop e
-      | ?pc => let pa := zify_term wok a in
-               let pb := zify_term wok b in
+      | ?pc => let pa := zify_term bw a in
+               let pb := zify_term bw b in
                let n := fresh "__Zspecif_0" in
                let __ := unique_pose_proof_name n (zify_Z_if c _ a b _ _ pc pa pb) in
                zify_nop e
@@ -303,8 +303,8 @@ Ltac zify_term wok e :=
   (*
   in let __ := match constr:(Set) with _ => idtac "} =" res end in res
   *)
-with zify_div_mod_expr wok e f x m :=
-  let p := zify_app2 wok e f x m in
+with zify_div_mod_expr bw e f x m :=
+  let p := zify_app2 bw e f x m in
   lazymatch type of p with
   | _ = f ?x' ?m' =>
       lazymatch is_const_Z_expr m' with
@@ -330,43 +330,42 @@ with zify_div_mod_expr wok e f x m :=
       | false => p
       end
   end
-with zify_lia_bool wok c0 :=
+with zify_lia_bool bw c0 :=
   let c := rdelta_var c0 in
   match goal with
-  | |- _ => let pc := zify_bool wok c in
+  | |- _ => let pc := zify_bool bw c in
             let __ := lazymatch type of pc with | _ = ?rhs => is_lia_bool rhs end in pc
   | h: c = ?rhs |- _ =>
       let __ := match constr:(Set) with _ => is_lia_bool rhs end in h
   | _ => constr:(tt)
   end
-with zify_bool wok b :=
+with zify_bool bw b :=
   lazymatch b with
   | ?f1 ?a0 =>
       lazymatch f1 with
-      | negb => zify_bool_app1 wok b f1 a0
+      | negb => zify_bool_app1 bw b f1 a0
       | ?f2 ?a1 =>
           lazymatch f2 with
-          | andb => zify_bool_app2 wok b f2 a1 a0
-          | orb => zify_bool_app2 wok b f2 a1 a0
-          | Z.ltb     => zify_app2 wok b f2 a1 a0
-          | Z.leb     => zify_app2 wok b f2 a1 a0
-          | @word.ltu _ _ => zify_u_u_bool wok b (@word.unsigned_ltu_eq _ _ wok) a1 a0
-          | @word.eqb _ _ => zify_u_u_bool wok b (@word.unsigned_eqb_eq _ _ wok) a1 a0
+          | andb => zify_bool_app2 bw b f2 a1 a0
+          | orb => zify_bool_app2 bw b f2 a1 a0
+          | Z.ltb     => zify_app2 bw b f2 a1 a0
+          | Z.leb     => zify_app2 bw b f2 a1 a0
+          | @Zmod.eqb _ => zify_u_u_bool bw b (@word.unsigned_eqb_eq _ bw) a1 a0
           | _ => zify_nop b
           end
       | _ => zify_nop b
       end
   | _ => zify_nop b
   end
-with zify_bool_app1 wok e f x :=
-  let px := zify_bool wok x in
+with zify_bool_app1 bw e f x :=
+  let px := zify_bool bw x in
   lazymatch px with
   | eq_refl => zify_nop e
   | _ => constr:(f_equal f px)
   end
-with zify_bool_app2 wok e f x y :=
-  let px := zify_bool wok x in
-  let py := zify_bool wok y in
+with zify_bool_app2 bw e f x y :=
+  let px := zify_bool bw x in
+  let py := zify_bool bw y in
   lazymatch px with
   | eq_refl =>
       lazymatch py with
@@ -375,19 +374,19 @@ with zify_bool_app2 wok e f x y :=
       end
   | _ => constr:(f_equal2 f px py)
   end
-with zify_u_u_bool wok e lem x y :=
-  let px := zify_unsigned wok x in
-  let py := zify_unsigned wok y in
+with zify_u_u_bool bw e lem x y :=
+  let px := zify_unsigned bw x in
+  let py := zify_unsigned bw y in
   constr:(lem _ _ _ _ px py)
-with zify_app1 wok e f x :=
-  let px := zify_term wok x in
+with zify_app1 bw e f x :=
+  let px := zify_term bw x in
   lazymatch px with
   | eq_refl => zify_nop e
   | _ => constr:(f_equal f px)
   end
-with zify_app2 wok e f x y :=
-  let px := zify_term wok x in
-  let py := zify_term wok y in
+with zify_app2 bw e f x y :=
+  let px := zify_term bw x in
+  let py := zify_term bw y in
   lazymatch px with
   | eq_refl =>
       lazymatch py with
@@ -396,31 +395,38 @@ with zify_app2 wok e f x y :=
       end
   | _ => constr:(f_equal2 f px py)
   end
-with zify_unsigned wok e :=
+with zify_unsigned bw e :=
   lazymatch e with
+  | @Zmod.zero _ =>
+      let n := fresh "__Zrange_0" in
+      unique_pose_proof_name n (Zmod.unsigned_0 _ : Zmod.unsigned e = 0)
+  | @Zmod.one _ =>
+      let n := fresh "__Zrange_0" in
+      unique_pose_proof_name n
+        (bits.unsigned_1 (proj2 (Z.le_succ_l 0 _) (@width_pos _ bw)) : Zmod.unsigned e = 1)
   | ?f1 ?a0 =>
       lazymatch f1 with
-      | @word.of_Z _ _ =>
-          let p_a0 := zify_term wok a0 in
+      | @Zmod.of_Z _ =>
+          let p_a0 := zify_term bw a0 in
           let n := fresh "__Zrange_0" in
-          unique_pose_proof_name n (@word.unsigned_of_Z_eq_wrap_for_lia _ _ wok _ _ p_a0)
-      | @word.opp _ _ =>
-          let p_a0 := zify_unsigned wok a0 in
+          unique_pose_proof_name n (@word.unsigned_of_Z_eq_wrap_for_lia _ bw _ _ p_a0)
+      | @Zmod.opp _ =>
+          let p_a0 := zify_unsigned bw a0 in
           let n := fresh "__Zspecopp_0" in
           let __ := unique_pose_proof_name n (word.unsigned_opp_eq_for_lia p_a0) in
           zify_unsigned_nop e
       | ?f2 ?a1 =>
           lazymatch f2 with
-          | @word.add _ _ => zify_unsigned_app2 wok
-                               (@word.unsigned_add_eq_wrap_for_lia _ _ wok) a1 a0
-          | @word.sub _ _ => zify_unsigned_app2 wok
-                               (@word.unsigned_sub_eq_wrap_for_lia _ _ wok) a1 a0
-          | @word.mul _ _ => zify_unsigned_app2 wok
-                               (@word.unsigned_mul_eq_wrap_for_lia _ _ wok) a1 a0
-          | @word.slu _ _ => zify_unsigned_shift wok e
-                               (@word.unsigned_slu_shamtZ_eq_wrap_for_lia _ _ wok) a1 a0
-          | @word.sru _ _ => zify_unsigned_shift wok e
-                               (@word.unsigned_sru_shamtZ_eq_wrap_for_lia _ _ wok) a1 a0
+          | @Zmod.add _ => zify_unsigned_app2 bw
+                               (@word.unsigned_add_eq_wrap_for_lia _ bw) a1 a0
+          | @Zmod.sub _ => zify_unsigned_app2 bw
+                               (@word.unsigned_sub_eq_wrap_for_lia _ bw) a1 a0
+          | @Zmod.mul _ => zify_unsigned_app2 bw
+                               (@word.unsigned_mul_eq_wrap_for_lia _ bw) a1 a0
+          | @Zmod.slu _ => zify_unsigned_shift bw e
+                               (@word.unsigned_slu_shamtZ_eq_wrap_for_lia _ bw) a1 a0
+          | @Zmod.sru _ => zify_unsigned_shift bw e
+                               (@word.unsigned_sru_shamtZ_eq_wrap_for_lia _ bw) a1 a0
           | _ => zify_unsigned_nop e
           end
       | _ => zify_unsigned_nop e
@@ -429,77 +435,87 @@ with zify_unsigned wok e :=
     | true => ?a
     | false => ?b
     end =>
-      lazymatch zify_lia_bool wok c with
+      lazymatch zify_lia_bool bw c with
       | tt => zify_unsigned_nop e
       | ?pc =>
-          let pa := zify_unsigned wok a in
-          let pb := zify_unsigned wok b in
+          let pa := zify_unsigned bw a in
+          let pb := zify_unsigned bw b in
           let n := fresh "__Zspecif_0" in
           let __ := unique_pose_proof_name n (word.unsigned_if_eq_for_lia c _ a b _ _ pc pa pb) in
           zify_unsigned_nop e
       end
-  | _ => (* Note: If e is a let-bound variable whose rhs is eg (word.add foo bar), we
+  | _ => (* Note: If e is a let-bound variable whose rhs is eg (Zmod.add foo bar), we
             don't see through this var definition, so do we miss zification opportunities?
             No, because before zifying this e, we already zified all let-bound vars, and
             for let-bound vars of type word, we add an equation of the form
-            `word.unsigned thevar = ...`, so just returning eq_refl here is sufficient! *)
+            `Zmod.unsigned thevar = ...`, so just returning eq_refl here is sufficient! *)
       zify_unsigned_nop e
   end
-with zify_unsigned_app2 wok lem x y :=
-  let px := zify_unsigned wok x in
-  let py := zify_unsigned wok y in
+with zify_unsigned_app2 bw lem x y :=
+  let px := zify_unsigned bw x in
+  let py := zify_unsigned bw y in
   let n := fresh "__Zrange_0" in
   unique_pose_proof_name n (lem _ _ _ _ px py)
-with zify_unsigned_shift wok e lem x y :=
-  lazymatch y with
-  | word.of_Z ?a' =>
-      let a := rdelta a' in
-      lazymatch isZcst a with
-      | true =>
-          let width := lazymatch type of wok with @word.ok ?wi _ => wi end in
-          lazymatch match constr:(Set) with
-                    | _ => constr:(eq_refl: ((0 <=? a) && (a <? width))%bool = true)
-                    | _ => tt
-                    end
-          with
-          | tt => zify_unsigned_nop e
-          | ?pa =>
-              let px := zify_unsigned wok x in
-              let n := fresh "__Zrange_0" in
-              unique_pose_proof_name n (lem _ _ a pa px)
-          end
-      | false => zify_unsigned_nop e
+with zify_unsigned_shift bw e lem x y :=
+  (* the shift amount is a constant, or a constant masked by Semantics.interp_binop *)
+  let py := lazymatch y with
+            | Zmod.unsigned (Zmod.of_Z _ ?a') mod 2 ^ Z.log2 _ =>
+                let a := rdelta a' in
+                lazymatch isZcst a with
+                | true => constr:(unsigned_of_Z_shamt a eq_refl eq_refl : y = a)
+                | false => constr:(tt)
+                end
+            | _ => let a := rdelta y in
+                   lazymatch isZcst a with
+                   | true => constr:(@eq_refl Z a : y = a)
+                   | false => constr:(tt)
+                   end
+            end in
+  lazymatch py with
+  | tt => zify_unsigned_nop e
+  | _ =>
+      let a := lazymatch type of py with _ = ?a => a end in
+      let width := lazymatch type of bw with Bitwidth ?wi => wi end in
+      lazymatch match constr:(Set) with
+                | _ => constr:(eq_refl: ((0 <=? a) && (a <? width))%bool = true)
+                | _ => tt
+                end
+      with
+      | tt => zify_unsigned_nop e
+      | ?pa =>
+          let px := zify_unsigned bw x in
+          let n := fresh "__Zrange_0" in
+          unique_pose_proof_name n (lem _ _ a _ pa py px)
       end
-  | _ => zify_unsigned_nop e
   end
 (* TODO not all proofs posed in zify_of_nat need to be posed, because eg
    0 <= Z.of_nat x + Z.of_nat y
    already follows from the
    0 <= Z.of_nat x and 0 <= Z.of_nat y
    that the subterm's processing posed *)
-with zify_of_nat wok e :=
+with zify_of_nat bw e :=
   lazymatch isnatcst e with
   | false =>
       lazymatch e with
       | ?f1 ?a0 =>
           lazymatch f1 with
           | Z.to_nat =>
-              let p_a0 := zify_term wok a0 in
+              let p_a0 := zify_term bw a0 in
               let n := fresh "__Zcases_0" in
               let __ := unique_pose_proof_name n (Z_of_nat_to_nat_eq_cases p_a0) in
               zify_of_nat_nop e
           | S =>
-              let p_a0 := zify_of_nat wok a0 in
+              let p_a0 := zify_of_nat bw a0 in
               let n := fresh "__Zrange_0" in
               unique_pose_proof_name n (Z_of_nat_S_eq p_a0)
-          | @List.length _ => zify_len wok a0
+          | @List.length _ => zify_len bw a0
           | ?f2 ?a1 =>
               lazymatch f2 with
-              | Nat.add => zify_of_nat_app2 wok Z_of_nat_add_eq a1 a0
-              | Nat.mul => zify_of_nat_app2 wok Z_of_nat_mul_eq a1 a0
+              | Nat.add => zify_of_nat_app2 bw Z_of_nat_add_eq a1 a0
+              | Nat.mul => zify_of_nat_app2 bw Z_of_nat_mul_eq a1 a0
               | Nat.sub =>
-                  let p0 := zify_of_nat wok a0 in
-                  let p1 := zify_of_nat wok a1 in
+                  let p0 := zify_of_nat bw a0 in
+                  let p1 := zify_of_nat bw a1 in
                   let nc := fresh "__Zcases_0" in
                   let __ := unique_pose_proof_name nc (Z_of_nat_sub_eq_cases p1 p0) in
                   zify_of_nat_nop e
@@ -511,38 +527,38 @@ with zify_of_nat wok e :=
       end
   | true => let z := eval cbv in (Z.of_nat e) in constr:(Z_of_nat_const e z eq_refl)
   end
-with zify_of_nat_app2 wok lem x y :=
-  let px := zify_of_nat wok x in
-  let py := zify_of_nat wok y in
+with zify_of_nat_app2 bw lem x y :=
+  let px := zify_of_nat bw x in
+  let py := zify_of_nat bw y in
   let n := fresh "__Zrange_0" in
   unique_pose_proof_name n (lem _ _ _ _ px py)
-with zify_len wok l :=
+with zify_len bw l :=
   lazymatch l with
   | ?f1 ?a0 =>
       lazymatch f1 with
       | ?f2 ?a1 =>
           lazymatch f2 with
           | @List.app _ =>
-              let pa0 := zify_len wok a0 in
-              let pa1 := zify_len wok a1 in
+              let pa0 := zify_len bw a0 in
+              let pa1 := zify_len bw a1 in
               constr:(list_len_app_eq pa1 pa0)
           | @List.cons _ =>
-              let pl := zify_len wok a0 in
+              let pl := zify_len bw a0 in
               constr:(list_len_cons a1 pl)
           | @List.repeatz _ =>
-              let pa0 := zify_term wok a0 in
+              let pa0 := zify_term bw a0 in
               let n := fresh "__Zcases_0" in
               let __ := unique_pose_proof_name n (list_len_repeatz_cases a1 pa0) in
               zify_len_nop l
           | @List.from _ =>
-              let pi := zify_term wok a1 in
-              let pl := zify_len wok a0 in
+              let pi := zify_term bw a1 in
+              let pl := zify_len bw a0 in
               let n := fresh "__Zcases_0" in
               let __ := unique_pose_proof_name n (list_len_from_cases pi pl) in
               zify_len_nop l
           | @List.upto _ =>
-              let pi := zify_term wok a1 in
-              let pl := zify_len wok a0 in
+              let pi := zify_term bw a1 in
+              let pl := zify_len bw a0 in
               let n := fresh "__Zcases_0" in
               let __ := unique_pose_proof_name n (list_len_upto_cases pi pl) in
               zify_len_nop l
@@ -555,26 +571,26 @@ with zify_len wok l :=
   | _ => zify_len_nop l
   end.
 
-Ltac zify_letbound_var wok x body tp :=
+Ltac zify_letbound_var bw x body tp :=
   lazymatch tp with
-  | @word.rep _ _ =>
-      let pf := zify_unsigned wok body in
+  | Zmod _ =>
+      let pf := zify_unsigned bw body in
       let n := fresh "__Zdef_" x in
-      let __ := unique_pose_proof_name n (pf : word.unsigned x = _) in
+      let __ := unique_pose_proof_name n (pf : Zmod.unsigned x = _) in
       idtac
   | nat =>
-      let pf := zify_of_nat wok body in
+      let pf := zify_of_nat bw body in
       let n := fresh "__Zdef_" x in
       let __ := unique_pose_proof_name n (pf : Z.of_nat x = _) in
       idtac
   | Z => (* xlia zchecker requires that := is turned into =, so we pose a proof
             even if it's just eq_refl *)
-      let pf := zify_term wok body in
+      let pf := zify_term bw body in
       let n := fresh "__Zdef_" x in
       let __ := unique_pose_proof_name n (pf : x = _) in
       idtac
   | _ => (* only pose proof if it's more interesting than eq_refl *)
-      let pf := zify_term wok body in
+      let pf := zify_term bw body in
       lazymatch pf with
       | eq_refl => idtac
       | _ => let n := fresh "__Zdef_" x in
@@ -619,12 +635,12 @@ Lemma f_equal2_prop: forall [A B: Type] (f: A -> B -> Prop) (a a': A) (b b': B),
     (f a b) <-> (f a' b').
 Proof. intros. subst. reflexivity. Qed.
 
-Lemma unsigned_eq_cong{width}{word: word.word width}{word_ok: word.ok word}:
-  forall (x y: word) (ux uy: Z),
-    word.unsigned x = ux ->
-    word.unsigned y = uy ->
+Lemma unsigned_eq_cong{width}:
+  forall (x y: bits width) (ux uy: Z),
+    Zmod.unsigned x = ux ->
+    Zmod.unsigned y = uy ->
     (x = y) <-> (ux = uy).
-Proof. intros. subst. split; intros; subst; auto using word.unsigned_inj. Qed.
+Proof. intros. subst. split; intros; subst; auto using Zmod.unsigned_inj. Qed.
 
 Lemma of_nat_eq_cong: forall (a b: nat) (az bz: Z),
     Z.of_nat a = az ->
@@ -638,7 +654,7 @@ Lemma bool_eq_cong: forall (a b a' b': bool),
     (a = b) <-> (a' = b').
 Proof. intros. subst. reflexivity. Qed.
 
-(* Z.of_nat and word.unsigned are embeddings (injections), so their cong lemmas are iffs,
+(* Z.of_nat and Zmod.unsigned are embeddings (injections), so their cong lemmas are iffs,
    but len is an abstraction, so its cong lemma only holds in one direction.
    For simplicity, we don't use it right now, but here it is for completeness: *)
 Lemma len_eq_cong[A: Type]: forall (xs ys: list A) (lxs lys: Z),
@@ -647,32 +663,32 @@ Lemma len_eq_cong[A: Type]: forall (xs ys: list A) (lxs lys: Z),
     (xs = ys) -> (lxs = lys).
 Proof. intros. subst. reflexivity. Qed.
 
-Ltac zify_prop wok e :=
+Ltac zify_prop bw e :=
   lazymatch e with
   | @eq ?tp ?x ?y =>
       lazymatch tp with
-      | @word.rep _ _ =>
-          let px := zify_unsigned wok x in
-          let py := zify_unsigned wok y in
+      | Zmod _ =>
+          let px := zify_unsigned bw x in
+          let py := zify_unsigned bw y in
           (* note: even if px and py are just eq_refl, we still want to transform the
              equality on words into an equality on Zs, and could do so using f_equal2,
              but for uniformity, we can also use unsigned_eq_cong *)
           constr:(unsigned_eq_cong _ _ _ _ px py)
       | nat =>
-          let px := zify_of_nat wok x in
-          let py := zify_of_nat wok y in
+          let px := zify_of_nat bw x in
+          let py := zify_of_nat bw y in
           constr:(of_nat_eq_cong _ _ _ _ px py)
       | bool =>
-          let px := zify_bool wok x in
-          let py := zify_bool wok y in
+          let px := zify_bool bw x in
+          let py := zify_bool bw y in
           constr:(bool_eq_cong _ _ _ _ px py)
-      | _ => zify_prop_app2_terms wok e (@eq tp) x y
+      | _ => zify_prop_app2_terms bw e (@eq tp) x y
       end
-  | ?p /\ ?q => zify_prop_app2_props wok e and_cong p q
-  | ?p \/ ?q => zify_prop_app2_props wok e or_cong p q
-  | ?p -> ?q => zify_prop_app2_props wok e impl_cong p q
+  | ?p /\ ?q => zify_prop_app2_props bw e and_cong p q
+  | ?p \/ ?q => zify_prop_app2_props bw e or_cong p q
+  | ?p -> ?q => zify_prop_app2_props bw e impl_cong p q
   | not ?p =>
-      let pp := zify_prop wok p in
+      let pp := zify_prop bw p in
       lazymatch pp with
       | iff_refl _ => zify_prop_nop e
       | _ => constr:(not_cong _ _ pp)
@@ -681,19 +697,19 @@ Ltac zify_prop wok e :=
     | true => ?a
     | false => ?b
     end =>
-      let pc := zify_bool wok c in
-      let pa := zify_prop wok a in
-      let pb := zify_prop wok b in
+      let pc := zify_bool bw c in
+      let pa := zify_prop bw a in
+      let pb := zify_prop bw b in
       constr:(zify_Prop_if _ _ _ _ _ _ pc pa pb)
-  | Z.le ?x ?y => zify_prop_app2_terms wok e Z.le x y
-  | Z.lt ?x ?y => zify_prop_app2_terms wok e Z.lt x y
-  | Z.ge ?x ?y => zify_prop_app2_terms wok e Z.ge x y
-  | Z.gt ?x ?y => zify_prop_app2_terms wok e Z.gt x y
+  | Z.le ?x ?y => zify_prop_app2_terms bw e Z.le x y
+  | Z.lt ?x ?y => zify_prop_app2_terms bw e Z.lt x y
+  | Z.ge ?x ?y => zify_prop_app2_terms bw e Z.ge x y
+  | Z.gt ?x ?y => zify_prop_app2_terms bw e Z.gt x y
   | _ => zify_prop_nop e
   end
-with zify_prop_app2_terms wok e f x y :=
-  let px := zify_term wok x in
-  let py := zify_term wok y in
+with zify_prop_app2_terms bw e f x y :=
+  let px := zify_term bw x in
+  let py := zify_term bw y in
   lazymatch px with
   | eq_refl =>
       lazymatch py with
@@ -702,9 +718,9 @@ with zify_prop_app2_terms wok e f x y :=
       end
   | _ => constr:(f_equal2_prop f _ _ _ _ px py)
   end
-with zify_prop_app2_props wok e lem x y :=
-  let px := zify_prop wok x in
-  let py := zify_prop wok y in
+with zify_prop_app2_props bw e lem x y :=
+  let px := zify_prop bw x in
+  let py := zify_prop bw y in
   lazymatch px with
   | iff_refl _ =>
       lazymatch py with
@@ -720,10 +736,10 @@ Proof. exact (@proj1 _ _). Qed.
 Lemma iff_to_bw_impl(P1 P2: Prop): (P1 <-> P2) -> (P2 -> P1).
 Proof. exact (@proj2 _ _). Qed.
 
-Ltac zify_hyp_pf wok h tp :=
+Ltac zify_hyp_pf bw h tp :=
   lazymatch type of tp with
   | Prop =>
-      let pf := zify_prop wok tp in
+      let pf := zify_prop bw tp in
       lazymatch pf with
       | iff_refl _ => h
       | _ => constr:(iff_to_fw_impl _ _ pf h)
@@ -733,8 +749,8 @@ Ltac zify_hyp_pf wok h tp :=
 
 (* if zification did something and created a new hyp hnew of type tnew,
    return (@Some tnew hnew), else return (@None tp) *)
-Ltac zify_hyp_option wok h tp :=
-  let pf := zify_hyp_pf wok h tp in
+Ltac zify_hyp_option bw h tp :=
+  let pf := zify_hyp_pf bw h tp in
   lazymatch pf with
   | h => constr:(@None tp)
   | _ => let hf := fresh "__Z_" h in
@@ -744,38 +760,34 @@ Ltac zify_hyp_option wok h tp :=
          constr:(Some hf)
   end.
 
-Ltac zify_hyp wok h tp :=
+Ltac zify_hyp bw h tp :=
   (* __pure hyps were already zified when they were purified,
      and __Z hyps also don't need to be zified *)
   tryif ident_starts_with __pure h then idtac
   else tryif ident_starts_with __Z h then idtac
-  else let __ := zify_hyp_option wok h tp in idtac.
+  else let __ := zify_hyp_option bw h tp in idtac.
 
-Ltac get_word_instance :=
+Ltac get_bitwidth :=
   lazymatch goal with
-  | inst: word.word _ |- _ => inst
-  | _: context[@word.unsigned ?wi ?inst] |- _ => inst
-  | _: context[@word.signed ?wi ?inst] |- _ => inst
-  | |- context[@word.unsigned ?wi ?inst] => inst
-  | |- context[@word.signed ?wi ?inst] => inst
-  | |- _ => fail "no word instance found"
-  end.
-
-Ltac get_word_ok :=
-  let wo := get_word_instance in
-  lazymatch constr:(_ : word.ok wo) with
-  | ?wok => wok
+  | bw: Bitwidth _ |- _ => bw
+  | _: context[@Zmod.unsigned (2 ^ ?wi) _] |- _ => constr:(_ : Bitwidth wi)
+  | _: context[@Zmod.signed (2 ^ ?wi) _] |- _ => constr:(_ : Bitwidth wi)
+  | |- context[@Zmod.unsigned (2 ^ ?wi) _] => constr:(_ : Bitwidth wi)
+  | |- context[@Zmod.signed (2 ^ ?wi) _] => constr:(_ : Bitwidth wi)
+  | _: context[Zmod (2 ^ ?wi)] |- _ => constr:(_ : Bitwidth wi)
+  | |- context[Zmod (2 ^ ?wi)] => constr:(_ : Bitwidth wi)
+  | |- _ => fail "no Bitwidth instance found"
   end.
 
 (* Sometimes we might want to use our recursive zify without any words, but just
-   for Z and nat, so we use this fake word.ok as the wok argument, which will work
+   for Z and nat, so we use this fake Bitwidth as the bw argument, which will work
    just fine as long as there are no word operations. *)
-Inductive no_word_ok_found: Prop := mk_no_word_ok_found.
+Inductive no_bitwidth_found: Prop := mk_no_bitwidth_found.
 
-Ltac get_word_ok_or_dummy :=
+Ltac get_bitwidth_or_dummy :=
   match constr:(Set) with
-  | _ => get_word_ok
-  | _ => constr:(mk_no_word_ok_found)
+  | _ => get_bitwidth
+  | _ => constr:(mk_no_bitwidth_found)
   end.
 
 Ltac clear_if_dup h :=
@@ -791,14 +803,14 @@ Ltac do_clear_Z_hyp_if_derivable h :=
 
 Ltac don't_clear_Z_hyp_if_derivable h := idtac.
 
-Ltac apply_range_bounding_lemma_in_hyp maybe_clear_Z_hyp_if_derivable wok h tp :=
+Ltac apply_range_bounding_lemma_in_hyp maybe_clear_Z_hyp_if_derivable bw h tp :=
   tryif ident_starts_with __Zrange_ h then
     lazymatch tp with
-    | word.unsigned _ = _ =>
-        eapply (@word.unsigned_range_eq _ _ wok) in h;
+    | Zmod.unsigned _ = _ =>
+        eapply (@word.unsigned_range_eq _ bw) in h;
         maybe_clear_Z_hyp_if_derivable h
-    | word.signed _ = _ =>
-        eapply (@word.signed_range_eq_for_lia _ _ wok) in h;
+    | Zmod.signed _ = _ =>
+        eapply (@word.signed_range_eq_for_lia _ bw) in h;
         maybe_clear_Z_hyp_if_derivable h
     | Z.of_nat _ = _ =>
         eapply Z_of_nat_range_eq in h;
@@ -808,26 +820,29 @@ Ltac apply_range_bounding_lemma_in_hyp maybe_clear_Z_hyp_if_derivable wok h tp :
   else idtac.
 
 Ltac zify_goal :=
+  fold_pow2_moduli;
   let g := lazymatch goal with |- ?g => g end in
-  let wok := get_word_ok_or_dummy in
-  let pf := zify_prop wok g in
+  let bw := get_bitwidth_or_dummy in
+  let pf := zify_prop bw g in
   eapply (iff_to_bw_impl _ _ pf);
   (* the result of zify_goal is very short-lived (only one xlia call), so
      we don't waste time on clearing derivable Z hyps seems *)
-  foreach_hyp_upwards (apply_range_bounding_lemma_in_hyp don't_clear_Z_hyp_if_derivable wok).
+  foreach_hyp_upwards (apply_range_bounding_lemma_in_hyp don't_clear_Z_hyp_if_derivable bw).
 
 Ltac zify_one_hyp h :=
+  fold_pow2_moduli;
   let tp := type of h in
-  let wok := get_word_ok_or_dummy in
-  let __ := zify_hyp_option wok h tp in idtac.
+  let bw := get_bitwidth_or_dummy in
+  let __ := zify_hyp_option bw h tp in idtac.
 
 Ltac zify_hyps :=
-  let wok := get_word_ok_or_dummy in
-  foreach_var (zify_letbound_var wok);
-  foreach_hyp (zify_hyp wok);
+  fold_pow2_moduli;
+  let bw := get_bitwidth_or_dummy in
+  foreach_var (zify_letbound_var bw);
+  foreach_hyp (zify_hyp bw);
   (* the results of zify_hyps is often used many times, and might also be seen by the
      user while debugging, so clearing derivable Z hyps seems worthwhile *)
-  foreach_hyp_upwards (apply_range_bounding_lemma_in_hyp do_clear_Z_hyp_if_derivable wok).
+  foreach_hyp_upwards (apply_range_bounding_lemma_in_hyp do_clear_Z_hyp_if_derivable bw).
 
 (* structure:
    rzify recurses into logical connectives, =, <> and word operations, posing a
@@ -862,19 +877,19 @@ Section Tests.
   Goal forall (a b: nat), Z.of_nat (a + b) = Z.of_nat (a + 0) + Z.of_nat (0 + b).
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
-  Context {word: word.word 32} {word_ok: word.ok word}.
-  Local Hint Mode Word.Interface.word - : typeclass_instances.
+  Local Notation word := (bits 32).
+  Context {BW: Bitwidth 32}.
 
   Goal forall (a b: word),
-      word.signed (a ^+ b) = word.signed (b ^+ a).
+      Zmod.signed (a ^+ b) = Zmod.signed (b ^+ a).
   Proof. intros. zify_goal. xlia zchecker. Succeed Qed. Abort.
 
   Goal forall (a b c: word),
-      word.signed (a ^+ b ^- c) = word.signed (word.opp c ^+ b ^+ a).
+      Zmod.signed (a ^+ b ^- c) = Zmod.signed (Zmod.opp c ^+ b ^+ a).
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b c: word),
-      word.signed (a ^+ b ^- c) = word.signed (word.of_Z 0 ^- c ^+ b ^+ a).
+      Zmod.signed (a ^+ b ^- c) = Zmod.signed ((bits.of_Z 32 0) ^- c ^+ b ^+ a).
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: word) (z: Z), \[a ^+ b] < z -> let c := b ^+ a in \[c] < z.
@@ -901,11 +916,11 @@ Section Tests.
 
   Goal forall (a b c: word),
       b <> a /\ c <> b /\ c <> a ->
-      a ^- b <> word.of_Z 0 /\ b ^- c <> word.of_Z 0.
+      a ^- b <> (bits.of_Z 32 0) /\ b ^- c <> (bits.of_Z 32 0).
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b x y: word),
-      (if word.ltu a b then word.ltu x y = true else word.ltu x y = false) ->
+      (if (\[a] <? \[b]) then (\[x] <? \[y]) = true else (\[x] <? \[y]) = false) ->
       \[a] < \[b] ->
       \[x] < \[y].
   Proof. intros. rzify_lia. Succeed Qed. Abort.
@@ -923,7 +938,7 @@ Section Tests.
 
   Goal forall (a b: Z),
       let c := Z.ltb a b in
-      let r := if c then a else word.unsigned (word.of_Z b) in
+      let r := if c then a else Zmod.unsigned (bits.of_Z 32 b) in
       a < b /\ r = a \/ b <= a /\ r + 2 ^ 32 * (b / 2 ^ 32) = b.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
@@ -934,12 +949,12 @@ Section Tests.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: word),
-      let r := if word.ltu (b ^+ a ^- b) b then a else b in
+      let r := if (\[b ^+ a ^- b] <? \[b]) then a else b in
       \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b: word),
-      let c := word.ltu a b in
+      let c := (\[a] <? \[b]) in
       let r := if c then a else b in
       \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
@@ -959,7 +974,7 @@ Section Tests.
 
   Goal forall (a b r: Z) c,
       c = Z.ltb a b ->
-      r = (if c then a else word.unsigned (word.of_Z b)) ->
+      r = (if c then a else Zmod.unsigned (bits.of_Z 32 b)) ->
       a < b /\ r = a \/ b <= a /\ r + 2 ^ 32 * (b / 2 ^ 32) = b.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
@@ -970,12 +985,12 @@ Section Tests.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b r: word),
-      r = (if word.ltu (b ^+ a ^- b) b then a else b) ->
+      r = (if (\[b ^+ a ^- b] <? \[b]) then a else b) ->
       \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (a b r: word) c,
-      c = word.ltu a b ->
+      c = (\[a] <? \[b]) ->
       r = (if c then a else b) ->
       \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
@@ -1000,13 +1015,13 @@ Section Tests.
 
   Goal forall (in0 in1: Z),
       /[in0] <> /[in1] ->
-      (negb (word.eqb /[in0] /[in1]))%bool = true.
+      (negb (Zmod.eqb /[in0] /[in1]))%bool = true.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (in0 in1 in2: Z),
       /[in0] <> /[in2] ->
       /[in1] <> /[in2] ->
-      (negb (word.eqb /[in0] /[in2]) && negb (word.eqb /[in1] /[in2]))%bool = true.
+      (negb (Zmod.eqb /[in0] /[in2]) && negb (Zmod.eqb /[in1] /[in2]))%bool = true.
   Proof. intros. rzify_lia. Succeed Qed. Abort.
 
   Goal forall (A: Type) (s1: list A),
@@ -1056,27 +1071,27 @@ Section Tests.
   Abort.
 
   Goal forall (left0 right : word) (xs : list word),
-    word.unsigned (word.sub right left0) = 8 * Z.of_nat (Datatypes.length xs + 0) ->
+    Zmod.unsigned (Zmod.sub right left0) = 8 * Z.of_nat (Datatypes.length xs + 0) ->
     forall (x : list word) (x1 x2 : word),
-    word.unsigned (word.sub x2 x1) = 8 * Z.of_nat (Datatypes.length x) ->
-    word.sub x2 x1 <> word.of_Z 0 ->
-    word.unsigned
-      (word.sub x2
-         (word.add
-            (word.add x1 (word.slu (word.sru (word.sub x2 x1) (word.of_Z 4)) (word.of_Z 3)))
-            (word.of_Z 8))) =
+    Zmod.unsigned (Zmod.sub x2 x1) = 8 * Z.of_nat (Datatypes.length x) ->
+    Zmod.sub x2 x1 <> (bits.of_Z 32 0) ->
+    Zmod.unsigned
+      (Zmod.sub x2
+         (Zmod.add
+            (Zmod.add x1 (Zmod.slu (Zmod.sru (Zmod.sub x2 x1) 4) 3))
+            (bits.of_Z 32 8))) =
     8 *
     Z.of_nat
       (Datatypes.length x -
-       S (Z.to_nat (word.unsigned (word.sub (word.add x1 (word.slu (word.sru (word.sub x2 x1)
-           (word.of_Z 4)) (word.of_Z 3))) x1) / word.unsigned (word.of_Z 8)))).
+       S (Z.to_nat (Zmod.unsigned (Zmod.sub (Zmod.add x1 (Zmod.slu (Zmod.sru (Zmod.sub x2 x1)
+           4) 3)) x1) / Zmod.unsigned (bits.of_Z 32 8)))).
   Proof.
     intros.
     (* Require Import bedrock2.ZnWords. Time ZnWords. *)
     zify_hyps.
     zify_goal.
     Import coqutil.Tactics.Tactics.
-    forget (\[x1 ^+ (x2 ^- x1) ^>> /[4] ^<< /[3] ^- x1] / \[/[8]]) as X1.
+    forget (\[x1 ^+ (x2 ^- x1) ^>> 4 ^<< 3 ^- x1] / \[/[8] : word]) as X1.
     Z.to_euclidean_division_equations.
     lia.
   Succeed Qed. Abort.
@@ -1084,7 +1099,7 @@ Section Tests.
   (* not supported yet: *)
   Goal forall (a: word),
       \[a] < 2 ^ 32 ->
-      word.divu (/[2] ^* a) /[2] = a.
+      Zmod.udiv (/[2] ^* a) /[2] = a.
   Abort.
 
 End Tests.

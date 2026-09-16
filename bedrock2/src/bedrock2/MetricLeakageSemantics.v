@@ -4,7 +4,7 @@ Require Import coqutil.Map.Properties.
 Require coqutil.Map.SortedListString.
 Require Import coqutil.Z.Lia.
 Require Import bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
-Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import BinIntDef coqutil.Word.Bitwidth.
 Require Export bedrock2.Memory.
 Require Import bedrock2.MetricLogging.
 Require Import bedrock2.MetricCosts.
@@ -15,7 +15,9 @@ Require Import Coq.Lists.List.
 Local Notation UNK := String.EmptyString.
 
 Section semantics.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
 
@@ -31,7 +33,7 @@ Section semantics.
        for tighter metrics bounds at bedrock2 level *)
     Fixpoint eval_expr (e : expr) (k : leakage) (mc : metrics) : option (word * leakage * metrics) :=
       match e with
-      | expr.literal v => Some (word.of_Z v, k, cost_lit isRegStr UNK mc)
+      | expr.literal v => Some (bits.of_Z width v, k, cost_lit isRegStr UNK mc)
       | expr.var x => 'v <- map.get l x; Some (v, k, cost_set isRegStr UNK x mc)
       | expr.inlinetable aSize t index =>
           '(index', k', mc') <- eval_expr index k mc;
@@ -50,7 +52,7 @@ Section semantics.
           Some (interp_binop op v1 v2, leak_binop op v1 v2 ++ k'', cost_op isRegStr UNK UNK UNK mc'')
       | expr.ite c e1 e2 =>
           '(vc, k', mc') <- eval_expr c k mc;
-          let b := word.eqb vc (word.of_Z 0) in
+          let b := Zmod.eqb vc (bits.of_Z width 0) in
           eval_expr (if b then e2 else e1) (leak_bool (negb b) :: k')
                     (cost_if isRegStr UNK (Some UNK) mc')
       end.
@@ -68,7 +70,9 @@ Section semantics.
 End semantics.
 
 Module exec. Section WithParams.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
   Section WithEnv.
@@ -116,13 +120,13 @@ Module exec. Section WithParams.
      : exec (cmd.stackalloc x n body) k t mSmall l mc post
   | if_true k t m l mc e c1 c2 post
     v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
-    (_ : word.unsigned v <> 0)
+    (_ : Zmod.unsigned v <> 0)
     (_ : exec c1 (leak_bool true :: k') t m l (cost_if isRegStr UNK (Some UNK) mc') post)
     : exec (cmd.cond e c1 c2) k t m l mc post
   | if_false e c1 c2
     k t m l mc post
     v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
-    (_ : word.unsigned v = 0)
+    (_ : Zmod.unsigned v = 0)
     (_ : exec c2 (leak_bool false :: k') t m l (cost_if isRegStr UNK (Some UNK) mc') post)
     : exec (cmd.cond e c1 c2) k t m l mc post
   | seq c1 c2
@@ -133,13 +137,13 @@ Module exec. Section WithParams.
   | while_false e c
     k t m l mc post
     v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
-    (_ : word.unsigned v = 0)
+    (_ : Zmod.unsigned v = 0)
     (_ : post (leak_bool false :: k') t m l (cost_loop_false isRegStr UNK (Some UNK) mc'))
     : exec (cmd.while e c) k t m l mc post
   | while_true e c
       k t m l mc post
       v k' mc' (_ : eval_expr m l e k mc = Some (v, k', mc'))
-      (_ : word.unsigned v <> 0)
+      (_ : Zmod.unsigned v <> 0)
       mid (_ : exec c (leak_bool true :: k') t m l mc' mid)
       (_ : forall k'' t' m' l' mc'', mid k'' t' m' l' mc'' ->
                                  exec (cmd.while e c) k'' t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc'') post)
@@ -168,7 +172,7 @@ Module exec. Section WithParams.
     : exec (cmd.interact binds action arges) k t m l mc post
   .
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
+  Context {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
 
   Lemma weaken {pick_sp: PickSp} : forall s k t m l mc post1,
       exec s k t m l mc post1 ->
@@ -287,7 +291,7 @@ Module exec. Section WithParams.
     - specialize IHe0 with (1 := Heqo). fwd. eexists. align_trace.
     - specialize IHe0_1 with (1 := Heqo). specialize IHe0_2 with (1 := Heqo0). fwd.
       eexists. align_trace.
-    - specialize IHe0_1 with (1 := Heqo). destruct (word.eqb _ _).
+    - specialize IHe0_1 with (1 := Heqo). destruct (Zmod.eqb _ _).
       + specialize IHe0_3 with (1 := H). fwd. eexists. align_trace.
       + specialize IHe0_2 with (1 := H). fwd. eexists. align_trace.
   Qed.
@@ -343,7 +347,7 @@ Module exec. Section WithParams.
       reflexivity.
     - destruct (eval_expr _ _ a1 _ _) as [ [ [v0 mc0] p0]|] eqn:E1; [|congruence].
       eapply IHa1 in E1. destruct E1 as [k''1 [H2 H3] ]. subst. simpl.
-      destruct (word.eqb _ _) eqn:E.
+      destruct (Zmod.eqb _ _) eqn:E.
       + eapply IHa3 in H1. destruct H1 as [k''3 [H1 H2] ]. subst.
         eexists (_ ++ _ :: _). repeat rewrite <- (app_assoc _ _ k1).
         intuition. rewrite H3. rewrite E. rewrite H2.
@@ -518,7 +522,9 @@ Module exec. Section WithParams.
 End exec. Notation exec := exec.exec.
 
 Section WithParams.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec} {pick_sp: PickSp}.
 

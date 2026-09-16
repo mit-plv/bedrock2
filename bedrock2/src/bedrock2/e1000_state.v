@@ -14,7 +14,7 @@ Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth.
 Require coqutil.Map.SortedListZ.
 Require Import coqutil.Datatypes.ZList.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
@@ -186,8 +186,9 @@ Proof.
 Qed.
 
 Section WithMem.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
 
   (* TODO move? *)
   Section WithElem.
@@ -203,7 +204,7 @@ Section WithMem.
          + hole (modulus - len vs)
          + array elem (Z.min (len vs) (modulus - startIndex)) vs[:modulus-startIndex] }>.
 
-    Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+    Context {mem_ok: map.ok mem}.
 
     Lemma purify_circular_buffer_slice(elem: E -> word -> mem -> Prop)
       {sz: PredicateSize elem}(modulus startIndex: Z)(vs: list E)(addr: word):

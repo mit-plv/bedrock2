@@ -2,7 +2,7 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
 Require Import Ltac2.Printf.
 Require Import coqutil.Tactics.foreach_hyp.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import bedrock2.bottom_up_simpl.
 Require Import bedrock2.unzify.
 
@@ -22,13 +22,14 @@ Ltac simpl_in_hyps := ltac2:(simpl_in_hyps ()).
 
 Section Tests.
 
-  Context {word: word.word 32} {word_ok: word.ok word}.
+  Local Notation word := (bits 32).
+  Context {BW: Bitwidth 32}.
   Context {mem: Type}.
   Hypothesis bytearray : Z -> list Z -> word -> mem -> Prop.
 
-  Add Ring wring : (Properties.word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ 32))
       ((* too expensive: preprocess [autorewrite with rew_word_morphism], *)
-       morphism (Properties.word.ring_morph (word := word)),
+       morphism (Properties.word.ring_morph (width := 32)),
        constants [Properties.word_cst]).
 
   Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.

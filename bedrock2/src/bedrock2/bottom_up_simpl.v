@@ -2,7 +2,7 @@ Require Import coqutil.Ltac2Lib.Ltac2.
 Require Import coqutil.Ltac2Lib.Failf coqutil.Ltac2Lib.rdelta coqutil.Ltac2Lib.Lia.
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Tactics.Tactics.
@@ -355,11 +355,11 @@ Ltac2 rec ring_expr_size(e: constr): int :=
   | Z.sub ?x ?y => r2 x y
   | Z.mul ?x ?y => r2 x y
   | Z.opp ?x => r1 x
-  | word.add ?x ?y => r2 x y
-  | word.sub ?x ?y => r2 x y
-  | word.mul ?x ?y => r2 x y
-  | word.opp ?x => r1 x
-  | word.of_Z ?x => non_ring_expr_size x
+  | Zmod.add ?x ?y => r2 x y
+  | Zmod.sub ?x ?y => r2 x y
+  | Zmod.mul ?x ?y => r2 x y
+  | Zmod.opp ?x => r1 x
+  | Zmod.of_Z _ ?x => non_ring_expr_size x
   | _ => non_ring_expr_size e
   end.
 
@@ -378,10 +378,10 @@ Ltac2 get_expr_kind(e: constr): expr_kind :=
   | Z.sub _ _ => ZRingExpr
   | Z.mul _ _ => ZRingExpr
   | Z.opp _ => ZRingExpr
-  | word.add _ _ => WordRingExpr
-  | word.sub _ _ => WordRingExpr
-  | word.mul _ _ => WordRingExpr
-  | word.opp _ => WordRingExpr
+  | Zmod.add _ _ => WordRingExpr
+  | Zmod.sub _ _ => WordRingExpr
+  | Zmod.mul _ _ => WordRingExpr
+  | Zmod.opp _ => WordRingExpr
   | _ => OtherExpr
   end.
 
@@ -1605,8 +1605,8 @@ Ltac2 mutable rec is_substitutable_rhs(rhs: constr): bool :=
   Constr.is_const rhs ||
   is_Z_const rhs ||
   lazy_match! rhs with
-  | word.of_Z ?x => is_substitutable_rhs x
-  | word.unsigned ?x => is_substitutable_rhs x
+  | Zmod.of_Z _ ?x => is_substitutable_rhs x
+  | Zmod.unsigned ?x => is_substitutable_rhs x
   | _ => false
   end.
 
@@ -1664,56 +1664,61 @@ Ltac2 local_nonring_nonground_Z_simpl e :=
 
 Ltac2 rec push_down_unsigned(w: constr): res :=
   lazy_match! w with
+  | @Zmod.zero ?m => res_rewrite constr:(@Zmod.unsigned_0 $m)
+  | @Zmod.one (2 ^ ?width) =>
+      first_val
+        [ res_rewrite constr:(@bits.unsigned_1 $width ltac2:(bottom_up_simpl_sidecond_hook ()))
+        | res_nothing_to_simpl constr:(Zmod.unsigned $w) ]
   | ?f1 ?a0 =>
       lazy_match! f1 with
-      | @word.of_Z ?width ?word =>
+      | @Zmod.of_Z (2 ^ ?width) =>
           first_val
-            [ res_rewrite constr:(@word.unsigned_of_Z_nowrap $width $word _ $a0
+            [ res_rewrite constr:(@bits.unsigned_of_Z_small $width $a0
                                     ltac2:(bottom_up_simpl_sidecond_hook ()))
-            | res_rewrite constr:(@word.unsigned_of_Z_modwrap $width $word _ $a0) ]
-      | @word.opp ?width ?word =>
+            | res_rewrite constr:(@word.unsigned_of_Z_modwrap $width _ $a0) ]
+      | @Zmod.opp (2 ^ ?width) =>
           let r_a0 := push_down_unsigned a0 in
           let pf0 := eq_proof r_a0 in
           lazy_match! new_term r_a0 with
           | 0 => res_rewrite constr:(word.unsigned_opp_0 $a0 $pf0)
           | _ => first_val [ res_rewrite constr:(word.unsigned_opp_eq_nowrap $pf0
                                              ltac2:(bottom_up_simpl_sidecond_hook ()))
-                           | res_nothing_to_simpl constr:(word.unsigned $w) ]
+                           | res_nothing_to_simpl constr:(Zmod.unsigned $w) ]
           end
       | ?f2 ?a1 =>
           lazy_match! f2 with
-          | word.add => push_down_unsigned_app2 w 'word.unsigned_add_eq_nowrap a1 a0
-          | word.sub => push_down_unsigned_app2 w 'word.unsigned_sub_eq_nowrap a1 a0
-          | word.mul => push_down_unsigned_app2 w 'word.unsigned_mul_eq_nowrap a1 a0
-          | _ => res_nothing_to_simpl constr:(word.unsigned $w)
+          | Zmod.add => push_down_unsigned_app2 w 'word.unsigned_add_eq_nowrap a1 a0
+          | Zmod.sub => push_down_unsigned_app2 w 'word.unsigned_sub_eq_nowrap a1 a0
+          | Zmod.mul => push_down_unsigned_app2 w 'word.unsigned_mul_eq_nowrap a1 a0
+          | _ => res_nothing_to_simpl constr:(Zmod.unsigned $w)
           end
-      | _ => res_nothing_to_simpl constr:(word.unsigned $w)
+      | _ => res_nothing_to_simpl constr:(Zmod.unsigned $w)
       end
-  | _ => res_nothing_to_simpl constr:(word.unsigned $w)
+  | _ => res_nothing_to_simpl constr:(Zmod.unsigned $w)
   end
 with push_down_unsigned_app2(w: constr)(lem: constr)(a1: constr)(a0: constr): res :=
   let pf0 := eq_proof (push_down_unsigned a0) in
   let pf1 := eq_proof (push_down_unsigned a1) in
   first_val
-    [ res_rewrite constr:($lem _ _ _ _ _ _ _ $pf1 $pf0 ltac2:(bottom_up_simpl_sidecond_hook ()))
-    | res_nothing_to_simpl constr:(word.unsigned $w) ].
+    [ res_rewrite constr:($lem _ _ _ _ _ _ $pf1 $pf0 ltac2:(bottom_up_simpl_sidecond_hook ()))
+    | res_nothing_to_simpl constr:(Zmod.unsigned $w) ].
 
 Ltac2 local_word_simpl(e: constr): res :=
   lazy_match! e with
-  | word.unsigned ?w => push_down_unsigned w
+  | Zmod.unsigned ?w => push_down_unsigned w
   (* Not sure if we want this one:
      It's useful as a preprocessing step for ring_simplify on words, but if we have
      \[/[z1 + z2]] where 0 <= z1 + z2 < 2^32, we don't want to push down the of_Z,
      so we can do the unsigned_of_Z rewrite.
-     --> TODO maybe reactivate, but then, also, in (word.of_Z (word.unsigned (a ^+ b))),
-         prevent push_down of word.unsigned! (because here, we don't even need a
+     --> TODO maybe reactivate, but then, also, in (bits.of_Z 32 (Zmod.unsigned (a ^+ b))),
+         prevent push_down of Zmod.unsigned! (because here, we don't even need a
          sidecondition to get rid of the roundtrip
-  | @word.of_Z ?width ?word ?z => push_down_of_Z width word z *)
+  | @Zmod.of_Z (2 ^ ?width) ?z => push_down_of_Z width z *)
   (* Strictly local subset of the above push_down_of_Z: *)
-  | @word.of_Z ?width ?word (?z mod 2 ^ ?width) =>
-      res_rewrite constr:(@word.of_Z_mod $width $word _ $z)
-  | @word.of_Z ?width ?word (word.unsigned ?w) =>
-      res_rewrite constr:(@word.of_Z_unsigned $width $word _ $w)
+  | @Zmod.of_Z (2 ^ ?width) (?z mod 2 ^ ?width) =>
+      res_rewrite constr:(@bits.of_Z_mod $width $z)
+  | @Zmod.of_Z (2 ^ ?width) (Zmod.unsigned ?w) =>
+      res_rewrite constr:(@Zmod.of_Z_unsigned (2 ^ $width) $w)
   end.
 
 (* Nodes like eg (List.length (cons a (cons b (app (cons c xs) ys)))) can
@@ -1732,7 +1737,7 @@ Ltac2 saturate_local_simpl parent_kind e :=
 -->
 treat push-down separately:
 - List.length/len
-- word.unsigned
+- Zmod.unsigned
 and don't treat them as push-down, but as "compute len/unsigned of given expression
 in a bottom-up way"
 
@@ -1982,16 +1987,16 @@ Ltac2 rec bottom_up_simpl(parent_kind: expr_kind)(e: constr): res :=
 
 Ltac2 Set bottom_up_simpl_recurse := fun e => bottom_up_simpl OtherExpr e.
 
-(* Consider `word.unsigned (foo (a + 0) ^+ x ^- foo a ^+ y)`:
-   The argument of word.unsigned needs a first full bottom-up traversal to simplify
-   it into `x ^+ y`, and after that, another push-down-word.unsigned traversal to
-   obtain `word.unsigned x + word.unsigned y` (if no overflow).
+(* Consider `Zmod.unsigned (foo (a + 0) ^+ x ^- foo a ^+ y)`:
+   The argument of Zmod.unsigned needs a first full bottom-up traversal to simplify
+   it into `x ^+ y`, and after that, another push-down-Zmod.unsigned traversal to
+   obtain `Zmod.unsigned x + Zmod.unsigned y` (if no overflow).
 
    On the other hand, if you start pushing down len too early, not a problem,
-   because list operations don't cancel like word.sub does.
+   because list operations don't cancel like Zmod.sub does.
 
    Therefore, pushing down len could be integrated into bottom_up_simpl, whereas
-   pushing down word.unsigned runs *after* it in local_simpl_hook *)
+   pushing down Zmod.unsigned runs *after* it in local_simpl_hook *)
 
 Definition protect_conclusion(P: Prop) := P.
 (* protect_conclusion is needed because if P2 is an implication,
@@ -2034,6 +2039,8 @@ Ltac2 log_simpl(t1: constr)(t2: constr) := ().
 Ltac2 fail_if_no_progress () := Control.zero Nothing_to_simplify.
 Ltac2 silent_if_no_progress () := ().
 Ltac2 bottom_up_simpl_in_hyp_of_type(no_progress: unit -> unit)(h: ident)(t: constr): unit :=
+  ltac1:(fold_pow2_moduli);
+  let t := Constr.type (Control.hyp h) in
   lazy_match! Constr.type t with
   | Prop =>
       change (forbidden $t) in $h; (* don't use h to simplify itself *)
@@ -2084,6 +2091,7 @@ Ltac2 bottom_up_simpl_in_letbound_var(x: ident)(b: constr)(_t: constr): unit :=
    when already focused, but if we do `all: bottom_up_simpl_in_goal ()`, we
    have to focus explicitly. *)
 Ltac2 bottom_up_simpl_in_goal0(no_progress: unit -> unit) := Control.enter (fun _ =>
+  ltac1:(fold_pow2_moduli);
   let t := Control.goal () in
   lazy_match! Constr.type t with
   | Prop =>
@@ -2135,7 +2143,6 @@ Ltac bottom_up_simpl_in_hyps_and_vars := ltac2:(bottom_up_simpl_in_hyps_and_vars
 
 Ltac bottom_up_simpl_in_all := ltac2:(bottom_up_simpl_in_all ()).
 
-Local Hint Mode Word.Interface.word - : typeclass_instances.
 
 Section Tests.
   Goal forall a: Z, a = a + 0 -> a = a + 0 -> True.
@@ -2145,11 +2152,12 @@ Section Tests.
     constructor.
   Succeed Qed. Abort.
 
-  Context {word: word.word 32} {word_ok: word.ok word}.
+  Local Notation word := (bits 32).
+  Context {BW: Bitwidth 32}.
 
-  Add Ring wring : (Properties.word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ 32))
       ((* too expensive: preprocess [autorewrite with rew_word_morphism], *)
-       morphism (Properties.word.ring_morph (word := word)),
+       morphism (Properties.word.ring_morph (width := 32)),
        constants [Properties.word_cst]).
 
   Hypothesis P: Z -> Prop.
@@ -2173,21 +2181,21 @@ Section Tests.
 
   Goal forall (n b: Z) (bs: list Z),
       Q (List.repeatz b (n - n) ++ bs[2/4:] ++
-           List.repeatz b (word.unsigned (word.of_Z 0))) = Q bs.
+           List.repeatz b (Zmod.unsigned (bits.of_Z 32 0))) = Q bs.
   Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall (byte_of_Z: Z -> Byte.byte) (b: word) (bs: list Byte.byte),
-      List.repeatz (byte_of_Z \[b]) \[/[0]] ++ bs[\[/[0]]:] = bs.
+      List.repeatz (byte_of_Z \[b]) \[(bits.of_Z 32 0)] ++ bs[\[(bits.of_Z 32 0)]:] = bs.
   Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
-  Goal forall a, 0 <= a < 2 ^ 32 -> let w := \[/[a]] in w = a.
+  Goal forall a, 0 <= a < 2 ^ 32 -> let w := \[bits.of_Z 32 (a)] in w = a.
   Proof. intros. bottom_up_simpl_in_vars (). subst w. refl. Succeed Qed. Abort.
 
-  Goal forall a, 0 <= a < 2 ^ 32 -> let x := [|a|][0] in let w := \[/[a]] in w = x.
+  Goal forall a, 0 <= a < 2 ^ 32 -> let x := [|a|][0] in let w := \[bits.of_Z 32 (a)] in w = x.
   Proof. intros. bottom_up_simpl_in_vars (). subst x w. refl. Succeed Qed. Abort.
 
   Goal forall a,
-      0 <= a < 2 ^ 32 -> let w := 1 + \[/[a]] in let y := w in w = 0 -> y = 1 + \[/[a]].
+      0 <= a < 2 ^ 32 -> let w := 1 + \[bits.of_Z 32 (a)] in let y := w in w = 0 -> y = 1 + \[bits.of_Z 32 (a)].
   Proof.
     intros.
     (* Note: w can only be simplified if we `subst y` before, because
@@ -2234,7 +2242,7 @@ Section Tests.
   Goal forall (a: Z), a = 1 -> a = 1.
   Proof. intros. bottom_up_simpl_in_hyps (). assumption. Succeed Qed. Abort.
 
-  Goal forall a: word, P (word.unsigned (a ^+ word.of_Z 8 ^- a) / 4) -> P 2.
+  Goal forall a: word, P (Zmod.unsigned (a ^+ bits.of_Z 32 8 ^- a) / 4) -> P 2.
   Proof.
     intros. bottom_up_simpl_in_hyp @H. exact H.
   Qed.
@@ -2274,19 +2282,19 @@ Section Tests.
   Succeed Qed. Abort.
 
   Goal forall mtvec_base: Z,
-      (word.add (word.add (word.mul (word.of_Z 4) (word.of_Z mtvec_base)) (word.of_Z 144))
-         (word.of_Z (4 * Z.of_nat (S (Z.to_nat (word.unsigned (word.sub (word.add
-            (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat 29))) (word.add
-               (word.mul (word.of_Z 4) (word.of_Z mtvec_base)) (word.of_Z 28)))
-                  (word.add (word.mul (word.of_Z 4) (word.of_Z mtvec_base))
-                     (word.of_Z 144))) / 4)))))) = /[4] ^* /[mtvec_base] ^+ /[148].
+      (Zmod.add (Zmod.add (Zmod.mul 4 (bits.of_Z 32 mtvec_base)) (bits.of_Z 32 144))
+         (bits.of_Z 32 (4 * Z.of_nat (S (Z.to_nat (Zmod.unsigned (Zmod.sub (Zmod.add
+            (Zmod.mul 4 (bits.of_Z 32 (Z.of_nat 29))) (Zmod.add
+               (Zmod.mul 4 (bits.of_Z 32 mtvec_base)) (bits.of_Z 32 28)))
+                  (Zmod.add (Zmod.mul 4 (bits.of_Z 32 mtvec_base))
+                     (bits.of_Z 32 144))) / 4)))))) = /[4] ^* /[mtvec_base] ^+ /[148].
   Proof.
     intros. bottom_up_simpl_in_goal (). refl.
   Qed.
 
   Goal forall (stack_hi: Z) (f: word -> Z),
-      f (word.add (word.of_Z stack_hi) (word.of_Z (-128))) =
-      f (word.sub (word.of_Z stack_hi) (word.of_Z 128)).
+      f (Zmod.add (bits.of_Z 32 stack_hi) (bits.of_Z 32 (-128))) =
+      f (Zmod.sub (bits.of_Z 32 stack_hi) (bits.of_Z 32 128)).
   Proof.
     intros. bottom_up_simpl_in_goal (). refl.
   Qed.
@@ -2298,19 +2306,19 @@ Section Tests.
 
   Goal forall (a b: Z),
       0 <= a + b < 2 ^ 32 ->
-      word.unsigned (word.of_Z (a + b)) - b = a.
+      Zmod.unsigned (bits.of_Z 32 (a + b)) - b = a.
   Proof.
     intros. bottom_up_simpl_in_goal (). refl.
   Succeed Qed. Abort.
 
   Goal forall (foo: Z -> word) (a: Z) (x y: word),
-       word.unsigned x + word.unsigned y < 2 ^ 32 ->
-       word.unsigned (foo (a + 0) ^+ x ^- foo a ^+ y) = word.unsigned x + word.unsigned y.
+       Zmod.unsigned x + Zmod.unsigned y < 2 ^ 32 ->
+       Zmod.unsigned (foo (a + 0) ^+ x ^- foo a ^+ y) = Zmod.unsigned x + Zmod.unsigned y.
   Proof.
     intros. bottom_up_simpl_in_goal (). refl.
   Succeed Qed. Abort.
 
-  Goal forall (z: Z), word.of_Z (word.unsigned (word.of_Z z)) = word.of_Z z.
+  Goal forall (z: Z), bits.of_Z 32 (Zmod.unsigned (bits.of_Z 32 z)) = bits.of_Z 32 z.
   Proof.
     intros. bottom_up_simpl_in_goal (). refl.
   Succeed Qed. Abort.
@@ -2637,7 +2645,7 @@ Section Tests.
 
   (** ** Not supported yet: *)
 
-  Goal forall b (bs: list Z) (a i: word),
+  Goal forall b (bs: list Z) a i,
       0 <= \[i] < len bs ->
       (List.repeatz \[b] \[i] ++ bs[\[i]:])[\[a ^+ i ^- a] / 1] = bs[\[i]].
   Proof.
@@ -2657,8 +2665,8 @@ Section Tests.
   Proof. intros. bottom_up_simpl_in_goal (). Fail refl. Abort.
 
   Goal forall (z1 z2: Z) (y: word),
-      word.of_Z (z1 + z2) ^- word.of_Z z1 = y ->
-      word.of_Z z2 = y.
+      bits.of_Z 32 (z1 + z2) ^- bits.of_Z 32 z1 = y ->
+      bits.of_Z 32 z2 = y.
   Proof.
     intros.
     bottom_up_simpl_in_hyps ().

@@ -1,16 +1,18 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface coqutil.Map.OfListWord.
-Require Import Coq.ZArith.BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import Coq.ZArith.BinIntDef coqutil.Word.Bitwidth.
 Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics bedrock2.LeakageSemantics.
 Require Import Coq.Lists.List.
 
 Section WeakestPrecondition.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec} {pick_sp: PickSp}.
   Implicit Types (k : leakage) (t : trace) (m : mem) (l : locals).
 
   Definition literal v (post : word -> Prop) : Prop :=
-    dlet! v := word.of_Z v in post v.
+    dlet! v := bits.of_Z width v in post v.
   Definition get (l : locals) (x : String.string) (post : word -> Prop) : Prop :=
     exists v, map.get l x = Some v /\ post v.
   Definition load s m a (post : _ -> Prop) : Prop :=
@@ -41,7 +43,7 @@ Section WeakestPrecondition.
         load s (map.of_list_word t) a (post (leak_word a :: k')))
       | expr.ite c e1 e2 =>
         rec k c (fun k' b =>
-        let b := word.eqb b (word.of_Z 0) in
+        let b := Zmod.eqb b (bits.of_Z width 0) in
         rec (leak_bool (negb b) :: k') (if b then e2 else e1) post)
     end.
     Fixpoint expr k e := expr_body expr k e.
@@ -109,8 +111,8 @@ Section WeakestPrecondition.
           post k' t' m' l')
       | cmd.cond br ct cf =>
         exists v k', dexpr m l k br v k' /\
-        (word.unsigned v <> 0%Z -> rec ct (leak_bool true :: k') t m l post) /\
-        (word.unsigned v = 0%Z -> rec cf (leak_bool false :: k') t m l post)
+        (Zmod.unsigned v <> 0%Z -> rec ct (leak_bool true :: k') t m l post) /\
+        (Zmod.unsigned v = 0%Z -> rec cf (leak_bool false :: k') t m l post)
       | cmd.seq c1 c2 =>
         rec c1 k t m l (fun k t m l => rec c2 k t m l post)
       | cmd.while _ _ => LeakageSemantics.exec e c k t m l post
@@ -142,10 +144,10 @@ Notation call := LeakageSemantics.call (only parsing).
 
 Ltac unfold1_cmd e :=
   lazymatch e with
-    @cmd ?width ?BW ?word ?mem ?locals ?ext_spec ?pick_sp ?CA ?c ?k ?t ?m ?l ?post =>
+    @cmd ?width ?BW ?mem ?locals ?ext_spec ?pick_sp ?CA ?c ?k ?t ?m ?l ?post =>
     let c := eval hnf in c in
-    constr:(@cmd_body width BW word mem locals ext_spec pick_sp CA
-                      (@cmd width BW word mem locals ext_spec pick_sp CA) c k t m l post)
+    constr:(@cmd_body width BW mem locals ext_spec pick_sp CA
+                      (@cmd width BW mem locals ext_spec pick_sp CA) c k t m l post)
   end.
 Ltac unfold1_cmd_goal :=
   let G := lazymatch goal with |- ?G => G end in
@@ -154,9 +156,9 @@ Ltac unfold1_cmd_goal :=
 
 Ltac unfold1_expr e :=
   lazymatch e with
-    @expr ?width ?BW ?word ?mem ?locals ?m ?l ?k ?arg ?post =>
+    @expr ?width ?BW ?mem ?locals ?m ?l ?k ?arg ?post =>
     let arg := eval hnf in arg in
-    constr:(@expr_body width BW word mem locals m l (@expr width BW word mem locals m l) k arg post)
+    constr:(@expr_body width BW mem locals m l (@expr width BW mem locals m l) k arg post)
   end.
 Ltac unfold1_expr_goal :=
   let G := lazymatch goal with |- ?G => G end in

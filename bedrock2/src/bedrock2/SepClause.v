@@ -1,14 +1,14 @@
 Require Export Coq.ZArith.ZArith.
 Require Export coqutil.Byte.
 Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
-Require Export coqutil.Word.Interface coqutil.Word.Properties.
+Require Export coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 
 (* Try to treat this type as abstractly as possible, as we might change the
    argument order from `word -> V -> mem -> Prop` to `V -> word -> mem -> Prop`,
    or make it a record or typeclass with additional size info. *)
-Definition sep_predicate{width: Z}{word: word width}(mem: map.map word byte)(V: Type) :=
-  word -> V -> mem -> Prop.
+Definition sep_predicate{width: Z}(mem: map.map (bits width) byte)(V: Type) :=
+  bits width -> V -> mem -> Prop.
 
 (* TODO deprecate this scope and notation *)
 Declare Scope sepcl_scope.

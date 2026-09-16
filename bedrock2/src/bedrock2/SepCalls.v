@@ -19,7 +19,7 @@ Require Import coqutil.Macros.symmetry.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.autoforward.
 Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Sorting.OrderToPermutation.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.ltac_list_ops.
@@ -36,8 +36,10 @@ Require Import Coq.Lists.List. (* to make sure `length` refers to list rather th
 Import List.ListNotations. Open Scope list_scope.
 
 Section SepLog.
-  Context {width: Z} {word: word.word width} {mem: map.map word byte}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {width: Z}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
+  Context {mem_ok: map.ok mem}.
 
   Lemma icancel_start: forall (P Q: Tree.Tree (mem -> Prop)) (C: Prop) (m: mem),
       Tree.to_sep P m ->

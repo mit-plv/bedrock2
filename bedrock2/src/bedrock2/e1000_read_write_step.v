@@ -15,7 +15,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Datatypes.HList coqutil.Byte.
 Require Import coqutil.Z.BitOps.
 Require coqutil.Map.SortedListZ.
@@ -71,8 +71,9 @@ Module RCTL.
 End RCTL.
 
 Section WithMem.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
 
   Local Notation IReg ofs init := (InitializedRegister (E1000_REGS + ofs) init)
     (only parsing).
@@ -327,7 +328,7 @@ Section WithMem.
     | H: _ \/ _ |- _ => destruct H
     end.
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {mem_ok: map.ok mem}.
 
   Global Instance e1000_MemoryMappedExtCallsOk:
     MemoryMappedExtCallsOk e1000_MemoryMappedExtCalls.
@@ -356,8 +357,8 @@ Section WithMem.
         lazymatch goal with
         | H: register_address _ = register_address _ |- _ =>
             cbn in H;
-            apply (f_equal word.unsigned) in H;
-            rewrite !word.unsigned_of_Z_nowrap in H
+            apply (f_equal Zmod.unsigned) in H;
+            rewrite !bits.unsigned_of_Z_small in H
                 by (destruct width_cases as [W | W]; rewrite W in *; lia);
             discriminate H
         end.
@@ -381,17 +382,17 @@ Section WithMem.
       left.
       destruct_or; fwd; cbn;
         unfold PropSet.subset, PropSet.of_list, PropSet.elem_of, E1000_REGS;
-        rewrite <- ?word.ring_morph_add;
-        cbn; clear -word_ok BW; intros; repeat destruct_or; try contradiction; subst x;
-        (rewrite word.unsigned_of_Z_nowrap; [lia | ]);
+        rewrite <- ?Zmod.of_Z_add;
+        cbn; clear - BW; intros; repeat destruct_or; try contradiction; subst x;
+        (rewrite bits.unsigned_of_Z_small; [lia | ]);
         destruct width_cases as [W | W]; rewrite W in *; lia.
     - (* write_step_addrs_ok *)
       left.
       destruct_or; fwd; cbn;
         unfold PropSet.subset, PropSet.of_list, PropSet.elem_of, E1000_REGS;
-        rewrite <- ?word.ring_morph_add;
-        cbn; clear -word_ok BW; intros; repeat destruct_or; try contradiction; subst x;
-        (rewrite word.unsigned_of_Z_nowrap; [lia | ]);
+        rewrite <- ?Zmod.of_Z_add;
+        cbn; clear - BW; intros; repeat destruct_or; try contradiction; subst x;
+        (rewrite bits.unsigned_of_Z_small; [lia | ]);
         destruct width_cases as [W | W]; rewrite W in *; lia.
   Qed.
 
@@ -428,7 +429,7 @@ Section WithMem.
     intros.
     eapply exec.interact_cps with (mGive := map.empty).
     { eapply map.split_empty_r. reflexivity. }
-    { cbn [eval_call_args eval_expr]. rewrite word.of_Z_unsigned. reflexivity. }
+    { cbn [eval_call_args eval_expr]. rewrite Zmod.of_Z_unsigned. reflexivity. }
     { unfold ext_spec. exists 4%nat.
       split; [solve [clear; auto] | ]. left.
       split; [reflexivity | ].
@@ -449,7 +450,7 @@ Section WithMem.
       intros m' Sp.
       eapply H2.
       - exact Sp.
-      - rewrite word.unsigned_of_Z_nowrap.
+      - rewrite bits.unsigned_of_Z_small.
         + case TODO. (* bound rx_queue_cap *)
         + destruct width_cases as [W | W]; rewrite W;
             Z.to_euclidean_division_equations; lia.

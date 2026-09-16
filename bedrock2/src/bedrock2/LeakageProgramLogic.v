@@ -1,5 +1,5 @@
 From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
-Require Import coqutil.Map.Interface.
+Require Import coqutil.Map.Interface coqutil.Word.Bitwidth.
 Require coqutil.Datatypes.ListSet.
 Require Import bedrock2.Syntax bedrock2.LeakageSemantics.
 Require Import bedrock2.LeakageWeakestPrecondition.
@@ -13,9 +13,9 @@ Notation spec_of := bedrock2.ProgramLogic.spec_of.
 
 Module Import Coercions.
   Export coqutil.Map.Separation.
-  Import Map.Interface Word.Interface BinInt.
+  Import Map.Interface BinInt.
   Coercion Z.of_nat : nat >-> Z.
-  Coercion word.unsigned : word.rep >-> Z.
+  Coercion Zmod.unsigned : Zmod >-> Z.
 End Coercions.
 
 Goal True.
@@ -122,9 +122,6 @@ Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
 Ltac straightline_cleanup :=
   match goal with
-  (* TODO remove superfluous _ after .rep, but that will break some proofs that rely on
-     x not being cleared to instantiate evars with terms depending on x *)
-  | x : Word.Interface.word.rep _ |- _ => clear x
   | x : Init.Byte.byte |- _ => clear x
   | x : Semantics.trace |- _ => clear x
   | x : Syntax.cmd |- _ => clear x
@@ -135,8 +132,6 @@ Ltac straightline_cleanup :=
   | x : bool |- _ => clear x
   | x : list _ |- _ => clear x
   | x : nat |- _ => clear x
-  (* same TODO as above *)
-  | x := _ : Word.Interface.word.rep _ |- _ => clear x
   | x := _ : Init.Byte.byte |- _ => clear x
   | x := _ : Semantics.trace |- _ => clear x
   | x := _ : Syntax.cmd |- _ => clear x
@@ -150,7 +145,7 @@ Ltac straightline_cleanup :=
   | |- forall _, _ => intros
   | |- let _ := _ in _ => intros
   | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
-  | _ => progress (cbn [Semantics.interp_binop] in * )
+  | _ => progress (cbn [Semantics.interp_binop Semantics.slu Semantics.sru Semantics.srs Semantics.ltu Semantics.lts] in * )
   | H: exists _, _ |- _ => assert_succeeds progress destruct H as (_&_); destruct H
   | H: _ /\ _ |- _ => destruct H
   | x := ?y |- ?G => is_var y; subst x
@@ -181,13 +176,13 @@ Ltac straightline_stackalloc :=
   let Hm' := fresh Hm in
   let Htmp := fresh in
   let Pm := match type of Hm with ?P m => P end in
-  assert_fails (assert (Separation.sep Pm (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a _) mCombined) as _ by ecancel_assumption);
+  assert_fails (assert (Separation.sep Pm (Array.array Separation.ptsto (bits.of_Z _ 1) a _) mCombined) as _ by ecancel_assumption);
   rename Hm into Hm';
   let stack := fresh "stack" in
   let stack_length := fresh "length_" stack in (* MUST remain in context for deallocation *)
   destruct (Array.anybytes_to_array_1 mStack a n Hanybytes) as (stack&Htmp&stack_length);
   epose proof (ex_intro _ m (ex_intro _ mStack (conj Hsplit (conj Hm' Htmp)))
-  : Separation.sep _ (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a _) mCombined) as Hm;
+  : Separation.sep _ (Array.array Separation.ptsto (bits.of_Z _ 1) a _) mCombined) as Hm;
   clear Htmp; (* note: we could clear more here if we assumed only one separation-logic description of each memory is present *)
   try (let m' := fresh m in rename m into m'); rename mCombined into m;
   ( assert (BinInt.Z.of_nat (Datatypes.length stack) = n)
@@ -204,7 +199,7 @@ Ltac straightline_stackdealloc :=
   pose proof Hm as Hm';
   let Psep := match type of Hm with ?P _ => P end in
   let Htmp := fresh "Htmp" in
-  eassert (Lift1Prop.iff1 Psep (Separation.sep _ (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a stack))) as Htmp
+  eassert (Lift1Prop.iff1 Psep (Separation.sep _ (Array.array Separation.ptsto (bits.of_Z _ 1) a stack))) as Htmp
   by ecancel || fail "failed to find stack frame in" Psep "using ecancel";
   eapply (fun m => proj1 (Htmp m)) in Hm;
   let m' := fresh m in
@@ -292,23 +287,23 @@ Ltac straightline :=
   | |- dexpr _ _ _ _ _ _ => cbv beta delta [dexpr]
   | |- dexprs _ _ _ _ _ _ => cbv beta delta [dexprs]
   | |- literal _ _ => cbv beta delta [literal]
-  | |- @get ?w ?W ?L ?l ?x ?P =>
+  | |- @get ?w ?L ?l ?x ?P =>
       let get' := eval cbv [get] in @get in
-      change (get' w W L l x P); cbv beta
+      change (get' w L l x P); cbv beta
   | |- load _ _ _ _ => cbv beta delta [load]
-  | |- @LeakageLoops.enforce ?width ?word ?locals ?names ?values ?map =>
+  | |- @LeakageLoops.enforce ?width ?locals ?names ?values ?map =>
     let values := eval cbv in values in
-    change (@LeakageLoops.enforce width word locals names values map);
+    change (@LeakageLoops.enforce width locals names values map);
     exact (conj (eq_refl values) eq_refl)
-  | |- @eq (@coqutil.Map.Interface.map.rep String.string Interface.word.rep _) _ _ =>
+  | |- @eq (@coqutil.Map.Interface.map.rep String.string (Zmod _) _) _ _ =>
     eapply SortedList.eq_value; exact eq_refl
-  | |- @map.get String.string Interface.word.rep ?M ?m ?k = Some ?e' =>
+  | |- @map.get String.string (Zmod _) ?M ?m ?k = Some ?e' =>
     let e := rdelta e' in
     is_evar e;
     once (let v := multimatch goal with x := context[@map.put _ _ M _ k ?v] |- _ => v end in
           (* cbv is slower than this, cbv with whitelist would have an enormous whitelist, cbv delta for map is slower than this, generalize unrelated then cbv is slower than this, generalize then vm_compute is slower than this, lazy is as slow as this: *)
           unify e v; exact (eq_refl (Some v)))
-  | |- @coqutil.Map.Interface.map.get String.string Interface.word.rep _ _ _ = Some ?v =>
+  | |- @coqutil.Map.Interface.map.get String.string (Zmod _) _ _ _ = Some ?v =>
     let v' := rdelta v in is_evar v'; (change v with v'); exact eq_refl
   | |- ?x = ?y =>
     let y := rdelta y in is_evar y; change (x=y); exact eq_refl
@@ -325,15 +320,15 @@ Ltac straightline :=
   | |- store Syntax.access_size.word _ _ _ _ =>
     eapply Scalars.store_word_of_sep; [solve[ecancel_assumption]|]
   | |- bedrock2.Memory.load Syntax.access_size.one ?m ?a = Some ?ev =>
-    try subst ev; refine (@Scalars.load_one_of_sep _ _ _ _ _ _ _ _ _ _); ecancel_assumption
-  | |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.two ?m ?a = Some ?ev =>
-    try subst ev; refine (@Scalars.load_two_of_sep _ _ word _ mem _ a _ _ m _); ecancel_assumption
-  | |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
-    try subst ev; refine (@Scalars.load_four_of_sep_32bit _ _ word _ mem _ eq_refl a _ _ m _); ecancel_assumption
-  | |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
-    try subst ev; refine (@Scalars.load_four_of_sep _ _ word _ mem _ a _ _ m _); ecancel_assumption
-  | |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.word ?m ?a = Some ?ev =>
-    try subst ev; refine (@Scalars.load_word_of_sep _ _ word _ mem _ a _ _ m _); ecancel_assumption
+    try subst ev; refine (@Scalars.load_one_of_sep _ _ _ a _ _ m _); ecancel_assumption
+  | |- @bedrock2.Memory.load _ ?mem Syntax.access_size.two ?m ?a = Some ?ev =>
+    try subst ev; refine (@Scalars.load_two_of_sep _ _ mem _ a _ _ m _); ecancel_assumption
+  | |- @bedrock2.Memory.load _ ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
+    try subst ev; refine (@Scalars.load_four_of_sep_32bit _ _ mem _ eq_refl a _ _ m _); ecancel_assumption
+  | |- @bedrock2.Memory.load _ ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
+    try subst ev; refine (@Scalars.load_four_of_sep _ _ mem _ a _ _ m _); ecancel_assumption
+  | |- @bedrock2.Memory.load _ ?mem Syntax.access_size.word ?m ?a = Some ?ev =>
+    try subst ev; refine (@Scalars.load_word_of_sep _ _ mem _ a _ _ m _); ecancel_assumption
   | |- exists l', Interface.map.of_list_zip ?ks ?vs = Some l' /\ _ =>
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
   | |- exists l', Interface.map.putmany_of_list_zip ?ks ?vs ?l = Some l' /\ _ =>
@@ -436,20 +431,20 @@ Ltac seprewrite_by Hrw tac :=
 
 Ltac show_program :=
   lazymatch goal with
-  | |- @cmd ?width ?BW ?word ?mem ?locals ?ext_spec ?pick_sp ?E ?c ?F ?G ?H ?I =>
+  | |- @cmd ?width ?BW ?mem ?locals ?ext_spec ?pick_sp ?E ?c ?F ?G ?H ?I =>
     let c' := eval cbv in c in
-    change (@cmd width BW word mem locals ext_spec pick_sp E (fst (c, c')) F G H I)
+    change (@cmd width BW mem locals ext_spec pick_sp E (fst (c, c')) F G H I)
   end.
 
 Ltac subst_words :=
-  repeat match goal with x := _ : coqutil.Word.Interface.word.rep |- _ => subst x end.
+  repeat match goal with x := _ : (Zmod _) |- _ => subst x end.
 
 Require Import coqutil.Tactics.eplace Coq.setoid_ring.Ring_tac.
 Ltac ring_simplify_words :=
   subst_words;
   repeat match goal with H : context [?w] |- _ =>
-    let __ := constr:(w : Interface.word.rep) in
+    let __ := constr:(w : (Zmod _)) in
     progress eplace w with _ in H by (ring_simplify; reflexivity) end;
   repeat match goal with |- context [?w] =>
-    let __ := constr:(w : Interface.word.rep) in
+    let __ := constr:(w : (Zmod _)) in
     progress eplace w with _ by (ring_simplify; reflexivity) end.

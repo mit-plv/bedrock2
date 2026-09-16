@@ -30,7 +30,7 @@ Require Import Coq.Lists.List.
 Require Import Coq.Strings.String Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 From bedrock2 Require Import NotationsCustomEntry LeakageProgramLogic Map.Separation Map.SeparationLogic Array Scalars LeakageLoops.
-From coqutil Require Import Datatypes.List Word.Bitwidth Word.Interface Map.Interface.
+From coqutil Require Import Datatypes.List Word.Bitwidth Map.Interface.
 From bedrock2 Require Import Semantics LeakageSemantics Syntax.
 Import coqutil.Word.Properties coqutil.Map.Properties.
 Require Import bedrock2.AbsintWordToZ.
@@ -45,11 +45,11 @@ Infix "/" := (expr.op bopname.divu) (in custom bedrock_expr at level 5, left ass
 
 Section WithWord.
   Context {width: Z} {BW: Bitwidth width}.
-  Context {word: word.word width}.
+  Local Notation word := (bits width).
   Context {mem: map.map word Byte.byte}.
   Context {locals: map.map string word}.
   Context {env : map.map string (list string * list string * Syntax.cmd)}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok: map.ok locals} {env_ok : map.ok env}.
+  Context {mem_ok: map.ok mem} {locals_ok: map.ok locals} {env_ok : map.ok env}.
   Context {ext_spec: ExtSpec} {ext_spec_ok : ext_spec.ok ext_spec}.
   Context {pick_sp: PickSp}.
   Context (width_big: 4 <= width). (*to avoid division by zero*)
@@ -119,10 +119,10 @@ Section WithWord.
   Instance poly_tomsg_ct : spec_of "poly_tomsg" :=
     fnspec! exists f : word -> word -> Z -> leakage, "poly_tomsg" msg a_coeffs / (msg_vals : list Byte.byte) (a_coeffs_vals : list word) (R : mem -> Prop),
     { requires k t m :=
-        ((array scalar8 (word.of_Z 1) msg msg_vals) ⋆ (array scalar16 (word.of_Z 2) a_coeffs a_coeffs_vals) ⋆ R)%sep m /\
+        ((array scalar8 (bits.of_Z width 1) msg msg_vals) ⋆ (array scalar16 2 a_coeffs a_coeffs_vals) ⋆ R)%sep m /\
           KYBER_N = Z.of_nat (List.length a_coeffs_vals) /\
           KYBER_INDCPA_MSGBYTES = Z.of_nat (List.length msg_vals) /\
-          @word.unsigned _ word (word.divu (word.of_Z KYBER_N) (word.of_Z 8)) <= KYBER_INDCPA_MSGBYTES ;
+          Zmod.unsigned (Zmod.udiv (bits.of_Z width KYBER_N) (bits.of_Z width 8)) <= KYBER_INDCPA_MSGBYTES ;
       ensures K T M :=
         T = t /\ K = f msg a_coeffs KYBER_N ++ k }.
     
@@ -136,14 +136,14 @@ Section WithWord.
                    PrimitivePair.pair.mk
                      (KYBER_N = Z.of_nat (List.length a_coeffs_vals) /\
                         KYBER_INDCPA_MSGBYTES = Z.of_nat (List.length msg_vals) /\
-                        ((array scalar8 (word.of_Z 1) msg msg_vals) * (array scalar16 (word.of_Z 2) a_coeffs a_coeffs_vals) * R)%sep m 
-                      /\ vi = @word.unsigned _ word (word.divu (word.of_Z KYBER_N) (word.of_Z 8)) - word.unsigned i) (* precondition *)
+                        ((array scalar8 (bits.of_Z width 1) msg msg_vals) * (array scalar16 2 a_coeffs a_coeffs_vals) * R)%sep m 
+                      /\ vi = Zmod.unsigned (Zmod.udiv (bits.of_Z width KYBER_N) (bits.of_Z width 8)) - Zmod.unsigned i) (* precondition *)
                      (fun K T M I A_COEFFS MSG => (*postcondition*)
                         T = t /\ A_COEFFS = a_coeffs /\ MSG = msg /\
                           exists MSG_VALS A_COEFFS_VALS,
                             KYBER_N = Z.of_nat (List.length A_COEFFS_VALS) /\
                               KYBER_INDCPA_MSGBYTES = Z.of_nat (List.length MSG_VALS) /\
-                              ((array scalar8 (word.of_Z 1) msg MSG_VALS) * (array scalar16 (word.of_Z 2) a_coeffs A_COEFFS_VALS) * R)%sep M /\
+                              ((array scalar8 (bits.of_Z width 1) msg MSG_VALS) * (array scalar16 2 a_coeffs A_COEFFS_VALS) * R)%sep M /\
                               K = (get_outer_leakage _ _ _ i (Z.to_nat vi) ++ k)%list
                 )) 
                 (fun n m => 0 <= n < m) (* well_founded relation *)
@@ -178,20 +178,19 @@ Section WithWord.
           { rewrite ?Properties.map.get_put_dec; exact eq_refl. }
           eapply dexpr_expr. repeat straightline.
           (*finally we do something interesting*)
-          destruct (word.ltu x1 _) eqn:E.
-          2: { rewrite word.unsigned_of_Z_0 in H4. exfalso. auto. }
-          rewrite word.unsigned_ltu in E. apply Z.ltb_lt in E.
-          assert (nsmall: (0 <= Z.to_nat (word.unsigned x1) < Datatypes.length x)%nat) by ZnWords.
-          assert (Ex1: x1 = @word.of_Z _ word (@word.unsigned _ word (word.of_Z 1) * Z.of_nat (Z.to_nat (word.unsigned x1)))).
+          destruct (Z.ltb (Zmod.unsigned x1) _) eqn:E.
+          2: { rewrite Zmod.unsigned_0 in H4. exfalso. auto. }
+          apply Z.ltb_lt in E.
+          assert (nsmall: (0 <= Z.to_nat (Zmod.unsigned x1) < Datatypes.length x)%nat) by ZnWords.
+          assert (Ex1: x1 = bits.of_Z width (Zmod.unsigned (bits.of_Z width 1) * Z.of_nat (Z.to_nat (Zmod.unsigned x1)))).
           { rewrite Z2Nat.id.
-            2: { assert (Hnonneg := word.unsigned_range x1 ). blia. }
-            apply word.unsigned_inj. repeat rewrite word.unsigned_of_Z. cbv [word.wrap].
-            rewrite Z.mul_mod_idemp_l.
-            2: { apply word.modulus_nonzero. }
-            assert (Hx1 := word.unsigned_range x1).
+            2: { assert (Hnonneg := bits.unsigned_range x1 width_nonneg). blia. }
+            apply Zmod.unsigned_inj.
+            rewrite bits.unsigned_of_Z, bits.unsigned_1 by (pose proof width_pos; blia).
+            assert (Hx1 := bits.unsigned_range x1 width_nonneg).
             rewrite Z.mod_small; blia. }
           eapply Scalars.store_one_of_sep.
-          { seprewrite_in (@array_index_nat_inbounds _ _ _ _ _ _ _ ptsto (word.of_Z 1) Byte.x00 x x3 (Z.to_nat (word.unsigned x1))) H3.
+          { seprewrite_in (@array_index_nat_inbounds _ _ _ _ _ ptsto (bits.of_Z width 1) Byte.x00 x x3 (Z.to_nat (Zmod.unsigned x1))) H3.
             { ZnWords. }            
             rewrite <- Ex1 in H3.
             ecancel_assumption. }
@@ -204,15 +203,15 @@ Section WithWord.
                          (KYBER_N = Z.of_nat (List.length a_coeffs_vals) /\
                             KYBER_INDCPA_MSGBYTES = Z.of_nat (List.length msg_vals) /\
                             i = x1(*value of i before we enter loop*) /\
-                            ((array scalar8 (word.of_Z 1) msg msg_vals) * (array scalar16 (word.of_Z 2) a_coeffs a_coeffs_vals) * R)%sep m 
-                          /\ vj = word.wrap 8 - word.unsigned j) (* precondition *)
+                            ((array scalar8 (bits.of_Z width 1) msg msg_vals) * (array scalar16 2 a_coeffs a_coeffs_vals) * R)%sep m 
+                          /\ vj = (8 mod 2 ^ width) - Zmod.unsigned j) (* precondition *)
                          (fun K T M J I A_COEFFS MSG => (*postcondition*) 
                             T = t /\ A_COEFFS = a_coeffs /\ MSG = msg /\
                               exists MSG_VALS A_COEFFS_VALS,
                                 KYBER_N = Z.of_nat (List.length A_COEFFS_VALS) /\
                                   KYBER_INDCPA_MSGBYTES = Z.of_nat (List.length MSG_VALS) /\
                                   I = x1 /\
-                                  ((array scalar8 (word.of_Z 1) msg MSG_VALS) * (array scalar16 (word.of_Z 2) a_coeffs A_COEFFS_VALS) * R)%sep M /\
+                                  ((array scalar8 (bits.of_Z width 1) msg MSG_VALS) * (array scalar16 2 a_coeffs A_COEFFS_VALS) * R)%sep M /\
                                   K = (get_inner_leakage _ _ _ _ i j (Z.to_nat vj) ++ k)%list
                     )) 
                     (fun n m => 0 <= n < m) (* well_founded relation *)
@@ -234,7 +233,7 @@ Section WithWord.
           { exact (Z.lt_wf _). }
           { seprewrite_in (symmetry! @array_cons) H5.
             seprewrite_in @sep_comm H5.
-            remember (Z.to_nat (word.unsigned x1)) as n eqn:En.            
+            remember (Z.to_nat (Zmod.unsigned x1)) as n eqn:En.            
             rewrite Ex1 in H5.
             replace (Z.of_nat n) with (Z.of_nat (List.length (List.firstn n x))) in H5.
             2: { rewrite List.firstn_length. blia. }
@@ -260,52 +259,52 @@ Section WithWord.
               { rewrite ?Properties.map.get_put_dec; exact eq_refl. }
               repeat straightline. letexists; split.
               { rewrite ?Properties.map.get_put_dec; exact eq_refl. }
-              destruct (word.ltu _ _) eqn:Ex6.
-              2: { rewrite word.unsigned_of_Z_0 in H10. exfalso. auto. }
-              rewrite word.unsigned_ltu in Ex6. apply Z.ltb_lt in Ex6.
+              destruct (Z.ltb (Zmod.unsigned _) _) eqn:Ex6.
+              2: { rewrite Zmod.unsigned_0 in H10. exfalso. auto. }
+              apply Z.ltb_lt in Ex6.
               eexists. split.
               { eapply load_two_of_sep. repeat straightline.
-                remember (word.add (word.mul v2 x1) x6) as n eqn:En.
-                seprewrite_in (@array_index_nat_inbounds _ _ _ _ _ _ _ scalar16 (word.of_Z 2) (word.of_Z 0) x5 x8 (Z.to_nat (word.unsigned n))) H11.
+                remember (Zmod.add (Zmod.mul v2 x1) x6) as n eqn:En.
+                seprewrite_in (@array_index_nat_inbounds _ _ _ _ _ scalar16 2 (bits.of_Z width 0) x5 x8 (Z.to_nat (Zmod.unsigned n))) H11.
                 2: { repeat straightline. use_sep_assumption. cancel.
                      cancel_seps_at_indices 1%nat 0%nat.
                      { f_equal. f_equal. subst v1 n.
                        rewrite Z2Nat.id.
-                       2: { assert (Hnonneg:= word.unsigned_range (word.add (word.mul v2 x1) x6)).
+                       2: { assert (Hnonneg:= bits.unsigned_range (Zmod.add (Zmod.mul v2 x1) x6) width_nonneg).
                             blia. }
                        ZnWords. }
                      ecancel_done. }
                 subst. subst v1. subst v0. subst v2.
-                assert (Hnonneg := word.unsigned_range (word.add (word.mul (word.of_Z 8) x1) x6)).
-                enough ((word.unsigned (word.add (word.mul (word.of_Z 8) x1) x6)) < KYBER_N).
+                assert (Hnonneg := bits.unsigned_range (Zmod.add (Zmod.mul 8 x1) x6) width_nonneg).
+                enough ((Zmod.unsigned (Zmod.add (Zmod.mul 8 x1) x6)) < KYBER_N).
                 { subst KYBER_N. blia. }
-                assert (0 < word.unsigned (word:=word) (word.of_Z 8)).
-                { rewrite word.unsigned_of_Z. cbv [word.wrap].
+                assert (0 < Zmod.unsigned (m := 2 ^ width) (bits.of_Z width 8)).
+                { rewrite bits.unsigned_of_Z.
                   rewrite Z.mod_small; try split; try blia.
                   assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(blia) ltac:(blia)).
                   blia. }
                 assert (0 < 2 ^ width).
                 { apply Z.pow_pos_nonneg; blia. }
-                rewrite word.unsigned_add, word.unsigned_mul, word.unsigned_divu in * by blia.
-                rewrite word.unsigned_of_Z in E. cbv [word.wrap] in *.
+                rewrite Zmod.unsigned_add, Zmod.unsigned_mul, Zmod.unsigned_udiv in * by blia.
+                rewrite bits.unsigned_of_Z in E.
                 
-                rewrite Z.add_mod_idemp_l by blia. rewrite word.unsigned_of_Z in *.
-                assert (word.unsigned x1 < KYBER_N mod 2 ^ width / word.wrap 8).
+                rewrite Z.add_mod_idemp_l by blia. rewrite bits.unsigned_of_Z in *.
+                assert (Zmod.unsigned x1 < KYBER_N mod 2 ^ width / (8 mod 2 ^ width)).
                 { eapply Z.lt_le_trans. 1: eassumption.
                   apply Z.mod_le; try blia.
                   apply Z_div_nonneg_nonneg; try blia.
                   apply Z_mod_nonneg_nonneg; blia. }
-                enough ((word.wrap 8 * word.unsigned x1 + word.unsigned x6) < KYBER_N).
+                enough (((8 mod 2 ^ width) * Zmod.unsigned x1 + Zmod.unsigned x6) < KYBER_N).
                 { eapply Z.le_lt_trans. 2: eassumption. apply Z.mod_le; try blia.
-                  assert (Hx6 := word.unsigned_range x6). assert (Hx1 := word.unsigned_range x1).
+                  assert (Hx6 := bits.unsigned_range x6 width_nonneg). assert (Hx1 := bits.unsigned_range x1 width_nonneg).
                   blia. }
-                assert (word.unsigned x1 < KYBER_N / word.wrap 8).
+                assert (Zmod.unsigned x1 < KYBER_N / (8 mod 2 ^ width)).
                 { eapply Z.lt_le_trans. 1: eassumption.
                   apply Z.div_le_mono; try blia. apply Z.mod_le; blia. }
-                enough (word.wrap 8 * (word.unsigned x1 + 1) <= KYBER_N).
+                enough ((8 mod 2 ^ width) * (Zmod.unsigned x1 + 1) <= KYBER_N).
                 { blia. }
-                assert (word.unsigned x1 + 1 <= KYBER_N / word.wrap 8) by blia.
-                apply Zmult_le_compat_l with (p := word.wrap 8) in H16; try blia.
+                assert (Zmod.unsigned x1 + 1 <= KYBER_N / (8 mod 2 ^ width)) by blia.
+                apply Zmult_le_compat_l with (p := (8 mod 2 ^ width)) in H16; try blia.
                 eapply Z.le_trans. 1: eassumption.
                 apply Z.mul_div_le. blia. }
               repeat straightline. eapply dexpr_expr. repeat straightline. letexists; split.
@@ -328,7 +327,7 @@ Section WithWord.
               { cbv [l4 l3 l2 l1 l0 l]. rewrite ?Properties.map.get_put_dec; exact eq_refl. }
               repeat straightline. letexists; split.
               { eapply Scalars.load_one_of_sep.
-                seprewrite_in_by (@array_index_nat_inbounds _ _ _ _ _ _ _ ptsto (word.of_Z 1) Byte.x00 x4 x9 (Z.to_nat (word.unsigned x1))) H11 ZnWords.
+                seprewrite_in_by (@array_index_nat_inbounds _ _ _ _ _ ptsto (bits.of_Z width 1) Byte.x00 x4 x9 (Z.to_nat (Zmod.unsigned x1))) H11 ZnWords.
                 rewrite <- Ex1 in H11.
                 ecancel_assumption. }
               repeat straightline. letexists; split.
@@ -336,7 +335,7 @@ Section WithWord.
               repeat straightline. letexists; split.
               { cbv [l4 l3 l2 l1 l0 l]. rewrite ?Properties.map.get_put_dec; exact eq_refl. }
               eapply Scalars.store_one_of_sep.
-              { seprewrite_in_by (@array_index_nat_inbounds _ _ _ _ _ _ _ ptsto (word.of_Z 1) Byte.x00 x4 x9 (Z.to_nat (word.unsigned x1))) H11 ZnWords.
+              { seprewrite_in_by (@array_index_nat_inbounds _ _ _ _ _ ptsto (bits.of_Z width 1) Byte.x00 x4 x9 (Z.to_nat (Zmod.unsigned x1))) H11 ZnWords.
                 rewrite <- Ex1 in H11. ecancel_assumption. }
               repeat straightline. eapply dexpr_expr. repeat straightline. letexists; split.
               { cbv [l4 l3 l2 l1 l0 l]. rewrite ?Properties.map.get_put_dec; exact eq_refl. }
@@ -350,9 +349,9 @@ Section WithWord.
               repeat straightline.
 
               seprewrite_in (symmetry! @array_cons) H12.
-              remember (Byte.byte.of_Z (word.unsigned (word.or _ _))) as something.
+              remember (Byte.byte.of_Z (Zmod.unsigned (Zmod.or _ _))) as something.
               seprewrite_in @sep_comm H12.
-              remember (Z.to_nat (word.unsigned x1)) as n eqn:En.              
+              remember (Z.to_nat (Zmod.unsigned x1)) as n eqn:En.              
               rewrite Ex1 in H12.
               replace (Z.of_nat n) with (Z.of_nat (List.length (List.firstn n x4))) in H12.
               2: { rewrite List.firstn_length. blia. }
@@ -360,7 +359,7 @@ Section WithWord.
               assert (8 < 2 ^ width).
               { assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(blia) ltac:(blia)).
                 blia. }
-              rewrite word.unsigned_of_Z in Ex6. cbv [word.wrap] in *.
+              rewrite bits.unsigned_of_Z in Ex6.
               rewrite Z.mod_small in * by blia.
 
               eexists. eexists. eexists. split.
@@ -370,9 +369,9 @@ Section WithWord.
                 rewrite List.firstn_length. rewrite List.skipn_length. blia. }
               split.
               { clear H12. subst v15. subst v.
-                rewrite word.unsigned_add. rewrite word.unsigned_of_Z. cbv [word.wrap].
+                rewrite Zmod.unsigned_add. rewrite bits.unsigned_of_Z.
                 rewrite (Z.mod_small 8) by blia. rewrite (Z.mod_small 1) by blia.
-                pose proof (word.unsigned_range x6). rewrite Z.mod_small by blia.
+                pose proof (bits.unsigned_range x6 width_nonneg). rewrite Z.mod_small by blia.
                 blia. }
               (*postcondition*)
               intros. intuition.
@@ -380,8 +379,8 @@ Section WithWord.
               eexists. eexists. ssplit.
               4: ecancel_assumption.
               1,2,3: solve [auto].
-              subst v. replace (Z.to_nat (8 mod 2 ^ width - word.unsigned x6)) with
-                (S (Z.to_nat (8 - word.unsigned (word.add x6 (word.of_Z 1))))).
+              subst v. replace (Z.to_nat (8 mod 2 ^ width - Zmod.unsigned x6)) with
+                (S (Z.to_nat (8 - Zmod.unsigned (Zmod.add x6 (bits.of_Z width 1))))).
               { cbn [get_inner_leakage].
                 rewrite H22.
                 assert (app_one_cons : forall A (a : A) l, (a :: l = (cons a nil) ++ l)%list).
@@ -392,20 +391,20 @@ Section WithWord.
                   { instantiate (1 := fun _ _ => _). simpl. reflexivity. }
                   { instantiate (1 := fun _ _ => _). simpl. reflexivity. } }
                 instantiate (1 := fun _ _ => _). simpl. align_trace. }
-              clear H22. rewrite word.unsigned_add. clear H12. cbv [word.wrap].
-              rewrite word.unsigned_of_Z. cbv [word.wrap]. rewrite (Z.mod_small 1) by blia.
+              clear H22. rewrite Zmod.unsigned_add. clear H12.
+              rewrite bits.unsigned_1 by (pose proof width_pos; blia).
               rewrite (Z.mod_small 8) by blia. rewrite Z.mod_small.
               { blia. }
-              pose proof (word.unsigned_range x6). blia. }
+              pose proof (bits.unsigned_range x6 width_nonneg). blia. }
             intros. intuition. eexists. eexists. split; [|split; [|split; [|split] ] ].
             4: ecancel_assumption.
             all: auto.
             f_equal.
             replace (Z.to_nat v) with O.
             { simpl. instantiate (1 := (_ :: nil)%list). reflexivity. }
-            subst v. destruct (word.ltu _ _) eqn:Ex6; try congruence.
-            rewrite word.unsigned_ltu in Ex6. apply Z.ltb_nlt in Ex6.
-            rewrite word.unsigned_of_Z in Ex6. cbv [word.wrap] in *.
+            subst v. destruct (Z.ltb (Zmod.unsigned _) _) eqn:Ex6; try congruence.
+            apply Z.ltb_nlt in Ex6.
+            rewrite bits.unsigned_of_Z in Ex6.
             assert (8 < 2 ^ width).
             { assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(blia) ltac:(blia)).
               blia. }
@@ -431,23 +430,22 @@ Section WithWord.
               assert (8 < 2 ^ width).
               { assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(blia) ltac:(blia)).
                 blia. }
-              assert (0 < word.unsigned (word:=word) (word.of_Z 8)).
-              { rewrite word.unsigned_of_Z. cbv [word.wrap].
+              assert (0 < Zmod.unsigned (m := 2 ^ width) (bits.of_Z width 8)).
+              { rewrite bits.unsigned_of_Z.
                 rewrite Z.mod_small by blia. blia. }
-              remember (word.divu _ _) as cow.
-              rewrite word.unsigned_add. rewrite word.unsigned_of_Z.
-              cbv [word.wrap]. rewrite (Z.mod_small 1) by blia.
-              rewrite (Z.mod_small (word.unsigned x1 + 1)).
+              remember (Zmod.udiv _ _) as cow.
+              rewrite Zmod.unsigned_add. rewrite bits.unsigned_1 by (pose proof width_pos; blia).
+              rewrite (Z.mod_small (Zmod.unsigned x1 + 1)).
               { blia. }
-              pose proof (word.unsigned_range x1). split; try blia.
-              pose proof (word.unsigned_range cow). blia. }
+              pose proof (bits.unsigned_range x1 width_nonneg). split; try blia.
+              pose proof (bits.unsigned_range cow width_nonneg). blia. }
             repeat straightline. eexists. eexists. ssplit.
             3: ecancel_assumption.
             1,2: assumption.
             simpl. subst k1.
             replace (Z.to_nat v) with (S (Z.to_nat
-                                            (word.unsigned (word:=word) (word.divu (word.of_Z KYBER_N) (word.of_Z 8)) -
-                                               word.unsigned (word.add x1 (word.of_Z 1))))).
+                                            (Zmod.unsigned (m := 2 ^ width) (Zmod.udiv (bits.of_Z width KYBER_N) (bits.of_Z width 8)) -
+                                               Zmod.unsigned (Zmod.add x1 (bits.of_Z width 1))))).
             { cbn [get_outer_leakage].
               rewrite H17. clear H17.
               assert (app_one_cons : forall A (a : A) l, (a :: l = (cons a nil) ++ l)%list).
@@ -463,24 +461,23 @@ Section WithWord.
               assert (8 < 2 ^ width).
               { assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(blia) ltac:(blia)).
                 blia. }
-              assert (0 < word.unsigned (word:=word) (word.of_Z 8)).
-              { rewrite word.unsigned_of_Z. cbv [word.wrap].
+              assert (0 < Zmod.unsigned (m := 2 ^ width) (bits.of_Z width 8)).
+              { rewrite bits.unsigned_of_Z.
                 rewrite Z.mod_small by blia. blia. }
-              remember (word.divu _ _) as cow.
-              rewrite word.unsigned_add. rewrite word.unsigned_of_Z.
-              cbv [word.wrap]. rewrite (Z.mod_small 1) by blia.
-              rewrite (Z.mod_small (word.unsigned x1 + 1)).
+              remember (Zmod.udiv _ _) as cow.
+              rewrite Zmod.unsigned_add. rewrite bits.unsigned_1 by (pose proof width_pos; blia).
+              rewrite (Z.mod_small (Zmod.unsigned x1 + 1)).
               { blia. }
-              pose proof (word.unsigned_range x1). split; try blia.
-              pose proof (word.unsigned_range cow). blia. } } }
+              pose proof (bits.unsigned_range x1 width_nonneg). split; try blia.
+              pose proof (bits.unsigned_range cow width_nonneg). blia. } } }
         intros. intuition. eexists. eexists. ssplit.
         3: ecancel_assumption.
         1,2: assumption.
         simpl. replace (Z.to_nat v) with 0%nat.
         { cbn [get_outer_leakage]. instantiate (1 := (_ :: _ :: _ :: nil)%list). reflexivity. }
-        destruct (word.ltu x1 _) eqn:E.
-        { rewrite word.unsigned_of_Z_1 in H4. congruence. }
-        rewrite word.unsigned_ltu in E. apply Z.ltb_nlt in E.
+        destruct (Z.ltb (Zmod.unsigned x1) _) eqn:E.
+        { rewrite bits.unsigned_1 in H4 by (pose proof width_pos; blia). congruence. }
+        apply Z.ltb_nlt in E.
         blia. }
       repeat straightline.
       subst k0.

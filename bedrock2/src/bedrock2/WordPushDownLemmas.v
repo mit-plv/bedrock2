@@ -1,57 +1,113 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
+Require Import coqutil.Z.Lia.
+
+(* Folds a modulus evaluated to [Z.pow_pos 2 p] or to a literal back to [2 ^ k]. *)
+Ltac pow2_form m :=
+  lazymatch m with
+  | 2 ^ _ => fail
+  | Z.pow_pos 2 ?p => constr:(2 ^ Z.pos p)
+  | _ => lazymatch isZcst m with
+         | true => let k := eval vm_compute in (Z.log2 m) in
+                   lazymatch eval vm_compute in (Z.eqb (2 ^ k) m) with
+                   | true => constr:(2 ^ k)
+                   end
+         end
+  end.
+
+Ltac fold_pow2_moduli :=
+  repeat match goal with
+         | H: context[Zmod ?m] |- _ => let p := pow2_form m in change m with p in H
+         | H: context[@Zmod.unsigned ?m _] |- _ => let p := pow2_form m in change m with p in H
+         | H: context[@Zmod.signed ?m _] |- _ => let p := pow2_form m in change m with p in H
+         | H: context[@Zmod.of_Z ?m _] |- _ => let p := pow2_form m in change m with p in H
+         | |- context[Zmod ?m] => let p := pow2_form m in change m with p
+         | |- context[@Zmod.unsigned ?m _] => let p := pow2_form m in change m with p
+         | |- context[@Zmod.signed ?m _] => let p := pow2_form m in change m with p
+         | |- context[@Zmod.of_Z ?m _] => let p := pow2_form m in change m with p
+         end.
+
+(* A constant shift amount below the width is unchanged by the masking that
+   [Semantics.interp_binop] applies to shift amounts. *)
+Lemma unsigned_of_Z_shamt{w: Z}(a: Z)
+  (H: andb (Z.leb 0 a) (Z.ltb a w) = true)(Hw: 2 ^ Z.log2 w = w):
+  Zmod.unsigned (bits.of_Z w a) mod 2 ^ Z.log2 w = a.
+Proof.
+  apply Bool.andb_true_iff in H. destruct H as [H1 H2].
+  apply Z.leb_le in H1. apply Z.ltb_lt in H2.
+  pose proof (Z.pow_gt_lin_r 2 w ltac:(lia) ltac:(lia)).
+  rewrite bits.unsigned_of_Z_small, Hw by lia.
+  apply Z.mod_small. lia.
+Qed.
+
+(* ZnWords reduces bitwise word operations to Z operations under [mod 2 ^ w] so
+   that [Z.div_mod_to_equations] gives lia the range of the result; the
+   mod-free [bits.unsigned_or]/[bits.unsigned_xor] would leave [Z.lor]/[Z.lxor]
+   as unbounded atoms. *)
+Lemma unsigned_or_modwrap [m] (x y : Zmod m) :
+  Zmod.unsigned (Zmod.or x y) = Z.lor (Zmod.unsigned x) (Zmod.unsigned y) mod m.
+Proof. apply Zmod.unsigned_of_Z. Qed.
+
+Lemma unsigned_xor_modwrap [m] (x y : Zmod m) :
+  Zmod.unsigned (Zmod.xor x y) = Z.lxor (Zmod.unsigned x) (Zmod.unsigned y) mod m.
+Proof. apply Zmod.unsigned_of_Z. Qed.
 
 Module word.
   Section WithWord.
-    Context [width] [word : word.word width] [word_ok : word.ok word].
+    Context [width] [BW: Bitwidth width].
+    Local Set Default Proof Using "All".
+    Local Notation word := (bits width).
 
-    (* Pushing down word.unsigned, using sideconditions to prevent overflow: *)
+    (* Pushing down Zmod.unsigned, using sideconditions to prevent overflow: *)
 
     Lemma unsigned_of_Z_modwrap: forall (z: Z),
-        word.unsigned (word.of_Z (word := word) z) = z mod 2 ^ width.
-    Proof. apply word.unsigned_of_Z. Qed.
+        Zmod.unsigned (bits.of_Z width z) = z mod 2 ^ width.
+    Proof. apply bits.unsigned_of_Z. Qed.
 
     Lemma unsigned_opp_eq_nowrap: forall [a: word] [ua: Z],
-        word.unsigned a = ua ->
+        Zmod.unsigned a = ua ->
         ua <> 0 ->
-        word.unsigned (word.opp a) = 2 ^ width - ua.
-    Proof. intros. subst. apply word.unsigned_opp_nowrap. assumption. Qed.
+        Zmod.unsigned (Zmod.opp a) = 2 ^ width - ua.
+    Proof. intros. subst. apply word.unsigned_opp_nowrap; auto using width_pos. Qed.
     (* and lemma word.unsigned_opp_0 can be used as-is *)
 
     Lemma unsigned_add_eq_nowrap: forall [a b: word] [ua ub: Z],
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
+        Zmod.unsigned a = ua ->
+        Zmod.unsigned b = ub ->
         ua + ub < 2 ^ width ->
-        word.unsigned (word.add a b) = ua + ub.
-    Proof. intros. subst. apply word.unsigned_add_nowrap. assumption. Qed.
+        Zmod.unsigned (Zmod.add a b) = ua + ub.
+    Proof. intros. subst. apply word.unsigned_add_nowrap; auto using width_pos. Qed.
 
     Lemma unsigned_sub_eq_nowrap: forall [a b: word] [ua ub: Z],
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
+        Zmod.unsigned a = ua ->
+        Zmod.unsigned b = ub ->
         0 <= ua - ub ->
-        word.unsigned (word.sub a b) = ua - ub.
-    Proof. intros. subst. apply word.unsigned_sub_nowrap. assumption. Qed.
+        Zmod.unsigned (Zmod.sub a b) = ua - ub.
+    Proof. intros. subst. apply word.unsigned_sub_nowrap; auto using width_pos. Qed.
 
     Lemma unsigned_mul_eq_nowrap: forall [a b: word] [ua ub: Z],
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
+        Zmod.unsigned a = ua ->
+        Zmod.unsigned b = ub ->
         ua * ub < 2 ^ width ->
-        word.unsigned (word.mul a b) = ua * ub.
-    Proof. intros. subst. apply word.unsigned_mul_nowrap. assumption. Qed.
+        Zmod.unsigned (Zmod.mul a b) = ua * ub.
+    Proof. intros. subst. apply word.unsigned_mul_nowrap; auto using width_pos. Qed.
 
     Lemma unsigned_divu_eq_nowrap: forall [a b: word] [ua ub: Z],
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
+        Zmod.unsigned a = ua ->
+        Zmod.unsigned b = ub ->
         ub <> 0 ->
-        word.unsigned (word.divu a b) = ua / ub. (* note: division is not LIA *)
-    Proof. intros. subst. apply word.unsigned_divu_nowrap. assumption. Qed.
+        Zmod.unsigned (Zmod.udiv a b) = ua / ub. (* note: division is not LIA *)
+    Proof.
+      intros. subst. apply Zmod.unsigned_udiv_nonneg. 2: assumption.
+      pose proof modulus_pos. lia.
+    Qed.
 
-    (* Pushing down word.unsigned, using modulos expressed as (dividend - k * divisor),
+    (* Pushing down Zmod.unsigned, using modulos expressed as (dividend - k * divisor),
        with k being a division that can be treated opaquely *)
 
-    Lemma unsigned_range_eq{z}{x: word}: word.unsigned x = z -> 0 <= z < 2 ^ width.
-    Proof. intros. subst. eapply word.unsigned_range. Qed.
+    Lemma unsigned_range_eq{z}{x: word}: Zmod.unsigned x = z -> 0 <= z < 2 ^ width.
+    Proof. intros. subst. eapply bits.unsigned_range, width_nonneg. Qed.
 
     (* The RHSs of the conclusions of the lemmas below are modulos expressed without
        using modulo.
@@ -60,94 +116,85 @@ Module word.
 
     Lemma unsigned_of_Z_eq_wrap_for_lia: forall (z z': Z),
         z = z' ->
-        word.unsigned (word.of_Z (word := word) z) = z' - 2 ^ width * (z' / 2 ^ width).
+        Zmod.unsigned (bits.of_Z width z) = z' - 2 ^ width * (z' / 2 ^ width).
     Proof.
-      intros. subst z'.
-      rewrite word.unsigned_of_Z. unfold word.wrap.
-      eapply Z.mod_eq. eapply word.modulus_nonzero.
+      intros. subst z'. rewrite bits.unsigned_of_Z.
+      eapply Z.mod_eq. pose proof modulus_pos. lia.
     Qed.
 
     Lemma unsigned_add_eq_wrap_for_lia: forall (a b: word) (ua ub: Z),
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
-        word.unsigned (word.add a b) = ua + ub - 2 ^ width * ((ua + ub) / 2 ^ width).
+        Zmod.unsigned a = ua ->
+        Zmod.unsigned b = ub ->
+        Zmod.unsigned (Zmod.add a b) = ua + ub - 2 ^ width * ((ua + ub) / 2 ^ width).
     Proof.
-      intros. subst.
-      rewrite word.unsigned_add. unfold word.wrap.
-      eapply Z.mod_eq. eapply word.modulus_nonzero.
+      intros. subst. rewrite Zmod.unsigned_add.
+      eapply Z.mod_eq. pose proof modulus_pos. lia.
     Qed.
 
     Lemma unsigned_sub_eq_wrap_for_lia: forall (a b: word) (ua ub: Z),
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
-        word.unsigned (word.sub a b) = ua - ub - 2 ^ width * ((ua - ub) / 2 ^ width).
+        Zmod.unsigned a = ua ->
+        Zmod.unsigned b = ub ->
+        Zmod.unsigned (Zmod.sub a b) = ua - ub - 2 ^ width * ((ua - ub) / 2 ^ width).
     Proof.
-      intros. subst.
-      rewrite word.unsigned_sub. unfold word.wrap.
-      eapply Z.mod_eq. eapply word.modulus_nonzero.
+      intros. subst. rewrite Zmod.unsigned_sub.
+      eapply Z.mod_eq. pose proof modulus_pos. lia.
     Qed.
 
     Lemma unsigned_mul_eq_wrap_for_lia: forall (a b: word) (ua ub: Z),
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
-        word.unsigned (word.mul a b) = ua * ub - 2 ^ width * ((ua * ub) / 2 ^ width).
+        Zmod.unsigned a = ua ->
+        Zmod.unsigned b = ub ->
+        Zmod.unsigned (Zmod.mul a b) = ua * ub - 2 ^ width * ((ua * ub) / 2 ^ width).
     Proof.
-      intros. subst.
-      rewrite word.unsigned_mul. unfold word.wrap.
-      eapply Z.mod_eq. eapply word.modulus_nonzero.
+      intros. subst. rewrite Zmod.unsigned_mul.
+      eapply Z.mod_eq. pose proof modulus_pos. lia.
     Qed.
 
-    Lemma unsigned_slu_shamtZ_eq_wrap_for_lia: forall (x: word) (ux a: Z),
+    (* The shift amount n is the constant a, possibly masked by Semantics.interp_binop. *)
+    Lemma unsigned_slu_shamtZ_eq_wrap_for_lia: forall (x: word) (ux a n: Z),
         ((0 <=? a) && (a <? width))%bool = true ->
-        word.unsigned x = ux ->
-        word.unsigned (word.slu x (word.of_Z a)) =
+        n = a ->
+        Zmod.unsigned x = ux ->
+        Zmod.unsigned (Zmod.slu x n) =
           ux * 2 ^ a - 2 ^ width * (ux / 2 ^ (width - a)).
     Proof.
-      intros. subst. rewrite word.unsigned_slu_shamtZ by lia.
-      unfold word.wrap. rewrite Z.shiftl_mul_pow2 by lia.
-      rewrite Z.mod_eq by apply word.modulus_nonzero.
-      replace (2 ^ width) with (2 ^ (width - a) * 2 ^ a) at 2.
-      2: {
-        rewrite <-Z.pow_add_r. 1: f_equal. all: lia.
-      }
-      rewrite Z.div_mul_cancel_r.
-      1: reflexivity.
-      all: apply Z.pow_nonzero; lia.
+      intros. subst. rewrite Zmod.unsigned_slu.
+      rewrite Z.shiftl_mul_pow2 by lia.
+      pose proof modulus_pos.
+      rewrite Z.mod_eq by lia.
+      rewrite <- (Z.div_mul_cancel_r _ (2 ^ (width - a)) (2 ^ a)) by (apply Z.pow_nonzero; lia).
+      rewrite <- Z.pow_add_r by lia.
+      replace (width - a + a) with width by lia.
+      reflexivity.
     Qed.
 
-    Lemma unsigned_sru_shamtZ_eq_wrap_for_lia: forall (x: word) (ux a: Z),
+    Lemma unsigned_sru_shamtZ_eq_wrap_for_lia: forall (x: word) (ux a n: Z),
         ((0 <=? a) && (a <? width))%bool = true ->
-        word.unsigned x = ux ->
-        word.unsigned (word.sru x (word.of_Z a)) = ux / 2 ^ a.
+        n = a ->
+        Zmod.unsigned x = ux ->
+        Zmod.unsigned (Zmod.sru x n) = ux / 2 ^ a.
     Proof.
-      intros. subst. rewrite word.unsigned_sru_shamtZ by lia.
+      intros. subst. rewrite Zmod.unsigned_sru by lia.
       rewrite Z.shiftr_div_pow2 by lia. reflexivity.
     Qed.
 
-    Lemma unsigned_ltu_eq: forall (a b: word) (ua ub: Z),
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
-        word.ltu a b = Z.ltb ua ub.
-    Proof. intros. subst. apply word.unsigned_ltu. Qed.
-
     Lemma unsigned_eqb_eq: forall (a b: word) (ua ub: Z),
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
-        word.eqb a b = Z.eqb ua ub.
-    Proof. intros. subst. apply word.unsigned_eqb. Qed.
+        Zmod.unsigned a = ua ->
+        Zmod.unsigned b = ub ->
+        Zmod.eqb a b = Z.eqb ua ub.
+    Proof. intros. subst. reflexivity. Qed.
 
     Lemma unsigned_if_eq_for_lia: forall (c crhs: bool) (a b: word) (ua ub: Z),
         c = crhs ->
-        word.unsigned a = ua ->
-        word.unsigned b = ub ->
-        crhs = true /\ word.unsigned (if c then a else b) = ua \/
-        crhs = false /\ word.unsigned (if c then a else b) = ub.
+        Zmod.unsigned a = ua ->
+        Zmod.unsigned b = ub ->
+        crhs = true /\ Zmod.unsigned (if c then a else b) = ua \/
+        crhs = false /\ Zmod.unsigned (if c then a else b) = ub.
     Proof using. intros. subst. destruct crhs; intuition. Qed.
 
     Lemma unsigned_opp_eq_for_lia: forall [a: word] [ua: Z],
-        word.unsigned a = ua ->
-        (ua <> 0 /\ word.unsigned (word.opp a) = 2 ^ width - ua) \/
-        (ua = 0 /\ word.unsigned (word.opp a) = 0).
+        Zmod.unsigned a = ua ->
+        (ua <> 0 /\ Zmod.unsigned (Zmod.opp a) = 2 ^ width - ua) \/
+        (ua = 0 /\ Zmod.unsigned (Zmod.opp a) = 0).
     Proof.
       intros. assert (ua = 0 \/ ua <> 0) as C by lia. subst.
       destruct C as [C | C].
@@ -155,67 +202,55 @@ Module word.
       - erewrite unsigned_opp_eq_nowrap. 2: reflexivity. 2: exact C. lia.
     Qed.
 
-    (* Pushing down word.of_Z: *)
+    (* Pushing down bits.of_Z: *)
 
-    (* lemma word.of_Z_unsigned can be used as-is *)
-
-    Lemma of_Z_mod: forall (z: Z),
-        word.of_Z (word := word) (z mod 2 ^ width) = word.of_Z (word := word) z.
-    Proof.
-      intros. change (z mod 2 ^ width) with (word.wrap z).
-      rewrite <- word.unsigned_of_Z. apply word.of_Z_unsigned.
-    Qed.
+    (* lemmas Zmod.of_Z_unsigned and bits.of_Z_mod can be used as-is *)
 
     Lemma of_Z_mod_eq: forall [z: Z] [w: word],
-        word.of_Z z = w ->
-        word.of_Z (z mod 2 ^ width) = w.
-    Proof. intros. subst. apply of_Z_mod. Qed.
+        bits.of_Z width z = w ->
+        bits.of_Z width (z mod 2 ^ width) = w.
+    Proof. intros. subst. apply bits.of_Z_mod. Qed.
 
     Lemma of_Z_opp_eq: forall [z: Z] [w: word],
-        word.of_Z z = w ->
-        word.of_Z (- z) = word.opp w.
-    Proof. intros. subst. apply word.ring_morph_opp. Qed.
+        bits.of_Z width z = w ->
+        bits.of_Z width (- z) = Zmod.opp w.
+    Proof. intros. subst. apply Zmod.of_Z_opp. Qed.
 
     Lemma of_Z_add_eq: forall [z1 z2: Z] [w1 w2: word],
-        word.of_Z z1 = w1 ->
-        word.of_Z z2 = w2 ->
-        word.of_Z (z1 + z2) = word.add w1 w2.
-    Proof. intros. subst. apply word.ring_morph_add. Qed.
+        bits.of_Z width z1 = w1 ->
+        bits.of_Z width z2 = w2 ->
+        bits.of_Z width (z1 + z2) = Zmod.add w1 w2.
+    Proof. intros. subst. apply Zmod.of_Z_add. Qed.
 
     Lemma of_Z_sub_eq: forall [z1 z2: Z] [w1 w2: word],
-        word.of_Z z1 = w1 ->
-        word.of_Z z2 = w2 ->
-        word.of_Z (z1 - z2) = word.sub w1 w2.
-    Proof. intros. subst. apply word.ring_morph_sub. Qed.
+        bits.of_Z width z1 = w1 ->
+        bits.of_Z width z2 = w2 ->
+        bits.of_Z width (z1 - z2) = Zmod.sub w1 w2.
+    Proof. intros. subst. apply Zmod.of_Z_sub. Qed.
 
     Lemma of_Z_mul_eq: forall [z1 z2: Z] [w1 w2: word],
-        word.of_Z z1 = w1 ->
-        word.of_Z z2 = w2 ->
-        word.of_Z (z1 * z2) = word.mul w1 w2.
-    Proof. intros. subst. apply word.ring_morph_mul. Qed.
+        bits.of_Z width z1 = w1 ->
+        bits.of_Z width z2 = w2 ->
+        bits.of_Z width (z1 * z2) = Zmod.mul w1 w2.
+    Proof. intros. subst. apply Zmod.of_Z_mul. Qed.
 
-    (* word.signed: don't push it down, but just express it in terms of word.unsigned *)
+    (* Zmod.signed: don't push it down, but just express it in terms of Zmod.unsigned *)
 
     Lemma signed_eq_unsigned_wrap_for_lia: forall (w: word) (uw: Z),
-        word.unsigned w = uw ->
-        word.signed w = uw - 2 ^ width * ((uw + 2 ^ (width - 1)) / 2 ^ width).
+        Zmod.unsigned w = uw ->
+        Zmod.signed w = uw - 2 ^ width * ((uw + 2 ^ (width - 1)) / 2 ^ width).
     Proof.
       intros. subst uw.
-      rewrite word.signed_eq_swrap_unsigned. unfold word.swrap.
+      rewrite <- Zmod.smod_unsigned, word.smodulo_pow2.
+      pose proof modulus_pos.
       etransitivity.
-      - eapply Z.sub_cancel_r. eapply Z.mod_eq. eapply word.modulus_nonzero.
+      - eapply Z.sub_cancel_r. eapply Z.mod_eq. lia.
       - ring.
     Qed.
 
     Lemma signed_range_eq_for_lia{z}{x: word}:
-      word.signed x = z ->
+      Zmod.signed x = z ->
       - 2 ^ width <= 2 * z < 2 ^ width. (* <- avoid using 2^(width-1) *)
-    Proof.
-      intros. pose proof (word.signed_range x).
-      replace (2 ^ width) with (2 * 2 ^ (width - 1)). 1: lia.
-      replace width with (width - 1 + 1) at 2 by lia.
-      pose proof word.width_pos.
-      rewrite Z.pow_add_r; simpl (2 ^ 1); lia.
-    Qed.
+    Proof. intros. subst. apply bits.signed_range, width_nonneg. Qed.
   End WithWord.
 End word.

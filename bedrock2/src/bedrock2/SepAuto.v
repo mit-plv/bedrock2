@@ -12,7 +12,7 @@ Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.autoforward.
 Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Tactics.fwd.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.

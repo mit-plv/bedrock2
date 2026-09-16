@@ -5,7 +5,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Tactics.fwd coqutil.Tactics.Tactics.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth.
 Require Import bedrock2.MetricLogging.
 Require Import coqutil.Map.SeparationMemory coqutil.Map.Separation.
 Require Import bedrock2.Semantics bedrock2.MetricSemantics.
@@ -14,10 +14,12 @@ Require Import bedrock2.Map.DisjointUnion bedrock2.Map.split_alt.
 Require Import Coq.Lists.List.
 
 Section semantics.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
-  Context {mem_ok: map.ok mem} {word_ok: word.ok word}.
+  Context {mem_ok: map.ok mem}.
 
   Lemma frame_load: forall mSmall mBig mAdd sz r (v: word),
       mmap.split mBig mSmall mAdd ->
@@ -36,7 +38,7 @@ Section semantics.
   Proof.
     cbv [store store_Z]; setoid_rewrite <-map.split_alt.
     intros *; intros Hsplit Hstore.
-    eapply SeparationMemory.store_bytes_in_sep with (R:=eq mAdd) in Hstore; try exact _; fwd.
+    eapply (SeparationMemory.store_bytes_in_sep width_pos) with (R:=eq mAdd) in Hstore; try exact _; fwd.
     2: { eexists _, _; ssplit; cbv [sepclause_of_map]; eauto. }
     cbv [sepclause_of_map] in *; case Hstorep1 as (?&?&?&?&?); subst.
     eexists; ssplit; eauto.
@@ -51,7 +53,7 @@ Section semantics.
       erewrite ?IHe by eassumption;
       erewrite ?IHe1 by eassumption;
       try match goal with
-        | |- context[word.eqb ?L ?R] => destr (word.eqb L R)
+        | |- context[Zmod.eqb ?L ?R] => destr (Zmod.eqb L R)
         end;
       erewrite ?IHe2 by eassumption;
       erewrite ?IHe3 by eassumption;

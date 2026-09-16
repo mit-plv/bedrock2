@@ -4,7 +4,7 @@ Import Syntax Syntax.Coercions BinInt String List List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Require Import bedrock2.WeakestPrecondition bedrock2.Semantics bedrock2.ProgramLogic.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface bedrock2.Map.SeparationLogic.
 Require Import coqutil.Macros.symmetry.
 Require Import bedrock2.ZnWords.
@@ -16,7 +16,8 @@ Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs 
 
 Section WithParameters.
   Context {width} {BW: Bitwidth width}.
-  Context {word: word.word width} {mem: map.map word byte} {locals: map.map string word}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte} {locals: map.map string word}.
   Context {ext_spec: ExtSpec}.
   Import ProgramLogic.Coercions.
 
@@ -51,7 +52,7 @@ Section WithParameters.
   }.
 
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok : map.ok locals}
+  Context {mem_ok: map.ok mem} {locals_ok : map.ok locals}
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
@@ -73,7 +74,7 @@ Section WithParameters.
     { subst l; rewrite ?Properties.map.get_put_dec; exact eq_refl. }
     repeat straightline.
 
-    set (x := word.sub src dst) in *.
+    set (x := Zmod.sub src dst) in *.
     unfold1_cmd_goal; cbv beta match delta [cmd_body].
     eapply WeakestPreconditionProperties.dexpr_expr.
     letexists; split.
@@ -87,7 +88,7 @@ Section WithParameters.
       eexists _, _; ssplit; eauto.
       eapply map.split_same_footprint; eauto.
       intros k.
-      rewrite 2map.get_of_list_word_at, 2List.nth_error_None.
+      rewrite 2(map.get_of_list_word_at width_pos), 2List.nth_error_None.
       Morphisms.f_equiv. ZnWords. }
 
     unfold1_cmd_goal; cbv beta match delta [cmd_body].
@@ -101,9 +102,9 @@ Section WithParameters.
     { subst l0 l; rewrite ?Properties.map.get_put_dec. exact eq_refl. }
     repeat straightline.
 
-    rewrite word.unsigned_ltu, word.unsigned_add; cbv [word.wrap].
+    rewrite Zmod.unsigned_add.
     split; intros Hbr;
-      [apply word.if_nonzero in Hbr | apply word.if_zero in Hbr];
+      [apply word.if_nonzero in Hbr | apply (word.if_zero _ width_pos) in Hbr];
       autoforward with typeclass_instances in Hbr.
 
     { assert (x + n < 2^width) by ZnWords.
@@ -116,7 +117,7 @@ Section WithParameters.
         ["dst";"src";"n";"x"])
         (fun (v:nat) s mRs d mRd t m dst src n _x => PrimitivePair.pair.mk (
           x + n < 2^width /\ map.split m (s$@src) mRs /\  map.split m (d$@dst) mRd /\
-          x = word.sub src dst /\ v=n :> Z /\ length s = n :> Z /\ length d = n :> Z
+          x = Zmod.sub src dst /\ v=n :> Z /\ length s = n :> Z /\ length d = n :> Z
         )
         (fun                     T M DST SRC N X => t = T   /\  map.split M (s$@dst) mRd))
         lt
@@ -160,32 +161,32 @@ Section WithParameters.
 
           cbv [WeakestPrecondition.load load load_Z]; cbn.
           destruct s0 as [|b s0], d0 as [|B d0]; try (cbn in *; congruence); [].
-          exists (word.of_Z (byte.unsigned b)).
+          exists (bits.of_Z width (byte.unsigned b)).
           pose proof map.get_split src0 _ _ _ H6.
-          rewrite map.get_of_list_word_at in H14.
-          progress replace (Z.to_nat (word.sub src0 src0)) with O in H14 by ZnWords;
+          rewrite (map.get_of_list_word_at width_pos) in H14.
+          progress replace (Z.to_nat (Zmod.sub src0 src0)) with O in H14 by ZnWords;
             cbn in H14; case H14 as [[? ?]|[? ?]]; try discriminate.
-          rewrite Properties.word.add_0_r.
+          rewrite Zmod.add_0_r.
           rewrite H14. split. { rewrite LittleEndianList.le_combine_1. trivial. }
 
           cbv [WeakestPrecondition.store load load_Z coqutil.Map.Memory.load_bytes store store_Z coqutil.Map.Memory.store_bytes coqutil.Map.Memory.unchecked_store_bytes LittleEndianList.le_split]; cbn.
           pose proof map.get_split dst0 _ _ _ H8.
-          rewrite map.get_of_list_word_at in H16.
-          progress replace (Z.to_nat (word.sub dst0 dst0)) with O in H16 by ZnWords;
+          rewrite (map.get_of_list_word_at width_pos) in H16.
+          progress replace (Z.to_nat (Zmod.sub dst0 dst0)) with O in H16 by ZnWords;
             cbn in H16; case H16 as [[? ?]|[? ?]]; try discriminate.
-          rewrite Properties.word.add_0_r.
+          rewrite Zmod.add_0_r.
           eexists. rewrite H16. split.
-          { rewrite word.unsigned_of_Z, Scalars.wrap_byte_unsigned.
+          { rewrite bits.unsigned_of_Z, Scalars.wrap_byte_unsigned.
             rewrite byte.of_Z_unsigned; trivial. }
 
           eapply map.split_remove_put in H6; [|eapply H14].
           eapply map.split_remove_put in H8; [|eapply H16].
-          rewrite map.remove_head_of_list_word_at_cons in H6,H8 by (cbn in *; ZnWords).
-          assert (map.split (map.put m0 dst0 b) (s0$@(word.add src0 (word.of_Z 1))) (map.put (map.put mRs0 src0 b) dst0 b)).
+          rewrite (map.remove_head_of_list_word_at_cons width_pos) in H6,H8 by (cbn in *; ZnWords).
+          assert (map.split (map.put m0 dst0 b) (s0$@(Zmod.add src0 (bits.of_Z width 1))) (map.put (map.put mRs0 src0 b) dst0 b)).
           { eapply map.split_put_None; trivial.
-            rewrite map.get_of_list_word_at, List.nth_error_None.
+            rewrite (map.get_of_list_word_at width_pos), List.nth_error_None.
             cbn in *; ZnWords. }
-          assert (map.split (map.put m0 dst0 b) (d0$@(word.add dst0 (word.of_Z 1))) (map.put mRd0 dst0 b)).
+          assert (map.split (map.put m0 dst0 b) (d0$@(Zmod.add dst0 (bits.of_Z width 1))) (map.put mRd0 dst0 b)).
           { rewrite <-map.put_put_same with (m:=mRd0) (v1 := B).
             eapply map.split_put_Some; rewrite ?map.get_put_same; eauto. }
 
@@ -211,8 +212,8 @@ Section WithParameters.
               repeat (destruct String.eqb; trivial). } }
           eexists _, _, _, _, (length s0); split; ssplit.
           { ZnWords. }
-          { rewrite map.of_list_word_singleton, <-map.put_putmany_commute, map.putmany_empty_r; eassumption. }
-          { rewrite map.of_list_word_singleton, <-map.put_putmany_commute, map.putmany_empty_r; eassumption. }
+          { rewrite (map.of_list_word_singleton width_pos), <-map.put_putmany_commute, map.putmany_empty_r; eassumption. }
+          { rewrite (map.of_list_word_singleton width_pos), <-map.put_putmany_commute, map.putmany_empty_r; eassumption. }
           { ZnWords. }
           { cbn in *; ZnWords. }
           { cbn in *; ZnWords. }
@@ -221,7 +222,7 @@ Section WithParameters.
           { cbn in *; ZnWords. }
           intuition idtac; repeat straightline_cleanup.
           eapply map.split_put_r2l in H22; trivial.
-          rewrite <-map.of_list_word_at_cons in H22. exact H22. }
+          rewrite <-(map.of_list_word_at_cons width_pos) in H22. exact H22. }
         { cbn. intuition idtac. eexists _, _; ssplit; eauto. } }
 
     { assert (n <= x) by ZnWords.
@@ -251,11 +252,11 @@ Section WithParameters.
         HList.polymorphic_list.nil))))
         ["dst";"src";"n";"x"])
         (fun (v:nat) s mRs d mRd t m dst src n _x => PrimitivePair.pair.mk (
-          n <= x /\ map.split m (s$@(word.sub src (word.sub n (word.of_Z 1)))) mRs /\
-                    map.split m (d$@(word.sub dst (word.sub n (word.of_Z 1)))) mRd /\
-          x = word.sub src dst /\ v=n :> Z /\ length s = n :> Z /\ length d = n :> Z
+          n <= x /\ map.split m (s$@(Zmod.sub src (Zmod.sub n (bits.of_Z width 1)))) mRs /\
+                    map.split m (d$@(Zmod.sub dst (Zmod.sub n (bits.of_Z width 1)))) mRd /\
+          x = Zmod.sub src dst /\ v=n :> Z /\ length s = n :> Z /\ length d = n :> Z
         )
-        (fun                     T M DST SRC N X => t = T   /\  map.split M (s$@(word.sub dst (word.sub n (word.of_Z 1)))) mRd))
+        (fun                     T M DST SRC N X => t = T   /\  map.split M (s$@(Zmod.sub dst (Zmod.sub n (bits.of_Z width 1)))) mRd))
         lt
         _ _ _ _ _ _ _ _ _);
         (* TODO wrap this into a tactic with the previous refine *)
@@ -301,34 +302,34 @@ Section WithParameters.
           destruct (@List.exists_last _ d0) as (d0'&B&H'd) in *.
           { intro. subst. cbn in *. ZnWords. }
           subst s0 d0; rename s0' into s0; rename d0' into d0; rewrite List.app_length in *; cbn [List.length] in *.
-          exists (word.of_Z (byte.unsigned b)).
+          exists (bits.of_Z width (byte.unsigned b)).
           pose proof map.get_split src0 _ _ _ H6.
-          rewrite !map.get_of_list_word_at, !List.nth_error_app2 in H14 by ZnWords.
+          rewrite !(map.get_of_list_word_at width_pos), !List.nth_error_app2 in H14 by ZnWords.
           match goal with H : context[List.nth_error [_] ?i = None] |- _ =>
               replace i with O in H by ZnWords; cbn [List.nth_error] in H end.
           cbn in H14; case H14 as [[? ?]|[? ?]]; try discriminate.
-          rewrite Properties.word.add_0_r.
+          rewrite Zmod.add_0_r.
           rewrite H14. split. { rewrite LittleEndianList.le_combine_1. trivial. }
 
           cbv [WeakestPrecondition.store load load_Z coqutil.Map.Memory.load_bytes store store_Z coqutil.Map.Memory.store_bytes coqutil.Map.Memory.unchecked_store_bytes LittleEndianList.le_split]; cbn.
           pose proof map.get_split dst0 _ _ _ H8.
-          rewrite !map.get_of_list_word_at, !List.nth_error_app2 in H16 by ZnWords.
+          rewrite !(map.get_of_list_word_at width_pos), !List.nth_error_app2 in H16 by ZnWords.
           match goal with H : context[List.nth_error [_] ?i = None] |- _ =>
               replace i with O in H by ZnWords; cbn [List.nth_error] in H end.
           case H16 as [[? ?]|[? ?]]; try discriminate.
-          rewrite Properties.word.add_0_r.
+          rewrite Zmod.add_0_r.
           eexists. rewrite H16. split.
-          { rewrite word.unsigned_of_Z, Scalars.wrap_byte_unsigned.
+          { rewrite bits.unsigned_of_Z, Scalars.wrap_byte_unsigned.
             rewrite byte.of_Z_unsigned; trivial. }
 
           eapply map.split_remove_put in H6; [|eapply H14].
           eapply map.split_remove_put in H8; [|eapply H16].
-          rewrite !map.remove_last_of_list_word_at_snoc in H6,H8 by ZnWords.
-          assert (map.split (map.put m0 dst0 b) (s0$@(word.sub src0 (word.sub n0 (word.of_Z 1)))) (map.put (map.put mRs0 src0 b) dst0 b)).
+          rewrite !(map.remove_last_of_list_word_at_snoc width_pos) in H6,H8 by ZnWords.
+          assert (map.split (map.put m0 dst0 b) (s0$@(Zmod.sub src0 (Zmod.sub n0 (bits.of_Z width 1)))) (map.put (map.put mRs0 src0 b) dst0 b)).
           { eapply map.split_put_None; trivial.
-            rewrite map.get_of_list_word_at, List.nth_error_None.
+            rewrite (map.get_of_list_word_at width_pos), List.nth_error_None.
             cbn in *; ZnWords. }
-          assert (map.split (map.put m0 dst0 b) (d0$@(word.sub dst0 (word.sub n0 (word.of_Z 1)))) (map.put mRd0 dst0 b)).
+          assert (map.split (map.put m0 dst0 b) (d0$@(Zmod.sub dst0 (Zmod.sub n0 (bits.of_Z width 1)))) (map.put mRd0 dst0 b)).
           { rewrite <-map.put_put_same with (m:=mRd0) (v1 := B).
             eapply map.split_put_Some; rewrite ?map.get_put_same; eauto. }
 
@@ -354,12 +355,12 @@ Section WithParameters.
               repeat (destruct String.eqb; trivial). } }
           eexists _, _, _, _, (length s0); split; ssplit.
           { ZnWords. }
-          { replace (word.sub (word.sub src0 (word.of_Z 1))(word.sub (word.sub n0 (word.of_Z 1)) (word.of_Z 1)))
-              with (word.sub src0 (word.sub n0 (word.of_Z 1))) by ZnWords.
-            rewrite map.of_list_word_singleton, <-map.put_putmany_commute, map.putmany_empty_r; eassumption. }
-          { replace (word.sub (word.sub dst0 (word.of_Z 1)) (word.sub (word.sub n0 (word.of_Z 1)) (word.of_Z 1)))
-              with (word.sub dst0 (word.sub n0 (word.of_Z 1))) by ZnWords.
-            rewrite map.of_list_word_singleton, <-map.put_putmany_commute, map.putmany_empty_r; eassumption. }
+          { replace (Zmod.sub (Zmod.sub src0 (bits.of_Z width 1))(Zmod.sub (Zmod.sub n0 (bits.of_Z width 1)) (bits.of_Z width 1)))
+              with (Zmod.sub src0 (Zmod.sub n0 (bits.of_Z width 1))) by ZnWords.
+            rewrite (map.of_list_word_singleton width_pos), <-map.put_putmany_commute, map.putmany_empty_r; eassumption. }
+          { replace (Zmod.sub (Zmod.sub dst0 (bits.of_Z width 1)) (Zmod.sub (Zmod.sub n0 (bits.of_Z width 1)) (bits.of_Z width 1)))
+              with (Zmod.sub dst0 (Zmod.sub n0 (bits.of_Z width 1))) by ZnWords.
+            rewrite (map.of_list_word_singleton width_pos), <-map.put_putmany_commute, map.putmany_empty_r; eassumption. }
           { ZnWords. }
           { cbn in *; ZnWords. }
           { cbn in *; ZnWords. }
@@ -368,14 +369,14 @@ Section WithParameters.
           { cbn in *; ZnWords. }
           intuition idtac; repeat straightline_cleanup.
           eapply map.split_put_r2l in H22; trivial.
-          rewrite map.of_list_word_at_snoc by ZnWords.
-          progress replace (word.add (word.sub dst0 (word.sub n0 (word.of_Z 1))) (word.of_Z (length s0))) with dst0 by ZnWords.
-          progress replace (word.sub (word.sub dst0 (word.of_Z 1)) (word.sub (word.sub n0 (word.of_Z 1)) (word.of_Z 1))) with (word.sub dst0 (word.sub n0 (word.of_Z 1))) in H22 by ZnWords.
+          rewrite (map.of_list_word_at_snoc width_pos) by ZnWords.
+          progress replace (Zmod.add (Zmod.sub dst0 (Zmod.sub n0 (bits.of_Z width 1))) (bits.of_Z width (length s0))) with dst0 by ZnWords.
+          progress replace (Zmod.sub (Zmod.sub dst0 (bits.of_Z width 1)) (Zmod.sub (Zmod.sub n0 (bits.of_Z width 1)) (bits.of_Z width 1))) with (Zmod.sub dst0 (Zmod.sub n0 (bits.of_Z width 1))) in H22 by ZnWords.
           exact H22. }
         { cbn. intuition idtac. eexists _, _; ssplit; eauto. f_equal. ZnWords. } }
   Qed.
 
-  Local Notation "xs $@ a" := (Array.array ptsto (word.of_Z 1) a xs) (at level 10, format "xs $@ a").
+  Local Notation "xs $@ a" := (Array.array ptsto (bits.of_Z width 1) a xs) (at level 10, format "xs $@ a").
   Global Instance spec_of_memmove_array : spec_of "memmove" :=
     fnspec! "memmove" (dst src n : word) / (d s : list byte) (R Rs : mem -> Prop),
     { requires t m := m =* s$@src * Rs /\ m =* d$@dst * R /\

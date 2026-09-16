@@ -3,7 +3,7 @@ Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.
 Require coqutil.Map.SortedListString.
 Require Import bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
-Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import BinIntDef coqutil.Word.Bitwidth.
 Require Export bedrock2.Memory.
 Require Import Coq.Lists.List.
 Require Import bedrock2.MetricLogging.
@@ -14,7 +14,9 @@ Require Import Coq.Lists.List.
 Local Notation UNK := String.EmptyString.
 
 Section semantics.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
 
@@ -30,7 +32,7 @@ Section semantics.
        for tighter metrics bounds at bedrock2 level *)
     Fixpoint eval_expr (e : expr) (mc : metrics) : option (word * metrics) :=
       match e with
-      | expr.literal v => Some (word.of_Z v, cost_lit isRegStr UNK mc)
+      | expr.literal v => Some (bits.of_Z width v, cost_lit isRegStr UNK mc)
       | expr.var x => 'v <- map.get l x; Some (v, cost_set isRegStr UNK x mc)
       | expr.inlinetable aSize t index =>
           '(index', mc') <- eval_expr index mc;
@@ -49,7 +51,7 @@ Section semantics.
           Some (interp_binop op v1 v2, cost_op isRegStr UNK UNK UNK mc'')
       | expr.ite c e1 e2 =>
           '(vc, mc') <- eval_expr c mc;
-          eval_expr (if word.eqb vc (word.of_Z 0) then e2 else e1)
+          eval_expr (if Zmod.eqb vc (bits.of_Z width 0) then e2 else e1)
                     (cost_if isRegStr UNK (Some UNK) mc')
       end.
 
@@ -66,7 +68,9 @@ Section semantics.
 End semantics.
 
 Module exec. Section WithParams.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
   Section WithEnv.
@@ -113,13 +117,13 @@ Module exec. Section WithParams.
      : exec (cmd.stackalloc x n body) t mSmall l mc post
   | if_true t m l mc e c1 c2 post
     v mc' (_ : eval_expr m l e mc = Some (v, mc'))
-    (_ : word.unsigned v <> 0)
+    (_ : Zmod.unsigned v <> 0)
     (_ : exec c1 t m l (cost_if isRegStr UNK (Some UNK) mc') post)
     : exec (cmd.cond e c1 c2) t m l mc post
   | if_false e c1 c2
     t m l mc post
     v mc' (_ : eval_expr m l e mc = Some (v, mc'))
-    (_ : word.unsigned v = 0)
+    (_ : Zmod.unsigned v = 0)
     (_ : exec c2 t m l (cost_if isRegStr UNK (Some UNK) mc') post)
     : exec (cmd.cond e c1 c2) t m l mc post
   | seq c1 c2
@@ -130,13 +134,13 @@ Module exec. Section WithParams.
   | while_false e c
     t m l mc post
     v mc' (_ : eval_expr m l e mc = Some (v, mc'))
-    (_ : word.unsigned v = 0)
+    (_ : Zmod.unsigned v = 0)
     (_ : post t m l (cost_loop_false isRegStr UNK (Some UNK) mc'))
     : exec (cmd.while e c) t m l mc post
   | while_true e c
       t m l mc post
       v mc' (_ : eval_expr m l e mc = Some (v, mc'))
-      (_ : word.unsigned v <> 0)
+      (_ : Zmod.unsigned v <> 0)
       mid (_ : exec c t m l mc' mid)
       (_ : forall t' m' l' mc'', mid t' m' l' mc'' ->
                                  exec (cmd.while e c) t' m' l' (cost_loop_true isRegStr UNK (Some UNK) mc'') post)
@@ -165,7 +169,7 @@ Module exec. Section WithParams.
     : exec (cmd.interact binds action arges) t m l mc post
   .
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
+  Context {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
 
   Lemma weaken: forall t l m mc s post1,
       exec s t m l mc post1 ->
@@ -278,7 +282,9 @@ Module exec. Section WithParams.
 End exec. Notation exec := exec.exec.
 
 Section WithParams.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
 
@@ -402,7 +408,7 @@ Section WithParams.
       intros.
       eapply Semantics.exec.weaken. 1: eapply H1. all: eauto.
       cbv beta.
-      clear. firstorder idtac. }
+      clear. intros * (? & ? & ? & ? & ? & ?). eauto 8. }
     { econstructor.
       1: eapply IHexec.
       cbv beta. intros.
