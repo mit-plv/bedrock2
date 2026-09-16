@@ -46,7 +46,7 @@ Proof.
   ssplit.
   reflexivity.
   reflexivity.
-  unfold interp_binop.
+  unfold interp_binop, slu, sru, srs, ltu, lts.
   replace (a ^- /[42] ^+ /[42]) with a by ring.
   reflexivity.
 Qed.
@@ -78,7 +78,7 @@ As ex2_ok.
   ssplit.
   reflexivity.
   reflexivity.
-  unfold interp_binop.
+  unfold interp_binop, slu, sru, srs, ltu, lts.
   replace (a ^- /[42] ^+ /[42]) with a by ring.
   reflexivity.
 Qed.

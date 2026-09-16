@@ -10,8 +10,9 @@ Load LiveVerifBitwidth.
 (* subset of `Load LiveVerif.`, but without ext_spec/ext_spec_ok context variables *)
 Section LiveVerif.
   Import Coq.Strings.String.
-  Context {word: word.word bitwidth} {mem: map.map word Byte.byte}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Local Notation word := (bits bitwidth).
+  Context {mem: map.map word Byte.byte}.
+  Context {mem_ok: map.ok mem}.
   Local Open Scope word_scope.
   Local Open Scope string_scope. Local Open Scope Z_scope.
   Import ZList.List.ZIndexNotations.
@@ -22,14 +23,13 @@ Section LiveVerif.
   Local Open Scope live_scope.
   Local Open Scope bool_scope.
 
-  Local Hint Mode Word.Interface.word - : typeclass_instances.
 
-  Add Ring wring : (Properties.word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ bitwidth))
         ((*This preprocessing is too expensive to be always run, especially if
            we do many ring_simplify in a sequence, in which case it's sufficient
            to run it once before the ring_simplify sequence.
            preprocess [autorewrite with rew_word_morphism],*)
-         morphism (Properties.word.ring_morph (word := word)),
+         morphism (Properties.word.ring_morph (width := bitwidth)),
          constants [Properties.word_cst]).
 
   Instance locals: Interface.map.map String.string word := SortedListString.map _.

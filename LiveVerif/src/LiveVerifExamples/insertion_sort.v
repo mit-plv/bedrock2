@@ -96,10 +96,12 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
     (* claim: if we're in the loop, the array is not empty,
        so we can pull an element *)
     destruct arrR as [ | x arrR' ].
-    { simpl in *; exfalso; hwlia. }
+    { cbn in *; exfalso; hwlia. }
 
     (* structure it so we can call insert *)
-    rewrite List.assoc_app_cons in *.
+    pose proof (fun (l : list Z) x r => List.app_assoc l (cons x nil) r
+                  : l ++ x :: r = (l ++ cons x nil) ++ r) as Hcons.
+    rewrite Hcons in *. clear Hcons.
 
     .**/ insert(p,n,i); /**.
 

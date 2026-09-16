@@ -115,7 +115,7 @@ Qed.
   Lemma after_if_skip' b fs (PThen PElse Post: trace -> mem -> locals -> Prop):
     bool_expr_branches b (forall t m l, PThen t m l -> Post t m l)
                          (forall t m l, PElse t m l -> Post t m l) True ->
-    @after_if _ _ _ _ _ _ fs b PThen PElse cmd.skip Post.
+    @after_if _ _ _ _ _ fs b PThen PElse cmd.skip Post.
   Proof.
     intros.
     unfold after_if.

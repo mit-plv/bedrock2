@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Bitwidth32 coqutil.Word.Properties.
 Require Import coqutil.Datatypes.ZList.
 Require bedrock2.WordNotations.
 Require Import bedrock2.bottom_up_simpl.
@@ -10,14 +10,8 @@ Section Tests.
 
 Local Notation width := 32.
 
-Context {word: word.word 32} {word_ok: word.ok word}.
+Local Notation word := (bits 32).
 
-Local Hint Mode Word.Interface.word - : typeclass_instances.
-
-Add Ring wring : (Properties.word.ring_theory (word := word))
-    ((* too expensive: preprocess [autorewrite with rew_word_morphism], *)
-     morphism (Properties.word.ring_morph (word := word)),
-     constants [Properties.word_cst]).
 
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
 Import bedrock2.WordNotations. Local Open Scope word_scope.
@@ -243,8 +237,8 @@ Local Open Scope bool_scope.
 Goal forall (a : word) (in1 in2 in3 : Z) (w0 : word),
     w0 = /[in1] ->
     forall (w2'' w1 w2 : word) (c c' : bool),
-      c' = negb (word.ltu /[in1] /[in2]) && negb (word.ltu /[in3] /[in2]) ->
-      c = negb (word.ltu /[in1] /[in3]) && negb (word.ltu /[in2] /[in3]) ->
+      c' = negb (Z.ltb \[/[in1]] \[/[in2]]) && negb (Z.ltb \[/[in3]] \[/[in2]]) ->
+      c = negb (Z.ltb \[/[in1]] \[/[in3]]) && negb (Z.ltb \[/[in2]] \[/[in3]]) ->
       w2'' = (if c then /[in1] else /[in3]) ->
       0 <= in1 < 2 ^ 32 ->
       w1 = (if c' then /[in1] else /[in2]) ->

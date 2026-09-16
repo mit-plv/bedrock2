@@ -175,7 +175,7 @@ Derive Malloc_init SuchThat (fun_correct! Malloc_init) As Malloc_init_ok.       
       bottom_up_simpl_in_goal.
       zify_hyps.
       assert (0 < c) by lia.
-      replace (/[c]) with (/[c-1] ^+ /[1]).
+      replace /[c] with (/[c-1] ^+ /[1]).
       2: solve [steps].
       bottom_up_simpl_in_goal.
       zify_goal.
@@ -198,7 +198,7 @@ Derive Malloc_init SuchThat (fun_correct! Malloc_init) As Malloc_init_ok.       
     assert (\[tail] <> 0). {
       subst.
       assert (0 < c) by lia.
-      replace (/[c]) with (/[c-1] ^+ /[1]).
+      replace /[c] with (/[c-1] ^+ /[1]).
       2: solve [steps].
       bottom_up_simpl_in_goal.
       zify_goal.
@@ -219,7 +219,7 @@ assert (subrange head 4 p (c * malloc_block_size * 1)). {
 
   clear Error.
   assert (0 < c) by lia.
-  replace (/[c]) with (/[c-1] ^+ /[1]).
+  replace /[c] with (/[c-1] ^+ /[1]).
   2: solve [steps].
   bottom_up_simpl_in_goal.
 
@@ -233,7 +233,7 @@ jj
                                                                                 .**/
 }                                                                          /**.
   all: case TODO.
-  Unshelve. try exact (word.of_Z 0).
+  Unshelve. try exact Zmod.zero.
 Qed.
 
 #[export] Instance spec_of_Malloc: fnspec :=                                    .**/
@@ -305,7 +305,7 @@ Derive Free SuchThat (fun_correct! Free) As Free_ok.                            
   start_canceling_in_hyp M.
   canceling_step_in_hyp M.
   rewrite Z.mul_1_l in M.
-  rewrite word.of_Z_unsigned in M.
+  rewrite Zmod.of_Z_unsigned in M.
   canceling_step_in_hyp M.
   eapply canceling_done_in_hyp in M.
   destruct M as (?m, (?D, ?H)).
@@ -334,7 +334,7 @@ End LiveVerif.
       => constructor : suppressed_warnings.
 #[export] Hint Extern 1 (PredicateSize_not_found allocator_failed_below)
       => constructor : suppressed_warnings.
-#[export] Hint Extern 1 (PredicateSize_not_found (@allocator _ _))
+#[export] Hint Extern 1 (PredicateSize_not_found (@allocator _))
       => constructor : suppressed_warnings.
 #[export] Hint Extern 1 (cannot_purify allocator)
       => constructor : suppressed_warnings.

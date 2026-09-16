@@ -1,4 +1,5 @@
 Require Import LiveVerif.LiveVerifLib.
+Require Import coqutil.Word.Bitwidth64.
 Require Import coqutil.Tactics.ident_ops.
 
 Ltac standalone_solver_step :=
@@ -78,8 +79,7 @@ Ltac by_contradiction :=
   change smtFalseAlias;
   repeat lazymatch goal with
          | H: ?T |- _ => lazymatch T with
-                         | word.word _ => fail
-                         | @word.ok _ _ => fail
+                         | Bitwidth _ => fail
                          | _ => lazymatch type of T with
                                 | Prop => revert H
                                 (* clear unused variables, because otherwise the notations
@@ -100,9 +100,6 @@ Ltac log x := idtac (* x *). (* comment/uncomment x to disable/enable logging *)
 Ltac log_goal_as_smt name :=
   eval_constant_pows;
   by_contradiction;
-  let width := lazymatch goal with
-               | word: word.word ?width |- _ => width
-               end in
   (* markNamedSmtGoal width name; *)
   markSmtGoal;
   lazymatch goal with
@@ -157,7 +154,7 @@ Notation "'(check-sat)'" := smtFalseAlias (in custom smt_goal).
 
 (* Sorts: *)
 
-Notation "'(_' 'BitVec' Width ')'" := (@word.rep Width _)
+Notation "'(_' 'BitVec' Width ')'" := (bits Width)
   (in custom smt_sort, Width constr at level 0).
 Notation "'Int'" := Z
   (in custom smt_sort).
@@ -233,24 +230,24 @@ Notation "(*  a  b )" := (Z.mul a b)
 Notation "'(mod'  a  b )" := (Z.modulo a b)
   (in custom smt_expr at level 0).
 
-Notation "'(bv2int'  a )" := (word.unsigned a)
+Notation "'(bv2int'  a )" := (Zmod.unsigned a)
   (in custom smt_expr at level 0).
-Notation "'((_'  'int2bv'  Width )  x )" := (@word.of_Z Width _ x)
+Notation "'((_'  'int2bv'  Width )  x )" := (bits.of_Z Width x)
   (in custom smt_expr at level 0, Width constr at level 0).
 
-Notation "'(bvneg'  a )" := (word.opp a)
+Notation "'(bvneg'  a )" := (Zmod.opp a)
   (in custom smt_expr at level 0).
-Notation "'(bvadd'  a  b )" := (word.add a b)
+Notation "'(bvadd'  a  b )" := (Zmod.add a b)
   (in custom smt_expr at level 0).
-Notation "'(bvmul'  a  b )" := (word.mul a b)
+Notation "'(bvmul'  a  b )" := (Zmod.mul a b)
   (in custom smt_expr at level 0).
-Notation "'(bvsub'  a  b )" := (word.sub a b) (* NONSTANDARD *)
+Notation "'(bvsub'  a  b )" := (Zmod.sub a b) (* NONSTANDARD *)
   (in custom smt_expr at level 0).
 (*
-Notation "'(bvadd'  a  '(bvneg'  b ) )" := (word.sub a b)
+Notation "'(bvadd'  a  '(bvneg'  b ) )" := (Zmod.sub a b)
   (in custom smt_expr at level 0).
 *)
-Notation "'(bvult'  a  b )" := (word.ltu a b)
+Notation "'(bvult'  a  b )" := (Z.ltb (Zmod.unsigned a) (Zmod.unsigned b))
   (in custom smt_expr at level 0).
 
 Notation "( f  a )" := (f a)
@@ -277,18 +274,17 @@ Section Tests.
    with small bitwidths such as 8 *)
 Local Notation width := 64 (only parsing).
 
-Context {word: word.word width} {word_ok: word.ok word}.
+Local Notation word := (bits width).
 Local Open Scope word_scope.
 Local Open Scope Z_scope.
 Local Open Scope bool_scope.
-Local Hint Mode Word.Interface.word - : typeclass_instances.
 
-Add Ring wring : (Properties.word.ring_theory (word := word))
+Add Ring wring : (Zmod.ring_theory (2 ^ width))
       ((*This preprocessing is too expensive to be always run, especially if
          we do many ring_simplify in a sequence, in which case it's sufficient
          to run it once before the ring_simplify sequence.
          preprocess [autorewrite with rew_word_morphism],*)
-       morphism (Properties.word.ring_morph (word := word)),
+       morphism (Properties.word.ring_morph (width := width)),
        constants [Properties.word_cst]).
 
 Definition prelude1 := tt.
@@ -303,7 +299,7 @@ Ltac t name :=
   repeat standalone_solver_step.
 
 Goal forall (a b r : word) (c : bool),
- c = word.ltu a b ->
+ c = (Z.ltb \[a] \[b]) ->
  r = (if c then a else b) -> \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
 Proof. t name:(ltu_ite). Qed.
 
@@ -371,14 +367,14 @@ Qed.
 Goal forall (in0 in1 in2 : Z) (w0 : word),
  w0 = /[in0] ->
  forall (w2'' w1 w2 : word) (c c' : bool),
- c' = negb (word.ltu /[in0] /[in1]) && negb (word.ltu /[in2] /[in1]) ->
- c = negb (word.ltu /[in0] /[in2]) && negb (word.ltu /[in1] /[in2]) ->
+ c' = negb ((Z.ltb \[/[in0]] \[/[in1]])) && negb ((Z.ltb \[/[in2]] \[/[in1]])) ->
+ c = negb ((Z.ltb \[/[in0]] \[/[in2]])) && negb ((Z.ltb \[/[in1]] \[/[in2]])) ->
  w2'' = (if c then /[in0] else /[in2]) ->
  0 <= in0 < 2 ^ width ->
  w1 = (if c' then /[in0] else /[in1]) ->
  w2 = (if c' then /[in2] else w2'') ->
  forall (c0 : bool),
- c0 = word.ltu w2 w1 ->
+ c0 = (Z.ltb \[w2] \[w1]) ->
  0 <= in1 < 2 ^ width ->
  0 <= in2 < 2 ^ width ->
  (if c' then in1 else if c then in2 else in0) <=

@@ -22,7 +22,7 @@ uintptr_t strcmp(uintptr_t p1, uintptr_t p2) /**#
                      * nt_str s2 p2
                      * R }> m;
   ensures t' m' res := t' = t /\
-                       List.compare byte.compare s1 s2 = Z.compare (word.signed res) 0 /\
+                       ListDef.list_compare byte.compare s1 s2 = Z.compare (Zmod.signed res) 0 /\
                        <{ * nt_str s1 p1
                           * nt_str s2 p2
                           * R }> m' #**/                                   /**.

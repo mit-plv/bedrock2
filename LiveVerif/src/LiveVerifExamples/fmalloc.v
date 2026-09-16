@@ -139,7 +139,7 @@ Derive fmalloc_init SuchThat (fun_correct! fmalloc_init) As fmalloc_init_ok.    
       bottom_up_simpl_in_goal.
       replace (blk_size ^* n' ^- blk_size) with (blk_size ^* (n' ^- /[1])) by ring.
       (* non-linear arithmetic! *)
-      rewrite word.unsigned_mul_nowrap.
+      rewrite (word.unsigned_mul_nowrap _ _ width_pos).
       2: {
         eapply Z.le_lt_trans. 2: eassumption.
         rewrite Z.mul_comm.
@@ -160,7 +160,7 @@ Derive fmalloc_init SuchThat (fun_correct! fmalloc_init) As fmalloc_init_ok.    
       bottom_up_simpl_in_goal.
       replace (blk_size ^* n' ^- blk_size) with (blk_size ^* (n' ^- /[1])) by ring.
       (* non-linear arithmetic! *)
-      rewrite word.unsigned_mul_nowrap.
+      rewrite (word.unsigned_mul_nowrap _ _ width_pos).
       2: {
         eapply Z.le_lt_trans. 2: eassumption.
         rewrite Z.mul_comm.
@@ -176,7 +176,7 @@ Derive fmalloc_init SuchThat (fun_correct! fmalloc_init) As fmalloc_init_ok.    
     2: {
       subst n. steps.
     }
-    simpl fixed_size_free_list.
+    cbn [fixed_size_free_list].
     steps.
 
     subst tail head head'.
@@ -185,13 +185,13 @@ Derive fmalloc_init SuchThat (fun_correct! fmalloc_init) As fmalloc_init_ok.    
     eapply Z.lt_le_trans with (m := \[buf]). 1: solve[steps].
     replace (buf ^+ blk_size ^* n' ^- blk_size)
       with (buf ^+ blk_size ^* (n' ^- /[1])) by ring.
-    rewrite word.unsigned_add_nowrap. 1: solve[steps].
+    rewrite (word.unsigned_add_nowrap _ _ width_pos). 1: solve[steps].
     (* non-linear arithmetic! *)
     eapply Z.le_lt_trans.
     2: eassumption.
     eapply (proj1 (Z.add_le_mono_l _ _ _)).
     rewrite Z.mul_comm.
-    rewrite word.unsigned_mul_nowrap.
+    rewrite (word.unsigned_mul_nowrap _ _ width_pos).
     2: {
       eapply Z.le_lt_trans. 2: eassumption.
       rewrite Z.mul_comm.
@@ -210,12 +210,12 @@ Derive fmalloc_init SuchThat (fun_correct! fmalloc_init) As fmalloc_init_ok.    
     prove_emp_in_hyps. steps.
     subst head head' tail.
     bottom_up_simpl_in_goal.
-    rewrite word.unsigned_sub_nowrap.
+    rewrite (word.unsigned_sub_nowrap _ _ width_pos).
     2: {
-      rewrite word.unsigned_mul_nowrap by nia.
+      rewrite (word.unsigned_mul_nowrap _ _ width_pos) by nia.
       nia.
     }
-    rewrite word.unsigned_mul_nowrap by nia.
+    rewrite (word.unsigned_mul_nowrap _ _ width_pos) by nia.
     steps.
                                                                                 .**/
   store(a, blk_size);                                                      /**. .**/
@@ -250,7 +250,7 @@ Derive fmalloc_has_space
   unfold expr.not. (* TODO support boolean operators in non-condition position *)
   steps.                                                                        .**/
 }                                                                          /**.
-  destr (word.eqb l /[0]); [left|right]; steps.
+  destr (Zmod.eqb l /[0]); [left|right]; steps.
   - let H := constr:(#(fixed_size_free_list)) in eapply fixed_size_free_list_null in H.
     steps.
   - let H := constr:(#(fixed_size_free_list)) in eapply fixed_size_free_list_nonnull in H.
@@ -328,7 +328,7 @@ Derive fmalloc_free SuchThat
   store(al+sizeof(uintptr_t), p);                                          /**. .**/
 }                                                                          /**.
   replace (Z.to_nat (n_remaining + 1)) with (S (Z.to_nat n_remaining)) by lia.
-  simpl fixed_size_free_list.
+  cbn [fixed_size_free_list].
   prove_emp_in_hyps.
   steps.
 Qed.

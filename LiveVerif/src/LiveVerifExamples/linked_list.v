@@ -148,7 +148,7 @@ void sll_inc(uintptr_t p) /**#
   requires t m := <{ * sll l p
                      * R }> m;
   ensures t' m' := t' = t /\
-       <{ * sll (List.map (word.add (word.of_Z 1)) l) p
+       <{ * sll (List.map (Zmod.add (bits.of_Z _ 1)) l) p
           * R }> m' #**/ /**.
 Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   .**/
 {                                                                          /**.
@@ -176,7 +176,7 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
       instantiate (1 := fun '(L, oldp, F, v, ti, m, l) =>
                           exists p, l = map.of_list [|("p", p)|] /\
                           v = len L /\
-                          <{ * sll (List.map (word.add (word.of_Z 1)) L) oldp
+                          <{ * sll (List.map (Zmod.add (bits.of_Z _ 1)) L) oldp
                              * F }> m /\
                           ti = t).
       cbv beta iota.
@@ -233,7 +233,7 @@ Derive sll_inc SuchThat (fun_correct! sll_inc) As sll_inc_ok.                   
     cancel_in_hyp HL.
     subst L.
 
-    simpl (List.map _ (_ ++ _)).
+    cbn [List.map List.app].
 
     steps.
   } }
