@@ -48,14 +48,16 @@ Proof.
 Qed.
 
 Section WithWordAndMem.
-  Context {width: Z} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
 
   (* bedrock2.ptsto_bytes.ptsto_bytes takes an n-tuple of bytes, whereas this one takes a list of bytes *)
-  Definition ptsto_bytes: word -> list byte -> mem -> Prop := array ptsto (word.of_Z 1).
+  Definition ptsto_bytes: word -> list byte -> mem -> Prop := array ptsto (bits.of_Z width 1).
 
   Definition mem_available(start pastend: word) : mem -> Prop :=
     ex1 (fun anybytes: list byte =>
-      emp (Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start)) *
+      emp (Z.of_nat (List.length anybytes) = Zmod.unsigned (Zmod.sub pastend start)) *
       (ptsto_bytes start anybytes))%sep.
 End WithWordAndMem.
 
@@ -132,13 +134,13 @@ Section LowerPipeline.
       + auto.
   Qed.
 
-  Context {word: word.word width} {word_ok: word.ok word}.
+  Local Notation word := (bits width).
   Context {locals: map.map Z word} {locals_ok: map.ok locals}.
   Context {mem: map.map word byte} {mem_ok: map.ok mem}.
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ width))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (width := width)),
        constants [word_cst]).
 
   Lemma get_compile_funs_pos: forall e finfo0,
@@ -168,7 +170,7 @@ Section LowerPipeline.
   Lemma program_mod_4_0: forall (a: word) instrs R m,
       instrs <> [] ->
       (program iset a instrs * R)%sep m ->
-      word.unsigned a mod 4 = 0.
+      Zmod.unsigned a mod 4 = 0.
   Proof using .
     intros.
     destruct instrs as [|instr instrs]. 1: congruence.
@@ -285,7 +287,7 @@ Section LowerPipeline.
       iff1 (program iset functions_start instrs)
            (FlatToRiscvCommon.functions compile_ext_call functions_start
                                         (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e) e).
-  Proof using word_ok mem_ok pos_map_ok env_ok compile_ext_call_length_ignores_positions.
+  Proof using  mem_ok pos_map_ok env_ok compile_ext_call_length_ignores_positions.
     unfold riscvPhase.
     intros.
     fwd.
@@ -349,7 +351,7 @@ Section LowerPipeline.
     cancel_seps_at_indices 0%nat 0%nat. 2: reflexivity.
     f_equal.
     f_equal.
-    solve_word_eq word_ok.
+    solve_word_eq .
   Qed.
 
   Open Scope ilist_scope.
@@ -360,7 +362,6 @@ Section LowerPipeline.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
   Context {ext_spec: LeakageSemantics.ExtSpec}.
-  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context (leak_ext_call: word -> pos_map -> Z -> Z -> stmt Z -> list word -> list LeakageEvent).
 
   Definition machine_ok{BWM: bitwidth_iset width iset}
@@ -373,8 +374,8 @@ Section LowerPipeline.
       )%sep mach.(getMem) /\
       subset (footpr (program iset p_functions finstrs * Rexec)%sep)
              (of_list (getXAddrs mach)) /\
-      word.unsigned (mach.(getPc)) mod 4 = 0 /\
-      mach.(getNextPc) = word.add mach.(getPc) (word.of_Z 4) /\
+      Zmod.unsigned (mach.(getPc)) mod 4 = 0 /\
+      mach.(getNextPc) = Zmod.add mach.(getPc) (bits.of_Z width 4) /\
       regs_initialized mach.(getRegs) /\
       map.get mach.(getRegs) RegisterNames.sp = Some stack_pastend /\
       (* configured by PrimitivesParams, can contain invariants needed for external calls *)
@@ -403,11 +404,11 @@ Section LowerPipeline.
         initial.(getTrace) = Some kL ->
         initial.(getLog) = t ->
         raiseMetrics (cost_compile_spec initial.(getMetrics)) = mc ->
-        word.unsigned ret_addr mod 4 = 0 ->
+        Zmod.unsigned ret_addr mod 4 = 0 ->
         arg_regs_contain initial.(getRegs) argvals ->
-        req_stack_size <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->
-        word.unsigned (word.sub stack_pastend stack_start) mod bytes_per_word = 0 ->
-        initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
+        req_stack_size <= Zmod.unsigned (Zmod.sub stack_pastend stack_start) / bytes_per_word ->
+        Zmod.unsigned (Zmod.sub stack_pastend stack_start) mod bytes_per_word = 0 ->
+        initial.(getPc) = Zmod.add p_funcs (bits.of_Z width f_rel_pos) ->
         machine_ok p_funcs stack_start stack_pastend instrs mH Rdata Rexec initial ->
         runsTo initial (fun final => exists kL' mH' retvals,
           arg_regs_contain final.(getRegs) retvals /\
@@ -501,7 +502,7 @@ Section LowerPipeline.
         (map.get p1 fname = Some (argnames, retnames, fbody) /\
            map.of_list_zip argnames argvals = Some l /\
            FlatImp.exec (pick_sp := fun k => snd (fun_leakage iset compile_ext_call leak_ext_call finfo p1 p_funcs
-                                                 (skipn (length kH) (rev k)) (rev kL) f_rel_pos stack_pastend ret_addr retnames fbody (fun _ rk => (rk, word.of_Z 0))))
+                                                 (skipn (length kH) (rev k)) (rev kL) f_rel_pos stack_pastend ret_addr retnames fbody (fun _ rk => (rk, (bits.of_Z width 0)))))
              PostSpill isRegZ p1 fbody kH t m l mcH
              (fun kH' t' m' l' mc' =>
                 exists retvals, map.getmany_of_list l' retnames = Some retvals /\
@@ -513,7 +514,7 @@ Section LowerPipeline.
                metricsLeq (mcL' - mcL) (mcH' - mcH) /\
                  kH' = kH'' ++ kH /\
                  fst (fun_leakage iset compile_ext_call leak_ext_call finfo p1 p_funcs
-                        (rev kH'') (rev kL) f_rel_pos stack_pastend ret_addr retnames fbody (fun _ rk => (rk, word.of_Z 0))) = rev kL' /\
+                        (rev kH'') (rev kL) f_rel_pos stack_pastend ret_addr retnames fbody (fun _ rk => (rk, (bits.of_Z width 0)))) = rev kL' /\
                  post kH' t m a mcH').
   Proof.
     unfold riscv_call.
@@ -528,7 +529,7 @@ Section LowerPipeline.
     pose proof (compile_funs_finfo_idemp _ _ _ E0) as Q. subst r. fwd.
     eexists. split. 1: reflexivity.
     intros.
-    assert (word.unsigned p_funcs mod 4 = 0). {
+    assert (Zmod.unsigned p_funcs mod 4 = 0). {
       unfold machine_ok in *. fwd.
       eapply program_mod_4_0. 2: ecancel_assumption.
       eapply compile_funs_nonnil; eassumption.
@@ -557,7 +558,7 @@ Section LowerPipeline.
                          map.getmany_of_list l' retnames = Some retvals /\ post kH' t' m' retvals mc')).
       eapply Q with
           (g := {| rem_stackwords :=
-                     word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
+                     Zmod.unsigned (Zmod.sub stack_pastend stack_start) / bytes_per_word;
                    rem_framewords := 0; |}); clear Q.
       + intros.
         pose proof compile_stmt_correct as P.
@@ -665,7 +666,7 @@ Section LowerPipeline.
             unfold word_array.
             rewrite <- (iff1ToEq (Hstack_trash_words _)).
             match goal with
-            | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => rewrite <- E
+            | E: Z.of_nat _ = Zmod.unsigned (Zmod.sub _ _) |- _ => rewrite <- E
             end.
             rewrite <- Z_div_exact_2; cycle 1. {
               unfold bytes_per_word. clear -BW.
@@ -681,7 +682,7 @@ Section LowerPipeline.
             unfold ptsto_bytes.
             wseplog_pre.
             simpl_addrs.
-            rewrite !word.of_Z_unsigned.
+            rewrite !Zmod.of_Z_unsigned.
             wwcancel.
             cancel_seps_at_indices 1%nat 2%nat. 1: reflexivity.
             cbn [seps].
@@ -694,7 +695,7 @@ Section LowerPipeline.
             wwcancel.
           }
           match goal with
-          | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
+          | E: Z.of_nat _ = Zmod.unsigned (Zmod.sub _ _) |- _ => simpl in E|-*; rewrite <- E
           end.
           apply Hlength_stack_trash_words. }
         { reflexivity. }
@@ -751,14 +752,14 @@ Section LowerPipeline.
         simpl. rewrite rev_involutive. reflexivity.
       + cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).
-        exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x))) stack_trash).
+        exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (Zmod.unsigned x))) stack_trash).
         rewrite !(iff1ToEq (sep_emp_2 _ _ _)).
         rewrite !(iff1ToEq (sep_assoc _ _ _)).
         eapply (sep_emp_l _ _); split.
         { rewrite (coqutil.Datatypes.List.length_flat_map _ (Z.to_nat bytes_per_word)).
           { rewrite Nat2Z.inj_mul, Z2Nat.id by blia.
             replace (Z.of_nat (Datatypes.length stack_trash))
-              with (word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word)
+              with (Zmod.unsigned (Zmod.sub stack_pastend stack_start) / bytes_per_word)
               by (symmetry;assumption).
             rewrite <- Z_div_exact_2; try trivial.
             eapply Z.lt_gt; assumption. }
@@ -777,12 +778,12 @@ Section LowerPipeline.
             | H: context[stack_trash] |- _ => rewrite <- H
             end.
             replace (Z.of_nat (Datatypes.length stack_trash))
-              with (word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word)
+              with (Zmod.unsigned (Zmod.sub stack_pastend stack_start) / bytes_per_word)
               by (symmetry;assumption).
             rewrite <- Z_div_exact_2. 3: assumption.
             2: eapply Z.lt_gt; assumption.
-            rewrite word.of_Z_unsigned.
-            solve_word_eq word_ok.
+            rewrite Zmod.of_Z_unsigned.
+            solve_word_eq .
           }
 
           Import Morphisms.

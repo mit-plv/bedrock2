@@ -12,7 +12,7 @@ Require Import riscv.Utility.DefaultMemImpl32.
 Require Import riscv.Utility.Monads.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
-Require        riscv.Utility.InstructionNotations.
+Require riscv.Utility.InstructionNotations.
 Require Import riscv.Platform.MinimalLogging.
 Require Import bedrock2.MetricLogging.
 Require Import riscv.Platform.MetricMinimal.
@@ -26,7 +26,6 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Spec.LeakageOfInstr.
 Require Import riscv.Spec.Decode.
-Require compiler.NaiveRiscvWordProperties.
 Require Import bedrock2Examples.memequal.
 Require Import compiler.MMIO.
 Require Import bedrock2.FE310CSemantics.
@@ -39,22 +38,13 @@ Notation RiscvMachine := MetricRiscvMachine.
 
 Local Existing Instance coqutil.Map.SortedListString.map.
 Local Existing Instance coqutil.Map.SortedListString.ok.
-Local Instance mem32 : map.map Words32Naive.word Init.Byte.byte := SortedListWord.map Words32Naive.word byte.
-Local Instance mem32_ok : map.ok mem32 := SortedListWord.ok _ _.
-Local Instance localsL32 : map.map Z Words32Naive.word := SortedListZ.map Words32Naive.word.
+Local Instance mem32 : map.map (bits 32) Init.Byte.byte := SortedListWord.map 32 byte.
+Local Instance mem32_ok : map.ok mem32 := SortedListWord.ok 32 byte.
+Local Instance localsL32 : map.map Z (bits 32) := SortedListZ.map (bits 32).
 Local Instance localsL32_ok : map.ok localsL32 := SortedListZ.ok _.
-Local Instance localsH32: map.map string Words32Naive.word := SortedListString.map Words32Naive.word.
+Local Instance localsH32: map.map string (bits 32) := SortedListString.map (bits 32).
 Local Instance localsH32_ok : map.ok localsH32 := SortedListString.ok _.
 Local Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I := eq_refl.
-
-Lemma word_ok : RiscvWordProperties.word.riscv_ok Words32Naive.word.
-Proof.
-  cbv [Words32Naive.word]. replace 32 with (2 ^ BinInt.Z.of_nat 5) by reflexivity.
-  apply NaiveRiscvWordProperties.naive_word_riscv_ok.
-Qed.
-
-Lemma word_ok' : word.ok Words32Naive.word.
-Proof. exact Naive.word32_ok. Qed.
 
 Definition fs_memequal := &[,memequal].
 Definition instrs_memequal :=
@@ -74,28 +64,28 @@ Definition req_stack_size_memequal :=
   end.
 Definition fname_memequal := "memequal".
 Definition f_rel_pos_memequal := 0.
-Definition post : list LogItem -> mem32 -> list Words32Naive.word -> Prop := fun _ _ _ => True.
+Definition post : list LogItem -> mem32 -> list (bits 32) -> Prop := fun _ _ _ => True.
 
 Lemma memequal_ct :
   forall x y n p_funcs stack_hi ret_addr,
   exists finalTrace : list LeakageEvent,
   forall Rx Ry xs ys m stack_lo
     Rdata Rexec (initial : RiscvMachine),
-    Separation.sep (Array.array Separation.ptsto (word.of_Z 1) x xs) Rx m /\
-      Separation.sep (Array.array Separation.ptsto (word.of_Z 1) y ys) Ry m /\
-      Z.of_nat (Datatypes.length xs) = word.unsigned n /\
-      Z.of_nat (Datatypes.length ys) = word.unsigned n /\
-      req_stack_size_memequal <= word.unsigned (word.sub stack_hi stack_lo) / SeparationLogic.bytes_per_word ->
-    word.unsigned (word.sub stack_hi stack_lo) mod SeparationLogic.bytes_per_word = 0 ->
-    getPc initial = word.add p_funcs (word.of_Z f_rel_pos_memequal) ->
+    Separation.sep (Array.array Separation.ptsto (bits.of_Z 32 1) x xs) Rx m /\
+      Separation.sep (Array.array Separation.ptsto (bits.of_Z 32 1) y ys) Ry m /\
+      Z.of_nat (Datatypes.length xs) = Zmod.unsigned n /\
+      Z.of_nat (Datatypes.length ys) = Zmod.unsigned n /\
+      req_stack_size_memequal <= Zmod.unsigned (Zmod.sub stack_hi stack_lo) / SeparationLogic.bytes_per_word ->
+    Zmod.unsigned (Zmod.sub stack_hi stack_lo) mod SeparationLogic.bytes_per_word = 0 ->
+    getPc initial = Zmod.add p_funcs (bits.of_Z 32 f_rel_pos_memequal) ->
     initial.(getTrace) = Some [] ->
     map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
-    word.unsigned ret_addr mod 4 = 0 ->
+    Zmod.unsigned ret_addr mod 4 = 0 ->
     LowerPipeline.arg_regs_contain (getRegs initial) [x; y; n] ->
     LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_memequal m Rdata Rexec initial ->
     FlatToRiscvCommon.runsTo initial
       (fun final : RiscvMachine =>
-         (exists mH' (retvals : list Words32Naive.word),
+         (exists mH' (retvals : list (bits 32)),
              LowerPipeline.arg_regs_contain (getRegs final) retvals /\
                post (getLog final) mH' retvals /\
                map.only_differ (getRegs initial) reg_class.caller_saved (getRegs final) /\
@@ -104,12 +94,12 @@ Lemma memequal_ct :
                LowerPipeline.machine_ok p_funcs stack_lo stack_hi instrs_memequal mH' 
                  Rdata Rexec final)).
 Proof.
-  assert (spec := @memequal_ok _ _ Words32Naive.word mem32 (SortedListString.map (@Naive.rep 32)) leakage_ext_spec).
+  assert (spec := @memequal_ok _ _ mem32 (SortedListString.map (bits 32)) leakage_ext_spec).
   intros.
-  edestruct (@compiler_correct_wp _ _ Words32Naive.word mem32 _ leakage_ext_spec _ _ _ leakage_ext_spec_ok _ _ _ _ _ word_ok _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct ltac:(reflexivity) fs_memequal instrs_memequal finfo_memequal req_stack_size_memequal fname_memequal p_funcs stack_hi ret_addr f_rel_pos_memequal) as [f_ [pick_sp_ H] ].
+  edestruct (@compiler_correct_wp _ _ mem32 _ leakage_ext_spec _ _ leakage_ext_spec_ok _ _ _ _ _ _ _ RV32I _ compile_ext_call leak_ext_call compile_ext_call_correct ltac:(reflexivity) fs_memequal instrs_memequal finfo_memequal req_stack_size_memequal fname_memequal p_funcs stack_hi ret_addr f_rel_pos_memequal) as [f_ [pick_sp_ H] ].
   { simpl. reflexivity. }
   { vm_compute. reflexivity. }
-  specialize (spec pick_sp_ word_ok' _ ltac:(apply SortedListString.ok) leakage_ext_spec_ok).
+  specialize (spec pick_sp_ _ ltac:(apply SortedListString.ok) leakage_ext_spec_ok).
   cbv [LeakageProgramLogic.program_logic_goal_for] in spec.
   specialize (spec (map.of_list fs_memequal) eq_refl).
   cbv [spec_of_memequal] in spec. destruct spec as [f spec].

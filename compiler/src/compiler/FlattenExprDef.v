@@ -17,9 +17,9 @@ Require Import coqutil.Datatypes.String.
 Open Scope Z_scope.
 
 Section FlattenExpr1.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width}
-          {word_ok: word.ok word}
-          {locals: map.map String.string word}
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {locals: map.map String.string word}
           {mem: map.map word byte}
           {FlatImp_env: map.map string (list string * list string * FlatImp.stmt string)}
           {ext_spec: ExtSpec}

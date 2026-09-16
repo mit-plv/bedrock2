@@ -72,7 +72,8 @@ Section FlatToRiscv1.
 
 
   Context (iset: InstructionSet).
-  Context {width} {BW : Bitwidth width} {word: word.word width}.
+  Context {width} {BW : Bitwidth width}.
+  Local Notation word := (bits width).
 
   (* Part 2: compilation *)
 
@@ -528,12 +529,12 @@ Section FlatToRiscv1.
       | instr :: instrs, leakage :: leakages =>
           fetchInstr abs_pos ::
             executeInstr instr leakage ::
-            leakage_events (word.add abs_pos (word.of_Z 4)) instrs leakages
+            leakage_events (Zmod.add abs_pos 4) instrs leakages
       | _, _ => nil
       end.
 
     Definition leakage_events_rel (mypos: Z) :=
-      leakage_events (word.add program_base (word.of_Z mypos)).
+      leakage_events (Zmod.add program_base (bits.of_Z width mypos)).
 
     Definition project_tuple (tup : tuple) : nat * stmt Z :=
       let '(s, k, rk_so_far, mypos, sp_val, stackoffset, f) := tup in
@@ -553,7 +554,7 @@ Section FlatToRiscv1.
         let scratchwords := stackalloc_words fbody in
         let framesize := (bytes_per_word *
                             (Z.of_nat (length need_to_save) + 1 + scratchwords))%Z in
-        let sp_val' := word.add sp_val (word.of_Z (-framesize)) in
+        let sp_val' := Zmod.add sp_val (bits.of_Z width (-framesize)) in
         let beforeBodyInstrs :=
           [[ Addi sp sp (-framesize) ]] ++
             [[ compile_store access_size.word sp ra
@@ -594,22 +595,22 @@ Section FlatToRiscv1.
                   fun _ =>
                     match k with
                     | leak_word addr :: k' =>
-                        f [leak_word addr] (rk_so_far ++ leakage_events' [leak_load sz (word.sub addr (word.of_Z o) (*this is silly to add it and then subtract it off again.... the alternative is to have Flattening trace transformation function not be the identity, though*))])
-                    | _ => (nil, word.of_Z 0)
+                        f [leak_word addr] (rk_so_far ++ leakage_events' [leak_load sz (Zmod.sub addr (bits.of_Z width o) (*this is silly to add it and then subtract it off again.... the alternative is to have Flattening trace transformation function not be the identity, though*))])
+                    | _ => (nil, (bits.of_Z width 0))
                     end
               | SStore sz x y o =>
                   fun _ =>
                     match k with
                     | leak_word addr :: k' =>
-                        f [leak_word addr] (rk_so_far ++ leakage_events' [leak_store sz (word.sub addr (word.of_Z o))])
-                    | _ => (nil, word.of_Z 0)
+                        f [leak_word addr] (rk_so_far ++ leakage_events' [leak_store sz (Zmod.sub addr (bits.of_Z width o))])
+                    | _ => (nil, (bits.of_Z width 0))
                     end
               | SInlinetable sz x t i =>
                   fun _ =>
                     match k with
                     | leak_word i' :: k' =>
-                        f [leak_word i'] (rk_so_far ++ leakage_events_rel mypos [[ Jal x (4 + Z.of_nat (length (compile_byte_list t)) * 4)]] [leak_Jal] ++ leakage_events_rel (mypos + (4 + Z.of_nat (length (compile_byte_list t)) * 4)) [[Add x x i; compile_load sz x x 0 ]] [leak_Add; leak_load sz (word.add (word.add (word.add program_base (word.of_Z mypos)) (word.of_Z 4)) i')])
-                    | _ => (nil, word.of_Z 0)
+                        f [leak_word i'] (rk_so_far ++ leakage_events_rel mypos [[ Jal x (4 + Z.of_nat (length (compile_byte_list t)) * 4)]] [leak_Jal] ++ leakage_events_rel (mypos + (4 + Z.of_nat (length (compile_byte_list t)) * 4)) [[Add x x i; compile_load sz x x 0 ]] [leak_Add; leak_load sz (Zmod.add (Zmod.add (Zmod.add program_base (bits.of_Z width mypos)) (bits.of_Z width 4)) i')])
+                    | _ => (nil, (bits.of_Z width 0))
                     end
               | SStackalloc x n body =>
                   fun _ =>
@@ -618,7 +619,7 @@ Section FlatToRiscv1.
                         fun _ =>
                           stmt_leakage (body, k', rk_so_far ++ leakage_events_rel mypos [[Addi x sp (stackoffset-n)]] [ leak_Addi ],
                               mypos + 4, sp_val, stackoffset - n, fun skip => f (leak_unit :: skip)) _
-                    | _ => fun _ => (nil, word.add sp_val (word.of_Z (stackoffset - n)))
+                    | _ => fun _ => (nil, Zmod.add sp_val (bits.of_Z width (stackoffset - n)))
                     end eq_refl
               | SLit _ v =>
                   fun _ =>
@@ -637,16 +638,16 @@ Section FlatToRiscv1.
                       | Syntax.bopname.sru
                       | Syntax.bopname.srs =>
                           match k with
-                          | leak_word x2 :: k' => Some ([leak_word x2], word.of_Z 0, x2)
+                          | leak_word x2 :: k' => Some ([leak_word x2], (bits.of_Z width 0), x2)
                           | _ => None
                           end
-                      | _ => Some ([], word.of_Z 0, word.of_Z 0)
+                      | _ => Some ([], (bits.of_Z width 0), (bits.of_Z width 0))
                       end
                     in
                     match newt_operands with
                     | Some (newt, x1, x2) =>
                         f newt (rk_so_far ++ leakage_events' (leak_op op operand2 x1 x2))
-                    | None => (nil, word.of_Z 0)
+                    | None => (nil, (bits.of_Z width 0))
                     end
               | SSet _ _ =>
                   fun _ =>
@@ -667,7 +668,7 @@ Section FlatToRiscv1.
                               fun skip rk_so_far' =>
                                 f (leak_bool b :: skip)
                                   (rk_so_far' ++ if b then leakage_events_rel (mypos + 4 + 4 * thenLength) [[Jal Register0 ((elseLength + 1) * 4)]] [leak_Jal] else [])) _
-                    | _ => fun _ => (nil, word.of_Z 0)
+                    | _ => fun _ => (nil, (bits.of_Z width 0))
                     end eq_refl
               | SLoop body1 cond body2 =>
                   fun _ =>
@@ -694,7 +695,7 @@ Section FlatToRiscv1.
                              | leak_bool false :: k'' =>
                                  fun _ =>
                                    f (skip ++ [leak_bool false]) (rk_so_far' ++ leakage_events_rel (mypos + body1Length * 4) [[compile_bcond_by_inverting cond ((body2Length + 2) * 4)]] [ leak_bcond_by_inverting cond (negb false) ])
-                             | _ => fun _ => (nil, word.of_Z 0)
+                             | _ => fun _ => (nil, (bits.of_Z width 0))
                              end eq_refl)) _
               | SSeq s1 s2 =>
                   fun _ =>
@@ -712,7 +713,7 @@ Section FlatToRiscv1.
                         fun _ =>
                           match map.get e_env fname, map.get e fname with
                           | Some (params, rets, fbody), Some fpos =>
-                              let '(beforeBodyInstrs, beforeBodyLeakage, afterBodyInstrs, afterBodyLeakage, mypos', after_fun_pos, sp_val', stackoffset') := fun_leakage_helper fpos sp_val (word.add (word.add program_base (word.of_Z mypos)) (word.of_Z 4)) rets fbody in
+                              let '(beforeBodyInstrs, beforeBodyLeakage, afterBodyInstrs, afterBodyLeakage, mypos', after_fun_pos, sp_val', stackoffset') := fun_leakage_helper fpos sp_val (Zmod.add (Zmod.add program_base (bits.of_Z width mypos)) (bits.of_Z width 4)) rets fbody in
                               stmt_leakage (fbody,
                                   k',
                                   rk_so_far ++ leakage_events_rel mypos [[ Jal ra (fpos - mypos) ]] [leak_Jal] ++ leakage_events_rel fpos beforeBodyInstrs beforeBodyLeakage,
@@ -720,16 +721,16 @@ Section FlatToRiscv1.
                                   fun skip rk_so_far' =>
                                     let k'' := List.skipn (length skip) k' in
                                     f (leak_unit :: skip) (rk_so_far' ++ leakage_events_rel after_fun_pos afterBodyInstrs afterBodyLeakage)) _
-                          | _, _ => (nil, word.of_Z 0)
+                          | _, _ => (nil, (bits.of_Z width 0))
                           end
-                    | _ => fun _ => (nil, word.of_Z 0)
+                    | _ => fun _ => (nil, (bits.of_Z width 0))
                     end eq_refl
               | SInteract _ _ _ =>
                   fun _ =>
                     match k with
                     | leak_list l :: k' =>
                         f [leak_list l] (rk_so_far ++ leak_ext_call program_base e mypos stackoffset s l)
-                    | _ => (nil, word.of_Z 0)
+                    | _ => (nil, (bits.of_Z width 0))
                     end
               end eq_refl
           end eq_refl).

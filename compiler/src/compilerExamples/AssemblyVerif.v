@@ -55,7 +55,8 @@ Local Notation ptsto_bytes :=
 
 Section Verif.
 
-  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+  Context {width} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {Registers: map.map Register word}.
   Context {Registers_ok: map.ok Registers}.
   Context {mem: map.map word byte}.
@@ -68,14 +69,14 @@ Section Verif.
 
   Definition iset := if width =? 32 then RV32I else RV64I.
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ width))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (width := width)),
        constants [word_cst]).
 
   Ltac simulate'_step :=
-    first [ eapply go_loadWord_sep ; simpl in *; simpl_word_exprs word_ok; [ecancel_assumption||sidecondition..|]
-          | eapply go_storeWord_sep; simpl in *; simpl_word_exprs word_ok; [ecancel_assumption||sidecondition..|intros]
+    first [ eapply go_loadWord_sep ; simpl in *; simpl_word_exprs; [ecancel_assumption||sidecondition..|]
+          | eapply go_storeWord_sep; simpl in *; simpl_word_exprs; [ecancel_assumption||sidecondition..|intros]
           | simulate_step ].
 
   Ltac simulate' := repeat simulate'_step.
@@ -92,20 +93,20 @@ Section Verif.
     | ].
 
   Definition gallina_prog_1(v1 v2: word): word :=
-    word.srs (word.add v1 v2) (word.of_Z 1).
+    Zmod.srs (Zmod.add v1 v2) 1.
 
   Lemma asm_prog_1_correct: forall (initial: MetricRiscvMachine) newPc R Rexec (v1 v2: word),
       map.get initial.(getRegs) x1 = Some v1 ->
       map.get initial.(getRegs) x2 = Some v2 ->
-      newPc = word.add initial.(getPc) (word.of_Z (4 * (Z.of_nat (List.length asm_prog_1)))) ->
+      newPc = Zmod.add initial.(getPc) (bits.of_Z width (4 * (Z.of_nat (List.length asm_prog_1)))) ->
       subset (footpr (program iset initial.(getPc) asm_prog_1 * Rexec)%sep)
              (of_list initial.(getXAddrs)) ->
       (program iset initial.(getPc) asm_prog_1 * Rexec * R)%sep initial.(getMem) ->
-      initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
+      initial.(getNextPc) = Zmod.add initial.(getPc) (bits.of_Z width 4) ->
       runsTo (mcomp_sat (run1 iset)) initial
              (fun final =>
                 final.(getPc) = newPc /\
-                final.(getNextPc) = add newPc (word.of_Z 4) /\
+                final.(getNextPc) = add newPc (bits.of_Z width 4) /\
                 subset (footpr (program iset initial.(getPc) asm_prog_1 * Rexec)%sep)
                        (of_list final.(getXAddrs)) /\
                 (program iset initial.(getPc) asm_prog_1 * Rexec * R)%sep final.(getMem) /\
@@ -122,15 +123,15 @@ Section Verif.
     run1det.
     eapply runsToDone.
     simpl.
-    repeat split; first [ solve_word_eq word_ok | assumption | idtac ].
+    repeat split; first [ solve_word_eq | assumption | idtac ].
     apply map.get_put_same.
   Qed.
 
   Opaque asm_prog_1.
 
   Definition gallina_prog_2(v1 v2: w32): word :=
-    gallina_prog_1 (word.of_Z (BitOps.signExtend 32 (LittleEndian.combine 4 v1)))
-                   (word.of_Z (BitOps.signExtend 32 (LittleEndian.combine 4 v2))).
+    gallina_prog_1 (bits.of_Z width (BitOps.signExtend 32 (LittleEndian.combine 4 v1)))
+                   (bits.of_Z width (BitOps.signExtend 32 (LittleEndian.combine 4 v2))).
 
   Arguments LittleEndian.combine: simpl never.
 
@@ -143,18 +144,18 @@ Section Verif.
 
   Lemma asm_prog_2_correct: forall (initial: MetricRiscvMachine) newPc
                                   (argvars resvars: list Register) R Rexec (v1 v2 dummy: w32),
-      newPc = word.add initial.(getPc) (word.of_Z (4 * Z.of_nat (List.length asm_prog_2))) ->
+      newPc = Zmod.add initial.(getPc) (bits.of_Z width (4 * Z.of_nat (List.length asm_prog_2))) ->
       subset (footpr (program iset initial.(getPc) asm_prog_2 * Rexec)%sep)
              (of_list initial.(getXAddrs)) ->
       (program iset initial.(getPc) asm_prog_2 * Rexec *
-       ptsto_bytes 4%nat (word.of_Z input_ptr) v1 *
-       ptsto_bytes 4%nat (word.of_Z (input_ptr+4)) v2 *
-       ptsto_bytes 4%nat (word.of_Z output_ptr) dummy * R)%sep initial.(getMem) ->
-      initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
+       ptsto_bytes 4%nat (bits.of_Z width input_ptr) v1 *
+       ptsto_bytes 4%nat (bits.of_Z width (input_ptr+4)) v2 *
+       ptsto_bytes 4%nat (bits.of_Z width output_ptr) dummy * R)%sep initial.(getMem) ->
+      initial.(getNextPc) = Zmod.add initial.(getPc) (bits.of_Z width 4) ->
       runsTo (mcomp_sat (run1 iset)) initial
              (fun final =>
                 final.(getPc) = newPc /\
-                final.(getNextPc) = add newPc (word.of_Z 4) /\
+                final.(getNextPc) = add newPc (bits.of_Z width 4) /\
                 subset (footpr (program iset initial.(getPc) asm_prog_2 * Rexec)%sep)
                        (of_list final.(getXAddrs)) /\
                 (program iset initial.(getPc) asm_prog_2 * Rexec * R)%sep final.(getMem) /\
@@ -215,27 +216,24 @@ Ltac sidecondition ::=
     subst. simp.
 
     (* TODO matching up addresses should work automatically *)
-    replace (@word.add _ word
-              (@word.add _ word
-                 (@word.add _ word initial_pc (@word.of_Z _ word 4))
-                 (@word.of_Z _ word 4))
-              (@word.of_Z _ word
-                 (@word.unsigned _ word (@word.of_Z _ word 4) *
+    replace (Zmod.add
+              (Zmod.add (Zmod.add initial_pc (bits.of_Z width 4)) (bits.of_Z width 4))
+              (bits.of_Z width
+                 (Zmod.unsigned (bits.of_Z width 4) *
                   BinInt.Z.of_nat (@Datatypes.length Instruction asm_prog_1))))
-      with (@word.add _ word
-        (@word.add _ word (@word.add _ word initial_pc (@word.of_Z _ word 4))
-           (@word.of_Z _ word 4))
-        (@word.mul _ word (@word.of_Z _ word 4)
-           (@word.of_Z _ word (Z.of_nat (@Datatypes.length Instruction asm_prog_1)))))
+      with (Zmod.add
+        (Zmod.add (Zmod.add initial_pc (bits.of_Z width 4)) (bits.of_Z width 4))
+        (Zmod.mul (bits.of_Z width 4)
+           (bits.of_Z width (Z.of_nat (@Datatypes.length Instruction asm_prog_1)))))
       in H1; cycle 1. {
-      clear -word_ok.
+      clear.
       change BinInt.Z.of_nat with Z.of_nat in *.
       f_equal.
-      apply word.unsigned_inj.
-      rewrite word.unsigned_mul.
-      rewrite word.unsigned_of_Z at 2. unfold word.wrap.
-      rewrite (word.unsigned_of_Z (4 mod 2 ^ width * Z.of_nat (Datatypes.length asm_prog_1))).
-      rewrite! word.unsigned_of_Z. unfold word.wrap.
+      apply Zmod.unsigned_inj.
+      rewrite Zmod.unsigned_mul.
+      rewrite bits.unsigned_of_Z at 2.
+      rewrite (bits.unsigned_of_Z (4 mod 2 ^ width * Z.of_nat (Datatypes.length asm_prog_1))).
+      rewrite! bits.unsigned_of_Z.
       apply Zmult_mod_idemp_r.
     }
 
@@ -243,8 +241,8 @@ Ltac sidecondition ::=
     eapply runsToDone.
     simpl.
     repeat split.
-    - solve_word_eq word_ok.
-    - solve_word_eq word_ok.
+    - solve_word_eq.
+    - solve_word_eq.
     - (* TODO *) case fix_footpr_TODO.
     - (* TODO *) case fix_updated_mem_TODO.
     - assumption.

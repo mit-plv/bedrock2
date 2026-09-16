@@ -12,7 +12,7 @@ Require Import riscv.Utility.DefaultMemImpl32.
 Require Import riscv.Utility.Monads.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
-Require        riscv.Utility.InstructionNotations.
+Require riscv.Utility.InstructionNotations.
 Require Import riscv.Platform.MinimalLogging.
 Require Import bedrock2.MetricLogging.
 Require Import riscv.Platform.MetricMinimal.

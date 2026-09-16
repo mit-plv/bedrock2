@@ -14,7 +14,7 @@ Local Notation var := String.string (only parsing).
 Section WithArguments.
   Context {width : Z}.
   Context {BW :  Bitwidth.Bitwidth width }.
-  Context {word :  word width } {word_ok : word.ok word}.
+  Local Notation word := (bits width).
   Context {env :  map.map string (list var * list var * stmt var) } {env_ok : map.ok env}.
   Context {mem :  map.map word (Init.Byte.byte : Type) } {mem_ok: map.ok mem}.
   Context {locals :  map.map string word } {locals_ok: map.ok locals}.
@@ -23,9 +23,9 @@ Section WithArguments.
   Context (is5BitImmediate : Z -> bool).
   Context (is12BitImmediate  : Z -> bool).
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ width))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (width := width)),
         constants [word_cst]).
 
   Local Notation exec := (exec PreSpill isRegStr).
@@ -171,8 +171,8 @@ Section WithArguments.
 
       all: exists mcH'; split; [solve [eapply op_cost_y; eauto | eapply op_cost_v0; eauto]|eauto].
 
-      + rewrite word.add_comm. assumption.
-      + replace (word.add y' (word.of_Z (-v))) with (word.sub y' (word.of_Z v)) by ring. assumption.
+      + rewrite Zmod.add_comm. assumption.
+      + replace (Zmod.add y' (bits.of_Z width (-v))) with (Zmod.sub y' (bits.of_Z width v)) by ring. assumption.
       + rewrite word.and_comm. assumption.
       + rewrite word.or_comm. assumption.
       + rewrite word.xor_comm. assumption.

@@ -27,8 +27,8 @@ Arguments Jal (_)%_Z (_)%_Z. (* needed when inside a (_)%_sep *)
 Section Proofs.
   Context {iset: Decode.InstructionSet}.
   Context {fun_pos_env: map.map String.string Z}.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
-  Context {word_ok: word.ok word}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {locals: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {env: map.map String.string (list Z * list Z * FlatImp.stmt Z)}.
@@ -37,7 +37,6 @@ Section Proofs.
   Context {RVM: Machine.RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {ext_spec: LeakageSemantics.ExtSpec}.
-  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context {locals_ok: map.ok locals}.
   Context {mem_ok: map.ok mem}.
   Context {fun_pos_env_ok: map.ok fun_pos_env}.
@@ -46,21 +45,21 @@ Section Proofs.
   Context {BWM: bitwidth_iset width iset}.
   Context (compile_ext_call: fun_pos_env -> Z -> Z -> stmt Z -> list Instruction).
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ width))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (width := width)),
        constants [word_cst]).
 
   Notation RiscvMachine := MetricRiscvMachine.
 
   Notation "'len' l" := (Z.of_nat (List.length l)) (at level 10).
-  Notation "[/ a ]" := (word.of_Z a). (* squeeze/ a Z into a word *)
-  Notation "[\ a ]" := (word.unsigned a). (* open up\ a word so that it becomes a Z *)
+  Notation "[/ a ]" := (bits.of_Z width a). (* squeeze/ a Z into a word *)
+  Notation "[\ a ]" := (Zmod.unsigned a). (* open up\ a word so that it becomes a Z *)
 
   Definition pc_in_range(m: RiscvMachine)(base: word)(l: Z): Prop :=
     [\getPc m] mod 4 = 0 /\
-    [\word.sub (getPc m) base] <= l /\
-    getNextPc m = word.add (getPc m) [/4].
+    [\Zmod.sub (getPc m) base] <= l /\
+    getNextPc m = Zmod.add (getPc m) [/4].
 
   Definition Inv(m: RiscvMachine): Prop :=
     exists (insts: list Instruction) (data: list byte)
@@ -68,12 +67,12 @@ Section Proofs.
       pc_in_range m p_insts (4 * len insts) /\
       (* begin ignore *)
       subset (footpr (program iset p_insts insts *
-                      ptsto_instr iset (word.add p_insts [/4 * len insts])
+                      ptsto_instr iset (Zmod.add p_insts [/4 * len insts])
                                   (Jal RegisterNames.zero (-4 * len insts)))%sep)
              (of_list m.(getXAddrs)) /\
       (* end ignore *)
       (program iset p_insts insts *
-       ptsto_instr iset (word.add p_insts [/4 * len insts]) (Jal RegisterNames.zero (-4 * len insts)) *
+       ptsto_instr iset (Zmod.add p_insts [/4 * len insts]) (Jal RegisterNames.zero (-4 * len insts)) *
        array ptsto [/1] p_data data)%sep m.(getMem) /\
       (* TODO we would also have to say that Sb and Lb only touch memory within data *)
       (forall inst, In inst insts -> (exists r1 r2 ofs, inst = Sb r1 r2 ofs) \/
@@ -88,7 +87,7 @@ Section Proofs.
     destruct_RiscvMachine m.
     simp.
     assert (exists insts0 inst insts1, insts = insts0 ++ [inst] ++ insts1 /\
-                                       m_pc = word.add p_insts [/4 * len insts0])
+                                       m_pc = Zmod.add p_insts [/4 * len insts0])
       as P by admit.
     simp.
     match goal with
@@ -112,8 +111,8 @@ Require Import riscv.Platform.FE310ExtSpec.
 Section PrintExamples.
   Context {iset: Decode.InstructionSet}.
   Context {fun_pos_env: map.map String.string Z}.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
-  Context {word_ok: word.ok word}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {locals: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {env: map.map String.string (list Z * list Z * FlatImp.stmt Z)}.
@@ -122,7 +121,6 @@ Section PrintExamples.
   Context {RVM: Machine.RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {ext_spec: Semantics.ExtSpec}.
-  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context {locals_ok: map.ok locals}.
   Context {mem_ok: map.ok mem}.
   Context {fun_pos_env_ok: map.ok fun_pos_env}.
@@ -149,7 +147,7 @@ Section PrintExamples.
 
     unfold isOTP, isPRCI, isGPIO0, isUART0 in *.
 
-    set (test := (isMMIOAddr (word.of_Z (0x00020004)))).
+    set (test := (isMMIOAddr (bits.of_Z width (0x00020004)))).
   Abort.
 
   Goal False.

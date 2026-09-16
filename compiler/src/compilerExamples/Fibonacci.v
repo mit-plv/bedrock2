@@ -8,7 +8,7 @@ Require Import compiler.NameGen.
 Require Import riscv.Utility.Monads.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
-Require        riscv.Utility.InstructionNotations.
+Require riscv.Utility.InstructionNotations.
 Require Import riscv.Platform.MinimalLogging.
 Require Import bedrock2.MetricLogging.
 Require Import riscv.Platform.MetricMinimal.
@@ -46,13 +46,13 @@ Definition fib_H_res(fuel: nat)(n: Z): option word :=
   end.
 
 
-Goal fib_H_res 20 0 = Some (word.of_Z  1). reflexivity. Qed.
-Goal fib_H_res 20 1 = Some (word.of_Z  1). reflexivity. Qed.
-Goal fib_H_res 20 2 = Some (word.of_Z  2). reflexivity. Qed.
-Goal fib_H_res 20 3 = Some (word.of_Z  3). reflexivity. Qed.
-Goal fib_H_res 20 4 = Some (word.of_Z  5). reflexivity. Qed.
-Goal fib_H_res 20 5 = Some (word.of_Z  8). reflexivity. Qed.
-Goal fib_H_res 20 6 = Some (word.of_Z 13). reflexivity. Qed.
+Goal fib_H_res 20 0 = Some Zmod.one. reflexivity. Qed.
+Goal fib_H_res 20 1 = Some Zmod.one. reflexivity. Qed.
+Goal fib_H_res 20 2 = Some (bits.of_Z width  2). reflexivity. Qed.
+Goal fib_H_res 20 3 = Some (bits.of_Z width  3). reflexivity. Qed.
+Goal fib_H_res 20 4 = Some (bits.of_Z width  5). reflexivity. Qed.
+Goal fib_H_res 20 5 = Some (bits.of_Z width  8). reflexivity. Qed.
+Goal fib_H_res 20 6 = Some (bits.of_Z width 13). reflexivity. Qed.
 
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters. refine ({|
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ _ _ := nil;
@@ -106,7 +106,7 @@ Module PrintAssembly.
 End PrintAssembly.
 
 Definition fib6_bits: list word :=
-  List.map (fun i => word.of_Z (encode i)) fib6_riscv.
+  List.map (fun i => bits.of_Z width (encode i)) fib6_riscv.
 
 (* Eval cbv in fib6_bits. *)
 
@@ -121,8 +121,8 @@ Definition zeroedRiscvMachine: RiscvMachine :=
 {|
   getMachine := {|
     RiscvMachine.getRegs := map.empty;
-    RiscvMachine.getPc := word.of_Z 0;
-    RiscvMachine.getNextPc := word.of_Z 4;
+    RiscvMachine.getPc := (bits.of_Z 32 0);
+    RiscvMachine.getNextPc := bits.of_Z width 4;
     RiscvMachine.getMem := map.empty;
     RiscvMachine.getXAddrs := nil;
     RiscvMachine.getLog := nil;
@@ -131,7 +131,7 @@ Definition zeroedRiscvMachine: RiscvMachine :=
 |}.
 
 Definition initialRiscvMachine(imem: list MachineInt): RiscvMachine :=
-  putProgram imem (word.of_Z 0) zeroedRiscvMachine.
+  putProgram imem (bits.of_Z 32 0) zeroedRiscvMachine.
 
 Definition run: nat -> RiscvMachine -> option unit * RiscvMachine := Run.run RV32IM.
 
@@ -144,7 +144,7 @@ Definition instructions_to_word8(insts: list Instruction): list Utility.byte :=
 Definition fib6_as_word8: list Utility.byte := instructions_to_word8 fib6_riscv.
 
 Definition fib6_as_bytes: list byte :=
-  List.map (fun w => Byte.of_Z (word.unsigned w)) fib6_as_word8.
+  List.map (fun w => Byte.of_Z (Zmod.unsigned w)) fib6_as_word8.
 
 Module PrintBytes.
   Import bedrock2.Hexdump.
@@ -207,7 +207,7 @@ Definition fib6_final(fuel: nat): RiscvMachine :=
 Definition force_option(o: option word): word :=
   match o with
   | Some w => w
-  | None => word.of_Z 0
+  | None => (bits.of_Z 32 0)
   end.
 
 Definition fib6_res(fuel: nat): word :=
@@ -228,13 +228,13 @@ Extraction "Fib6.hs" finalfibres.
  *)
 
 (* 1st method: Run it *)
-Lemma fib6_L_res_is_13_by_running_it: exists fuel, word.unsigned (fib6_res fuel) = 13.
+Lemma fib6_L_res_is_13_by_running_it: exists fuel, Zmod.unsigned (fib6_res fuel) = 13.
   exists 400%nat.
   cbv.
   reflexivity.
 Qed.
 
-Lemma fib_H_res_value: fib_H_res 20 6 = Some (word.of_Z 13).
+Lemma fib_H_res_value: fib_H_res 20 6 = Some (bits.of_Z width 13).
 Proof. cbv. reflexivity. Qed.
 
 Lemma enough_registers_for_fib6: enough_registers (fib_ExprImp 6).
@@ -244,7 +244,7 @@ Qed.
 
 (* 2nd method: Prove it without running it on low level, but using the
    compiler correctness theorem *)
-Lemma fib6_L_res_is_13_by_proving_it: exists fuel, word.unsigned (fib6_res fuel) = 13.
+Lemma fib6_L_res_is_13_by_proving_it: exists fuel, Zmod.unsigned (fib6_res fuel) = 13.
   unfold fib6_res. unfold fib6_final.
   pose proof @exprImp2Riscv_correct as P.
 Abort.

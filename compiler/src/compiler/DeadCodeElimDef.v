@@ -21,7 +21,7 @@ Require Import Coq.Logic.FunctionalExtensionality.
 Section WithArguments1.
   Context {width: Z}.
   Context {BW: Bitwidth.Bitwidth width }.
-  Context {word : word width } { word_ok : word.ok word }.
+  Local Notation word := (bits width).
   Context {env: map.map string (list var * list var * stmt var) } { env_ok : map.ok env }.
   Context {mem: map.map word (Init.Byte.byte : Type) } {mem_ok : map.ok mem } .
   Context {locals: map.map string word } {locals_ok : map.ok locals }.

@@ -1,6 +1,6 @@
 Require Export Coq.Lists.List. Export ListNotations.
 Require Export Coq.ZArith.ZArith. Open Scope Z_scope.
-Require Export coqutil.Word.Interface coqutil.Word.Properties.
+Require Export coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Export coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.rdelta coqutil.Tactics.destr coqutil.Decidable.
 Require Import coqutil.Tactics.rewr coqutil.Tactics.Tactics.
@@ -35,12 +35,13 @@ Arguments sep {key} {value} {map} (_)%_sep (_)%_sep.
 Definition bytes_per_word{width}{BW: Bitwidth width}: Z := Memory.bytes_per_word width.
 
 Section ptstos.
-  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+  Context {width} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {mem : map.map word byte} {mem_ok: map.ok mem}.
   Context (iset: InstructionSet).
 
   Definition word_array: word -> list word -> mem -> Prop :=
-    array ptsto_word (word.of_Z bytes_per_word).
+    array ptsto_word (bits.of_Z width bytes_per_word).
 
   (* we use InvalidInstruction to put data into the instruction memory, so we have
      to allow them, but make sure that they can be represented with 32 bits *)
@@ -52,15 +53,15 @@ Section ptstos.
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
      ((le_split 4 (encode instr) $@ addr) *
      emp (verify instr iset \/ valid_InvalidInstruction instr) *
-     emp ((word.unsigned addr) mod 4 = 0))%sep.
+     emp ((Zmod.unsigned addr) mod 4 = 0))%sep.
 
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
-    array ptsto_instr (word.of_Z 4) addr prog.
+    array ptsto_instr 4 addr prog.
 
   Lemma invert_ptsto_instr: forall {addr instr R m},
     (ptsto_instr addr instr * R)%sep m ->
      (verify instr iset \/ valid_InvalidInstruction instr) /\
-     (word.unsigned addr) mod 4 = 0.
+     (Zmod.unsigned addr) mod 4 = 0.
   Proof.
     intros.
     unfold array, ptsto_instr in *.
@@ -75,16 +76,16 @@ Section ptstos.
   Lemma invert_ptsto_program1: forall {addr instr R m},
     (program addr [instr] * R)%sep m ->
      (verify instr iset \/ valid_InvalidInstruction instr) /\
-     (word.unsigned addr) mod 4 = 0.
+     (Zmod.unsigned addr) mod 4 = 0.
   Proof.
     unfold program. intros. simpl in *. eapply invert_ptsto_instr.
     ecancel_assumption.
   Qed.
 
   Lemma cast_word_array_to_bytes bs (addr : word) : iff1
-    (array ptsto_word (word.of_Z bytes_per_word) addr bs)
-    (array ptsto (word.of_Z 1) addr (flat_map (fun x =>
-       (LittleEndianList.le_split (Z.to_nat bytes_per_word) (word.unsigned x)))
+    (array ptsto_word (bits.of_Z width bytes_per_word) addr bs)
+    (array ptsto (bits.of_Z width 1) addr (flat_map (fun x =>
+       (LittleEndianList.le_split (Z.to_nat bytes_per_word) (Zmod.unsigned x)))
           bs)).
   Proof.
     clear iset.
@@ -114,8 +115,8 @@ Section ptstos.
       Z.of_nat (Datatypes.length word_list) =
       Z.of_nat (Datatypes.length bytes) / bytes_per_word /\
     forall p,
-      iff1 (array ptsto (word.of_Z 1) p bytes)
-           (array ptsto_word (word.of_Z bytes_per_word) p word_list).
+      iff1 (array ptsto (bits.of_Z width 1) p bytes)
+           (array ptsto_word (bits.of_Z width bytes_per_word) p word_list).
   Proof.
     clear iset.
     assert (AA: 0 < bytes_per_word). {
@@ -131,7 +132,7 @@ Section ptstos.
     assert (0 <= q) by Lia.nia.
     generalize dependent bytes.
     pattern q.
-    refine (natlike_ind _ _ _ q H); clear -BW word_ok mem_ok; intros.
+    refine (natlike_ind _ _ _ q H); clear -BW  mem_ok; intros.
     { case bytes in *; cbn in *; ring_simplify in H0; try discriminate.
       exists nil; split; reflexivity. }
     rewrite Z.mul_succ_r in *.
@@ -141,7 +142,7 @@ Section ptstos.
     case H0 as [words' [Hlen Hsep] ].
     eexists (cons _ words').
     split; [cbn; blia|].
-    intros p0; specialize (Hsep (word.add p0 (word.of_Z bytes_per_word))).
+    intros p0; specialize (Hsep (Zmod.add p0 (bits.of_Z width bytes_per_word))).
     rewrite array_cons.
     etransitivity.
     2:eapply Proper_sep_iff1; [reflexivity|].
@@ -153,7 +154,7 @@ Section ptstos.
 
     rewrite <-bytearray_index_merge.
     1: eapply Proper_sep_iff1; [|reflexivity].
-    2: rewrite word.unsigned_of_Z; setoid_rewrite Z.mod_small.
+    2: rewrite bits.unsigned_of_Z; setoid_rewrite Z.mod_small.
     3: {
       unfold bytes_per_word.
       simpl.
@@ -161,7 +162,7 @@ Section ptstos.
     }
     2: rewrite List.length_firstn_inbounds; Lia.nia.
     Morphisms.f_equiv.
-    setoid_rewrite word.unsigned_of_Z.
+    setoid_rewrite bits.unsigned_of_Z.
     setoid_rewrite Z.mod_small.
     1:unshelve erewrite (_:Memory.bytes_per Syntax.access_size.word = length _); shelve_unifiable; cycle 1.
     1:setoid_rewrite LittleEndianList.split_le_combine.
@@ -183,7 +184,7 @@ Section ptstos.
   Qed.
 
   Lemma ll_mem_to_hl_mem: forall mH mL (addr: word) bs R,
-      (eq mH * array ptsto (word.of_Z 1) addr bs * R)%sep mL ->
+      (eq mH * array ptsto (bits.of_Z width 1) addr bs * R)%sep mL ->
       exists mTraded,
         (eq (map.putmany mH mTraded) * R)%sep mL /\
         map.disjoint mH mTraded /\
@@ -203,7 +204,7 @@ Section ptstos.
       (eq mH * R)%sep mL ->
       exists bs,
         List.length bs = Z.to_nat n /\
-        (eq mHSmall * array ptsto (word.of_Z 1) addr bs * R)%sep mL.
+        (eq mHSmall * array ptsto (bits.of_Z width 1) addr bs * R)%sep mL.
   Proof.
     unfold sep, map.split.
     intros.
@@ -215,7 +216,7 @@ Section ptstos.
       (word_array p words * frame)%sep m ->
       nth_error words (Z.to_nat i) = Some v ->
       0 <= i ->
-      Memory.load Syntax.access_size.word m (word.add p (word.of_Z (i * bytes_per_word))) = Some v.
+      Memory.load Syntax.access_size.word m (Zmod.add p (bits.of_Z width (i * bytes_per_word))) = Some v.
   Proof.
     unfold word_array.
     intros.
@@ -227,7 +228,7 @@ Section ptstos.
     cancel.
     cancel_seps_at_indices 0%nat 0%nat. {
       f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: blia.
-      apply word.unsigned_of_Z_nowrap.
+      apply bits.unsigned_of_Z_small.
       unfold bytes_per_word.
       destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
     }
@@ -238,7 +239,7 @@ Section ptstos.
       (word_array p oldwords * frame)%sep m ->
       0 <= i < Z.of_nat (List.length oldwords) ->
       exists newwords m',
-        Memory.store Syntax.access_size.word m (word.add p (word.of_Z (i * bytes_per_word))) v = Some m' /\
+        Memory.store Syntax.access_size.word m (Zmod.add p (bits.of_Z width (i * bytes_per_word))) v = Some m' /\
         (word_array p newwords * frame)%sep m' /\
         nth_error newwords (Z.to_nat i) = Some v /\
         (forall j w, j <> Z.to_nat i -> nth_error oldwords j = Some w -> nth_error newwords j = Some w) /\
@@ -256,7 +257,7 @@ Section ptstos.
     eapply store_word_of_sep. {
       use_sep_assumption. cancel. cancel_seps_at_indices 0%nat 0%nat. {
         f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: blia.
-        apply word.unsigned_of_Z_nowrap.
+        apply bits.unsigned_of_Z_small.
         unfold bytes_per_word.
         destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
       }
@@ -269,7 +270,7 @@ Section ptstos.
       cancel.
       cancel_seps_at_indices 0%nat 0%nat. {
         f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 2: blia.
-        symmetry. apply word.unsigned_of_Z_nowrap.
+        symmetry. apply bits.unsigned_of_Z_small.
         unfold bytes_per_word.
         destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
       }

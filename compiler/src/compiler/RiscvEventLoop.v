@@ -2,7 +2,7 @@ From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Spec.Decode.
@@ -33,7 +33,8 @@ Import Utility.
 
 Section EventLoop.
 
-  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+  Context {width} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {Registers: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
@@ -47,9 +48,9 @@ Section EventLoop.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ width))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (width := width)),
        constants [word_cst]).
 
   (* goodReadyState is the invariant which says that the machine is ready to execute
@@ -59,7 +60,7 @@ Section EventLoop.
   Variable goodReadyState: bool -> RiscvMachineL -> Prop.
 
   Variables pc_start pc_end: word.
-  Hypothesis pc_start_aligned: (word.unsigned pc_start) mod 4 = 0.
+  Hypothesis pc_start_aligned: (Zmod.unsigned pc_start) mod 4 = 0.
   Hypothesis start_ne_end: pc_start <> pc_end.
 
   Hypothesis goodReadyState_checks_PC: forall done m,
@@ -69,7 +70,7 @@ Section EventLoop.
     forall (state: RiscvMachineL) newMetrics newLeakage,
       goodReadyState true state ->
       let state' := (withPc pc_start
-                    (withNextPc (word.add pc_start (word.of_Z 4))
+                    (withNextPc (Zmod.add pc_start 4)
                     (withMetrics newMetrics
                     (withLeakageEvents (Some newLeakage) state)))) in
       valid_machine state' ->
@@ -82,7 +83,7 @@ Section EventLoop.
   Variable iset: InstructionSet.
   Hypothesis jump_bound: - 2 ^ 20 <= jump < 2 ^ 20.
   Hypothesis jump_aligned: jump mod 4 = 0.
-  Hypothesis pc_end_def: pc_end = word.sub pc_start (word.of_Z jump).
+  Hypothesis pc_end_def: pc_end = Zmod.sub pc_start (bits.of_Z width jump).
 
   Hypothesis goodReadyState_implies_jump_back_instr: forall m,
       goodReadyState true m ->
@@ -126,7 +127,7 @@ Section EventLoop.
       subst.
       apply runsToDone.
       ssplit; try assumption; cbn;
-        ring_simplify (word.add (word.sub pc_start (word.of_Z jump)) (word.of_Z jump));
+        ring_simplify (Zmod.add (Zmod.sub pc_start (bits.of_Z width jump)) (bits.of_Z width jump));
         try reflexivity.
       specialize (goodReadyState_checks_PC _ _ H). simpl in *. subst state_pc.
       eapply goodReadyState_preserved_by_jump_back in H.
@@ -135,7 +136,7 @@ Section EventLoop.
         | |- ?G => let T := type of H in replace G with T; [exact H|]
         end.
         repeat f_equal.
-        all: try solve_word_eq word_ok.
+        all: try solve_word_eq.
         destruct getTrace; simpl.
         { instantiate (1 := [_;_]). reflexivity. }
         reflexivity.
@@ -143,7 +144,7 @@ Section EventLoop.
         match goal with
         | H: valid_machine ?m1 |- valid_machine ?m2 => replace m2 with m1; [exact H|]
         end.
-        f_equal. f_equal; try solve_word_eq word_ok. destruct getTrace; reflexivity.
+        f_equal. f_equal; try solve_word_eq. destruct getTrace; reflexivity.
     - intros state [C1 C2].
       apply goodReadyState_checks_PC in C1.
       apply goodReadyState_checks_PC in C2.

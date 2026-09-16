@@ -22,9 +22,9 @@ Require Import coqutil.Map.MapEauto.
 Open Scope Z_scope.
 
 Section FlattenExpr1.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width}
-          {word_ok: word.ok word}
-          {locals: map.map String.string word}
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {locals: map.map String.string word}
           {mem: map.map word Byte.byte}
           {FlatImp_env: map.map string (list string * list string * FlatImp.stmt string)}
           {ext_spec: ExtSpec}
@@ -395,7 +395,7 @@ Section FlattenExpr1.
       eapply @FlatImp.exec.seq.
       + eapply IHe; try eassumption. maps.
       + intros. simpl in *. simp.
-        eapply @FlatImp.exec.load; t_safe; rewrite ?word.add_0_r; try eassumption.
+        eapply @FlatImp.exec.load; t_safe; rewrite ?Zmod.add_0_r; try eassumption.
         1: reflexivity. cost_hammer.
 
     - (* expr.inlinetable *)
@@ -419,13 +419,13 @@ Section FlattenExpr1.
       { eapply IHe. 1: eassumption. 4: eassumption. 1,2: eassumption.
         clear -D. set_solver. }
       cbv beta in *; case (op : Syntax.op1) in *; simp.
-      { econstructor; t_safe; cbv [FlatImp.exec.lookup_op_locals Semantics.interp_op1 Semantics.interp_binop];
+      { econstructor; t_safe; cbv [FlatImp.exec.lookup_op_locals Semantics.interp_op1 Semantics.interp_binop Semantics.slu Semantics.sru Semantics.srs Semantics.ltu Semantics.lts];
           rewrite ?map.get_put_same; eauto.
-        { rewrite word.xor_comm, (word.ring_morph_opp 1), word.xor_m1_l; trivial. }
+        { rewrite word.xor_comm, Zmod.of_Z_m1, (word.xor_m1_l _ width_pos); trivial. }
         { FlatImp.scost_solve. } }
-      { econstructor; t_safe; cbv [FlatImp.exec.lookup_op_locals Semantics.interp_op1 Semantics.interp_binop];
+      { econstructor; t_safe; cbv [FlatImp.exec.lookup_op_locals Semantics.interp_op1 Semantics.interp_binop Semantics.slu Semantics.sru Semantics.srs Semantics.ltu Semantics.lts];
           rewrite ?map.get_put_same; eauto.
-        { rewrite (word.ring_morph_opp 1), word.mul_m1_r; trivial. }
+        { rewrite (Zmod.of_Z_opp 1), Zmod.mul_m1_r; trivial. }
         { FlatImp.scost_solve. } }
     - (* expr.op *)
       eapply seq_with_modVars.
@@ -449,7 +449,7 @@ Section FlattenExpr1.
         specialize A with (1 := E0). cbn [of_option] in *.
         destruct_one_match_hyp.
         * eapply FlatImp.exec.if_false.
-          -- simpl. rewrite_match. rewrite word.eqb_eq; reflexivity.
+          -- simpl. rewrite_match. rewrite (proj2 (Zmod.eqb_eq _ _)); reflexivity.
           -- eapply FlatImp.exec.weaken.
              ++ eapply IHe3; clear IHe1 IHe2 IHe3. 1: eassumption. 4: eassumption.
                 ** solve [maps].
@@ -569,14 +569,14 @@ Section FlattenExpr1.
       eapply @FlatImp.exec.weaken.
       + eapply IHes; try eassumption; maps.
       + intros. simpl in *. simp. cbn. unfold map.getmany_of_list in *.
-        replace (map.get l'0 s1) with (Some r).
+        replace (map.get l'0 s1) with (Some z).
         * rewrite_match. repeat (split || auto); try solve_MetricLog. maps.
         * unfold ExprImp.allVars_exprs in D.
           eapply flattenExpr_valid_resVar in E1; maps.
   Qed.
   Goal True. idtac "FlattenExpr: flattenExprs_correct done". Abort.
 
-  Lemma unsigned_ne: forall (a b: word), word.unsigned a <> word.unsigned b -> a <> b.
+  Lemma unsigned_ne: forall (a b: word), Zmod.unsigned a <> Zmod.unsigned b -> a <> b.
   Proof.
     intros.
     intro C.
@@ -585,23 +585,13 @@ Section FlattenExpr1.
     reflexivity.
   Qed.
 
-  Lemma one_ne_zero: word.of_Z 1 <> word.of_Z 0 :> word.
-  Proof.
-    apply unsigned_ne.
-    rewrite! word.unsigned_of_Z. unfold word.wrap.
-    pose proof word.width_pos as P; pose proof (Z.pow_gt_1 2 width) as Q.
-    rewrite! Z.mod_small; blia.
-  Qed.
-
-  Local Hint Mode Word.Interface.word - : typeclass_instances.
-
   Lemma bool_to_word_to_bool_id: forall (b: bool),
-      negb (word.eqb (if b then word.of_Z 1 else word.of_Z 0) (word.of_Z 0)) = b.
+      negb (Zmod.eqb (if b then Zmod.one else Zmod.zero) (bits.of_Z width 0)) = b.
   Proof.
-    intro b. unfold negb.
-    destruct_one_match; destruct_one_match_hyp; try reflexivity.
-    - exfalso. apply one_ne_zero. assumption.
-    - congruence.
+    intro b. destruct b; cbn [negb].
+    - rewrite word.eqb_ne. 1: reflexivity.
+      rewrite Zmod.of_Z_0. apply bits.one_neq_zero. pose proof width_pos. blia.
+    - rewrite (proj2 (Zmod.eqb_eq _ _)) by reflexivity. reflexivity.
   Qed.
 
   Ltac default_flattenBooleanExpr :=
@@ -619,7 +609,7 @@ Section FlattenExpr1.
     eval_expr initialM initialH e initialK initialMcH = Some (res, finalKH, finalMcH) ->
     exec fenv s initialK t initialM initialL initialMcL (fun finalKL t' finalM finalL finalMcL =>
       finalKL = finalKH /\ t' = t /\ finalM = initialM /\
-      FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))) /\
+      FlatImp.eval_bcond finalL resCond = Some (negb (Zmod.eqb res (bits.of_Z width 0))) /\
       (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
   Proof.
     destruct e; intros *; intros F Ex U D Ev; unfold flattenExprAsBoolExpr in F.
@@ -642,7 +632,13 @@ Section FlattenExpr1.
 
     all: rewrite bool_to_word_to_bool_id;
       destruct_one_match;
-      [ f_equal; f_equal; maps
+      [ f_equal; f_equal;
+        lazymatch goal with
+        | |- Zmod.signed _ = Zmod.signed _ => f_equal
+        | |- Zmod.unsigned _ = Zmod.unsigned _ => f_equal
+        | |- _ => idtac
+        end;
+        maps
       | exfalso; maps ].
   Qed.
   Goal True. idtac "FlattenExpr: flattenBooleanExpr_correct_aux done". Abort.
@@ -656,7 +652,7 @@ Section FlattenExpr1.
     eval_expr initialM initialH e initialK initialMcH = Some (res, finalKH, finalMcH) ->
     exec fenv s initialK t initialM initialL initialMcL (fun finalKL t' finalM finalL finalMcL =>
       (finalKL = finalKH /\ t' = t /\ finalM = initialM /\
-       FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))) /\
+       FlatImp.eval_bcond finalL resCond = Some (negb (Zmod.eqb res (bits.of_Z width 0))) /\
        (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH) /\
        map.only_differ initialL (FlatImp.modVars s) finalL (* <-- added *)).
   Proof.
@@ -757,7 +753,7 @@ Section FlattenExpr1.
         eapply @FlatImp.exec.seq.
         * eapply flattenExpr_correct_with_modVars; try eassumption; maps.
         * intros. simpl in *. simp.
-          eapply @FlatImp.exec.store; rewrite ?word.add_0_r; try eassumption.
+          eapply @FlatImp.exec.store; rewrite ?Zmod.add_0_r; try eassumption.
           { eapply flattenExpr_valid_resVar in E; maps. }
           { repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all: cost_hammer. }
 
@@ -777,7 +773,7 @@ Section FlattenExpr1.
         * etransitivity. 1: eassumption. f_equal.
           rewrite word.eqb_ne; [reflexivity|].
           apply unsigned_ne.
-          rewrite word.unsigned_of_Z.
+          rewrite Zmod.unsigned_0.
           assumption.
         * (* including "map.only_differ lH (ExprImp.modVars sH) lH'" in the conclusion
              requires us to do one more weakening step here than otherwise needed: *)
@@ -792,9 +788,9 @@ Section FlattenExpr1.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.if_false.
         * etransitivity. 1: eassumption. f_equal.
-          rewrite word.eqb_eq; [reflexivity|].
-          apply word.unsigned_inj.
-          rewrite word.unsigned_of_Z.
+          rewrite (proj2 (Zmod.eqb_eq _ _)); [reflexivity|].
+          apply Zmod.unsigned_inj.
+          rewrite Zmod.unsigned_0.
           assumption.
         * (* including "map.only_differ lH (ExprImp.modVars sH) lH'" in the conclusion
              requires us to do one more weakening step here than otherwise needed: *)
@@ -836,10 +832,10 @@ Section FlattenExpr1.
       + repeat eexists; repeat (split || eassumption || solve_MetricLog); try maps. all: FlatImp.scost_hammer.
       + exfalso.
         match goal with
-        | H: context [word.eqb _ _] |- _ => rewrite word.eqb_eq in H
+        | H: context [Zmod.eqb _ _] |- _ => rewrite (proj2 (Zmod.eqb_eq _ _)) in H
         end.
         1: simpl in *; congruence.
-        apply word.unsigned_inj. rewrite word.unsigned_of_Z. assumption.
+        apply Zmod.unsigned_inj. rewrite Zmod.unsigned_0. assumption.
       + exfalso. exact H3. (* instantiates mid2 to (fun _ _ _ => False) *)
 
     - (* while_true *)
@@ -859,10 +855,10 @@ Section FlattenExpr1.
       + congruence.
       + exfalso.
         match goal with
-        | H: context [word.eqb _ _] |- _ => rewrite word.eqb_ne in H
+        | H: context [Zmod.eqb _ _] |- _ => rewrite word.eqb_ne in H
         end.
         1: simpl in *; congruence.
-        apply unsigned_ne. rewrite word.unsigned_of_Z. assumption.
+        apply unsigned_ne. rewrite Zmod.unsigned_0. assumption.
       + (* This weakening step is how we link the knowledge about the bound for the loop body
            and for the expression into a bound for both *)
         eapply FlatImp.exec.weaken.

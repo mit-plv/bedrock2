@@ -15,12 +15,12 @@ Require Import bedrock2.MetricCosts.
 (*  below only for of_list_list_diff *)
 Require Import compiler.DeadCodeElimDef.
 
-Local Notation exec e pick_sp := (@exec _ _ _ _ _ _ _ _ PreSpill isRegStr pick_sp e).
+Local Notation exec e pick_sp := (@exec _ _ _ _ _ _ _ PreSpill isRegStr pick_sp e).
 
 Section WithArguments1.
   Context {width: Z}.
   Context {BW: Bitwidth.Bitwidth width}.
-  Context {word : word width} {word_ok : word.ok word}.
+  Local Notation word := (bits width).
   Context {env: map.map string (list var * list var * stmt var)} {env_ok : map.ok env}.
   Context {mem: map.map word (Init.Byte.byte : Type) } {mem_ok : map.ok mem} .
   Context {locals: map.map string word} {locals_ok: map.ok locals}.

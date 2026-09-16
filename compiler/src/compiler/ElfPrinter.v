@@ -5,7 +5,7 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.Strings.String.
 Require Import Coq.Strings.Ascii.
 Require Import coqutil.Datatypes.ZList.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Word.LittleEndianList.
 Require Import coqutil.Byte.
 Require Import compiler.MemoryLayout.
@@ -66,8 +66,9 @@ Definition NO_ALIGNMENT := 0.
 Definition EM_RISCV := 243.
 
 Section WithParams.
-  Context (width: Z) {word: word.word width}.
-  Context (ml: @MemoryLayout width word).
+  Context (width: Z).
+  Local Notation word := (bits width).
+  Context (ml: @MemoryLayout width).
 
   Definition e_class := if width =? 32 then ELFCLASS32 else ELFCLASS64.
 
@@ -81,7 +82,7 @@ Section WithParams.
   Definition e_version := EV_CURRENT.
 
   (* address of first instruction to execute *)
-  Definition e_entry := word.unsigned ml.(code_start).
+  Definition e_entry := Zmod.unsigned ml.(code_start).
 
   (* program header offset, equals ELF header size *)
   Definition e_phoff := 52.
@@ -95,7 +96,7 @@ Section WithParams.
   (* ELF header size, measured in bytes *)
   Definition e_ehsize := 52.
 
-  (* size in bytes of 1 entry in the program header table *)
+  (* size in bytes of (bits.of_Z width 1) entry in the program header table *)
   Definition e_phentsize := 32.
 
   (* number of entries in the program header table *)
@@ -155,30 +156,30 @@ Section WithParams.
     let code_phdr := encode_program_header {|
       p_type := PT_LOAD;
       p_offset := e_phoff + e_phentsize * e_phnum;
-      p_vaddr := word.unsigned ml.(code_start);
-      p_paddr := word.unsigned ml.(code_start);
+      p_vaddr := Zmod.unsigned ml.(code_start);
+      p_paddr := Zmod.unsigned ml.(code_start);
       p_filesz := len code;
-      p_memsz := word.unsigned ml.(code_pastend) - word.unsigned ml.(code_start);
+      p_memsz := Zmod.unsigned ml.(code_pastend) - Zmod.unsigned ml.(code_start);
       p_flags := Z.lor PF_R PF_X;
       p_align := NO_ALIGNMENT;
     |} in
     let heap_phdr := encode_program_header {|
       p_type := PT_LOAD;
       p_offset := 0; (* ok because we won't read any bytes *)
-      p_vaddr := word.unsigned ml.(heap_start);
-      p_paddr := word.unsigned ml.(heap_start);
+      p_vaddr := Zmod.unsigned ml.(heap_start);
+      p_paddr := Zmod.unsigned ml.(heap_start);
       p_filesz := 0;
-      p_memsz := word.unsigned ml.(heap_pastend) - word.unsigned ml.(heap_start);
+      p_memsz := Zmod.unsigned ml.(heap_pastend) - Zmod.unsigned ml.(heap_start);
       p_flags := Z.lor PF_R PF_W;
       p_align := NO_ALIGNMENT;
     |} in
     let stack_phdr := encode_program_header {|
       p_type := PT_LOAD;
       p_offset := 0; (* ok because we won't read any bytes *)
-      p_vaddr := word.unsigned ml.(stack_start);
-      p_paddr := word.unsigned ml.(stack_start);
+      p_vaddr := Zmod.unsigned ml.(stack_start);
+      p_paddr := Zmod.unsigned ml.(stack_start);
       p_filesz := 0;
-      p_memsz := word.unsigned ml.(stack_pastend) - word.unsigned ml.(stack_start);
+      p_memsz := Zmod.unsigned ml.(stack_pastend) - Zmod.unsigned ml.(stack_start);
       p_flags := Z.lor PF_R PF_W;
       p_align := NO_ALIGNMENT;
     |} in

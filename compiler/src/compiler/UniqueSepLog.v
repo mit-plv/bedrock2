@@ -108,7 +108,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.Init.Byte.
 Require Import coqutil.Decidable.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.Simp.
@@ -301,7 +301,8 @@ End Tree.
 
 
 Section SepLog.
-  Context {width: Z} {word: Word.Interface.word width} {word_ok: word.ok word}.
+  Context {width: Z}.
+  Local Notation word := (bits width).
   Context {mem: map.map word byte} {mem_ok: map.ok mem}.
 
   Definition tree_to_du: Tree.t (option mem) -> option mem := Tree.interp id mmap.du.
@@ -362,20 +363,20 @@ Section SepLog.
     fix rec addr ls :=
       match ls with
       | [] => Some map.empty
-      | e :: es => elem addr e \*/ rec (word.add addr size) es
+      | e :: es => elem addr e \*/ rec (Zmod.add addr size) es
       end.
 
   Definition one(sz: Syntax.access_size.access_size)(addr value: word): option mem :=
-    bytes addr (LittleEndianList.le_split (@Memory.bytes_per width sz) (word.unsigned value)).
+    bytes addr (LittleEndianList.le_split (@Memory.bytes_per width sz) (Zmod.unsigned value)).
 
   Definition word_array: word -> list word -> option mem :=
-    array (one access_size.word) (word.of_Z (bytes_per_word width)).
+    array (one access_size.word) (bits.of_Z width (bytes_per_word width)).
 
   Definition instr(addr: word)(inst: Instruction): option mem :=
-    one access_size.four addr (word.of_Z (encode inst)).
+    one access_size.four addr (bits.of_Z width (encode inst)).
 
   Definition program(addr: word)(prog: list Instruction): option mem :=
-    array instr (word.of_Z 4) addr prog.
+    array instr 4 addr prog.
 End SepLog.
 
 Ltac reify e :=

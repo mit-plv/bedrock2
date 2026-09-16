@@ -16,8 +16,8 @@ Require Import coqutil.Tactics.autoforward.
 
 Section FlatToRiscvLiterals.
   Context {iset: Decode.InstructionSet}.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
-  Context {word_ok: word.ok word}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {locals: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {M: Type -> Type}.
@@ -25,15 +25,14 @@ Section FlatToRiscvLiterals.
   Context {RVM: Machine.RiscvProgramWithLeakage M word}.
   Context {PRParams: Primitives.PrimitivesParams M MetricRiscvMachine}.
   Context {ext_spec: LeakageSemantics.ExtSpec}.
-  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context {locals_ok: map.ok locals}.
   Context {mem_ok: map.ok mem}.
   Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
   Context {BWM: bitwidth_iset width iset}.
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ width))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (width := width)),
        constants [word_cst]).
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
@@ -47,6 +46,9 @@ Section FlatToRiscvLiterals.
           then 2
           else 8 in
     addMetricInstructions cost (addMetricLoads cost initialMetrics).
+
+  Lemma smodulo_signExtend: forall z, Z.smodulo z (2 ^ width) = signExtend width z.
+  Proof. intros. apply word.smodulo_pow2. Qed.
 
   Lemma update_metrics_for_literal_bounded: forall v initialMetrics finalMetrics,
       updateMetricsForLiteral v initialMetrics = finalMetrics ->
@@ -76,15 +78,15 @@ Section FlatToRiscvLiterals.
            end.
 
   Lemma compile_lit_correct_full_raw: forall (initialL: RiscvMachineL) post x v R Rexec,
-      initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
+      initialL.(getNextPc) = add initialL.(getPc) (bits.of_Z width 4) ->
       let insts := compile_lit iset x v in
-      let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
+      let d := mul (bits.of_Z width 4) (bits.of_Z width (Z.of_nat (List.length insts))) in
       subset (footpr (program iset initialL.(getPc) insts * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
       (program iset initialL.(getPc) insts * Rexec * R)%sep initialL.(getMem) ->
       Primitives.valid_register x ->
       Primitives.valid_machine initialL ->
-      runsTo (withRegs (map.put initialL.(getRegs) x (word.of_Z v))
+      runsTo (withRegs (map.put initialL.(getRegs) x (bits.of_Z width v))
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
              (withMetrics (updateMetricsForLiteral v initialL.(getMetrics))
@@ -101,7 +103,7 @@ Section FlatToRiscvLiterals.
     destruct_one_match_hyp; [|destruct_one_match_hyp].
     - unfold compile_lit_12bit, leak_lit_12bit in *.
       run1det.
-      simpl_word_exprs word_ok.
+      simpl_word_exprs .
       match_apply_runsTo.
       erewrite signExtend_nop; eauto; try blia.
       destruct_one_match; reflexivity.
@@ -112,11 +114,11 @@ Section FlatToRiscvLiterals.
       f_equal; [|solve_MetricLog].
       f_equal.
       + rewrite map.put_put_same. f_equal.
-        apply word.signed_inj.
-        rewrite word.signed_of_Z.
-        rewrite word.signed_xor.
-        rewrite! word.signed_of_Z.
-        change word.swrap with (signExtend width).
+        apply Zmod.signed_inj.
+        rewrite Zmod.signed_of_Z.
+        rewrite (word.signed_xor _ _ width_pos).
+        rewrite! Zmod.signed_of_Z.
+        rewrite! smodulo_signExtend.
         assert (0 < width) as Wpos. {
           clear -BW. destruct width_cases; rewrite H; reflexivity.
         }
@@ -143,8 +145,8 @@ Section FlatToRiscvLiterals.
             change (Z.log2_up (2 ^ 31)) with (32 - 1).
             Btauto.btauto.
           }
-      + solve_word_eq word_ok.
-      + solve_word_eq word_ok.
+      + solve_word_eq.
+      + solve_word_eq.
       + simpl. destruct_one_match; reflexivity.
     - unfold compile_lit_64bit, leak_lit_64bit, compile_lit_32bit, compile_lit_32bit in *.
       remember (signExtend 12 (signExtend 32 (bitSlice v 32 64))) as mid.
@@ -167,14 +169,13 @@ Section FlatToRiscvLiterals.
       f_equal; [|simpl; try solve_MetricLog].
       f_equal.
       + rewrite! map.put_put_same. f_equal. unprotect_equalities. subst mid hi.
-        apply word.unsigned_inj.
+        apply Zmod.unsigned_inj.
         assert (width = 64) as W64. {
           clear -E0 BW.
           destruct width_cases as [E | E]; rewrite E in *; try reflexivity.
           exfalso. blia.
         }
-        (repeat rewrite ?word.unsigned_of_Z, ?word.unsigned_xor, ?word.unsigned_slu);
-        unfold word.wrap;
+        (repeat rewrite ?bits.unsigned_of_Z, ?bits.unsigned_xor, ?Zmod.unsigned_slu);
         rewrite W64; try reflexivity.
         clear.
         change (10 mod 2 ^ 64) with 10.
@@ -187,21 +188,21 @@ Section FlatToRiscvLiterals.
            expensive on large goals *)
         all: replace (i - 11 - 11 - 10 + 32) with i by blia.
         all: Btauto.btauto.
-      + solve_word_eq word_ok.
-      + solve_word_eq word_ok.
+      + solve_word_eq.
+      + solve_word_eq.
       + destruct_one_match; reflexivity.
   Qed.
 
   Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R Rexec,
-      initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
+      initialL.(getNextPc) = add initialL.(getPc) (bits.of_Z width 4) ->
       let insts := compile_lit iset x v in
-      let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
+      let d := mul (bits.of_Z width 4) (bits.of_Z width (Z.of_nat (List.length insts))) in
       subset (footpr (program iset initialL.(getPc) insts * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
       (program iset initialL.(getPc) insts * Rexec * R)%sep initialL.(getMem) ->
       valid_FlatImp_var x ->
       Primitives.valid_machine initialL ->
-      runsTo (withRegs (map.put initialL.(getRegs) x (word.of_Z v))
+      runsTo (withRegs (map.put initialL.(getRegs) x (bits.of_Z width v))
              (withPc     (add initialL.(getPc) d)
              (withNextPc (add initialL.(getNextPc) d)
                 (withMetrics (updateMetricsForLiteral v initialL.(getMetrics))

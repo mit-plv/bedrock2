@@ -126,7 +126,7 @@ Section FibCompiled.
       load access_size.four m k = Some v.
   Proof.
     intros.
-    pose proof load_bytes_of_sep as Hload.
+    pose proof (load_bytes_of_sep width_pos) as Hload.
     specialize Hload with (1 := H).
     cbv [load load_Z].
     match goal with
@@ -152,7 +152,7 @@ Section FibCompiled.
       0 <= a ->
       0 <= b ->
       a + b = c ->
-      @word.add width _ (word.of_Z a) (word.of_Z b) = word.of_Z (c).
+      @Zmod.add width _ (bits.of_Z width a) (bits.of_Z width b) = bits.of_Z width (c).
   Proof.
     intros.
     simpl.
@@ -250,8 +250,8 @@ Section FibCompiled.
         t' = t /\
         R m' /\
         map.get l' FibonacciServer.a = Some b /\
-        map.get l' FibonacciServer.b = Some (word.add a b) /\
-        map.get l' FibonacciServer.i = Some (word.add i (word.of_Z 1)) /\
+        map.get l' FibonacciServer.b = Some (Zmod.add a b) /\
+        map.get l' FibonacciServer.i = Some (Zmod.add i (bits.of_Z 32 1)) /\
         map.get l' FibonacciServer.n = Some n /\
         instructionsH mc' - instructionsH mc = 21).
   Proof.
@@ -262,7 +262,7 @@ Section FibCompiled.
       R m' /\
       map.get l' FibonacciServer.a = Some a /\
       map.get l' FibonacciServer.b = Some b /\
-      map.get l' FibonacciServer.c = Some (word.add a b) /\
+      map.get l' FibonacciServer.c = Some (Zmod.add a b) /\
       map.get l' FibonacciServer.i = Some i /\
       map.get l' FibonacciServer.n = Some n /\
       instructionsH mc' = instructionsH mc + 5));
@@ -274,7 +274,7 @@ Section FibCompiled.
       R m' /\
       map.get l' (@FibonacciServer.a Basic32Syntax _) = Some b /\
       map.get l' (@FibonacciServer.b Basic32Syntax _)  = Some b /\
-      map.get l' (@FibonacciServer.c Basic32Syntax _)  = Some (word.add a b) /\
+      map.get l' (@FibonacciServer.c Basic32Syntax _)  = Some (Zmod.add a b) /\
       map.get l' (@FibonacciServer.i Basic32Syntax _)  = Some i /\
       map.get l' (@FibonacciServer.n Basic32Syntax _)  = Some n /\
       instructionsH mc' = instructionsH mc + 7));
@@ -284,8 +284,8 @@ Section FibCompiled.
       t' = t /\
       R m' /\
       map.get l' FibonacciServer.a = Some b /\
-      map.get l' FibonacciServer.b = Some (word.add a b) /\
-      map.get l' FibonacciServer.c = Some (word.add a b) /\
+      map.get l' FibonacciServer.b = Some (Zmod.add a b) /\
+      map.get l' FibonacciServer.c = Some (Zmod.add a b) /\
       map.get l' FibonacciServer.i = Some i /\
       map.get l' FibonacciServer.n = Some n /\
       instructionsH mc' = instructionsH mc + 9));
@@ -297,15 +297,15 @@ Section FibCompiled.
       (iter <= n)%nat ->
       (i = n - iter)%nat ->
       R m ->
-      map.get l FibonacciServer.a = Some (word.of_Z (fib i)) ->
-      map.get l FibonacciServer.b = Some (word.of_Z (fib (S i))) ->
-      map.get l FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) ->
-      map.get l FibonacciServer.i = Some (word.of_Z (Z.of_nat i) : word) ->
+      map.get l FibonacciServer.a = Some (bits.of_Z width (fib i)) ->
+      map.get l FibonacciServer.b = Some (bits.of_Z width (fib (S i))) ->
+      map.get l FibonacciServer.n = Some (bits.of_Z width (Z.of_nat n)) ->
+      map.get l FibonacciServer.i = Some (bits.of_Z width (Z.of_nat i) : word) ->
       exec map.empty (fib_while nl ns) t m l mc (fun t' m' l' mc' =>
         t' = t /\
         R m' /\
         instructionsH mc' <= instructionsH mc + (Z.of_nat iter) * 34 + 12 /\
-        map.get l' FibonacciServer.b = Some (word.of_Z (fib (n + 1)))).
+        map.get l' FibonacciServer.b = Some (bits.of_Z width (fib (n + 1)))).
   Proof.
     induction iter.
     - intros.
@@ -368,15 +368,15 @@ Section FibCompiled.
   Lemma fib_if_true_correct: forall (n: nat) t m (l: locals) mc (R: mem -> Prop) nl ns,
       (n < 47)%nat ->
       R m ->
-      map.get l FibonacciServer.a = Some (word.of_Z 0) ->
-      map.get l FibonacciServer.b = Some (word.of_Z 1) ->
-      map.get l FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) ->
-      map.get l FibonacciServer.i = Some (word.of_Z 0)  ->
+      map.get l FibonacciServer.a = Some (bits.of_Z 32 0) ->
+      map.get l FibonacciServer.b = Some (bits.of_Z 32 1) ->
+      map.get l FibonacciServer.n = Some (bits.of_Z width (Z.of_nat n)) ->
+      map.get l FibonacciServer.i = Some (bits.of_Z 32 0)  ->
       exec map.empty (fib_if nl ns) t m l mc (fun t' m' l' mc' =>
         R m' /\
         t' = t /\
         instructionsH mc' <= instructionsH mc + (Z.of_nat n) * 34 + 25 /\
-        map.get l' FibonacciServer.b = Some (word.of_Z (fib (n + 1)))).
+        map.get l' FibonacciServer.b = Some (bits.of_Z width (fib (n + 1)))).
   Proof.
     intros.
     eapply @exec.if_true.
@@ -400,15 +400,15 @@ Section FibCompiled.
       Z.of_nat n < 2 ^ 32 ->
       (n >= 47)%nat ->
       R m ->
-      map.get l FibonacciServer.a = Some (word.of_Z 0) ->
-      map.get l FibonacciServer.b = Some (word.of_Z 1) ->
-      map.get l FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) ->
-      map.get l FibonacciServer.i = Some (word.of_Z 0)  ->
+      map.get l FibonacciServer.a = Some (bits.of_Z 32 0) ->
+      map.get l FibonacciServer.b = Some (bits.of_Z 32 1) ->
+      map.get l FibonacciServer.n = Some (bits.of_Z width (Z.of_nat n)) ->
+      map.get l FibonacciServer.i = Some (bits.of_Z 32 0)  ->
       exec map.empty (fib_if nl ns) t m l mc (fun t' m' l' mc' =>
         t' = t /\
         R m' /\
         instructionsH mc' <= instructionsH mc + 22 /\
-        map.get l' FibonacciServer.b = Some (word.of_Z (-1))).
+        map.get l' FibonacciServer.b = Some (bits.of_Z width (-1))).
   Proof.
     intros.
     eapply @exec.if_false.
@@ -421,21 +421,21 @@ Section FibCompiled.
   Qed.
 
   Lemma fib_correct: forall (n: nat) t (m: mem) (l : locals) mc v nl ns,
-      (ptsto_word (word.of_Z nl) (word.of_Z (Z.of_nat n)) *
-       ptsto_word (word.of_Z ns) (word.of_Z v))%sep m ->
+      (ptsto_word (bits.of_Z width nl) (bits.of_Z width (Z.of_nat n)) *
+       ptsto_word (bits.of_Z width ns) (bits.of_Z width v))%sep m ->
       Z.of_nat n < 2 ^ 32 ->
       exec map.empty (fib_ExprImp nl ns) t m l mc (fun t' m' l' mc' =>
         instructionsH mc' <= instructionsH mc + (Z.of_nat n) * 34 + 72 /\
-        (ptsto_word (word.of_Z nl) (word.of_Z (Z.of_nat n)) *
-         ptsto_word (word.of_Z ns) (word.of_Z (fib_bounded n)))%sep m').
+        (ptsto_word (bits.of_Z width nl) (bits.of_Z width (Z.of_nat n)) *
+         ptsto_word (bits.of_Z width ns) (bits.of_Z width (fib_bounded n)))%sep m').
   Proof.
     intros *. intro Hsep. intros.
     unfold fib_ExprImp.
     eapply @exec.seq with (mid := (fun t' m' l' mc' =>
       t' = t /\
-      (ptsto_word (word.of_Z nl) (word.of_Z (Z.of_nat n)) *
-       ptsto_word (word.of_Z ns) (word.of_Z v))%sep m' /\
-      map.get l' FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) /\
+      (ptsto_word (bits.of_Z width nl) (bits.of_Z width (Z.of_nat n)) *
+       ptsto_word (bits.of_Z width ns) (bits.of_Z width v))%sep m' /\
+      map.get l' FibonacciServer.n = Some (bits.of_Z width (Z.of_nat n)) /\
       instructionsH mc' = instructionsH mc + 10)).
     1: { eapply @exec.set.
          + simpl in *.
@@ -455,31 +455,31 @@ Section FibCompiled.
     intros. destruct_hyp.
     eapply @exec.seq with (mid := (fun t' m' l' mc' =>
       t' = t /\
-      (ptsto_word (word.of_Z nl) (word.of_Z (Z.of_nat n)) *
-       ptsto_word (word.of_Z ns) (word.of_Z v))%sep m' /\
-      map.get l' FibonacciServer.a = Some (word.of_Z 0) /\
-      map.get l' FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) /\
+      (ptsto_word (bits.of_Z width nl) (bits.of_Z width (Z.of_nat n)) *
+       ptsto_word (bits.of_Z width ns) (bits.of_Z width v))%sep m' /\
+      map.get l' FibonacciServer.a = Some (bits.of_Z 32 0) /\
+      map.get l' FibonacciServer.n = Some (bits.of_Z width (Z.of_nat n)) /\
       instructionsH mc' = instructionsH mc + 19));
       [exec_set_solve|].
     intros. destruct_hyp.
     eapply @exec.seq with (mid := (fun t' m' l' mc' =>
       t' = t /\
-      (ptsto_word (word.of_Z nl) (word.of_Z (Z.of_nat n)) *
-       ptsto_word (word.of_Z ns) (word.of_Z v))%sep m' /\
-      map.get l' FibonacciServer.a = Some (word.of_Z 0) /\
-      map.get l' FibonacciServer.b = Some (word.of_Z 1) /\
-      map.get l' FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) /\
+      (ptsto_word (bits.of_Z width nl) (bits.of_Z width (Z.of_nat n)) *
+       ptsto_word (bits.of_Z width ns) (bits.of_Z width v))%sep m' /\
+      map.get l' FibonacciServer.a = Some (bits.of_Z 32 0) /\
+      map.get l' FibonacciServer.b = Some (bits.of_Z 32 1) /\
+      map.get l' FibonacciServer.n = Some (bits.of_Z width (Z.of_nat n)) /\
       instructionsH mc' = instructionsH mc + 28));
       [exec_set_solve|].
     intros. destruct_hyp.
     eapply @exec.seq with (mid := (fun t' m' l' mc' =>
       t' = t /\
-      (ptsto_word (word.of_Z nl) (word.of_Z (Z.of_nat n)) *
-       ptsto_word (word.of_Z ns) (word.of_Z v))%sep m' /\
-      map.get l' FibonacciServer.a = Some (word.of_Z 0) /\
-      map.get l' FibonacciServer.b = Some (word.of_Z 1) /\
-      map.get l' FibonacciServer.i = Some (word.of_Z 0) /\
-      map.get l' FibonacciServer.n = Some (word.of_Z (Z.of_nat n)) /\
+      (ptsto_word (bits.of_Z width nl) (bits.of_Z width (Z.of_nat n)) *
+       ptsto_word (bits.of_Z width ns) (bits.of_Z width v))%sep m' /\
+      map.get l' FibonacciServer.a = Some (bits.of_Z 32 0) /\
+      map.get l' FibonacciServer.b = Some (bits.of_Z 32 1) /\
+      map.get l' FibonacciServer.i = Some (bits.of_Z 32 0) /\
+      map.get l' FibonacciServer.n = Some (bits.of_Z width (Z.of_nat n)) /\
       instructionsH mc' = instructionsH mc + 37));
       [exec_set_solve|].
     intros.
@@ -489,10 +489,10 @@ Section FibCompiled.
     - rewrite Nat.ltb_lt in *.
       eapply @exec.seq with (mid := (fun t' m' l' mc' =>
         t' = t /\
-        (ptsto_word (word.of_Z nl) (word.of_Z (Z.of_nat n)) *
-         ptsto_word (word.of_Z ns) (word.of_Z v))%sep m' /\
+        (ptsto_word (bits.of_Z width nl) (bits.of_Z width (Z.of_nat n)) *
+         ptsto_word (bits.of_Z width ns) (bits.of_Z width v))%sep m' /\
         instructionsH mc' <= instructionsH mc + (Z.of_nat n) * 34 + 62 /\
-        map.get l' FibonacciServer.b = Some (word.of_Z (fib (n + 1))))).
+        map.get l' FibonacciServer.b = Some (bits.of_Z width (fib (n + 1))))).
         * eapply weaken_exec; [eapply fib_if_true_correct with (nl := nl) (ns := ns); eassumption|].
           cbv beta. intros. destruct_hyp.
           repeat split; try assumption.
@@ -533,10 +533,10 @@ Section FibCompiled.
     - rewrite Nat.ltb_ge in *.
       eapply @exec.seq with (mid := (fun t' m' l' mc' =>
         t' = t /\
-        (ptsto_word (word.of_Z nl) (word.of_Z (Z.of_nat n)) *
-         ptsto_word (word.of_Z ns) (word.of_Z v))%sep m' /\
+        (ptsto_word (bits.of_Z width nl) (bits.of_Z width (Z.of_nat n)) *
+         ptsto_word (bits.of_Z width ns) (bits.of_Z width v))%sep m' /\
         instructionsH mc' <= instructionsH mc + (Z.of_nat n) * 34 + 62 /\
-        map.get l' FibonacciServer.b = Some (word.of_Z (-1)))).
+        map.get l' FibonacciServer.b = Some (bits.of_Z width (-1)))).
       * eapply weaken_exec; [eapply fib_if_false_correct with (nl := nl) (ns := ns); eassumption|].
           cbv beta. intros. destruct_hyp.
           repeat split; try assumption.
@@ -581,19 +581,19 @@ Section FibCompiled.
 
   Lemma fib_compiled: forall n (initialMachine: RiscvMachine) insts v nl ns R,
       0 <= n < 2 ^ 32 ->
-      word.unsigned (getPc initialMachine) mod 4 = 0 ->
-      getNextPc initialMachine = word.add (getPc initialMachine) (word.of_Z 4) ->
+      Zmod.unsigned (getPc initialMachine) mod 4 = 0 ->
+      getNextPc initialMachine = Zmod.add (getPc initialMachine) (bits.of_Z width 4) ->
       insts = (ExprImp2Riscv (fib_ExprImp nl ns)) ->
       subset (footpr (program (getPc initialMachine) insts))
              (of_list initialMachine.(getXAddrs)) ->
       (program (getPc initialMachine) insts * R *
-       (ptsto_word (word.of_Z ns) (word.of_Z v) *
-        ptsto_word (word.of_Z nl) (word.of_Z n)))%sep initialMachine.(getMem) ->
+       (ptsto_word (bits.of_Z width ns) (bits.of_Z width v) *
+        ptsto_word (bits.of_Z width nl) (bits.of_Z width n)))%sep initialMachine.(getMem) ->
       runsToNonDet.runsTo (mcomp_sat run1) initialMachine
         (fun (finalL: RiscvMachine) =>
            (program (getPc initialMachine) insts * R *
-            (ptsto_word (word.of_Z ns) (word.of_Z (fib_bounded (Z.to_nat n))) *
-             ptsto_word (word.of_Z nl) (word.of_Z n)))%sep finalL.(getMem) /\
+            (ptsto_word (bits.of_Z width ns) (bits.of_Z width (fib_bounded (Z.to_nat n))) *
+             ptsto_word (bits.of_Z width nl) (bits.of_Z width n)))%sep finalL.(getMem) /\
            getPc finalL = add (getPc initialMachine) (mul (ZToReg 4) (ZToReg (Zlength insts))) /\
            getNextPc finalL = add (getPc finalL) (ZToReg 4) /\
            finalL.(getMetrics).(instructions) - initialMachine.(getMetrics).(instructions) <= n * 34 + 72).
