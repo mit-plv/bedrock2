@@ -38,6 +38,18 @@ jobs:
       with:
         coq_version: ${{ matrix.env.DOCKER_COQ_VERSION }}
         custom_script: sudo chmod -R a=u . && TIMED=1 make -j "$(nproc)" -k
+    - name: bluespec-test
+      uses: coq-community/docker-coq-action@v1
+      with:
+        coq_version: ${{ matrix.env.DOCKER_COQ_VERSION }}
+        custom_script: |
+          sudo chmod -R a=u .
+          sudo apt-get update -y -q
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends iverilog
+          curl -fsSL -o /tmp/bsc.tar.gz https://github.com/B-Lang-org/bsc/releases/download/2026.01/bsc-2026.01-debian-12.13.tar.gz
+          printf '%s  /tmp/bsc.tar.gz\n' 9da36623e301ae14ba5e670cb98d11c99277faa915025ccb7615de3ec14002c3 | sha256sum -c
+          tar -C /tmp -xzf /tmp/bsc.tar.gz
+          PATH="/tmp/bsc-2026.01-debian-12.13/bin:$PATH" make -C processor/integration bluespec-test
     - name: install
       uses: coq-community/docker-coq-action@v1
       with:
