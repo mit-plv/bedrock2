@@ -1,12 +1,14 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface coqutil.Map.OfListWord.
-Require Import Coq.ZArith.BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import Coq.ZArith.BinIntDef coqutil.Word.Bitwidth.
 Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.MetricLogging.
 Require Import bedrock2.MetricCosts.
 Require Import bedrock2.MetricSemantics.
 
 Section WeakestPrecondition.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
   Implicit Types (t : trace) (m : mem) (l : locals).
@@ -16,7 +18,7 @@ Section WeakestPrecondition.
 
   (* TODO XXX address inconsistency in where metrics are added *)
   Definition literal v mc (post : (word * metrics) -> Prop) : Prop :=
-    dlet! v := word.of_Z v in post (v, cost_lit isRegStr UNK mc).
+    dlet! v := bits.of_Z width v in post (v, cost_lit isRegStr UNK mc).
   Definition get (l : locals) (x : String.string) mc (post : (word * metrics) -> Prop) : Prop :=
     exists v, map.get l x = Some v /\ post (v, cost_set isRegStr UNK x mc).
   Definition load s m a mc (post: (word * metrics) -> Prop) : Prop :=
@@ -46,7 +48,7 @@ Section WeakestPrecondition.
          rec e mc (fun '(a, mc') =>
         load s (map.of_list_word t) a (cost_inlinetable isRegStr UNK UNK mc') post)
       | expr.ite c e1 e2 =>
-        rec c mc (fun '(b, mc') => rec (if word.eqb b (word.of_Z 0) then e2 else e1) (cost_if isRegStr UNK (Some UNK) mc') post)
+        rec c mc (fun '(b, mc') => rec (if Zmod.eqb b (bits.of_Z width 0) then e2 else e1) (cost_if isRegStr UNK (Some UNK) mc') post)
     end.
     Fixpoint expr e := expr_body expr e.
   End WithMemAndLocals.
@@ -103,8 +105,8 @@ Section WeakestPrecondition.
      | cmd.cond br ct cf =>
         exists v mc', dexpr m l br mc (v, mc') /\
         dlet! mc'' := cost_if isRegStr UNK (Some UNK) mc' in
-        (word.unsigned v <> 0%Z -> rec ct t m l mc'' post) /\
-        (word.unsigned v = 0%Z -> rec cf t m l mc'' post)
+        (Zmod.unsigned v <> 0%Z -> rec ct t m l mc'' post) /\
+        (Zmod.unsigned v = 0%Z -> rec cf t m l mc'' post)
     | cmd.seq c1 c2 =>
         rec c1 t m l mc (fun t m l mc => rec c2 t m l mc post)
     | cmd.while _ _ => MetricSemantics.exec e c t m l mc post
@@ -152,10 +154,10 @@ Notation call := MetricSemantics.call (only parsing).
 
 Ltac unfold1_cmd e :=
   lazymatch e with
-    @cmd ?width ?BW ?word ?mem ?locals ?ext_spec ?CA ?c ?t ?m ?l ?mc ?post =>
+    @cmd ?width ?BW ?mem ?locals ?ext_spec ?CA ?c ?t ?m ?l ?mc ?post =>
     let c := eval hnf in c in
-    constr:(@cmd_body width BW word mem locals ext_spec CA
-                      (@cmd width BW word mem locals ext_spec CA) c t m l mc post)
+    constr:(@cmd_body width BW mem locals ext_spec CA
+                      (@cmd width BW mem locals ext_spec CA) c t m l mc post)
   end.
 Ltac unfold1_cmd_goal :=
   let G := lazymatch goal with |- ?G => G end in
@@ -164,9 +166,9 @@ Ltac unfold1_cmd_goal :=
 
 Ltac unfold1_expr e :=
   lazymatch e with
-    @expr ?width ?word ?mem ?locals ?m ?l ?arg ?mc ?post =>
+    @expr ?width ?mem ?locals ?m ?l ?arg ?mc ?post =>
     let arg := eval hnf in arg in
-    constr:(@expr_body width word mem locals m l (@expr width word mem locals m l) arg mc post)
+    constr:(@expr_body width mem locals m l (@expr width mem locals m l) arg mc post)
   end.
 Ltac unfold1_expr_goal :=
   let G := lazymatch goal with |- ?G => G end in
@@ -187,10 +189,10 @@ Ltac unfold1_list_map_goal :=
 (*
 Ltac unfold1_call e :=
   lazymatch e with
-    @call ?width ?BW ?word ?mem ?locals ?ext_spec ?fs ?fname ?t ?m ?l ?mc ?post =>
+    @call ?width ?BW ?mem ?locals ?ext_spec ?fs ?fname ?t ?m ?l ?mc ?post =>
     let fs := eval hnf in fs in
-    constr:(@call_body width BW word mem locals ext_spec
-                       (@call width BW word mem locals ext_spec) fs fname t m l mc post)
+    constr:(@call_body width BW mem locals ext_spec
+                       (@call width BW mem locals ext_spec) fs fname t m l mc post)
   end.
 Ltac unfold1_call_goal :=
   let G := lazymatch goal with |- ?G => G end in

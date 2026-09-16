@@ -66,8 +66,8 @@ assert (subrange (dst ^+ dstOfs) (\[unsafeN] * 1) dst (\[dstLen] * 1)). {
    but we only have H1 : \[dstOfs ^+ unsafeN] <= \[dstLen]
    So why did the system not simplify H1 into \[dstOfs ^+ unsafeN]? *)
 (* Search \[_ ^+ _]. *)
-(* Lists the two hypotheses containing this pattern, followed by word.unsigned_add,
-   which shows that \[x ^+ y] = word.wrap (\[x] + \[y]), and word.unsigned_add_nowrap,
+(* Lists the two hypotheses containing this pattern, followed by Zmod.unsigned_add,
+   which shows that \[x ^+ y] = word.wrap (\[x] + \[y]), and (word.unsigned_add_nowrap _ _ width_pos),
    which shows that if \[x] + \[y] < 2 ^ width, then \[x ^+ y] = \[x] + \[y].
    So I need to show \[dstOfs] + \[unsafeN] < 2 ^ width, but wait, that might not hold,
    --> serious bug found!! *)

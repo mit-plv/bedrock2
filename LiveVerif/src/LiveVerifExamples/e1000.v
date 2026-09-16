@@ -22,7 +22,7 @@ Load LiveVerif.
 
 (* TODO not sure if RegisterSpec should remain *)
 Coercion RegisterSpec_to_Z(r: RegisterSpec): Z :=
-  word.unsigned (register_address r).
+  Zmod.unsigned (register_address r).
 
 Goal exists z: Z, expr.literal E1000_RDBAL = expr.literal z.
   eexists. unfold E1000_RDBAL.

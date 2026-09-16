@@ -5,7 +5,7 @@ Require Export coqutil.Tactics.Tactics.
 Require Export coqutil.Tactics.safe_auto.
 Require Export coqutil.Map.Interface coqutil.Map.Properties.
 Require coqutil.Map.SortedListString. (* for function env, other maps are kept abstract *)
-Require Export coqutil.Word.Interface coqutil.Word.Properties.
+Require Export coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Export coqutil.Byte.
 Require Export coqutil.Tactics.fwd.
 Require Export bedrock2.Syntax bedrock2.Semantics.

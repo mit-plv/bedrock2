@@ -3,10 +3,10 @@ Require Import bedrock2.LeakageSemantics.
 Require Import Coq.ZArith.ZArith.
 Export ListNotations.
 Require Export coqutil.Decidable.
-Require        compiler.ExprImp.
+Require compiler.ExprImp.
 Require Export compiler.FlattenExprDef.
 Require Export compiler.FlattenExpr.
-Require        compiler.FlatImp.
+Require compiler.FlatImp.
 Require Import compiler.FlatToRiscvDef.
 Require Export riscv.Spec.Machine.
 Require Export riscv.Platform.Run.
@@ -62,7 +62,9 @@ Require Import compiler.DeadCodeElim.
 Import Utility.
 
 Section WithWordAndMem.
-  Context {width: Z} {BW: Bitwidth width} {word: Interface.word width} {mem : map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem : map.map word byte}.
 
   Record Lang := {
     Program: Type;
@@ -135,7 +137,7 @@ Section WithWordAndMem.
     Context {Zlocals: map.map Z word}
             {string_keyed_map: forall T: Type, map.map string T} (* abstract T for better reusability *)
             {ext_spec: LeakageSemantics.ExtSpec}
-            {word_ok : word.ok word}
+
             {mem_ok: map.ok mem}
             {string_keyed_map_ok: forall T, map.ok (string_keyed_map T)}
             {Zlocals_ok: map.ok Zlocals}.
@@ -148,7 +150,6 @@ Section WithWordAndMem.
     Context {MM: Monad M}.
     Context {RVM: RiscvProgramWithLeakage M word}.
     Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
-    Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
     Context {Registers_ok: map.ok Registers}.
     Context {PR: MetricPrimitives PRParams}.
     Context {iset: InstructionSet}.
@@ -191,7 +192,7 @@ Section WithWordAndMem.
     Definition SrcLang: Lang := {|
       Program := Semantics.env;
       Valid := map.forall_values ExprImp.valid_fun;
-      Call := locals_based_call_spec (fun pick_sp e => @MetricLeakageSemantics.exec _ _ _ _ _ _ e pick_sp) false;
+      Call := locals_based_call_spec (fun pick_sp e => @MetricLeakageSemantics.exec _ _ _ _ _ e pick_sp) false;
     |}.
 
     (* |                 *)
@@ -200,7 +201,7 @@ Section WithWordAndMem.
     Definition FlatWithStrVars: Lang := {|
       Program := string_keyed_map (list string * list string * FlatImp.stmt string);
       Valid := map.forall_values ParamsNoDup;
-      Call := locals_based_call_spec (fun pick_sp e => @FlatImp.exec _ _ _ _ _ _ _ _ PreSpill isRegStr e pick_sp) false;
+      Call := locals_based_call_spec (fun pick_sp e => @FlatImp.exec _ _ _ _ _ _ _ PreSpill isRegStr e pick_sp) false;
     |}.
 
     (* |                 *)
@@ -219,7 +220,7 @@ Section WithWordAndMem.
     Definition FlatWithZVars: Lang := {|
       Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
       Valid := map.forall_values ParamsNoDup;
-      Call := locals_based_call_spec (fun pick_sp e => @FlatImp.exec _ _ _ _ _ _ _ _ PreSpill isRegZ e pick_sp) false;
+      Call := locals_based_call_spec (fun pick_sp e => @FlatImp.exec _ _ _ _ _ _ _ PreSpill isRegZ e pick_sp) false;
     |}.
                                     
     (* |                 *)
@@ -228,7 +229,7 @@ Section WithWordAndMem.
     Definition FlatWithRegs: Lang := {|
       Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
       Valid := map.forall_values FlatToRiscvDef.valid_FlatImp_fun;
-      Call := locals_based_call_spec (fun e pick_sp => @FlatImp.exec _ _ _ _ _ _ _ _ PostSpill isRegZ pick_sp e) true;
+      Call := locals_based_call_spec (fun e pick_sp => @FlatImp.exec _ _ _ _ _ _ _ PostSpill isRegZ pick_sp e) true;
     |}.
     
     (* |                 *)
@@ -706,11 +707,11 @@ Section WithWordAndMem.
                  (initial: MetricRiscvMachine)
                  (* ghost vars that help describe the low-level machine: *)
                  (stack_lo : word) (Rdata Rexec: mem -> Prop),
-            req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
-            word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
-            initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
+            req_stack_size <= Zmod.unsigned (Zmod.sub stack_hi stack_lo) / bytes_per_word ->
+            Zmod.unsigned (Zmod.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
+            initial.(getPc) = Zmod.add p_funcs (bits.of_Z width f_rel_pos) ->
             map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
-            word.unsigned ret_addr mod 4 = 0 ->
+            Zmod.unsigned ret_addr mod 4 = 0 ->
             arg_regs_contain initial.(getRegs) argvals ->
             initial.(getLog) = t ->
             initial.(getTrace) = Some kL ->
@@ -738,7 +739,7 @@ Section WithWordAndMem.
         rewrite map.of_list_tuples. reflexivity.
       }
       specialize C with (1 := H0').
-      specialize (C fname kH kL (fun _ => word.of_Z 0)).
+      specialize (C fname kH kL (fun _ => (bits.of_Z width 0))).
       destruct C as [pick_spH [L C] ].
       eexists. intros. eexists. intros.
       specialize C with (1 := H1). specialize (C mcL).
@@ -779,11 +780,11 @@ Section WithWordAndMem.
         NoDup (map fst fs) ->
         MetricLeakageSemantics.call (pick_sp := pick_sp) (map.of_list fs) fname kH t mH argvals (cost_spill_spec mcH) post ->
         map.get (map.of_list finfo) fname = Some f_rel_pos ->
-        req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
-        word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
-        initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
+        req_stack_size <= Zmod.unsigned (Zmod.sub stack_hi stack_lo) / bytes_per_word ->
+        Zmod.unsigned (Zmod.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
+        initial.(getPc) = Zmod.add p_funcs (bits.of_Z width f_rel_pos) ->
         map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
-        word.unsigned ret_addr mod 4 = 0 ->
+        Zmod.unsigned ret_addr mod 4 = 0 ->
         arg_regs_contain initial.(getRegs) argvals ->
         initial.(getLog) = t ->
         initial.(getTrace) = Some kL ->

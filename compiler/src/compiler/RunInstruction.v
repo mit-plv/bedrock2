@@ -3,7 +3,7 @@ Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Spec.Decode.
@@ -96,14 +96,15 @@ Ltac get_runsTo_valid_for_free :=
 
 Section Run.
 
-  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+  Context {width} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {Registers: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ width))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (width := width)),
        constants [word_cst]).
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
@@ -130,7 +131,7 @@ Section Run.
 
   Context (iset: InstructionSet).
 
-  Notation w0 := (word.of_Z 0).
+  Notation w0 := Zmod.zero.
   Definition final_trace (r1 r2 : Z) (v1 v2 : word) (i : Instruction) (pc : word)
     (initial_trace : option (list LeakageEvent)) :=
     option_map2 cons
@@ -143,12 +144,12 @@ Section Run.
       (* [verify] (and decode-encode-id) only enforces divisibility by 2 because there could be
          compressed instructions, but we don't support them so we require divisibility by 4: *)
       oimm12 mod 4 = 0 ->
-      (word.unsigned dest) mod 4 = 0 ->
+      (Zmod.unsigned dest) mod 4 = 0 ->
       (* valid_register almost follows from verify (or decode-encode-id) except for when
          the register is Register0 *)
       valid_register rs1 ->
       map.get initialL.(getRegs) rs1 = Some dest ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      initialL.(getNextPc) = Zmod.add initialL.(getPc) (bits.of_Z width 4) ->
       subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
       iff1 Exec (program iset initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * Rexec)%sep ->
       (Exec * R)%sep initialL.(getMem) ->
@@ -158,8 +159,8 @@ Section Run.
         finalL.(getLog) = initialL.(getLog) /\
         finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
-        finalL.(getPc) = word.add dest (word.of_Z oimm12) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getPc) = Zmod.add dest (bits.of_Z width oimm12) /\
+        finalL.(getNextPc) = Zmod.add finalL.(getPc) (bits.of_Z width 4) /\
         finalL.(getMetrics) = addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 initialL.(getMetrics))) /\
         finalL.(getTrace) = final_trace rs1 0 dest w0 (Jalr RegisterNames.zero rs1 oimm12) initialL.(getPc) initialL.(getTrace) /\
         valid_machine finalL).
@@ -168,7 +169,7 @@ Section Run.
     forall (rd: Z) (jimm20: Z) (initialL: RiscvMachineL) (Exec R Rexec: mem -> Prop),
       jimm20 mod 4 = 0 ->
       valid_register rd ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      initialL.(getNextPc) = Zmod.add initialL.(getPc) (bits.of_Z width 4) ->
       subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
       iff1 Exec (program iset initialL.(getPc) [[Jal rd jimm20]] * Rexec)%sep ->
       (Exec * R)%sep initialL.(getMem) ->
@@ -178,8 +179,8 @@ Section Run.
         finalL.(getLog) = initialL.(getLog) /\
         finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
-        finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getPc) = Zmod.add initialL.(getPc) (bits.of_Z width jimm20) /\
+        finalL.(getNextPc) = Zmod.add finalL.(getPc) (bits.of_Z width 4) /\
         finalL.(getMetrics) = addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 initialL.(getMetrics))) /\
         finalL.(getTrace) = final_trace 0 0 w0 w0 (Jal rd jimm20) initialL.(getPc) initialL.(getTrace) /\
         valid_machine finalL).
@@ -196,8 +197,8 @@ Section Run.
         finalL.(getLog) = initialL.(getLog) /\
         finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
-        finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getPc) = Zmod.add initialL.(getPc) (bits.of_Z width jimm20) /\
+        finalL.(getNextPc) = Zmod.add finalL.(getPc) (bits.of_Z width 4) /\
         finalL.(getMetrics) = addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 initialL.(getMetrics))) /\
         finalL.(getTrace) = final_trace 0 0 w0 w0 (Jal Register0 jimm20) initialL.(getPc) initialL.(getTrace) /\
         valid_machine finalL).
@@ -207,19 +208,19 @@ Section Run.
     forall (rd rs: Z) rs_val imm (initialL: RiscvMachineL) (Exec R Rexec: mem -> Prop),
       valid_register rd ->
       valid_register rs ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      initialL.(getNextPc) = Zmod.add initialL.(getPc) (bits.of_Z width 4) ->
       map.get initialL.(getRegs) rs = Some rs_val ->
       subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
       iff1 Exec (program iset initialL.(getPc) [[Op rd rs imm]] * Rexec)%sep ->
       (Exec * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
-        finalL.(getRegs) = map.put initialL.(getRegs) rd (f rs_val (word.of_Z imm)) /\
+        finalL.(getRegs) = map.put initialL.(getRegs) rd (f rs_val (bits.of_Z width imm)) /\
         finalL.(getLog) = initialL.(getLog) /\
         finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getNextPc) = Zmod.add finalL.(getPc) (bits.of_Z width 4) /\
         finalL.(getMetrics) = addMetricInstructions 1 (addMetricLoads 1 initialL.(getMetrics)) /\
         finalL.(getTrace) = final_trace rs 0 rs_val w0 (Op rd rs imm) initialL.(getPc) initialL.(getTrace) /\
         valid_machine finalL).
@@ -231,21 +232,21 @@ Section Run.
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
       valid_register rs ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      initialL.(getNextPc) = Zmod.add initialL.(getPc) (bits.of_Z width 4) ->
       map.get initialL.(getRegs) rs = Some base ->
-      addr = word.add base (word.of_Z ofs) ->
+      addr = Zmod.add base (bits.of_Z width ofs) ->
       subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
       iff1 Exec (program iset initialL.(getPc) [[L rd rs ofs]] * Rexec)%sep ->
       (Exec * (tuple.to_list v)$@addr * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd
-                  (word.of_Z (opt_sign_extender (le_combine (tuple.to_list v)))) /\
+                  (bits.of_Z width (opt_sign_extender (le_combine (tuple.to_list v)))) /\
         finalL.(getLog) = initialL.(getLog) /\
         finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getNextPc) = Zmod.add finalL.(getPc) (bits.of_Z width 4) /\
         finalL.(getMetrics) = addMetricInstructions 1 (addMetricLoads 2 initialL.(getMetrics)) /\
         finalL.(getTrace) = final_trace rs 0 base w0 (L rd rs ofs) initialL.(getPc) initialL.(getTrace) /\
         valid_machine finalL).
@@ -256,10 +257,10 @@ Section Run.
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rs1 ->
       valid_register rs2 ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      initialL.(getNextPc) = Zmod.add initialL.(getPc) (bits.of_Z width 4) ->
       map.get initialL.(getRegs) rs1 = Some base ->
       map.get initialL.(getRegs) rs2 = Some v_new ->
-      addr = word.add base (word.of_Z ofs) ->
+      addr = Zmod.add base (bits.of_Z width ofs) ->
       subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
       iff1 Exec (program iset initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep ->
       (Exec * (tuple.to_list v_old)$@addr * R)%sep initialL.(getMem) ->
@@ -268,10 +269,10 @@ Section Run.
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
         subset (footpr Exec) (of_list (finalL.(getXAddrs))) /\
-        (Exec * (le_split n (word.unsigned v_new))$@addr * R)%sep
+        (Exec * (le_split n (Zmod.unsigned v_new))$@addr * R)%sep
           finalL.(getMem) /\
         finalL.(getPc) = initialL.(getNextPc) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getNextPc) = Zmod.add finalL.(getPc) (bits.of_Z width 4) /\
         finalL.(getMetrics) = addMetricInstructions 1 (addMetricStores 1 (addMetricLoads 1 initialL.(getMetrics))) /\
         finalL.(getTrace) = final_trace rs1 rs2 base v_new (S rs1 rs2 ofs) initialL.(getPc) initialL.(getTrace) /\
         valid_machine finalL).
@@ -280,6 +281,11 @@ Section Run.
     match goal with
     | H: iff1 ?x _ |- _ => is_var x; apply iff1ToEq in H; subst x
     end.
+
+  (* [simpl in *] below reduces the [execute] term of the instruction; without this,
+     it also turns the [Zmod.eqb (Zmod.umod a 4) 0] test of a misaligned jump into
+     a match on the representation, which [simulate'] does not recognise. *)
+  Local Arguments Zmod.eqb : simpl never.
 
   Ltac t0 :=
     match goal with
@@ -310,30 +316,30 @@ Section Run.
     end.
     destruct (invert_ptsto_program1 iset A) as (DE & ?). clear A.
     (* execution of Jalr clears lowest bit *)
-    assert (word.and (word.add dest (word.of_Z oimm12))
-                     (word.xor (word.of_Z 1) (word.of_Z (2 ^ width - 1))) =
-            word.add dest (word.of_Z oimm12)) as A. {
-      assert (word.unsigned (word.add dest (word.of_Z oimm12)) mod 4 = 0) as C by
+    assert (Zmod.and (Zmod.add dest (bits.of_Z width oimm12))
+                     (Zmod.xor (bits.of_Z width 1) (bits.of_Z width (2 ^ width - 1))) =
+            Zmod.add dest (bits.of_Z width oimm12)) as A. {
+      assert (Zmod.unsigned (Zmod.add dest (bits.of_Z width oimm12)) mod 4 = 0) as C by
             solve_divisibleBy4.
-      generalize dependent (word.add dest (word.of_Z oimm12)). clear -BW word_ok.
+      generalize dependent (Zmod.add dest (bits.of_Z width oimm12)). clear -BW .
       intros.
-      apply word.unsigned_inj.
-      rewrite word.unsigned_and, word.unsigned_xor, !word.unsigned_of_Z. unfold word.wrap.
+      apply Zmod.unsigned_inj.
+      rewrite bits.unsigned_and, bits.unsigned_xor, !bits.unsigned_of_Z.
       assert (0 <= width) by (destruct width_cases as [E | E]; rewrite E; blia).
       replace (2 ^ width - 1) with (Z.ones width); cycle 1. {
         rewrite Z.ones_equiv. reflexivity.
       }
       change 1 with (Z.ones 1).
-      transitivity (word.unsigned r mod (2 ^ width)); cycle 1. {
-        rewrite word.wrap_unsigned. reflexivity.
+      transitivity (Zmod.unsigned z mod (2 ^ width)); cycle 1. {
+        rewrite bits.mod_to_Z. reflexivity.
       }
       rewrite <-! Z.land_ones by assumption.
       change 4 with (2 ^ 2) in C.
       prove_Zeq_bitwise.Zbitwise.
     }
-    assert (word.unsigned
-              (word.and (word.add dest (word.of_Z oimm12))
-                        (word.xor (word.of_Z 1) (word.of_Z (2 ^ width - 1)))) mod 4 = 0) as B. {
+    assert (Zmod.unsigned
+              (Zmod.and (Zmod.add dest (bits.of_Z width oimm12))
+                        (Zmod.xor (bits.of_Z width 1) (bits.of_Z width (2 ^ width - 1)))) mod 4 = 0) as B. {
       rewrite A. solve_divisibleBy4.
     }
     t0.
@@ -368,7 +374,7 @@ Section Run.
     t0.
   Qed.
 
-  Lemma run_Addi: run_ImmReg_spec Addi word.add.
+  Lemma run_Addi: run_ImmReg_spec Addi Zmod.add.
   Proof. t. Qed.
 
   Lemma run_Lb: run_Load_spec 1 Lb (signExtend 8).
@@ -450,7 +456,7 @@ Section Run.
   Lemma run_Sb: run_Store_spec 1 Sb.
   Proof.
     t. 1:ecancel.
-    setoid_rewrite (tuple.to_list_of_list (le_split 1 (word.unsigned v_new))) in H4.
+    setoid_rewrite (tuple.to_list_of_list (le_split 1 (Zmod.unsigned v_new))) in H4.
     ecancel_assumption.
   Qed.
 
@@ -458,21 +464,21 @@ Section Run.
   Lemma run_Sh: run_Store_spec 2 Sh.
   Proof.
     t. 1:ecancel.
-    setoid_rewrite (tuple.to_list_of_list (le_split 2 (word.unsigned v_new))) in H4.
+    setoid_rewrite (tuple.to_list_of_list (le_split 2 (Zmod.unsigned v_new))) in H4.
     ecancel_assumption.
   Qed.
 
   Lemma run_Sw: run_Store_spec 4 Sw.
   Proof.
     t. 1:ecancel.
-    setoid_rewrite (tuple.to_list_of_list (le_split 4 (word.unsigned v_new))) in H4.
+    setoid_rewrite (tuple.to_list_of_list (le_split 4 (Zmod.unsigned v_new))) in H4.
     use_sep_assumption; cancel.
   Qed.
 
   Lemma run_Sd: run_Store_spec 8 Sd.
   Proof.
     t. 1:ecancel.
-    setoid_rewrite (tuple.to_list_of_list (le_split 8 (word.unsigned v_new))) in H4.
+    setoid_rewrite (tuple.to_list_of_list (le_split 8 (Zmod.unsigned v_new))) in H4.
     ecancel_assumption.
   Qed.
 End Run.

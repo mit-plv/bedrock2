@@ -3,7 +3,7 @@ Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Map.Interface.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Tactics.syntactic_unify.
 Require Import bedrock2.find_hyp.
 Require Import coqutil.Tactics.fwd.
@@ -114,8 +114,8 @@ Ltac is_substitutable_rhs_for_package_context rhs :=
         | is_const rhs
         | lazymatch isZcst rhs with true => idtac end
         | lazymatch rhs with
-          | word.of_Z ?x => is_substitutable_rhs_for_package_context x
-          | word.unsigned ?x => is_substitutable_rhs_for_package_context x
+          | Zmod.of_Z _ ?x => is_substitutable_rhs_for_package_context x
+          | Zmod.unsigned ?x => is_substitutable_rhs_for_package_context x
           end ].
 
 (* Note: Don't do this when some variables are local variables, because
@@ -402,8 +402,9 @@ Section MergingAnd.
 End MergingAnd.
 
 Section MergingSep.
-  Context {width: Z} {word: word.word width}
-          {word_ok: word.ok word} {mem: map.map word Byte.byte} {ok: map.ok mem}.
+  Context {width: Z}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte} {ok: map.ok mem}.
 
   Local Set Warnings "-notation-overridden".
   Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
@@ -564,7 +565,7 @@ Ltac intro_word name :=
     match goal with
     | h: ?t |- _ =>
         lazymatch t with
-        | @word.rep _ _ => h
+        | Zmod _ => h
         | scope_marker _ => h
         | trace => h
         end
@@ -818,5 +819,5 @@ Ltac unpackage_context :=
   cbn [seps] in *;
   repeat unpackage_context_step;
   lazymatch goal with
-  | H: ?l = @map.of_list String.string (@word.rep _ _) _ _ |- _ => subst l
+  | H: ?l = @map.of_list String.string (Zmod _) _ _ |- _ => subst l
   end.

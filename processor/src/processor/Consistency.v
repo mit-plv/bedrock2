@@ -5,13 +5,10 @@ Require Import coqutil.Byte.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Kami.Lib.Word.
 Require Import Kami.Syntax Kami.Semantics.
-Require Import Kami.Ex.IsaRv32.
+Require Import Kami.Ex.MemTypes Kami.Ex.IsaRv32.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Properties.
 
-(* In order to just use [word] as a typeclass [processor.KamiWord] should
- * be imported before importing [riscv.Utility.Utility]. *)
-Require Import processor.KamiWord.
 
 Require Import riscv.Utility.Utility.
 Require riscv.Platform.Memory.
@@ -32,11 +29,13 @@ Proof.
   reflexivity.
 Qed.
 
-#[global] Instance word: word 32 := @KamiWord.wordW width.
-#[global] Instance word_ok: word.ok word := @KamiWord.wordWok width width_cases.
+Local Notation nwidth := (Z.to_nat width).
+(* Spelled as riscv-coq instantiates its [bits width]; Kami's [Word.word nwidth]
+   is the same type by one unfolding. *)
+Notation word := (bits (Z.of_nat nwidth)).
 
 Section FetchOk.
-  Fixpoint alignedXAddrsRange (base: nat) (n: nat): XAddrs (width := width) :=
+  Fixpoint alignedXAddrsRange (base: nat) (n: nat): list word :=
     match n with
     | O => nil
     | S n' => $(base + n') :: alignedXAddrsRange base n'
@@ -70,15 +69,14 @@ Section FetchOk.
   Hypothesis (HinstrMemBound: 3 <= instrMemSizeLg <= width - 2).
   Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
   Local Notation nmemSizeLg := (Z.to_nat memSizeLg).
-  Local Notation nwidth := (Z.to_nat width).
   Local Notation width_inst_valid := (width_inst_valid HinstrMemBound).
 
   Definition instrMemSize: nat := NatLib.pow2 (2 + Z.to_nat instrMemSizeLg).
 
-  Definition pc_related (kpc rpc: kword width): Prop :=
+  Definition pc_related (kpc rpc: word): Prop :=
     kpc = rpc.
 
-  Definition AddrAligned (addr: kword width) :=
+  Definition AddrAligned (addr: word) :=
     split1 2 (nwidth - 2) addr = WO~0~0.
 
   (* set of executable addresses in the kami processor *)
@@ -86,11 +84,11 @@ Section FetchOk.
     alignedXAddrsRange 0 instrMemSize.
 
   Lemma AddrAligned_plus4:
-    forall rpc: KamiWord.word _,
+    forall rpc: word,
       AddrAligned rpc ->
-      AddrAligned (word.add rpc (word.of_Z 4)).
+      AddrAligned (Zmod.add rpc 4).
   Proof.
-    cbv [AddrAligned word.add wordW KamiWord.word].
+    cbv [AddrAligned].
     intros.
     rewrite <-H.
     apply split1_wplus_silent.
@@ -120,17 +118,17 @@ Section FetchOk.
     apply H.
   Qed.
 
-  Definition mem_related (kmem: kword memSizeLg -> kword 8)
+  Definition mem_related (kmem: Word.word nmemSizeLg -> Word.word BitsPerByte)
              (rmem : mem): Prop :=
-    forall addr: kword width,
+    forall addr: word,
       map.get rmem addr =
-      if Z.ltb (kunsigned addr) (Z.pow 2 memSizeLg)
-      then Some (byte.of_Z (uwordToZ (kmem (evalZeroExtendTrunc _ addr))))
+      if Z.ltb (Zmod.unsigned addr) (Z.pow 2 memSizeLg)
+      then Some (byte.of_Z (Zmod.unsigned (kmem (evalZeroExtendTrunc _ addr))))
       else None.
 
   Definition RiscvXAddrsSafe
-             (kmemi: kword instrMemSizeLg -> kword width)
-             (kmemd: kword memSizeLg -> kword 8)
+             (kmemi: Word.word ninstrMemSizeLg -> word)
+             (kmemd: Word.word nmemSizeLg -> Word.word BitsPerByte)
              (xaddrs: XAddrs) :=
     forall rpc,
       isXAddr4 rpc xaddrs ->
@@ -172,7 +170,7 @@ Section FetchOk.
     remember (split1 2 (nwidth - 2) rpc) as rpc1; clear Heqrpc1.
     remember (split2 2 (nwidth - 2) rpc) as rpc2; clear Heqrpc2.
     rewrite split1_combine in H0; subst.
-    change (BinInt.Z.to_nat width) with (2 + (BinInt.Z.to_nat width - 2))%nat.
+    change nwidth with (2 + (nwidth - 2))%nat.
 
     rewrite wordToN_combine.
     rewrite wordToN_wzero.
@@ -190,104 +188,84 @@ Section FetchOk.
       isXAddr4 rpc kamiXAddrs ->
       exists rinst,
       Memory.load_Z rmem rpc 4 = Some rinst /\
-        rinst = kunsigned (SC.combineBytes 4 rpc kmem : kword 32).
+        rinst = Zmod.unsigned (SC.combineBytes 4 rpc kmem : word).
   Proof.
     intros.
 
     assert (Z.pow 2 (Z.of_nat (2 + ninstrMemSizeLg)) < Z.pow 2 memSizeLg) as Hkmemp
         by (apply Z.pow_lt_mono_r; blia).
 
-    assert (Z.ltb (kunsigned rpc) (Z.pow 2 memSizeLg) = true) as Hrpc0.
+    assert (Z.ltb (Zmod.unsigned rpc) (Z.pow 2 memSizeLg) = true) as Hrpc0.
     { destruct H0 as [? _].
       apply kamiXAddrs_isXAddr1_bound in H0.
-      destruct (Z.ltb_spec (kunsigned rpc) (Z.pow 2 memSizeLg)); [reflexivity|].
+      destruct (Z.ltb_spec (Zmod.unsigned rpc) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
-      rewrite NatLib.Z_of_N_Npow2 in H0.
-      cbv [kunsigned] in H1.
+      rewrite NatLib.Z_of_N_Npow2, Z_of_N_wordToN in H0.
       blia.
     }
 
-    assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1)) (Z.pow 2 memSizeLg) = true) as Hrpc1.
+    assert (Z.ltb (Zmod.unsigned (Zmod.add rpc 1)) (Z.pow 2 memSizeLg) = true) as Hrpc1.
     { destruct H0 as [_ [? _]].
-      cbv [word.add word wordW KamiWord.word] in H0.
-      cbv [word.of_Z kofZ] in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
-      destruct (Z.ltb_spec (kunsigned (rpc ^+ ZToWord _ 1)) (Z.pow 2 memSizeLg)); [reflexivity|].
+      destruct (Z.ltb_spec (Zmod.unsigned (Zmod.add rpc 1)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
-      rewrite NatLib.Z_of_N_Npow2 in H0.
-      cbv [kunsigned] in H1.
+      rewrite NatLib.Z_of_N_Npow2, Z_of_N_wordToN in H0.
       blia.
     }
 
-    assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1))
-                  (Z.pow 2 memSizeLg) = true) as Hrpc2.
+    assert (Z.ltb (Zmod.unsigned (Zmod.add rpc 2)) (Z.pow 2 memSizeLg) = true) as Hrpc2.
     { destruct H0 as [_ [_ [? _]]].
-      cbv [word.add word wordW KamiWord.word] in H0.
-      cbv [word.of_Z kofZ] in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
-      rewrite <-wplus_assoc.
-      change (ZToWord nwidth 1 ^+ ZToWord nwidth 1) with (ZToWord nwidth 2).
-      destruct (Z.ltb_spec (kunsigned (rpc ^+ ZToWord _ 2)) (Z.pow 2 memSizeLg)); [reflexivity|].
+      destruct (Z.ltb_spec (Zmod.unsigned (Zmod.add rpc 2)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
-      rewrite NatLib.Z_of_N_Npow2 in H0.
-      cbv [kunsigned] in H1.
+      rewrite NatLib.Z_of_N_Npow2, Z_of_N_wordToN in H0.
       blia.
     }
 
-    assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1 ^+ ZToWord _ 1))
-                  (Z.pow 2 memSizeLg) = true) as Hrpc3.
+    assert (Z.ltb (Zmod.unsigned (Zmod.add rpc 3)) (Z.pow 2 memSizeLg) = true) as Hrpc3.
     { destruct H0 as [_ [_ [_ ?]]].
-      cbv [word.add word wordW KamiWord.word] in H0.
-      cbv [word.of_Z kofZ] in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
-      rewrite <-wplus_assoc.
-      change (ZToWord nwidth 1 ^+ ZToWord nwidth 1) with (ZToWord nwidth 2).
-      rewrite <-wplus_assoc.
-      change (ZToWord nwidth 1 ^+ ZToWord nwidth 2) with (ZToWord nwidth 3).
-      destruct (Z.ltb_spec (kunsigned (rpc ^+ ZToWord _ 3)) (Z.pow 2 memSizeLg)); [reflexivity|].
+      destruct (Z.ltb_spec (Zmod.unsigned (Zmod.add rpc 3)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
-      rewrite NatLib.Z_of_N_Npow2 in H0.
-      cbv [kunsigned] in H1.
+      rewrite NatLib.Z_of_N_Npow2, Z_of_N_wordToN in H0.
       blia.
     }
 
     cbv [Memory.footprint HList.tuple.unfoldn].
     - pose proof (H rpc); rewrite Hrpc0 in H1.
-      pose proof (H (rpc ^+ ZToWord _ 1)); rewrite Hrpc1 in H2.
-      pose proof (H (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1)); rewrite Hrpc2 in H3.
-      pose proof (H (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1 ^+ ZToWord _ 1)); rewrite Hrpc3 in H4.
+      pose proof (H (Zmod.add rpc 1)); rewrite Hrpc1 in H2.
+      pose proof (H (Zmod.add rpc 2)); rewrite Hrpc2 in H3.
+      pose proof (H (Zmod.add rpc 3)); rewrite Hrpc3 in H4.
 
       (*
-      cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2
-                   word.unsigned KamiWord.word kunsigned
-                   SC.combineBytes].
-      rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 24%nat).
-      rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 16%nat).
-      rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 8%nat).
-      rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 0%nat).
+      cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2 SC.combineBytes].
+      rewrite <-!Z_of_N_wordToN.
+      rewrite Z_of_N_wordToN_combine with (sz1:= 8%nat) (sz2:= 24%nat).
+      rewrite Z_of_N_wordToN_combine with (sz1:= 8%nat) (sz2:= 16%nat).
+      rewrite Z_of_N_wordToN_combine with (sz1:= 8%nat) (sz2:= 8%nat).
+      rewrite Z_of_N_wordToN_combine with (sz1:= 8%nat) (sz2:= 0%nat).
       rewrite !byte.unsigned_of_Z.
       cbv [byte.wrap].
-      change (@uwordToZ (BinInt.Z.to_nat 8)) with (@word.unsigned 8 _).
-      rewrite !(@Properties.word.wrap_unsigned 8 _ word8ok).
+      rewrite !Z_of_N_wordToN, !bits.mod_to_Z.
       reflexivity.
   Qed.
        *) Admitted.
 
   Lemma fetch_ok:
-    forall (kmemi: kword instrMemSizeLg -> kword width)
-           (kmemd: kword memSizeLg -> kword 8)
-           (kpc: kword width)
+    forall (kmemi: Word.word ninstrMemSizeLg -> word)
+           (kmemd: Word.word nmemSizeLg -> Word.word BitsPerByte)
+           (kpc: word)
            (xaddrs: XAddrs)
            (Hxs: RiscvXAddrsSafe kmemi kmemd xaddrs)
            (rmemd: mem)
-           (rpc: kword width),
-      isXAddr4 (width := width) rpc xaddrs ->
+           (rpc: word),
+      isXAddr4 rpc xaddrs ->
       AddrAligned rpc ->
       pc_related kpc rpc ->
       mem_related kmemd rmemd ->
       exists rinst,
         Memory.load_Z rmemd rpc 4 = Some rinst /\
-        rinst = kunsigned (kmemi (evalExpr (IsaRv32.rv32ToIAddr
+        rinst = Zmod.unsigned (kmemi (evalExpr (IsaRv32.rv32ToIAddr
                                                         _ _ width_inst_valid
                                                         _ kpc))).
   Proof.
@@ -314,7 +292,7 @@ Section DecExecOk.
   Context {Registers: map.map Z word}
           (Registers_ok : map.ok Registers).
 
-  Definition regs_related (krf: kword 5 -> kword width)
+  Definition regs_related (krf: Word.word rv32RfIdx -> word)
              (rrf: Registers): Prop :=
     forall w, w <> $0 -> map.get rrf (Z.of_N (wordToN w)) = Some (krf w).
 
@@ -324,11 +302,11 @@ Section DecExecOk.
       forall w z,
         Z.of_N (wordToN w) = z ->
         krf w =
-        (if Z.eq_dec z 0 then kofZ 0
+        (if Z.eq_dec z 0 then Zmod.zero
          else
            match map.get rrf z with
            | Some x => x
-           | None => kofZ 0
+           | None => Zmod.zero
            end).
   Proof.
     intros.

@@ -3,12 +3,12 @@ Require Import compiler.Pipeline.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Words32Naive.
 Require Import riscv.Utility.DefaultMemImpl32.
-Require        riscv.Utility.InstructionNotations.
+Require riscv.Utility.InstructionNotations.
 Require Import riscv.Utility.Encode.
 Require Import coqutil.Map.SortedList.
-Require        coqutil.Map.SortedListString.
+Require coqutil.Map.SortedListString.
 Require Import compiler.MemoryLayout.
-Require        riscv.Utility.bverify.
+Require riscv.Utility.bverify.
 Open Scope Z_scope.
 Open Scope string_scope.
 Open Scope ilist_scope.

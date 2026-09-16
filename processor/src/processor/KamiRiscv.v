@@ -6,11 +6,9 @@ Require Import Kami.Lib.Word.
 Require Import Kami.Ex.IsaRv32 riscv.Spec.Decode.
 Require Import riscv.Utility.Encode.
 Require Import coqutil.Word.LittleEndian.
-Require Import coqutil.Word.Properties.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.rdelta.
-Require Import processor.KamiWord.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.runsToNonDet.
 Require Import riscv.Spec.Primitives.
@@ -36,6 +34,9 @@ Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
 Require Export processor.KamiProc.
 Require Import processor.KamiRiscvStep.
 Require Import processor.Consistency.
+
+Local Notation nwidth := (Z.to_nat width).
+#[local] Existing Instance BW.
 
 Lemma get_of_list_not_In:
   forall (key: Type) (key_dec: forall k1 k2: key, {k1 = k2} + {k1 <> k2})
@@ -66,7 +67,7 @@ Proof.
     rewrite H.
     change (0 + n)%nat with n.
     pose proof (wordToN_bound a); rewrite H in H0.
-    rewrite <-wordToN_NToWord_2 with (sz:= Z.to_nat width) (n:= N.of_nat n) by assumption.
+    rewrite <-wordToN_NToWord_2 with (sz:= nwidth) (n:= N.of_nat n) by assumption.
     rewrite NToWord_nat, Nnat.Nat2N.id; reflexivity.
   - right; auto.
 Qed.
@@ -75,7 +76,7 @@ Section Equiv.
   Context {Registers: map.map Z word}
           {mem: map.map word byte}.
 
-  Local Notation M := (free action result).
+    Local Notation M := (free action result).
   Local Notation RiscvMachine := MetricRiscvMachine.
 
   (** * Processor, software machine, and states *)
@@ -266,7 +267,7 @@ Section Equiv.
                               kamiMemInit (kami_AbsMMIO (Z.to_N memSizeLg)).
   Definition p4mm: Modules := p4mm Hinstr kamiMemInit (kami_AbsMMIO (Z.to_N memSizeLg)).
 
-  Fixpoint setRegsInit (kinits: kword 5 -> kword width) (n: nat): Registers :=
+  Fixpoint setRegsInit (kinits: Word.word rv32RfIdx -> word) (n: nat): Registers :=
     match n with
     | O => map.put map.empty 0 $0
     | S n' => map.put (setRegsInit kinits n') (Z.of_nat n) (kinits $n)
@@ -281,7 +282,7 @@ Section Equiv.
 
     clear -Registers_ok.
     pose proof (wordToN_bound w).
-    change (NatLib.Npow2 (BinInt.Z.to_nat 5)) with 32%N in H.
+    change (NatLib.Npow2 rv32RfIdx) with 32%N in H.
     assert (wordToN w = 0 \/ wordToN w = 1 \/ wordToN w = 2 \/ wordToN w = 3 \/
             wordToN w = 4 \/ wordToN w = 5 \/ wordToN w = 6 \/ wordToN w = 7 \/
             wordToN w = 8 \/ wordToN w = 9 \/ wordToN w = 10 \/ wordToN w = 11 \/
@@ -334,43 +335,38 @@ Section Equiv.
 
   Definition riscvMemInit : mem := map.of_list (List.map
     (fun i : nat =>
-      (word.of_Z (Z.of_nat i),
-       byte.of_Z (uwordToZ (evalConstT kamiMemInit $i))))
+      (bits.of_Z (Z.of_nat nwidth) (Z.of_nat i),
+       byte.of_Z (Zmod.unsigned (evalConstT kamiMemInit $i))))
     (seq 0 (2 ^ Z.to_nat memSizeLg))).
 
-  Instance kword32: coqutil.Word.Interface.word 32 := KamiWord.word 32.
-  Instance kword32_ok: word.ok kword32. eapply KamiWord.ok. reflexivity. Qed.
   Lemma riscvMemInit_get_None:
     forall addr,
-      (kunsigned addr <? 2 ^ memSizeLg) = false ->
+      (Zmod.unsigned addr <? 2 ^ memSizeLg) = false ->
       map.get riscvMemInit addr = None.
   Proof.
     intros.
-    apply get_of_list_not_In; [exact (@weq (Z.to_nat width))|assumption|].
+    apply get_of_list_not_In; [exact (@weq nwidth)|assumption|].
 
     intro Hx.
     apply in_map_iff in Hx; destruct Hx as [[addr' v] [? Hx]].
-    simpl in H0; subst.
+    cbn in H0; subst.
     apply in_map_iff in Hx; destruct Hx as [n [? ?]].
-    inversion H0; subst; clear H0.
-    apply in_seq in H1; destruct H1 as [_ ?]; simpl in H0.
+    apply pair_equal_spec in H0; destruct H0; subst.
+    apply in_seq in H1; destruct H1 as [_ ?]; cbn in H0.
 
     apply Nat2Z.inj_lt in H0.
     rewrite N_Z_nat_conversions.Nat2Z.inj_pow in H0.
     rewrite Z2Nat.id in H0 by blia.
-    simpl in H0.
+    cbn in H0.
 
     match type of H with
     | (?x <? ?y) = false => destruct (Z.ltb_spec x y); [discriminate|clear H]
     end.
-    change kunsigned with (word.unsigned (width:= width)) in H1.
-    change kofZ with (word.of_Z (width:= width)) in H1.
-    rewrite word.unsigned_of_Z in H1.
-    cbv [word.wrap] in H1.
+    rewrite Zmod.unsigned_of_Z in H1.
     rewrite Z.mod_small in H1
       by (split; [blia|];
           eapply Z.lt_le_trans; [eassumption|];
-          apply Z.pow_le_mono_r; blia).
+          apply Z.pow_le_mono_r; change (Z.of_nat nwidth) with width; blia).
     blia.
   Qed.
 
@@ -378,20 +374,20 @@ Section Equiv.
   Proof.
     cbv [mem_related riscvMemInit].
     intros addr.
-    case (kunsigned addr <? 2 ^ memSizeLg) eqn:H.
+    case (Zmod.unsigned addr <? 2 ^ memSizeLg) eqn:H.
     2: { apply riscvMemInit_get_None; assumption. }
     assert (#addr < 2 ^ Z.to_nat memSizeLg)%nat.
     { rewrite <-wordToN_to_nat.
       apply Nat2Z.inj_lt.
       rewrite N_nat_Z, N_Z_nat_conversions.Nat2Z.inj_pow.
       rewrite Z2Nat.id by blia.
-      apply Z.ltb_lt; assumption.
+      apply Z.ltb_lt; rewrite Z_of_N_wordToN; assumption.
     }
     erewrite Properties.map.get_of_list_In_NoDup; trivial.
     1: eapply NoDup_nth_error; intros i j ?.
     2: eapply (nth_error_In _ (wordToNat addr)).
 
-    { rewrite map_map; cbn; cbv [kofZ].
+    { rewrite map_map; cbn.
       clear dependent addr.
       rewrite !map_length, seq_length in H1.
       rewrite (@map_nth_error _ _ _ _ _ i).
@@ -402,14 +398,20 @@ Section Equiv.
         2: etransitivity; [eapply nth_error_nth'|];
             rewrite ?seq_length, ?seq_nth; trivial.
         intros HX.
-        injection HX; clear HX; intros HX.
-        eapply (f_equal (@wordToZ _)) in HX.
+        (* [injection] would take the equality apart down to the [Zmod]
+           representative; project out of the option instead. *)
+        eapply (f_equal (fun o => match o with
+                                  | Some w => @Zmod.signed _ w
+                                  | None => 0%Z
+                                  end)) in HX.
+        cbv beta iota in HX.
         pose proof Z.pow_le_mono_r 2 memSizeLg 31 eq_refl ltac:(blia);
         pose proof N_Z_nat_conversions.Z2Nat.inj_pow 2 memSizeLg ltac:(blia) ltac:(blia);
         change (Z.to_nat 2) with 2%nat in *.
-        rewrite 2wordToZ_ZToWord'' in HX; try split;
-         change (BinInt.Z.of_nat (Pos.to_nat 32) - 1) with 31;
-         blia. }
+        assert (Hwpos: (0 < nwidth)%nat) by (cbv [width]; blia).
+        assert (Hwz: Z.of_nat nwidth = 32) by reflexivity.
+        rewrite 2wordToZ_ZToWord'' in HX by (rewrite ?Hwz; blia).
+        blia. }
       { rewrite (proj2 (nth_error_None _ _)); try congruence.
         rewrite map_length, seq_length; blia. } }
     { replace (evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) addr)
@@ -429,11 +431,9 @@ Section Equiv.
         all : rewrite ?seq_length, ?seq_nth; trivial.
       }
       do 2 f_equal.
-      eapply word.unsigned_inj.
-      rewrite word.unsigned_of_Z.
-      cbv [word.wrap]; rewrite <-word.wrap_unsigned; f_equal.
-      unfold word.unsigned, word, wordW, KamiWord.word, kword, kunsigned.
-      rewrite wordToN_nat, nat_N_Z; reflexivity.
+      eapply Zmod.unsigned_inj.
+      rewrite Zmod.unsigned_of_Z, <-bits.mod_to_Z; f_equal.
+      rewrite <-Z_of_N_wordToN, wordToN_nat, nat_N_Z; reflexivity.
     }
     Unshelve. all: exact O.
   Qed.
@@ -443,8 +443,8 @@ Section Equiv.
       (initRegs (getRegInits (proc Hinstr kamiMemInit (kami_AbsMMIO (Z.to_N memSizeLg)))), [])
       {| getMachine :=
            {| RiscvMachine.getRegs := riscvRegsInit;
-              RiscvMachine.getPc := word.of_Z 0;
-              RiscvMachine.getNextPc := word.of_Z 4;
+              RiscvMachine.getPc := Zmod.zero;
+              RiscvMachine.getNextPc := 4;
               RiscvMachine.getMem := riscvMemInit;
               RiscvMachine.getXAddrs := kamiXAddrs instrMemSizeLg;
               RiscvMachine.getLog := nil; (* <-- intended to be nil *)
@@ -496,7 +496,7 @@ Section Equiv.
     pose proof (mmio_mem_disjoint _ Hkmemdisj _ H); clear H.
     rewrite map.get_empty.
     apply riscvMemInit_get_None.
-    destruct (Z.ltb_spec (kunsigned k) (2 ^ memSizeLg)); intuition idtac.
+    destruct (Z.ltb_spec (Zmod.unsigned k) (2 ^ memSizeLg)); intuition idtac.
   Qed.
 
   Lemma mmio_init_xaddrs_disjoint:
@@ -504,7 +504,7 @@ Section Equiv.
   Proof.
     cbv [disjoint of_list elem_of]; intros.
     pose proof (mmio_mem_disjoint _ Hkmemdisj x).
-    destruct (Z.ltb_spec (kunsigned x) (2 ^ memSizeLg)).
+    destruct (Z.ltb_spec (Zmod.unsigned x) (2 ^ memSizeLg)).
     - right; intro Hx; auto.
     - left; intro Hx.
       apply kamiXAddrs_isXAddr1_bound in Hx.
@@ -512,7 +512,7 @@ Section Equiv.
       rewrite NatLib.Z_of_N_Npow2 in Hx.
       assert (2 ^ BinInt.Z.of_nat (2 + Z.to_nat instrMemSizeLg) < 2 ^ memSizeLg)
         by (apply Z.pow_lt_mono_r; blia).
-      cbv [kunsigned] in *.
+      rewrite <-Z_of_N_wordToN in *.
       blia.
   Qed.
 
@@ -523,10 +523,10 @@ Section Equiv.
            (establishRvInv:
               forall (m0RV: RiscvMachine),
                 m0RV.(RiscvMachine.getMem) = riscvMemInit ->
-                m0RV.(RiscvMachine.getPc) = word.of_Z 0 ->
-                m0RV.(RiscvMachine.getNextPc) = word.of_Z 4 ->
+                m0RV.(RiscvMachine.getPc) = Zmod.zero ->
+                m0RV.(RiscvMachine.getNextPc) = 4%Zmod ->
                 (forall a: word,
-                    0 <= word.unsigned a < 2 ^ (2 + instrMemSizeLg) ->
+                    0 <= Zmod.unsigned a < 2 ^ (2 + instrMemSizeLg) ->
                     In a m0RV.(RiscvMachine.getXAddrs)) ->
                 disjoint (of_list m0RV.(RiscvMachine.getXAddrs)) isMMIOAddr ->
                 (forall reg, 0 < reg < 32 -> map.get m0RV.(getRegs) reg <> None) ->
@@ -567,6 +567,7 @@ Section Equiv.
         cbv [instrMemSize].
         rewrite N_Z_nat_conversions.Nat2Z.inj_pow.
         rewrite Nat2Z.inj_add, Z2Nat.id by blia.
+        rewrite Z_of_N_wordToN.
         apply H0.
       + apply mmio_init_xaddrs_disjoint.
       + apply riscvRegsInit_sound; assumption.

@@ -24,8 +24,8 @@ Open Scope Z_scope.
 Section Spilling.
 
   Notation stmt := (stmt Z).
-  Notation execpre pick_sp e := (@exec _ _ _ _ _ _ _ _ PreSpill isRegZ e pick_sp).
-  Notation execpost pick_sp e := (@exec _ _ _ _ _ _ _ _ PostSpill isRegZ e pick_sp).
+  Notation execpre pick_sp e := (@exec _ _ _ _ _ _ _ PreSpill isRegZ e pick_sp).
+  Notation execpost pick_sp e := (@exec _ _ _ _ _ _ _ PostSpill isRegZ e pick_sp).
 
   Definition zero := 0.
   Definition ra := 1.
@@ -42,7 +42,92 @@ Section Spilling.
   (* TODO: storing value returned by stackalloc into a register is always a wasted register,
      because it's constant away from the stackpointer *)
 
-  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+  Definition max_var_bcond(c: bcond Z): Z :=
+    match c with
+    | CondBinary _ x y => Z.max x y
+    | CondNez x => x
+    end.
+
+  Fixpoint max_var(s: stmt): Z :=
+    match s with
+    | SLoad _ x y _ | SStore _ x y _ | SInlinetable _ x _ y | SSet x y => Z.max x y
+    | SStackalloc x n body => Z.max x (max_var body)
+    | SLit x _ => x
+    | SOp x _ y oz => let vz := match oz with
+                                | Var v => v
+                                | Const _ => 0
+                                end
+                      in Z.max x (Z.max y vz)
+    | SIf c s1 s2 | SLoop s1 c s2 => Z.max (max_var_bcond c) (Z.max (max_var s1) (max_var s2))
+    | SSeq s1 s2 => Z.max (max_var s1) (max_var s2)
+    | SSkip => 0
+    | SCall resvars f argvars | SInteract resvars f argvars =>
+      Z.max (List.fold_left Z.max argvars 0) (List.fold_left Z.max resvars 0)
+    end.
+
+  Lemma le_fold_left_max: forall l a init,
+      a <= init ->
+      a <= fold_left Z.max l init.
+  Proof.
+    induction l; simpl; intros.
+    - assumption.
+    - eapply IHl. apply Z.max_le_iff. left. assumption.
+  Qed.
+
+  Lemma le_fold_left_max_increase_init: forall l init1 init2,
+      init1 <= init2 ->
+      fold_left Z.max l init1 <= fold_left Z.max l init2.
+  Proof.
+    induction l; simpl; intros.
+    - assumption.
+    - eapply IHl. blia.
+  Qed.
+
+  Lemma Forall_le_max: forall (l: list Z), Forall (fun x : Z => x <= fold_left Z.max l 0) l.
+  Proof.
+    induction l; simpl.
+    - constructor.
+    - constructor.
+      + apply le_fold_left_max. apply Z.le_max_r.
+      + eapply Forall_impl. 2: exact IHl. cbv beta. intros.
+        etransitivity. 1: exact H.
+        eapply le_fold_left_max_increase_init.
+        apply Z.le_max_l.
+  Qed.
+
+  Hint Extern 1 => blia : max_var_sound.
+  Hint Extern 1 => cbv beta : max_var_sound.
+  Hint Extern 1 => eapply Forall_vars_stmt_impl; cycle -1 : max_var_sound.
+  Hint Resolve Forall_and : max_var_sound.
+  Hint Extern 1 => eapply Forall_impl; [|eapply Forall_le_max]; cbv beta : max_var_sound.
+  Hint Extern 1 => match goal with
+                   | IH: forall _, _ -> Forall_vars_stmt _ _ _ |- Forall_vars_stmt _ _ _ =>
+                     eapply IH
+                   end : max_var_sound.
+
+  Lemma max_var_sound: forall s,
+      Forall_vars_stmt (fun x => fp < x /\ (x < a0 \/ a7 < x)) s ->
+      Forall_vars_stmt (fun x => fp < x <= max_var s /\ (x < a0 \/ a7 < x)) s.
+  Proof.
+    induction s; simpl; intros; unfold ForallVars_bcond in *; simpl;
+      repeat match goal with
+             | H: _ /\ _ |- _ => destruct H
+             | c: bcond _ |- _ => destruct c; simpl
+             | |- _ /\ _ => split
+             | y: operand |- _ => destruct y
+             end;
+      eauto 4 with max_var_sound.
+    all: eapply Forall_and;
+         [ eapply Forall_and;
+           [ eapply Forall_impl; [|eassumption];
+             cbv beta; intros; blia
+           | eapply Forall_impl; [|eapply Forall_le_max];
+             cbv beta; intros; blia ]
+         | eapply Forall_impl; [|eassumption]; cbv beta; blia ].
+  Qed.
+
+  Context {width} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {mem: map.map word byte} {mem_ok: map.ok mem}.
 
   Definition stack_loc(r: Z): option Z :=
@@ -64,7 +149,7 @@ Section Spilling.
 
   Definition leak_load_iarg_reg(fpval: word) (r: Z): leakage :=
     match stack_loc r with
-    | Some o => [leak_word (word.add fpval (word.of_Z o))]
+    | Some o => [leak_word (Zmod.add fpval (bits.of_Z width o))]
     | None => nil
     end.
 
@@ -76,7 +161,7 @@ Section Spilling.
 
   Definition leak_save_ires_reg(fpval: word) (r: Z) : leakage :=
     match stack_loc r with
-    | Some o => [leak_word (word.add fpval (word.of_Z o))]
+    | Some o => [leak_word (Zmod.add fpval (bits.of_Z width o))]
     | None => nil
     end.
 
@@ -91,7 +176,7 @@ Section Spilling.
 
   Definition leak_set_reg_to_var(fpval: word) (var: Z) : leakage :=
     match stack_loc var with
-    | Some o => [leak_word (word.add fpval (word.of_Z o))]
+    | Some o => [leak_word (Zmod.add fpval (bits.of_Z width o))]
     | None => nil
     end.
 
@@ -116,7 +201,7 @@ Section Spilling.
 
   Definition leak_set_var_to_reg(fpval: word) (var: Z) : leakage :=
     match stack_loc var with
-    | Some o => [leak_word (word.add fpval (word.of_Z o))]
+    | Some o => [leak_word (Zmod.add fpval (bits.of_Z width o))]
     | None => nil
     end.
 
@@ -238,21 +323,21 @@ Section Spilling.
                     match k with
                     | leak_word addr :: k' =>
                         f [leak_word addr] (sk_so_far ++ leak_load_iarg_reg fpval y ++ [leak_word addr] ++ leak_save_ires_reg fpval x)
-                    | _ => (nil, word.of_Z 0)
+                    | _ => (nil, (bits.of_Z width 0))
                     end
               | SStore sz x y o =>
                   fun _ =>
                     match k with
                     | leak_word addr :: k' =>
                         f [leak_word addr] (sk_so_far ++ leak_load_iarg_reg fpval x ++ leak_load_iarg_reg fpval y ++ [leak_word addr])
-                    | _ => (nil, word.of_Z 0)
+                    | _ => (nil, (bits.of_Z width 0))
                     end
               | SInlinetable _ x _ i =>
                   fun _ =>
                     match k with
                     | leak_word i' :: k' =>
                         f [leak_word i'] (sk_so_far ++ leak_load_iarg_reg fpval i ++ [leak_word i'] ++ leak_save_ires_reg fpval x)
-                    | _ => (nil, word.of_Z 0)
+                    | _ => (nil, (bits.of_Z width 0))
                     end
               | SStackalloc x z body =>
                   fun _ =>
@@ -298,7 +383,7 @@ Section Spilling.
                              end
                              ++ newt
                              ++ leak_save_ires_reg fpval x)
-                    | None => (nil, word.of_Z 0)
+                    | None => (nil, (bits.of_Z width 0))
                     end
               | SSet x y =>
                   fun _ =>
@@ -313,7 +398,7 @@ Section Spilling.
                               sk_so_far ++ leak_prepare_bcond fpval c ++ leak_spill_bcond ++ [leak_bool b],
                               fpval,
                               (fun skip => f (leak_bool b :: skip))) _
-                    | _ => fun _ => (nil, word.of_Z 0)
+                    | _ => fun _ => (nil, (bits.of_Z width 0))
                     end eq_refl
               | SLoop s1 c s2 =>
                   fun _ =>
@@ -332,7 +417,7 @@ Section Spilling.
                                 | leak_bool false :: k'' =>
                                     fun _ =>
                                       f (skip ++ [leak_bool false]) (sk_so_far' ++ leak_prepare_bcond fpval c ++ leak_spill_bcond ++ [leak_bool false])
-                                | _ => fun _ => (nil, word.of_Z 0)
+                                | _ => fun _ => (nil, (bits.of_Z width 0))
                                 end eq_refl))) _
               | SSeq s1 s2 =>
                   fun _ =>
@@ -357,16 +442,16 @@ Section Spilling.
                                   (fun skip sk_so_far' =>
                                      let k'' := List.skipn (length skip) k' in
                                        f (leak_unit :: skip) (sk_so_far' ++ leak_set_reg_range_to_vars fpval' rets ++ leak_set_vars_to_reg_range fpval resvars))) _
-                          | None => (nil, word.of_Z 0)
+                          | None => (nil, (bits.of_Z width 0))
                           end
-                    | _ => fun _ => (nil, word.of_Z 0)
+                    | _ => fun _ => (nil, (bits.of_Z width 0))
                     end eq_refl
               | SInteract resvars _ argvars =>
                   fun _ =>
                     match k with
                     | leak_list l :: k' =>
                           f [leak_list l] (sk_so_far ++ leak_set_reg_range_to_vars fpval argvars ++ [leak_list l] ++ leak_set_vars_to_reg_range fpval resvars)
-                    | _ => (nil, word.of_Z 0)
+                    | _ => (nil, (bits.of_Z width 0))
                     end
               end eq_refl
         end%nat eq_refl).
@@ -439,90 +524,6 @@ Section Spilling.
     - intros. apply H0; assumption.
   Qed.
 
-  Definition max_var_bcond(c: bcond Z): Z :=
-    match c with
-    | CondBinary _ x y => Z.max x y
-    | CondNez x => x
-    end.
-
-  Fixpoint max_var(s: stmt): Z :=
-    match s with
-    | SLoad _ x y _ | SStore _ x y _ | SInlinetable _ x _ y | SSet x y => Z.max x y
-    | SStackalloc x n body => Z.max x (max_var body)
-    | SLit x _ => x
-    | SOp x _ y oz => let vz := match oz with
-                                | Var v => v
-                                | Const _ => 0
-                                end
-                      in Z.max x (Z.max y vz)
-    | SIf c s1 s2 | SLoop s1 c s2 => Z.max (max_var_bcond c) (Z.max (max_var s1) (max_var s2))
-    | SSeq s1 s2 => Z.max (max_var s1) (max_var s2)
-    | SSkip => 0
-    | SCall resvars f argvars | SInteract resvars f argvars =>
-      Z.max (List.fold_left Z.max argvars 0) (List.fold_left Z.max resvars 0)
-    end.
-
-  Lemma le_fold_left_max: forall l a init,
-      a <= init ->
-      a <= fold_left Z.max l init.
-  Proof.
-    induction l; simpl; intros.
-    - assumption.
-    - eapply IHl. apply Z.max_le_iff. left. assumption.
-  Qed.
-
-  Lemma le_fold_left_max_increase_init: forall l init1 init2,
-      init1 <= init2 ->
-      fold_left Z.max l init1 <= fold_left Z.max l init2.
-  Proof.
-    induction l; simpl; intros.
-    - assumption.
-    - eapply IHl. blia.
-  Qed.
-
-  Lemma Forall_le_max: forall (l: list Z), Forall (fun x : Z => x <= fold_left Z.max l 0) l.
-  Proof.
-    induction l; simpl.
-    - constructor.
-    - constructor.
-      + apply le_fold_left_max. apply Z.le_max_r.
-      + eapply Forall_impl. 2: exact IHl. cbv beta. intros.
-        etransitivity. 1: exact H.
-        eapply le_fold_left_max_increase_init.
-        apply Z.le_max_l.
-  Qed.
-
-  Hint Extern 1 => blia : max_var_sound.
-  Hint Extern 1 => cbv beta : max_var_sound.
-  Hint Extern 1 => eapply Forall_vars_stmt_impl; cycle -1 : max_var_sound.
-  Hint Resolve Forall_and : max_var_sound.
-  Hint Extern 1 => eapply Forall_impl; [|eapply Forall_le_max]; cbv beta : max_var_sound.
-  Hint Extern 1 => match goal with
-                   | IH: forall _, _ -> Forall_vars_stmt _ _ _ |- Forall_vars_stmt _ _ _ =>
-                     eapply IH
-                   end : max_var_sound.
-
-  Lemma max_var_sound: forall s,
-      Forall_vars_stmt (fun x => fp < x /\ (x < a0 \/ a7 < x)) s ->
-      Forall_vars_stmt (fun x => fp < x <= max_var s /\ (x < a0 \/ a7 < x)) s.
-  Proof.
-    induction s; simpl; intros; unfold ForallVars_bcond in *; simpl;
-      repeat match goal with
-             | H: _ /\ _ |- _ => destruct H
-             | c: bcond _ |- _ => destruct c; simpl
-             | |- _ /\ _ => split
-             | y: operand |- _ => destruct y
-             end;
-      eauto 4 with max_var_sound.
-    all: eapply Forall_and;
-         [ eapply Forall_and;
-           [ eapply Forall_impl; [|eassumption];
-             cbv beta; intros; blia
-           | eapply Forall_impl; [|eapply Forall_le_max];
-             cbv beta; intros; blia ]
-         | eapply Forall_impl; [|eassumption]; cbv beta; blia ].
-  Qed.
-
   Open Scope bool_scope.
 
   Definition is_valid_src_var(x: Z): bool := Z.ltb fp x && (Z.ltb x a0 || Z.ltb a7 x).
@@ -562,7 +563,7 @@ Section Spilling.
         k,
         sk_so_far ++ leak_unit :: leak_set_vars_to_reg_range fpval argnames,
         fpval,
-        (fun skip sk_so_far' => (sk_so_far' ++ leak_set_reg_range_to_vars fpval resnames, word.of_Z 0))).
+        (fun skip sk_so_far' => (sk_so_far' ++ leak_set_reg_range_to_vars fpval resnames, (bits.of_Z width 0)))).
 
   Lemma firstn_min_absorb_length_r{A: Type}: forall (l: list A) n,
       List.firstn (Nat.min n (length l)) l = List.firstn n l.
@@ -2113,7 +2114,7 @@ Section Spilling.
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
       pose proof H6 as A. unfold related in A. fwd.
       cbv [store store_Z] in *; fwd.
-      eapply SeparationMemory.store_bytes_in_sep in H1;
+      eapply (SeparationMemory.store_bytes_in_sep width_pos) in H1;
         try exact _; try (cbv [sepclause_of_map]; ecancel_assumption); []; fwd.
       eapply exec.store.
       1: eapply get_iarg_reg_1; eauto with zarith.
@@ -2241,7 +2242,7 @@ Section Spilling.
              repeat rewrite <- app_assoc in *. rewrite H5p4. reflexivity.
       + eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
         eapply exec.if_false. {
-          cbn. rewrite map.get_put_same. rewrite word.eqb_eq; reflexivity.
+          cbn. rewrite map.get_put_same. rewrite (proj2 (Zmod.eqb_eq _ _)); reflexivity.
         }
         eapply exec.weaken.
         * eapply IHexec with (f := fun _ => _); try eassumption.

@@ -14,21 +14,21 @@ Require Import coqutil.Z.Lia.
 Require Import coqutil.Tactics.Simp.
 Require Import compiler.UniqueSepLog.
 Require Import bedrock2.Semantics.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 Require Import compiler.FlatImp.
 Require Import coqutil.Datatypes.HList.
 
-Local Hint Mode Word.Interface.word - : typeclass_instances.
 
 Module exec.
   Section FlatImpExec.
     Context {varname: Type} {varname_eqb: varname -> varname -> bool}.
-    Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+    Context {width: Z} {BW: Bitwidth width}.
+    Local Notation word := (bits width).
     Context {mem: map.map word byte} {locals: map.map varname word}
             {env: map.map String.string (list varname * list varname * stmt varname)}.
     Context {ext_spec: ExtSpec}.
     Context {varname_eq_spec: EqDecider varname_eqb}
-            {word_ok: word.ok word}
+
             {mem_ok: map.ok mem}
             {locals_ok: map.ok locals}
             {env_ok: map.ok env}
@@ -43,7 +43,7 @@ Module exec.
     Definition lookup_op_locals (l: locals) (o: operand) :=
       match o with
       | Var vo => map.get l vo
-      | Const co => Some (word.of_Z co)
+      | Const co => Some (bits.of_Z width co)
       end.
 
     Inductive exec:
@@ -81,7 +81,7 @@ Module exec.
 
     | load: forall t m l mc sz R x a o v addr post,
         map.get l a = Some addr ->
-        R \*/ one sz (word.add addr (word.of_Z o)) v = Some m ->
+        R \*/ one sz (Zmod.add addr (bits.of_Z width o)) v = Some m ->
         post t m (map.put l x v)
              (addMetricLoads 2
              (addMetricInstructions 1 mc)) ->
@@ -90,8 +90,8 @@ Module exec.
     | store: forall t m mc l sz a o addr v old_val val R post,
         map.get l a = Some addr ->
         map.get l v = Some val ->
-        R \*/ one sz (word.add addr (word.of_Z o)) old_val = Some m ->
-        post t (mmap.force (R \*/ one sz (word.add addr (word.of_Z o)) val)) l
+        R \*/ one sz (Zmod.add addr (bits.of_Z width o)) old_val = Some m ->
+        post t (mmap.force (R \*/ one sz (Zmod.add addr (bits.of_Z width o)) val)) l
              (addMetricLoads 1
              (addMetricInstructions 1
              (addMetricStores 1 mc))) ->
@@ -111,7 +111,7 @@ Module exec.
         exec (SStackalloc x n body) t mSmall l mc post
 
     | lit: forall t m l mc x v post,
-        post t m (map.put l x (word.of_Z v))
+        post t m (map.put l x (bits.of_Z width v))
              (addMetricLoads 8
              (addMetricInstructions 8 mc)) ->
         exec (SLit x v) t m l mc post

@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.Lift1Prop.
 
@@ -9,7 +9,7 @@ Proof. intros. subst. reflexivity. Qed.
 Ltac syntactic_f_equal_step_with_ZnWords :=
   lazymatch goal with
   | |- ?x = ?x => reflexivity
-  | |- @eq (@word.rep _ _) _ _ => ZnWords
+  | |- @eq (Zmod _) _ _ => ZnWords
   | |- @eq Z _ _ => ZnWords
   | |- ?f ?a = ?f ?b => eapply (@f_equal _ _ f a b)
   | |- ?f ?x = ?g ?x => eapply (f_equal_fun f g x)

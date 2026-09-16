@@ -909,7 +909,8 @@ Qed.
 
 Section CheckerCorrect.
 
-  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+  Context {width} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {mem: map.map word byte}.
   Context {srcLocals: map.map srcvar word}.
   Context {impLocals: map.map impvar word}.

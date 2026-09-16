@@ -10,7 +10,7 @@ Notation MMInput := "MMInput"%string.
 Notation MMOutput := "MMOutput"%string.
 
 From coqutil.Map Require SortedListWord SortedListString Z_keyed_SortedListMap Empty_set_keyed_map.
-From coqutil Require Import Word.Interface Word.Naive Datatypes.String.
+From coqutil Require Import Word.Bitwidth Datatypes.String.
 Require Import coqutil.Word.Bitwidth32.
 Require Import bedrock2.BasicC32Semantics.
 Require Import bedrock2.Semantics.
@@ -25,7 +25,7 @@ Definition uart0_rxdata := 0x10013004. Definition uart0_txdata  := 0x10013000.
 #[global] Instance ext_spec: ExtSpec :=
   fun t mGive action args post =>
     mGive = Map.Interface.map.empty /\
-    match action, List.map word.unsigned args with
+    match action, List.map Zmod.unsigned args with
     | MMInput, [addr] => (
       if addr =? hfrosccfg                                then True else
       if (  otp_base <=? addr) && (addr <?   otp_pastend) then True else
@@ -134,7 +134,7 @@ Compute swap_chars_over_uart.
 Require Import bedrock2.ProgramLogic coqutil.Map.Interface.
 Import Coq.Lists.List. Import ListNotations.
 
-Local Opaque Word.Interface.word.of_Z.
+Local Opaque Zmod.of_Z.
 Module Z.
   Lemma land_nonzero a b : Z.land a b <> 0 -> a <> 0 /\ b <> 0.
   Proof.
@@ -143,7 +143,6 @@ Module Z.
   Qed.
 End Z.
 
-From coqutil Require Import Z.div_mod_to_equations.
 
 Ltac t :=
   match goal with
@@ -156,16 +155,16 @@ Ltac t :=
   | |- map.putmany_of_list_zip _ _ _ = Some _ => exact eq_refl
   | |- exists _, _ => eexists
   | |- _ /\ _ => split
-  | |- well_founded _ => eapply Properties.word.well_founded_lt_unsigned
+  | |- well_founded _ => eapply (Properties.word.well_founded_lt_unsigned width_pos)
   | |- ext_spec _ _ _ _ _ => refine (conj eq_refl (conj I (conj eq_refl _)))
   | |- _ < _ => solve[
     repeat match goal with
            | x := _ |- _ => subst x
-           | H: _ |- _ => progress rewrite ?Properties.word.unsigned_and_nowrap, ?Properties.word.wrap_unsigned in H; unfold word.wrap in H
-           | _ => progress repeat (rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent)
+           | H: _ |- _ => progress rewrite ?bits.unsigned_and, ?bits.mod_to_Z in H
+           | _ => progress repeat (rewrite bits.unsigned_xor, Z.lxor_nilpotent)
            | H: Z.land _ _ <> 0 |- _ => unshelve eapply Z.land_nonzero in H; destruct H; []
-           | |- _ < word.unsigned ?x => pose proof Properties.word.unsigned_range x;
-                                          repeat (rewrite ?word.unsigned_sub, ?word.unsigned_of_Z || unfold word.wrap);
+           | |- _ < Zmod.unsigned ?x => pose proof (bits.unsigned_range x width_nonneg);
+                                          repeat rewrite ?Zmod.unsigned_sub, ?bits.unsigned_of_Z;
                                           repeat rewrite ?Z.mod_small;
                                             (blia || clear; cbv; split; congruence)
            end]
@@ -178,7 +177,7 @@ Lemma swap_chars_over_uart_correct m :
 Proof.
   repeat t.
   eapply Loops.wp_while.
-  eexists _, _, (fun v t _ l => exists p, map.of_list_zip ["running"; "prev"; "one"; "dot"]%string [v; p; word.of_Z(1); word.of_Z(46)] = Some l ); repeat t.
+  eexists _, _, (fun v t _ l => exists p, map.of_list_zip ["running"; "prev"; "one"; "dot"]%string [v; p; bits.of_Z 32(1); bits.of_Z 32(46)] = Some l ); repeat t.
   eapply Loops.wp_while.
   eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip ["polling"; "rx"]%string [v; rxv] l0 = Some l); repeat t.
   eapply Loops.wp_while.
@@ -192,19 +191,19 @@ Fixpoint echo_server_spec (t : trace) (output_to_explain : option word) : Prop :
   match t with
   | nil => output_to_explain = None
   | (_, MMInput, [addr], (_, [value]))::trace =>
-    if (word.unsigned addr =? uart0_base + 0x004) && (word.unsigned (word.and value (word.of_Z (2 ^ 31))) =? 0)
+    if (Zmod.unsigned addr =? uart0_base + 0x004) && (Zmod.unsigned (Zmod.and value (bits.of_Z 32 (2 ^ 31))) =? 0)
     then output_to_explain = Some value /\ spec trace None
     else spec trace output_to_explain
   | (_, MMOutput, [addr; value], (_, []))::trace => (
-    if word.unsigned addr =? hfrosccfg
-      then Z.testbit (word.unsigned value) 30 = true /\ spec trace output_to_explain else
-    if word.unsigned addr =? uart0_base + 0x018
-      then word.unsigned value = 624 /\ spec trace output_to_explain else
-    if (word.unsigned addr =? uart0_base + 0x000)
+    if Zmod.unsigned addr =? hfrosccfg
+      then Z.testbit (Zmod.unsigned value) 30 = true /\ spec trace output_to_explain else
+    if Zmod.unsigned addr =? uart0_base + 0x018
+      then Zmod.unsigned value = 624 /\ spec trace output_to_explain else
+    if (Zmod.unsigned addr =? uart0_base + 0x000)
     then match trace with
          | (_, MMInput, [addr'], (_, [value']))::trace =>
-           word.unsigned addr' = uart0_base + 0x000 /\
-           word.unsigned (word.and value' (word.of_Z (2 ^ 31))) = 0 /\
+           Zmod.unsigned addr' = uart0_base + 0x000 /\
+           Zmod.unsigned (Zmod.and value' (bits.of_Z 32 (2 ^ 31))) = 0 /\
            output_to_explain = None /\ spec trace (Some value)
          | _ => False end else
     spec trace output_to_explain
@@ -265,32 +264,32 @@ Lemma echo_server_correct m :
 Proof.
   repeat t.
   eapply Loops.wp_while.
-  eexists _, _, (fun v t _ l => map.of_list_zip ["running"; "one"]%string [v; word.of_Z(1)] = Some l /\ echo_server_spec t None ); repeat t.
+  eexists _, _, (fun v t _ l => map.of_list_zip ["running"; "one"]%string [v; bits.of_Z 32(1)] = Some l /\ echo_server_spec t None ); repeat t.
   { repeat split. admit. (* hfrosccfg*) }
   eapply Loops.wp_while.
   eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip ["polling"; "rx"]%string [v; rxv] l0 = Some l /\
-                                            if Z.eq_dec (word.unsigned (word.and rxv (word.of_Z (2^31)))) 0
+                                            if Z.eq_dec (Zmod.unsigned (Zmod.and rxv (bits.of_Z 32 (2^31)))) 0
                                             then echo_server_spec t (Some rxv)
                                             else echo_server_spec t None); repeat t.
   { match goal with |- if ?D then _ else _ => destruct D end; cbn [Z.eq_dec echo_server_spec ].
     all: try rewrite e, ?Bool.andb_true_r.
     all: repeat match goal with |- if _ then ?A else ?B => change A end.
    (*
-    { split; auto. destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; trivial.
+    { split; auto. destruct (Z.eq_dec (Zmod.unsigned (Zmod.and x (bits.of_Z 32 (2 ^ 31))))) in H2; trivial.
       exfalso; revert H1 e0; clear. subst b v3. admit. }
     { rewrite (proj2 (Z.eqb_neq _ 0)), Bool.andb_false_r by eassumption.
-      destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; trivial.
+      destruct (Z.eq_dec (Zmod.unsigned (Zmod.and x (bits.of_Z 32 (2 ^ 31))))) in H2; trivial.
       exfalso; revert H1 e; clear. subst b v3. admit. } }
   eexists; split; repeat t.
-  { destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; trivial.
+  { destruct (Z.eq_dec (Zmod.unsigned (Zmod.and x (bits.of_Z 32 (2 ^ 31))))) in H2; trivial.
     exfalso; revert H1 e; clear. subst b v3. admit. }
   eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list_zip [polling; tx] [v; txv] l0 = Some l /\
-                                            if Z.eq_dec (word.unsigned (word.and txv (word.of_Z (2^31)))) 0
-                                            then echo_server_spec ((m, MMInput, [word.of_Z (uart0_base + 0x000)], (m, [txv]))::t) None
+                                            if Z.eq_dec (Zmod.unsigned (Zmod.and txv (bits.of_Z 32 (2^31)))) 0
+                                            then echo_server_spec ((m, MMInput, [bits.of_Z 32 (uart0_base + 0x000)], (m, [txv]))::t) None
                                             else echo_server_spec t (Some x)); repeat t.
   { subst v3.
-    rewrite word.unsigned_and, ?word.unsigned_of_Z by admit; cbn.
-    destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; (trivial||contradiction). }
+    rewrite bits.unsigned_and, ?bits.unsigned_of_Z by admit; cbn.
+    destruct (Z.eq_dec (Zmod.unsigned (Zmod.and x (bits.of_Z 32 (2 ^ 31))))) in H2; (trivial||contradiction). }
   { admit. }
   { admit. }
   *)

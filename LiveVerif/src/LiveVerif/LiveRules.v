@@ -4,7 +4,7 @@ Require Import Coq.Init.Byte.
 Require Import Coq.Strings.String.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require coqutil.Map.SortedListString. (* for function env, other maps are kept abstract *)
-Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Tactics.Tactics coqutil.Tactics.fwd.
 Require Import coqutil.Datatypes.ListSet.
 Require Import bedrock2.Syntax bedrock2.Semantics.
@@ -20,19 +20,20 @@ Require Import LiveVerif.LiveExpr.
 Module Import Semantics.
   Module exec.
     Section WithParams.
-      Context {width: Z} {BW: Bitwidth width} {word: word.word width}
-        {mem: map.map word byte} {locals: map.map String.string word}.
+      Context {width: Z} {BW: Bitwidth width}.
+      Local Notation word := (bits width).
+      Context {mem: map.map word byte} {locals: map.map String.string word}.
       Context {ext_spec: ExtSpec}.
 
       Lemma dowhile: forall e body cond t m l post,
           exec e body t m l (fun t' m' l' => exists v,
             eval_expr m' l' cond = Some v /\
-            (word.unsigned v <> 0 -> exec e (cmd.dowhile body cond) t' m' l' post) /\
-            (word.unsigned v =  0 -> post t' m' l')) ->
+            (Zmod.unsigned v <> 0 -> exec e (cmd.dowhile body cond) t' m' l' post) /\
+            (Zmod.unsigned v =  0 -> post t' m' l')) ->
           exec e (cmd.dowhile body cond) t m l post.
       Proof.
         unfold cmd.dowhile. intros. eapply exec.seq. 1: eassumption.
-        cbv beta. clear H. intros. fwd. destr (Z.eqb (word.unsigned v) 0).
+        cbv beta. clear H. intros. fwd. destr (Z.eqb (Zmod.unsigned v) 0).
         - specialize (Hp2 E).
           eapply exec.while_false; eassumption.
         - specialize (Hp1 E). inversion Hp1. subst.
@@ -61,8 +62,9 @@ Inductive elet{A: Type}(rhs: A)(body: A -> Prop): Prop :=
 
 Section WithParams.
   Import bedrock2.Syntax.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}
-          {mem: map.map word byte} {mem_ok: map.ok mem}
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte} {mem_ok: map.ok mem}
           {locals: map.map string word} {locals_ok: map.ok locals}
           {ext_spec: ExtSpec} {ext_spec_ok : ext_spec.ok ext_spec}.
 
@@ -82,7 +84,7 @@ Section WithParams.
   Proof. intros. inversion H. assumption. Qed.
 
   Lemma dexpr_literal: forall (m: mem) (l: locals) z,
-      dexpr m l (expr.literal z) (word.of_Z z).
+      dexpr m l (expr.literal z) (bits.of_Z width z).
   Proof.
     intros. econstructor. cbn. unfold literal, dlet.dlet. reflexivity.
   Qed.
@@ -130,14 +132,14 @@ Section WithParams.
   Lemma dexpr_load_uint: forall m l e addr sz v R,
       dexpr m l e addr ->
       sep (uint (access_size_to_nbits sz) v addr) R m ->
-      dexpr m l (expr.load sz e) (word.of_Z v).
+      dexpr m l (expr.load sz e) (bits.of_Z width v).
   Proof.
     intros. constructor. hnf. inversion H; clear H. hnf in H1.
     eapply weaken_expr. 1: eassumption.
     intros. subst v0. hnf. eexists. split; [ | reflexivity].
     unfold uint in *. eapply sep_assoc in H0. eapply sep_emp_l in H0.
     destruct H0 as (B & M).
-    rewrite Scalars.load_of_sep with (value := word.of_Z v) (R := R).
+    rewrite Scalars.load_of_sep with (value := bits.of_Z width v) (R := R).
     - unfold Scalars.truncate_word, Scalars.truncate_Z.
       rewrite Z.land_ones by lia. f_equal.
       unfold bytes_per, bytes_per_word.
@@ -147,7 +149,7 @@ Section WithParams.
         ZnWords.
     - unfold Scalars.truncated_word, Scalars.truncated_scalar, bytes_per.
       destruct sz; cbn in M;
-        (rewrite word.unsigned_of_Z_nowrap;
+        (rewrite bits.unsigned_of_Z_small;
          [try assumption|destruct width_cases as [E|E]; subst width; lia]).
       eqapply M. f_equal.
       destruct width_cases as [E|E]; subst width; reflexivity.
@@ -170,12 +172,12 @@ Section WithParams.
 
   Definition dexpr_binop_unf :=
     ltac:(let T := type of dexpr_binop in
-          let Tu := eval unfold interp_binop in T in
+          let Tu := eval unfold interp_binop, slu, sru, srs, ltu, lts in T in
           exact (dexpr_binop: Tu)).
 
   Lemma dexpr_ite: forall m l e1 e2 e3 (b v: word),
       dexpr m l e1 b ->
-      dexpr m l (if word.eqb b (word.of_Z 0) then e3 else e2) v ->
+      dexpr m l (if Zmod.eqb b (bits.of_Z width 0) then e3 else e2) v ->
       dexpr m l (expr.ite e1 e2 e3) v.
   Proof.
     intros. inversion H; clear H. inversion H0; clear H0. constructor.
@@ -190,7 +192,7 @@ Section WithParams.
   | mk_dexpr1(Hde: dexpr m l e v)(Hp: P).
 
   Lemma dexpr1_literal: forall (m: mem) (l: locals) z (P: Prop),
-      P -> dexpr1 m l (expr.literal z) (word.of_Z z) P.
+      P -> dexpr1 m l (expr.literal z) (bits.of_Z width z) P.
   Proof.
     intros. constructor. 2: assumption. eapply dexpr_literal.
   Qed.
@@ -217,7 +219,7 @@ Section WithParams.
   Lemma dexpr1_load_uint: forall m l e addr sz v (P: Prop),
       dexpr1 m l e addr
         (sep (uint (access_size_to_nbits sz) v addr) (fun _ => True) m /\ P) ->
-      dexpr1 m l (expr.load sz e) (word.of_Z v) P.
+      dexpr1 m l (expr.load sz e) (bits.of_Z width v) P.
   Proof.
     intros. inversion H; clear H. fwd. constructor. 2: assumption.
     eapply dexpr_load_uint; eassumption.
@@ -237,7 +239,7 @@ Section WithParams.
       dexpr1 m l e addr True ->
       sep (uint (access_size_to_nbits sz) v addr) (fun _ => True) m ->
       P ->
-      dexpr1 m l (deref sz e) (word.of_Z v) P.
+      dexpr1 m l (deref sz e) (bits.of_Z width v) P.
   Proof.
     intros. inversion H; clear H. fwd. constructor. 2: assumption.
     eapply dexpr_load_uint; eassumption.
@@ -256,7 +258,7 @@ Section WithParams.
 
   Definition dexpr1_binop_unf :=
     ltac:(let T := type of dexpr1_binop in
-          let Tu := eval unfold interp_binop in T in
+          let Tu := eval unfold interp_binop, slu, sru, srs, ltu, lts in T in
           exact (dexpr1_binop: Tu)).
 
   Definition bool_expr_branches(b: bool)(Pt Pf Pa: Prop): Prop :=
@@ -274,7 +276,7 @@ Section WithParams.
   Inductive dexpr_bool3(m: mem)(l: locals)(e: expr): bool -> Prop -> Prop -> Prop -> Prop :=
     mk_dexpr_bool3: forall (v: word) (c: bool) (Ptrue Pfalse Palways: Prop),
       dexpr m l e v ->
-      c = negb (word.eqb v (word.of_Z 0)) ->
+      c = negb (Zmod.eqb v (bits.of_Z width 0)) ->
       bool_expr_branches c Ptrue Pfalse Palways ->
       dexpr_bool3 m l e c Ptrue Pfalse Palways.
 
@@ -290,9 +292,8 @@ Section WithParams.
     - eapply dexpr_binop. 1: eassumption.
       eapply dexpr_literal.
     - cbn. destruct_one_match;
-        rewrite word.unsigned_eqb;
-        rewrite !word.unsigned_of_Z_nowrap by
-          (destruct width_cases as [W|W]; rewrite W in *; lia);
+        rewrite ?Zmod.of_Z_0, ?Zmod.eqb_refl, ?(word.eqb_ne Zmod.one Zmod.zero)
+          by (apply bits.one_neq_zero; pose proof width_pos; lia);
         reflexivity.
     - unfold bool_expr_branches. destruct_one_match; eauto.
   Qed.
@@ -309,26 +310,25 @@ Section WithParams.
   Proof.
     intros.
     inversion H; subst. clear H. unfold bool_expr_branches in *. fwd.
-    destruct (word.eqb v (word.of_Z 0)) eqn: E.
+    destruct (Zmod.eqb v (bits.of_Z width 0)) eqn: E.
     - econstructor; [eapply dexpr_ite; [eassumption | rewrite E ]
                     | unfold bool_expr_branches; auto .. ].
-      1: eapply dexpr_literal. rewrite word.eqb_eq; reflexivity.
+      1: eapply dexpr_literal. rewrite (proj2 (Zmod.eqb_eq _ _)); reflexivity.
     - cbn in *.
       inversion H2p0. clear H2p0. unfold bool_expr_branches in *. subst.
       econstructor.
       1: eapply dexpr_ite. 1: eassumption. 1: rewrite E.
       1: eapply dexpr_binop. 1: eapply dexpr_literal. 1: eassumption.
-      { cbn. rewrite word.unsigned_ltu.
-        destr (word.eqb v0 (word.of_Z 0));
-          rewrite !word.unsigned_of_Z_nowrap by
-          (destruct width_cases as [W|W]; rewrite W in *; lia); cbn.
-        - rewrite word.eqb_eq; reflexivity.
-        - destruct_one_match; rewrite word.unsigned_eqb;
-            rewrite !word.unsigned_of_Z_nowrap by
-            (destruct width_cases as [W|W]; rewrite W in *; lia).
+      { cbn.
+        destr (Zmod.eqb v0 (bits.of_Z width 0));
+          rewrite ?bits.unsigned_of_Z_small, ?bits.unsigned_1, ?Zmod.unsigned_0 by
+          (pose proof width_pos; destruct width_cases as [W|W]; rewrite W in *; lia); cbn.
+        - rewrite (proj2 (Zmod.eqb_eq _ _)); reflexivity.
+        - destruct_one_match; unfold Zmod.eqb;
+            rewrite ?bits.unsigned_1, ?Zmod.unsigned_0 by (pose proof width_pos; lia).
           + reflexivity.
-          + exfalso. pose proof (word.unsigned_range v0).
-            apply E0. eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. lia. }
+          + exfalso. pose proof (bits.unsigned_range v0 width_nonneg).
+            apply E0. eapply Zmod.unsigned_inj. rewrite Zmod.unsigned_0. lia. }
       { unfold bool_expr_branches. destruct_one_match; fwd; auto. }
   Qed.
 
@@ -341,39 +341,39 @@ Section WithParams.
   Proof.
     intros.
     inversion H; subst. clear H. unfold bool_expr_branches in *. fwd.
-    destruct (word.eqb v (word.of_Z 0)) eqn: E.
+    destruct (Zmod.eqb v (bits.of_Z width 0)) eqn: E.
     - cbn in *.
       inversion H2p0. subst. clear H2p0.
       econstructor. 1: eapply dexpr_ite. 1: eassumption. 1: rewrite E.
       1: eapply dexpr_binop. 1: eapply dexpr_literal.
       1: eassumption.
       1: cbn.
-      2: destruct (word.eqb v0 (word.of_Z 0)); cbn; unfold bool_expr_branches in *;
+      2: destruct (Zmod.eqb v0 (bits.of_Z width 0)); cbn; unfold bool_expr_branches in *;
          intuition auto.
-      cbn. rewrite word.unsigned_ltu.
-      destr (word.eqb v0 (word.of_Z 0));
-        rewrite !word.unsigned_of_Z_nowrap by
-        (destruct width_cases as [W|W]; rewrite W in *; lia); cbn.
-      + rewrite word.eqb_eq; reflexivity.
-      + destruct_one_match; rewrite word.unsigned_eqb;
-          rewrite !word.unsigned_of_Z_nowrap by
-          (destruct width_cases as [W|W]; rewrite W in *; lia).
+      cbn.
+      destr (Zmod.eqb v0 (bits.of_Z width 0));
+        rewrite ?bits.unsigned_of_Z_small, ?bits.unsigned_1, ?Zmod.unsigned_0 by
+        (pose proof width_pos; destruct width_cases as [W|W]; rewrite W in *; lia); cbn.
+      + rewrite (proj2 (Zmod.eqb_eq _ _)); reflexivity.
+      + destruct_one_match; unfold Zmod.eqb;
+          rewrite ?bits.unsigned_of_Z_small, ?bits.unsigned_1, ?Zmod.unsigned_0 by
+          (pose proof width_pos; destruct width_cases as [W|W]; rewrite W in *; lia).
         * reflexivity.
-        * exfalso. pose proof (word.unsigned_range v0).
-          apply E0. eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. lia.
+        * exfalso. pose proof (bits.unsigned_range v0 width_nonneg).
+          apply E0. eapply Zmod.unsigned_inj. rewrite Zmod.unsigned_0. lia.
     - cbn in *.
       econstructor. 3: unfold bool_expr_branches; auto.
       1: eapply dexpr_ite. 1: eassumption. 1: rewrite E.
       1: eapply dexpr_literal.
-      rewrite word.unsigned_eqb;
-        rewrite !word.unsigned_of_Z_nowrap by
-        (destruct width_cases as [W|W]; rewrite W in *; lia).
+      unfold Zmod.eqb;
+        rewrite ?bits.unsigned_of_Z_small, ?bits.unsigned_1, ?Zmod.unsigned_0 by
+        (pose proof width_pos; destruct width_cases as [W|W]; rewrite W in *; lia).
       reflexivity.
   Qed.
 
   Lemma dexpr_bool3_to_dexpr1: forall m l e b (Pt Pf Pa: Prop),
-      dexpr1 m l e b (bool_expr_branches (negb (word.eqb b (word.of_Z 0))) Pt Pf Pa) ->
-      dexpr_bool3 m l e (negb (word.eqb b (word.of_Z 0))) Pt Pf Pa.
+      dexpr1 m l e b (bool_expr_branches (negb (Zmod.eqb b (bits.of_Z width 0))) Pt Pf Pa) ->
+      dexpr_bool3 m l e (negb (Zmod.eqb b (bits.of_Z width 0))) Pt Pf Pa.
   Proof.
     intros. inversion H. clear H. inversion Hp. clear Hp.
     econstructor.
@@ -383,27 +383,27 @@ Section WithParams.
   Qed.
 
   Lemma dexpr_bool3_ltu: forall m l e1 e2 v1 v2 (Pt Pf Pa: Prop),
-      dexpr1 m l e1 v1 (dexpr1 m l e2 v2 (bool_expr_branches (word.ltu v1 v2) Pt Pf Pa)) ->
-      dexpr_bool3 m l (expr.op bopname.ltu e1 e2) (word.ltu v1 v2) Pt Pf Pa.
+      dexpr1 m l e1 v1 (dexpr1 m l e2 v2 (bool_expr_branches (Z.ltb (Zmod.unsigned v1) (Zmod.unsigned v2)) Pt Pf Pa)) ->
+      dexpr_bool3 m l (expr.op bopname.ltu e1 e2) (Z.ltb (Zmod.unsigned v1) (Zmod.unsigned v2)) Pt Pf Pa.
   Proof.
     intros. inversion H. clear H. inversion Hp. clear Hp.
     econstructor.
     - eapply dexpr_binop; eassumption.
     - cbn. destruct_one_match;
-        rewrite word.unsigned_eqb, ?word.unsigned_of_Z_1, ?word.unsigned_of_Z_0;
+        unfold Zmod.eqb; rewrite ?bits.unsigned_1, ?Zmod.unsigned_0 by (pose proof width_pos; lia);
         reflexivity.
     - assumption.
   Qed.
 
   Lemma dexpr_bool3_eq: forall m l e1 e2 v1 v2 (Pt Pf Pa: Prop),
-      dexpr1 m l e1 v1 (dexpr1 m l e2 v2 (bool_expr_branches (word.eqb v1 v2) Pt Pf Pa)) ->
-      dexpr_bool3 m l (expr.op bopname.eq e1 e2) (word.eqb v1 v2) Pt Pf Pa.
+      dexpr1 m l e1 v1 (dexpr1 m l e2 v2 (bool_expr_branches (Zmod.eqb v1 v2) Pt Pf Pa)) ->
+      dexpr_bool3 m l (expr.op bopname.eq e1 e2) (Zmod.eqb v1 v2) Pt Pf Pa.
   Proof.
     intros. inversion H. clear H. inversion Hp. clear Hp.
     econstructor.
     - eapply dexpr_binop; eassumption.
     - cbn. destruct_one_match;
-        rewrite word.unsigned_eqb, ?word.unsigned_of_Z_1, ?word.unsigned_of_Z_0;
+        unfold Zmod.eqb; rewrite ?bits.unsigned_1, ?Zmod.unsigned_0 by (pose proof width_pos; lia);
         reflexivity.
     - assumption.
   Qed.
@@ -484,9 +484,9 @@ Section WithParams.
   Lemma wp_store_uint0: forall fs sz ea ev a v R t m l rest (post: _->_->_->Prop),
       dexpr m l ea a ->
       dexpr m l ev v ->
-      0 <= word.unsigned v < 2 ^ access_size_to_nbits sz ->
+      0 <= Zmod.unsigned v < 2 ^ access_size_to_nbits sz ->
       sep (uint (access_size_to_nbits sz) ? a) R m ->
-      (forall m', sep (uint (access_size_to_nbits sz) (word.unsigned v) a) R m' ->
+      (forall m', sep (uint (access_size_to_nbits sz) (Zmod.unsigned v) a) R m' ->
                   wp_cmd fs rest t m' l post) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
@@ -502,14 +502,14 @@ Section WithParams.
     destruct H2 as (B & M).
     pose proof Scalars.store_of_sep as P.
     unfold Scalars.truncated_word, Scalars.truncated_scalar in P.
-    specialize (P sz v0 (word.of_Z v_old)).
+    specialize (P sz v0 (bits.of_Z width v_old)).
     replace (Z.to_nat (nbits_to_nbytes (access_size_to_nbits sz))) with
       (bytes_per (width := width) sz) in M.
     2: {
       destruct sz; cbn; try reflexivity.
       destruct width_cases as [W | W]; rewrite W; reflexivity.
     }
-    rewrite word.unsigned_of_Z_nowrap in P.
+    rewrite bits.unsigned_of_Z_small in P.
     2: {
       destruct width_cases as [W|W]; rewrite W in *; destruct sz; lia.
     }
@@ -522,7 +522,7 @@ Section WithParams.
       intros. unfold uint. eapply sep_assoc. eapply sep_emp_l.
       split. 1: assumption. unfold Scalars.truncated_word, Scalars.truncated_scalar in *.
       destruct sz; try assumption.
-      eqapply H. clear -BW word_ok.
+      eqapply H. clear -BW .
       destruct width_cases as [W|W]; subst width; reflexivity. }
   Qed.
 
@@ -575,23 +575,23 @@ Section WithParams.
 
   Lemma wp_if00: forall fs c thn els b t m l post,
       dexpr m l c b ->
-      (word.unsigned b <> 0 -> wp_cmd fs thn t m l post) ->
-      (word.unsigned b =  0 -> wp_cmd fs els t m l post) ->
+      (Zmod.unsigned b <> 0 -> wp_cmd fs thn t m l post) ->
+      (Zmod.unsigned b =  0 -> wp_cmd fs els t m l post) ->
       wp_cmd fs (cmd.cond c thn els) t m l post.
   Proof.
     intros. inversion H; clear H.
     eapply WeakestPreconditionProperties.expr_sound in H2. fwd.
-    destr (word.unsigned v =? 0).
+    destr (Zmod.unsigned v =? 0).
     - eapply exec.if_false; eauto.
     - eapply exec.if_true; eauto.
   Qed.
 
   Lemma wp_if0: forall fs c thn els rest b Q1 Q2 t m l post,
       dexpr m l c b ->
-      (word.unsigned b <> 0 -> wp_cmd fs thn t m l Q1) ->
-      (word.unsigned b =  0 -> wp_cmd fs els t m l Q2) ->
-      (forall t' m' l', word.unsigned b <> 0 /\ Q1 t' m' l' \/
-                        word.unsigned b =  0 /\ Q2 t' m' l' ->
+      (Zmod.unsigned b <> 0 -> wp_cmd fs thn t m l Q1) ->
+      (Zmod.unsigned b =  0 -> wp_cmd fs els t m l Q2) ->
+      (forall t' m' l', Zmod.unsigned b <> 0 /\ Q1 t' m' l' \/
+                        Zmod.unsigned b =  0 /\ Q2 t' m' l' ->
                         wp_cmd fs rest t' m' l' post) ->
       wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Proof.
@@ -664,10 +664,10 @@ Section WithParams.
   Lemma wp_store_uint: forall fs sz ea ev a v R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
         (dexpr1 m l ev v
-           (0 <= word.unsigned v < 2 ^ access_size_to_nbits sz /\
+           (0 <= Zmod.unsigned v < 2 ^ access_size_to_nbits sz /\
             sep (uint (access_size_to_nbits sz) ? a) R m /\ enable_frame_trick
             (forall m,
-                sep (uint (access_size_to_nbits sz) (word.unsigned v) a) R m ->
+                sep (uint (access_size_to_nbits sz) (Zmod.unsigned v) a) R m ->
                 wp_cmd fs rest t m l post))) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
@@ -721,12 +721,12 @@ Section WithParams.
     unfold then_branch_marker, else_branch_marker, pop_scope_marker,
       after_if, bool_expr_branches, package_context_marker in *.
     destruct H2.
-    destr (word.eqb v (word.of_Z 0)); (eapply wp_if0; [ eassumption | .. ]).
-    all: try (intro C; rewrite ?word.unsigned_of_Z_nowrap in C
+    destr (Zmod.eqb v (bits.of_Z width 0)); (eapply wp_if0; [ eassumption | .. ]).
+    all: try (intro C; rewrite ?bits.unsigned_of_Z_small, ?Zmod.unsigned_0 in C
                   by (destruct width_cases as [W|W]; rewrite W in *; lia); try congruence).
     4: {
-      exfalso. eapply E. eapply word.unsigned_inj.
-      rewrite word.unsigned_of_Z_nowrap
+      exfalso. eapply E. eapply Zmod.unsigned_inj.
+      rewrite ?bits.unsigned_of_Z_small, ?Zmod.unsigned_0
           by (destruct width_cases as [W|W]; rewrite W in *; lia).
       exact C.
     }
@@ -758,11 +758,11 @@ Section WithParams.
       after_if, bool_expr_branches,
       needs_to_be_closed_by_single_rbrace, needs_opening_else_and_lbrace in *.
     apply proj1 in H2.
-    destr (word.eqb v (word.of_Z 0)); simpl in H2; (eapply wp_if00; [ eassumption | .. ]).
-    all: try (intro C; rewrite ?word.unsigned_of_Z_nowrap in C
+    destr (Zmod.eqb v (bits.of_Z width 0)); simpl in H2; (eapply wp_if00; [ eassumption | .. ]).
+    all: try (intro C; rewrite ?bits.unsigned_of_Z_small, ?Zmod.unsigned_0 in C
                   by (destruct width_cases as [W|W]; rewrite W in *; lia); try congruence).
-    exfalso. eapply E. eapply word.unsigned_inj.
-    rewrite word.unsigned_of_Z_nowrap
+    exfalso. eapply E. eapply Zmod.unsigned_inj.
+    rewrite bits.unsigned_of_Z_small
       by (destruct width_cases as [W|W]; rewrite W in *; lia).
     exact C.
   Qed.
@@ -789,9 +789,9 @@ Section WithParams.
       (forall v t m l,
           inv v t m l ->
           exists b, dexpr m l e b /\
-                    (word.unsigned b <> 0%Z -> wp_cmd fs c t m l (fun t' m' l' =>
+                    (Zmod.unsigned b <> 0%Z -> wp_cmd fs c t m l (fun t' m' l' =>
                        exists v', inv v' t' m' l' /\ lt v' v)) /\
-                    (word.unsigned b = 0%Z -> post t m l)) ->
+                    (Zmod.unsigned b = 0%Z -> post t m l)) ->
      wp_cmd fs (cmd.while e c) t m l post.
   Proof.
     intros * Hwf HInit Hbody.
@@ -801,7 +801,7 @@ Section WithParams.
     eapply invert_dexpr in Hb.
     eapply WeakestPreconditionProperties.expr_sound in Hb.
     destruct Hb as (b' & Hb & ?). subst b'.
-    destr.destr (Z.eqb (word.unsigned b) 0).
+    destr.destr (Z.eqb (Zmod.unsigned b) 0).
     - specialize Hf with (1 := E). eapply exec.while_false; eassumption.
     - specialize Ht with (1 := E). eapply exec.while_true; eauto.
       cbv beta. intros * (v' & HInv & HLt). eauto.
@@ -817,8 +817,8 @@ Section WithParams.
           inv v t m l ->
           wp_cmd fs c t m l (fun t' m' l' =>
             exists b, dexpr m' l' e b /\
-                      (word.unsigned b <> 0 -> exists v', inv v' t' m' l' /\ lt v' v) /\
-                      (word.unsigned b = 0 -> post t' m' l'))) ->
+                      (Zmod.unsigned b <> 0 -> exists v', inv v' t' m' l' /\ lt v' v) /\
+                      (Zmod.unsigned b = 0 -> post t' m' l'))) ->
      wp_cmd fs (cmd.dowhile c e) t m l post.
   Proof.
     intros * Hwf HInit Hbody.
@@ -859,9 +859,9 @@ Section WithParams.
     unfold bool_expr_branches in *. apply proj1 in H1. split.
     - intro NE.
       rewrite word.eqb_ne in H1. 1: eapply H1. intro C. subst v1.
-      apply NE. apply word.unsigned_of_Z_0.
-    - intro E. rewrite word.eqb_eq in H1. 1: eapply H1.
-      eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
+      apply NE. apply Zmod.unsigned_0.
+    - intro E. rewrite (proj2 (Zmod.eqb_eq _ _)) in H1. 1: eapply H1.
+      eapply Zmod.unsigned_inj. rewrite Zmod.unsigned_0. exact E.
   Qed.
 
   Lemma wp_dowhile {measure : Type} (v0 : measure) (e: expr) (c: cmd) t (m: mem) l fs rest
@@ -887,9 +887,9 @@ Section WithParams.
     unfold bool_expr_branches in *. apply proj1 in H2. split.
     - intro NE.
       rewrite word.eqb_ne in H2. 1: eapply H2. intro C. subst v1.
-      apply NE. apply word.unsigned_of_Z_0.
-    - intro E. rewrite word.eqb_eq in H2. 1: eapply H2.
-      eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
+      apply NE. apply Zmod.unsigned_0.
+    - intro E. rewrite (proj2 (Zmod.eqb_eq _ _)) in H2. 1: eapply H2.
+      eapply Zmod.unsigned_inj. rewrite Zmod.unsigned_0. exact E.
   Qed.
 
   (* alias of "exists" to mark ghost vars of tailrecursive loop body calls that need
@@ -947,9 +947,9 @@ Section WithParams.
     unfold loop_body_marker in *.
     split; intro Hv; destruct_one_match_hyp.
     - apply proj1 in HAgain. eapply WeakestPreconditionProperties.complete_cmd. assumption.
-    - exfalso. apply Hv. apply word.unsigned_of_Z_0.
-    - exfalso. apply E. eapply word.unsigned_inj. rewrite Hv. symmetry.
-      apply word.unsigned_of_Z_0.
+    - exfalso. apply Hv. apply Zmod.unsigned_0.
+    - exfalso. apply E. eapply Zmod.unsigned_inj. rewrite Hv. symmetry.
+      apply Zmod.unsigned_0.
     - exact HDone.
   Qed.
 
@@ -991,10 +991,10 @@ Section WithParams.
       { simpl in H1. eapply exec.weaken. 1: eapply H1.
         cbv beta. clear -HPostImpl. intros. fwd. eauto 10. }
       intro C. subst v1.
-      apply NE. apply word.unsigned_of_Z_0.
+      apply NE. apply Zmod.unsigned_0.
     - intro E. eapply exec.weaken. 2: eapply HPostImpl.
-      rewrite word.eqb_eq in H1. 1: eapply H1.
-      eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
+      rewrite (proj2 (Zmod.eqb_eq _ _)) in H1. 1: eapply H1.
+      eapply Zmod.unsigned_inj. rewrite Zmod.unsigned_0. exact E.
   Qed.
 
   Lemma wp_dowhile_tailrec_use_functionpost{measure: Type}{Ghost: Type}(v0: measure)(g0: Ghost)
@@ -1035,11 +1035,11 @@ Section WithParams.
       rewrite word.eqb_ne in H2.
       { simpl in H2. fwd. eauto 10. }
       intro C. subst v1.
-      apply NE. apply word.unsigned_of_Z_0.
+      apply NE. apply Zmod.unsigned_0.
     - intro E.
-      rewrite word.eqb_eq in H2.
+      rewrite (proj2 (Zmod.eqb_eq _ _)) in H2.
       { eapply exec.weaken. 1: exact H2. exact HPostImpl. }
-      eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
+      eapply Zmod.unsigned_inj. rewrite Zmod.unsigned_0. exact E.
   Qed.
 
   Definition with_again_flag{T: Type}(R: T -> T -> Prop): bool * T -> bool * T -> Prop :=
@@ -1110,35 +1110,35 @@ Section WithParams.
     inversion Hinit. subst. clear Hinit. unfold bool_expr_branches in H1.
     apply proj1 in H1.
     eapply wp_while_tailrec with
-      (v0 := (negb (word.eqb v (word.of_Z 0)), v0))
+      (v0 := (negb (Zmod.eqb v (bits.of_Z width 0)), v0))
       (pre := fun '(g, (again, v), t, m, l) =>
-                (exists w, dexpr m l e w /\ again = negb (word.eqb w (word.of_Z 0))) /\
+                (exists w, dexpr m l e w /\ again = negb (Zmod.eqb w (bits.of_Z width 0))) /\
                 if again then  pre (g, v, t, m, l) else post (g, v, t, m, l))
       (post := fun '(g, (again, v), t, m, l) => post (g, v, t, m, l)).
     { eapply well_founded_with_again_flag. eapply Hwf. }
     { split.
       { eexists. split. 1: eassumption. reflexivity. }
-      destr (word.eqb v (word.of_Z 0)); simpl in *.
+      destr (Zmod.eqb v (bits.of_Z width 0)); simpl in *.
       1: eassumption. assumption. }
-    { intros. fwd. destr (word.eqb w (word.of_Z 0)); simpl in *.
+    { intros. fwd. destr (Zmod.eqb w (bits.of_Z width 0)); simpl in *.
       { exists false. econstructor. 1: eassumption.
-        { rewrite word.eqb_eq; reflexivity. }
+        { rewrite (proj2 (Zmod.eqb_eq _ _)); reflexivity. }
         { unfold bool_expr_branches, loop_body_marker. auto. } }
       { specialize Hbody with (1 := H0p1). destruct Hbody as (b & Hbody).
         inversion Hbody. subst c0. exists b. clear Hbody. subst.
         econstructor. 1: eassumption. 1: reflexivity.
         unfold bool_expr_branches in *.
-        destr (word.eqb v1 (word.of_Z 0)); simpl in *.
+        destr (Zmod.eqb v1 (bits.of_Z width 0)); simpl in *.
         1: assumption.
         split. 1: constructor. apply proj2 in H3. unfold loop_body_marker in *.
         apply proj1 in H3. split. 2: constructor.
         eapply Semantics.exec.weaken. 1: eassumption.
         cbv beta. clear H3. intros. fwd. inversion H2. subst. clear H2.
         unfold bool_expr_branches in *. apply proj1 in H5.
-        destr (word.eqb v2 (word.of_Z 0)); simpl in *.
+        destr (Zmod.eqb v2 (bits.of_Z width 0)); simpl in *.
         { eexists (false, m1(* old, big measure! *)), _.
           ssplit.
-          { eexists. split. 1: eassumption. rewrite word.eqb_eq; reflexivity. }
+          { eexists. split. 1: eassumption. rewrite (proj2 (Zmod.eqb_eq _ _)); reflexivity. }
           { eassumption. }
           { exact I. }
           intros ? ? ?. exact id. }
@@ -1197,7 +1197,7 @@ Section WithParams.
     unfold bool_expr_branches, loop_body_marker in *. apply proj1 in H1.
     eexists. destruct_one_match_hyp;
       (econstructor; [eassumption | reflexivity | unfold bool_expr_branches]);
-      ssplit; rewrite ?word.eqb_ne, ?word.eqb_eq by congruence; simpl; try exact I.
+      ssplit; rewrite ?word.eqb_ne, ?(proj2 (Zmod.eqb_eq _ _)) by congruence; simpl; try exact I.
     2: assumption.
     eapply exec.weaken. 1: eassumption.
     cbv beta. clear H1. intros. fwd. inversion H0. subst. clear H0.

@@ -1,7 +1,7 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Datatypes.Inhabited.
-Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Datatypes.ZList. Import ZList.List.ZIndexNotations.
@@ -10,8 +10,10 @@ Require Import bedrock2.SepLib.
 Require Import bedrock2.sepapp.
 
 Section WithMem.
-  Context {width} {BW: Bitwidth width} {word: word width} {mem: map.map word Byte.byte}
-          {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {width} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}
+          {mem_ok: map.ok mem}.
 
   Definition unchecked_load_uint8s(m: mem)(addr: word)(n: Z): list Z :=
     List.map Byte.byte.unsigned
@@ -238,7 +240,7 @@ Section WithMem.
     eapply Array.array_map, Array.impl1_array, H; cbv [impl1 uint]; intros; cbv beta.
     extract_ex1_and_emp_in_hyps.
     progress change (Z.to_nat (nbits_to_nbytes 8)) with 1%nat in *.
-    unfold LittleEndianList.le_split in *; rewrite OfListWord.map.of_list_word_singleton in *.
+    unfold LittleEndianList.le_split in *; rewrite (OfListWord.map.of_list_word_singleton width_pos) in *.
     cbv [ptsto sepclause_of_map] in *; subst; reflexivity.
   Qed.
 
@@ -247,7 +249,7 @@ Section WithMem.
              (Memory.bytes_per_word width).
   Proof.
     unfold Scalars.truncated_word.
-    eapply fillable_transform with (X := Z) (t := word.of_Z).
+    eapply fillable_transform with (X := Z) (t := Zmod.of_Z (2 ^ width)).
     pose proof (truncated_scalar_fillable Syntax.access_size.word) as F.
     assert (Z.of_nat (Memory.bytes_per (width := width) Syntax.access_size.word) =
               Memory.bytes_per_word width) as E. {
@@ -258,7 +260,7 @@ Section WithMem.
     cbv beta. intros *.
     unfold Scalars.truncated_scalar.
     rewrite LittleEndianList.le_split_mod.
-    rewrite word.unsigned_of_Z. unfold word.wrap.
+    rewrite bits.unsigned_of_Z.
     intro H. eqapply H. f_equal. f_equal. f_equal.
     destruct width_cases as [W | W]; rewrite W; reflexivity.
   Qed.
@@ -280,7 +282,7 @@ Section WithMem.
     eapply (Array.impl1_array _ (fun (a : word) (v : Z) => uint 8 v a)
               (fun (a : word) (v : Z) => ptsto a (Byte.byte.of_Z v))) in Hm.
     2: { unfold impl1. intros. eapply uint8_to_ptsto. assumption. }
-    eapply (Array.array_map _ _ addr bs (word.of_Z 1)) in Hm.
+    eapply (Array.array_map _ _ addr bs (bits.of_Z width 1)) in Hm.
     eapply sep_emp_l.
     split.
     2: {
@@ -362,8 +364,8 @@ Section WithMem.
         2: {
           clear -H. Z.div_mod_to_equations. nia.
         }
-        rewrite word.unsigned_of_Z_1.
-        rewrite Z.mul_1_r, Z.mul_1_l. rewrite word.of_Z_unsigned.
+        rewrite bits.unsigned_1 by (pose proof width_pos; lia).
+        rewrite Z.mul_1_r, Z.mul_1_l. rewrite Zmod.of_Z_unsigned.
         reflexivity.
   Qed.
 
@@ -390,8 +392,9 @@ Section WithMem.
 End WithMem.
 
 Section WithMem32.
-  Context {word: word 32} {BW: Bitwidth 32} {mem: map.map word Byte.byte}
-          {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Local Notation word := (bits 32).
+  Context {BW: Bitwidth 32} {mem: map.map word Byte.byte}
+          {mem_ok: map.ok mem}.
 
   Lemma uintptr32_contiguous: forall v, contiguous (uintptr v) 4.
   Proof. eapply (uintptr_contiguous (width := 32)). Qed.
@@ -401,8 +404,9 @@ Section WithMem32.
 End WithMem32.
 
 Section WithMem64.
-  Context {word: word 64} {BW: Bitwidth 64} {mem: map.map word Byte.byte}
-          {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Local Notation word := (bits 64).
+  Context {BW: Bitwidth 64} {mem: map.map word Byte.byte}
+          {mem_ok: map.ok mem}.
 
   Lemma uintptr64_contiguous: forall v, contiguous (uintptr v) 8.
   Proof. eapply (uintptr_contiguous (width := 64)). Qed.
@@ -465,8 +469,9 @@ Ltac is_fake_contiguous P :=
   assert_succeeds (assert (fake_contiguous P) by typeclasses eauto with contiguous).
 
 Section TestsWithMem64.
-  Context {word: word 64} {BW: Bitwidth 64} {mem: map.map word Byte.byte}
-          {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Local Notation word := (bits 64).
+  Context {BW: Bitwidth 64} {mem: map.map word Byte.byte}
+          {mem_ok: map.ok mem}.
 
   Goal forall (foo: word -> mem -> Prop) (v: word), True.
     intros.

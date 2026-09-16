@@ -12,17 +12,18 @@ Definition memconst bs := func! (p) {
   }.
 
 Require Import bedrock2.WeakestPrecondition bedrock2.Semantics bedrock2.ProgramLogic.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface bedrock2.Map.SeparationLogic.
 Require Import bedrock2.ZnWords.
 Import Coq.Init.Byte coqutil.Byte.
 Local Notation string := String.string.
 
-Local Notation "xs $@ a" := (Array.array ptsto (word.of_Z 1) a xs) (at level 10, format "xs $@ a").
+Local Notation "xs $@ a" := (Array.array ptsto (bits.of_Z _ 1) a xs) (at level 10, format "xs $@ a").
 
 Section WithParameters.
   Context {width} {BW: Bitwidth width}.
-  Context {word: word.word width} {mem: map.map word byte} {locals: map.map string word}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte} {locals: map.map string word}.
   Context {ext_spec: ExtSpec}.
   Import ProgramLogic.Coercions.
 
@@ -31,7 +32,7 @@ Section WithParameters.
     { requires t m := m =* ds$@p * R /\ length ds = length bs :>Z /\ length bs < 2^width ;
       ensures t' m := m =* bs$@p * R /\ t=t' }.
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok : map.ok locals}
+  Context {mem_ok: map.ok mem} {locals_ok : map.ok locals}
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
@@ -79,9 +80,8 @@ Section WithParameters.
       cbn in localsmap.
       eexists; split; cbv [expr expr_body localsmap get].
       { rewrite ?Properties.map.get_put_dec. eexists; cbn; split; reflexivity. }
-      rewrite !word.unsigned_ltu.
       destr Z.ltb; split; intros;
-        rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1 in H5; try congruence;
+        rewrite ?Zmod.unsigned_0, ?bits.unsigned_1 in H5 by (pose proof width_pos; lia); try congruence;
         autoforward with typeclass_instances in E; cycle 1.
       { ssplit; trivial. replace n with O in * by ZnWords; cbn.
         destruct ds0 in *; cbn in *; try discriminate.
@@ -99,7 +99,7 @@ Section WithParameters.
       { rewrite ?Properties.map.get_put_dec; exact eq_refl. }
 
       cbv [WeakestPrecondition.load load load_Z load_bytes footprint]; cbn.
-      rewrite OfListWord.map.get_of_list_word.
+      rewrite (OfListWord.map.get_of_list_word width_pos).
       destruct List.nth_error eqn:?; cycle 1.
       { eapply List.nth_error_None in Heqo. exfalso. ZnWords. }
       rewrite LittleEndianList.le_combine_1.
@@ -131,10 +131,10 @@ Section WithParameters.
       intuition idtac.
 
       pose proof byte.unsigned_range b.
-      rewrite word.unsigned_of_Z_nowrap, byte.of_Z_unsigned in H9 by ZnWords.
+      rewrite bits.unsigned_of_Z_small, byte.of_Z_unsigned in H9 by ZnWords.
       replace (Z.to_nat v0) with (1 + (Z.to_nat i0))%nat in H9 by ZnWords.
       rewrite <-List.skipn_skipn in H9.
-      rewrite List.nth_error_as_skipn, Properties.word.add_0_r  in Heqo.
+      rewrite List.nth_error_as_skipn, Zmod.add_0_r  in Heqo.
       remember (List.skipn (Z.to_nat i0) bs) as ts in *.
       destruct ts in *; cbn [List.skipn List.hd_error Array.array] in *; [discriminate|].
       subst v.

@@ -18,7 +18,9 @@ Require Import bedrock2.Semantics bedrock2.MetricSemantics.
 Open Scope Z_scope.
 
 Section ExprImp1.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
 
@@ -35,7 +37,6 @@ Section ExprImp1.
   Local Notation varname := String.string.
 
   Ltac set_solver := set_solver_generic String.string.
-  Context {word_ok: word.ok word}.
 
   Section WithEnv.
     Context (e: env).
@@ -66,10 +67,10 @@ Section ExprImp1.
             Success (map.remove st x, m)
         | cmd.cond cond bThen bElse =>
             v <- eval_expr m st cond;;
-            eval_cmd f st m (if word.eqb v (word.of_Z 0) then bElse else bThen)
+            eval_cmd f st m (if Zmod.eqb v (bits.of_Z width 0) then bElse else bThen)
         | cmd.while cond body =>
             v <- eval_expr m st cond;;
-            if word.eqb v (word.of_Z 0) then Success (st, m) else
+            if Zmod.eqb v (bits.of_Z width 0) then Success (st, m) else
               '(st, m) <- eval_cmd f st m body;;
               eval_cmd f st m (cmd.while cond body)
         | cmd.seq s1 s2 =>
@@ -145,7 +146,7 @@ Section ExprImp1.
       unfold eval_expr, result.of_option in *;
       repeat (destruct_one_match_hyp; try discriminate);
       repeat match goal with
-             | E: _ _ _ = true  |- _ => apply word.eqb_true  in E
+             | E: _ _ _ = true  |- _ => apply Zmod.eqb_eq  in E
              | E: _ _ _ = false |- _ => apply word.eqb_false in E
              end;
       simp;
@@ -179,17 +180,17 @@ Section ExprImp1.
       eval_cmd (S f) st1 m1 (cmd.cond cond bThen bElse) = Success p2 ->
       exists cv,
         Semantics.eval_expr m1 st1 cond = Some cv /\
-        (cv <> word.of_Z 0 /\ eval_cmd f st1 m1 bThen = Success p2 \/
-         cv = word.of_Z 0  /\ eval_cmd f st1 m1 bElse = Success p2).
+        (cv <> (bits.of_Z width 0) /\ eval_cmd f st1 m1 bThen = Success p2 \/
+         cv = (bits.of_Z width 0)  /\ eval_cmd f st1 m1 bElse = Success p2).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_while: forall st1 m1 p3 f cond body,
       eval_cmd (S f) st1 m1 (cmd.while cond body) = Success p3 ->
       exists cv,
         Semantics.eval_expr m1 st1 cond = Some cv /\
-        (cv <> word.of_Z 0 /\ (exists st2 m2, eval_cmd f st1 m1 body = Success (st2, m2) /\
+        (cv <> (bits.of_Z width 0) /\ (exists st2 m2, eval_cmd f st1 m1 body = Success (st2, m2) /\
                                      eval_cmd f st2 m2 (cmd.while cond body) = Success p3) \/
-         cv = word.of_Z 0 /\ p3 = (st1, m1)).
+         cv = (bits.of_Z width 0) /\ p3 = (st1, m1)).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_seq: forall st1 m1 p3 f s1 s2,
@@ -375,7 +376,9 @@ Ltac invert_eval_cmd :=
   end.
 
 Section ExprImp2.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
 
@@ -386,7 +389,6 @@ Section ExprImp2.
   (*Hypothesis String.string_empty: String.string = Empty_set.*)
   Local Notation varname := String.string.
 
-  Context {word_ok: word.ok word}.
   Context {locals_ok: map.ok locals}.
   Context {mem_ok: map.ok mem}.
   Context {ext_spec_ok: ext_spec.ok ext_spec}.

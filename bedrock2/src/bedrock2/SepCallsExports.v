@@ -4,7 +4,7 @@ Require Export coqutil.Datatypes.Inhabited.
 Require Export coqutil.Tactics.Tactics.
 Require Export coqutil.Tactics.autoforward.
 Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
-Require Export coqutil.Word.Interface coqutil.Word.Properties.
+Require Export coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Export coqutil.Tactics.fwd.
 Require Export bedrock2.Lift1Prop.
 Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic.

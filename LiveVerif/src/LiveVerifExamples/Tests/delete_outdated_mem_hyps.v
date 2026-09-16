@@ -47,7 +47,7 @@ Ltac is_mem_split_eq t :=
 
 Ltac is_mem t :=
   lazymatch t with
-  | @map.rep (@word.rep _ _) Coq.Init.Byte.byte _ => constr:(true)
+  | @map.rep (Zmod _) Coq.Init.Byte.byte _ => constr:(true)
   | _ => constr:(false)
   end.
 

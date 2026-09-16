@@ -4,7 +4,7 @@ Require Import Coq.Logic.FunctionalExtensionality.
 Require Import coqutil.Tactics.fwd coqutil.Tactics.Tactics.
 Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Word.LittleEndianList.
 Require Import coqutil.Map.OfListWord.
 Require Import bedrock2.Lift1Prop.
@@ -56,7 +56,7 @@ Definition sepapp{key value}{mem: map.map key value}
    particular, that two adjacent arrays whose size fits into a word can be
    combined into an array whose size fits into a word as well, without requiring
    any Z inequalities as preconditions. *)
-Definition range_ok{width}{word: word width}{mem: map.map word Byte.byte}
+Definition range_ok{width}{mem: map.map (bits width) Byte.byte}
   (pred: Z -> mem -> Prop){size: PredicateSize pred}: Z -> mem -> Prop :=
   fun start => sep (emp (0 < start /\ start + size <= 2 ^ width)) (pred start).
 
@@ -76,8 +76,8 @@ Definition range_ok{width}{word: word width}{mem: map.map word Byte.byte}
    range_ok, so we might as well just use only range_ok (or occasianally, assert
    `range_ok pred = pred`). *)
 
-Lemma range_ok_idemp{width}{word: word width}{word_ok: word.ok word}
-  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}
+Lemma range_ok_idemp{width}
+  {mem: map.map (bits width) Byte.byte}{mem_ok: map.ok mem}
   (pred: Z -> mem -> Prop){size: PredicateSize pred}:
   range_ok (range_ok pred) = range_ok pred.
 Proof.
@@ -87,8 +87,8 @@ Proof.
     eapply proj1 in H. exact H.
 Qed.
 
-Lemma sepapp_range_ok{width}{word: word width}{word_ok: word.ok word}
-  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}
+Lemma sepapp_range_ok{width}
+  {mem: map.map (bits width) Byte.byte}{mem_ok: map.ok mem}
   (P1 P2: Z -> mem -> Prop){P1size: PredicateSize P1}{P2size: PredicateSize P2}:
   sepapp (range_ok P1) (range_ok P2) = range_ok (sepapp (range_ok P1) (range_ok P2)).
 Proof.
@@ -111,7 +111,7 @@ Definition pure_at_raw{key value}{mem: map.map key value}(P: Prop)(addr: Z):
 #[export] Hint Extern 1 (PredicateSize (pure_at_raw ?P)) => exact 0 : typeclass_instances.
 #[export] Hint Opaque pure_at_raw : typeclass_instances. (* to avoid confusion with hole *)
 
-Definition pure_at{width}{word: word width}{mem: map.map word Byte.byte}(P: Prop):
+Definition pure_at{width}{mem: map.map (bits width) Byte.byte}(P: Prop):
   Z -> mem -> Prop := range_ok (pure_at_raw P).
 #[export] Hint Extern 1 (PredicateSize (pure_at _)) => exact 0 : typeclass_instances.
 #[export] Hint Opaque pure_at : typeclass_instances.
@@ -120,12 +120,12 @@ Definition hole_raw{key value}{mem: map.map key value}(n addr: Z): mem -> Prop :
 #[export] Hint Extern 1 (PredicateSize (hole_raw ?n)) => exact n : typeclass_instances.
 #[export] Hint Opaque hole_raw : typeclass_instances.
 
-Definition hole{width}{word: word width}{mem: map.map word Byte.byte}(n: Z):
+Definition hole{width}{mem: map.map (bits width) Byte.byte}(n: Z):
   Z -> mem -> Prop := range_ok (hole_raw n).
 #[export] Hint Extern 1 (PredicateSize (hole ?n)) => exact n : typeclass_instances.
 #[export] Hint Opaque hole : typeclass_instances.
 
-Definition array_raw{width}{word: word width}{mem: map.map word Byte.byte}{T: Type}
+Definition array_raw{width}{mem: map.map (bits width) Byte.byte}{T: Type}
   (elem: T -> Z -> mem -> Prop){elemSize: PredicateSize elem}:
   list T -> Z -> mem -> Prop :=
   fix rec xs :=
@@ -134,26 +134,27 @@ Definition array_raw{width}{word: word width}{mem: map.map word Byte.byte}{T: Ty
     | cons h tl => sepapp (elem h) (rec tl)
     end.
 
-#[export] Hint Extern 1 (PredicateSize (@array_raw ?width ?word ?mem ?T ?elem ?elemSize ?vs)) =>
+#[export] Hint Extern 1 (PredicateSize (@array_raw ?width ?mem ?T ?elem ?elemSize ?vs)) =>
   exact (len vs * elemSize) : typeclass_instances.
 
 (* Note: 0 <= elemSize is required to ensure that start+elemSize does not become
    negative, and making the inequality strict is convenient because then range_ok
    implies that n fits into a word (which would not be the case if elemSize=0
    because upper-bounding n*0=0 has no effect. *)
-Definition array{width}{BW: Bitwidth width}{word: word width}
-  {mem: map.map word Byte.byte}{T: Type}
+Definition array{width}{BW: Bitwidth width}
+  {mem: map.map (bits width) Byte.byte}{T: Type}
   (elem: T -> Z -> mem -> Prop){elemSize: PredicateSize elem}
   (n: Z)(vs: list T): Z -> mem -> Prop :=
   sepapp (pure_at (len vs = n /\ 0 < elemSize)) (range_ok (array_raw elem vs)).
 
 (* Note: We don't pass a list ?vs to the pattern, because the length is already given by n *)
 #[export] Hint Extern 1
-  (PredicateSize (@array ?width ?BW ?word ?mem ?T ?elem ?elemSize ?n)) =>
+  (PredicateSize (@array ?width ?BW ?mem ?T ?elem ?elemSize ?n)) =>
   exact (n * elemSize) : typeclass_instances.
 
 Section WithMem.
-  Context {width}{word: word width}{word_ok: word.ok word}.
+  Context {width: Z}.
+  Local Notation word := (bits width).
   Context {mem: map.map word Byte.byte}{mem_ok: map.ok mem}.
 
   Lemma sep_assoc_eq: forall (p q r: mem -> Prop),
@@ -187,7 +188,8 @@ Section WithMem.
 End WithMem.
 
 Section ArrayLemmas.
-  Context {width}{BW: Bitwidth width}{word: word width}{word_ok: word.ok word}.
+  Context {width}{BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {mem: map.map word Byte.byte}{mem_ok: map.ok mem}.
   Context {T: Type}(elem: T -> Z -> mem -> Prop){elemSize: PredicateSize elem}.
 
@@ -310,14 +312,14 @@ Definition le_combine_z(bytes: list Z): Z :=
 (* Just for internal use, as long as uint is not defined yet.
    Prefer `array (uint 8)`, because it takes a `list Z` instead of a `list byte`,
    so fewer conversions are needed, and generic array lemmas can be reused. *)
-Definition bytearray{width}{word: word width}{mem: map.map word Byte.byte}
+Definition bytearray{width}{mem: map.map (bits width) Byte.byte}
   (bs: list Byte.byte)(addr: Z)(m: mem): Prop :=
-  m = map.of_list_word_at (word.of_Z addr) bs.
+  m = map.of_list_word_at (bits.of_Z width addr) bs.
 
 #[export] Hint Extern 1 (PredicateSize (bytearray ?bs)) =>
   exact (len bs) : typeclass_instances.
 
-Definition uint{width}{BW: Bitwidth width}{word: word width}{mem: map.map word Byte.byte}
+Definition uint{width}{BW: Bitwidth width}{mem: map.map (bits width) Byte.byte}
   (nbits: Z)(v: Z): Z -> mem -> Prop :=
   sepapp (pure_at (0 <= v < 2 ^ nbits))
     (range_ok (bytearray (LittleEndianList.le_split (Z.to_nat (nbits_to_nbytes nbits)) v))).
@@ -330,8 +332,8 @@ Definition uint{width}{BW: Bitwidth width}{word: word width}{mem: map.map word B
   exact sz
 : typeclass_instances.
 
-Lemma purify_uint{width: Z}{BW: Bitwidth width}{word: word width}{word_ok: word.ok word}
-  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}: forall a v nbits,
+Lemma purify_uint{width: Z}{BW: Bitwidth width}
+  {mem: map.map (bits width) Byte.byte}{mem_ok: map.ok mem}: forall a v nbits,
     purify (mem := mem) (uint nbits v a)
       (0 <= v < 2 ^ nbits /\
        0 < a /\
@@ -348,7 +350,8 @@ Qed.
 #[export] Hint Resolve purify_uint : purify.
 
 Section ScalarsLemmas.
-  Context {width}{BW: Bitwidth width}{word: word width}{word_ok: word.ok word}.
+  Context {width}{BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {mem: map.map word Byte.byte}{mem_ok: map.ok mem}.
 
   (* Note: rhs is weaker because it doesn't guarantee len bs = L nor that all
@@ -369,7 +372,7 @@ Section ScalarsLemmas.
     rewrite nbits_to_nbytes_8 by lia.
     rewrite ?sep_assoc_eq. eapply sep_emp_l. split; [assumption | ].
     rewrite ?sep_assoc_eq. eapply sep_emp_l. split. {
-      clear -H word_ok mem_ok.
+      clear -H  mem_ok.
       revert m addr H. induction bs; intros.
       - unfold le_combine_z, le_combine. simpl. lia.
       - unfold le_combine_z. rewrite List.len_cons.
@@ -410,23 +413,23 @@ Section ScalarsLemmas.
     - simpl. unfold array_raw, pure_at_raw, emp in H. fwd.
       unfold bytearray. symmetry. eapply map.of_list_word_nil.
     - unfold bytearray in *. cbn.
-      rewrite map.of_list_word_at_cons.
+      rewrite (map.of_list_word_at_cons width_pos).
       unfold array_raw, sepapp in H. destruct H as (m1 & m2 & Sp & Hm1 & Hm2).
       unfold uint, sepapp, pure_at, pure_at_raw, range_ok in Hm1.
       repeat (rewrite ?sep_assoc_eq in Hm1; eapply sep_emp_l in Hm1;
               destruct Hm1 as (? & Hm1)).
       change (Z.to_nat (nbits_to_nbytes 8)) with 1%nat in Hm1.
       unfold le_split, bytearray in Hm1.
-      rewrite map.of_list_word_singleton in Hm1.
+      rewrite (map.of_list_word_singleton width_pos) in Hm1.
       unfold map.split in Sp. fwd. subst m1.
       rewrite map.putmany_comm by assumption.
       rewrite <- map.put_putmany_commute.
       rewrite map.putmany_empty_r. rewrite Z.add_0_r. f_equal.
       rewrite List.len_cons in *.
-      replace (word.add (word.of_Z addr) (word.of_Z 1)) with
-        (word.of_Z (word := word) (addr + 1)).
+      replace (Zmod.add (bits.of_Z width addr) (bits.of_Z width 1)) with
+        (bits.of_Z width (addr + 1)).
       2: {
-        eapply word.unsigned_inj.
+        eapply Zmod.unsigned_inj.
         destruct width_cases as [E | E]; rewrite E in *; ZnWords.
       }
       eapply IHbs; try lia. exact Hm2.

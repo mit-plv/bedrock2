@@ -4,8 +4,7 @@ This file provides a tactic `ZnWords`, intended to solve goals containing a mix 
 It works by reducing all `word` operations to `Z` operations modulo `2^width`, eliminating
 the modulo operations using Euclidean equations (`Z.div_mod_to_equations`), and then
 calling `lia`.
-The `word` instance can be abstract (more tested) or concrete (less tested), but the
-`width` has to be concrete, because otherwise the Euclidean equations become non-linear
+The `width` has to be concrete, because otherwise the Euclidean equations become non-linear
 and thus are not understood by `lia`.
 *)
 Require Import Coq.Program.Tactics.
@@ -13,8 +12,9 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.ZArith.Zpow_facts.
 Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr.
 Require Import coqutil.Z.Lia.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import bedrock2.groundcbv.
+Require Import bedrock2.WordPushDownLemmas.
 Local Open Scope Z_scope.
 
 Lemma computable_bounds{lo v hi: Z}(H: andb (Z.leb lo v) (Z.ltb v hi) = true): lo <= v < hi.
@@ -35,11 +35,7 @@ Ltac cleanup_for_ZModArith :=
   subst*; (* <-- substituting `@eq word _ _` might create opportunities for wordOps_to_ZModArith_step *)
   repeat match goal with
          | a := _ |- _ => subst a
-         | H: ?T |- _ =>
-             lazymatch T with
-             | @word.ok _ _ => fail
-             | _ => tryif is_lia T then fail else clear H
-             end
+         | H: ?T |- _ => tryif is_lia T then fail else clear H
          end.
 
 (* TODO improve
@@ -49,31 +45,33 @@ Ltac simpl_list_length_exprs :=
 
 Ltac wordOps_to_ZModArith_getEq t :=
   match t with
-  | context[@word.unsigned ?wi ?wo (word.of_Z ?z)] => constr:(@word.unsigned_of_Z wi wo _ z)
-  | context[@word.signed ?wi ?wo (word.of_Z ?z)] => constr:(@word.signed_of_Z wi wo _ z)
-  | context[@word.of_Z ?wi ?wo (word.unsigned ?z)] => constr:(@word.of_Z_unsigned wi wo _ z)
-  | context[@word.unsigned ?wi ?wo (word.add ?x ?y)] => constr:(@word.unsigned_add wi wo _ x y)
-  | context[@word.unsigned ?wi ?wo (word.sub ?x ?y)] => constr:(@word.unsigned_sub wi wo _ x y)
-  | context[@word.unsigned ?wi ?wo (word.opp ?x)] => constr:(@word.unsigned_opp wi wo _ x)
-  | context[@word.unsigned ?wi ?wo (word.or ?x ?y)] => constr:(@word.unsigned_or wi wo _ x y)
-  | context[@word.unsigned ?wi ?wo (word.and ?x ?y)] => constr:(@word.unsigned_and wi wo _ x y)
-  | context[@word.unsigned ?wi ?wo (word.xor ?x ?y)] => constr:(@word.unsigned_xor wi wo _ x y)
-  | context[@word.unsigned ?wi ?wo (word.not ?x)] => constr:(@word.unsigned_not wi wo _ x)
-  | context[@word.unsigned ?wi ?wo (word.ndn ?x ?y)] => constr:(@word.unsigned_ndn wi wo _ x y)
-  | context[@word.unsigned ?wi ?wo (word.mul ?x ?y)] => constr:(@word.unsigned_mul wi wo _ x y)
-  | context[@word.signed ?wi ?wo (word.mulhss ?x ?y)] => constr:(@word.signed_mulhss wi wo _ x y)
-  | context[@word.signed ?wi ?wo (word.mulhsu ?x ?y)] => constr:(@word.signed_mulhsu wi wo _ x y)
-  | context[@word.unsigned ?wi ?wo (word.mulhuu ?x ?y)] => constr:(@word.unsigned_mulhuu wi wo _ x y)
-  | context[@word.unsigned ?wi ?wo (word.divu ?x ?y)] => constr:(@word.unsigned_divu wi wo _ x y)
-  | context[@word.signed ?wi ?wo (word.divs ?x ?y)] => constr:(@word.signed_divs wi wo _ x y)
-  | context[@word.unsigned ?wi ?wo (word.modu ?x ?y)] => constr:(@word.unsigned_modu wi wo _ x y)
-  | context[@word.signed ?wi ?wo (word.mods ?x ?y)] => constr:(@word.signed_mods wi wo _ x y)
-  | context[@word.unsigned ?wi ?wo (word.slu ?x (word.of_Z ?a))] => constr:(@word.unsigned_slu_shamtZ wi wo _ x a)
-  | context[@word.unsigned ?wi ?wo (word.sru ?x (word.of_Z ?a))] => constr:(@word.unsigned_sru_shamtZ wi wo _ x a)
-  | context[@word.signed ?wi ?wo (word.srs ?x (word.of_Z ?a))] => constr:(@word.signed_srs_shamtZ wi wo _ x a)
-  | context[@word.eqb ?wi ?wo ?x ?y] => constr:(@word.unsigned_eqb wi wo _ x y)
-  | context[@word.ltu ?wi ?wo ?x ?y] => constr:(@word.unsigned_ltu wi wo _ x y)
-  | context[@word.lts ?wi ?wo ?x ?y] => constr:(@word.signed_lts wi wo _ x y)
+  | context[@Zmod.unsigned (2 ^ ?w) (Zmod.of_Z _ ?a) mod 2 ^ Z.log2 ?w] => constr:(@unsigned_of_Z_shamt w a)
+  | context[@Zmod.unsigned (2 ^ ?w) (Zmod.of_Z _ ?z)] => constr:(@bits.unsigned_of_Z w z)
+  | context[@Zmod.unsigned ?m Zmod.zero] => constr:(Zmod.unsigned_0 m)
+  | context[@Zmod.unsigned (2 ^ ?w) Zmod.one] => constr:(@bits.unsigned_1 w)
+  | context[@Zmod.signed ?m (Zmod.of_Z _ ?z)] => constr:(@Zmod.signed_of_Z m z)
+  | context[@Zmod.of_Z ?m (Zmod.unsigned ?z)] => constr:(@Zmod.of_Z_unsigned m z)
+  | context[@Zmod.unsigned ?m (Zmod.add ?x ?y)] => constr:(@Zmod.unsigned_add m x y)
+  | context[@Zmod.unsigned ?m (Zmod.sub ?x ?y)] => constr:(@Zmod.unsigned_sub m x y)
+  | context[@Zmod.unsigned ?m (Zmod.opp ?x)] => constr:(@Zmod.unsigned_opp m x)
+  | context[@Zmod.unsigned ?m (Zmod.or ?x ?y)] => constr:(@unsigned_or_modwrap m x y)
+  | context[@Zmod.unsigned ?m (Zmod.and ?x ?y)] => constr:(@Zmod.unsigned_and m x y)
+  | context[@Zmod.unsigned ?m (Zmod.xor ?x ?y)] => constr:(@unsigned_xor_modwrap m x y)
+  | context[@Zmod.unsigned (2 ^ ?w) (Zmod.not ?x)] => constr:(@bits.unsigned_not' w x)
+  | context[@Zmod.unsigned ?m (Zmod.ndn ?x ?y)] => constr:(@Zmod.unsigned_ndn m x y)
+  | context[@Zmod.unsigned ?m (Zmod.mul ?x ?y)] => constr:(@Zmod.unsigned_mul m x y)
+  | context[@Zmod.unsigned ?m (Zmod.udiv ?x ?y)] => constr:(@Zmod.unsigned_udiv m x y)
+  | context[@Zmod.signed ?m (Zmod.squot ?x ?y)] => constr:(@Zmod.signed_squot_nz m x y)
+  | context[@Zmod.unsigned ?m (Zmod.umod ?x ?y)] => constr:(@Zmod.unsigned_umod m x y)
+  | context[@Zmod.signed ?m (Zmod.srem ?x ?y)] => constr:(@Zmod.signed_srem m x y)
+  | context[@Zmod.unsigned ?m (Zmod.slu ?x ?n)] => constr:(@Zmod.unsigned_slu m x n)
+  | context[@Zmod.unsigned ?m (Zmod.sru ?x ?n)] => constr:(@Zmod.unsigned_sru m x n)
+  | context[@Zmod.unsigned ?m (Zmod.srs ?x ?n)] => constr:(@Zmod.unsigned_srs m x n)
+  | context[@Zmod.signed ?m (Zmod.srs ?x ?n)] => constr:(@Zmod.signed_srs m x n)
+  | context[@Zmod.eqb ?m ?x ?y] =>
+      constr:(eq_refl : @Zmod.eqb m x y = Z.eqb (Zmod.unsigned x) (Zmod.unsigned y))
+  | context[Z.smodulo ?z (2 ^ ?w)] => constr:(@word.smodulo_pow2 w z)
+  | context[Z.ones ?n] => constr:(Z.ones_equiv n)
   | context[Z.shiftr ?a ?n] => constr:(Z.shiftr_div_pow2 a n)
   | context[Z.shiftl ?a ?n] => constr:(Z.shiftl_mul_pow2 a n)
   end.
@@ -85,12 +83,11 @@ Ltac wordOps_to_ZModArith_step :=
      COQBUG https://github.com/coq/coq/issues/10848, and
      we don't want rewrite to replace evars with the LHS
      of the rewrite lemmas, COQBUG https://github.com/coq/coq/issues/10848 *)
-  (rewr wordOps_to_ZModArith_getEq in * by
+  rewr wordOps_to_ZModArith_getEq in * by
       solve [ reflexivity
             | trivial
             | apply computable_bounds; reflexivity
-            | apply computable_le; reflexivity]);
-  cbv [word.wrap word.swrap] in *.
+            | apply computable_le; reflexivity].
 
 Ltac clear_unused_nonProps :=
         repeat match goal with
@@ -105,16 +102,20 @@ Require Import coqutil.Tactics.Tactics.
 Ltac dewordify_step :=
   so fun hyporgoal =>
        match hyporgoal with
-       | context [@word.unsigned ?w ?i ?x] =>
-         pose proof (word.unsigned_range x : 0 <= @word.unsigned w i x < 2 ^ w);
-         let a := fresh "w0" in forget (@word.unsigned w i x) as a
+       | context [@Zmod.unsigned (2 ^ ?w) ?x] =>
+         pose proof (bits.unsigned_range x
+                       ltac:(first [ exact (proj1 (Z.leb_le 0 w) eq_refl)
+                                   | exact width_nonneg
+                                   | blia ])
+                     : 0 <= @Zmod.unsigned (2 ^ w) x < 2 ^ w);
+         let a := fresh "w0" in forget (@Zmod.unsigned (2 ^ w) x) as a
        end.
 
 Ltac dewordify :=
   repeat dewordify_step;
   (* "try" because maybe all occurrences of words are already gone *)
   try (so fun hyporgoal => match hyporgoal with
-  | context [@word.rep ?w ?inst] => let n := fresh "word" in forget (@word.rep w inst) as n
+  | context [Zmod (2 ^ ?w)] => let n := fresh "word" in forget (Zmod (2 ^ w)) as n
   end).
 
 Ltac slow_unfold_Z_nat_consts_step :=
@@ -134,26 +135,19 @@ Create HintDb ZnWords_unfold.
 
 Ltac unfold_Z_nat_consts := autounfold with ZnWords_unfold in *.
 
-Ltac pose_word_ok :=
-  match goal with
-  | _: word.ok _ |- _ => idtac
-  | |- context [@word.unsigned ?wi ?inst]      => pose proof (_ : word.ok inst)
-  | |- context [@word.signed ?wi ?inst]        => pose proof (_ : word.ok inst)
-  | |- context [@word.of_Z ?wi ?inst]          => pose proof (_ : word.ok inst)
-  | H: context [@word.unsigned ?wi ?inst] |- _ => pose proof (_ : word.ok inst)
-  | H: context [@word.signed ?wi ?inst]   |- _ => pose proof (_ : word.ok inst)
-  | H: context [@word.of_Z ?wi ?inst]     |- _ => pose proof (_ : word.ok inst)
-  | _ => fail 10000 "ZnWords could not find a word.ok instance"
-  end.
-
 Ltac word_eqs_to_Z_eqs :=
   repeat  match goal with
-          | H: @eq (@word.rep ?wi ?inst) _ _ |- _ => apply (f_equal (@word.unsigned wi inst)) in H
-          | H: not (@eq (@word.rep ?wi ?inst) _ _) |- _ => apply (@word.unsigned_inj' wi inst _) in H
+          | H: @eq (Zmod ?m) _ _ |- _ => apply (f_equal (@Zmod.unsigned m)) in H
+          | H: not (@eq (Zmod ?m) ?x ?y) |- _ =>
+              let H' := fresh H in
+              pose proof ((fun E => H (Zmod.unsigned_inj m x y E))
+                          : Zmod.unsigned x <> Zmod.unsigned y) as H';
+              clear H; rename H' into H
           end.
 
 Ltac ZnWords_pre :=
-  try eapply word.unsigned_inj;
+  fold_pow2_moduli;
+  try eapply Zmod.unsigned_inj;
   lazymatch goal with
   | |- ?G => is_lia G;
              (* if there are evars in the goal, the preprocessing might affect the
@@ -163,9 +157,6 @@ Ltac ZnWords_pre :=
              tryif has_evar G then exfalso else idtac
 
   end;
-  (* if the word.ok lives in another ok record, that one will get cleared,
-     so we first pose a word.ok, which will be recognized and not get cleared *)
-  pose_word_ok;
   word_eqs_to_Z_eqs;
   cleanup_for_ZModArith;
   repeat wordOps_to_ZModArith_step;

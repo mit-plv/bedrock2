@@ -1,6 +1,6 @@
 Require Import coqutil.Tactics.rewr.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Byte.
 Require Import riscv.Utility.bverify.
 Require Import riscv.Spec.LeakageOfInstr.
@@ -31,8 +31,7 @@ Local Open Scope ilist_scope.
 Section Pipeline1.
   Context {width: Z}.
   Context {BW: Bitwidth width}.
-  Context {word: word.word width}.
-  Context {word_ok: word.ok word}.
+  Local Notation word := (bits width).
   Context {mem: map.map word byte}.
   Context {Registers: map.map Z word}.
   Context {string_keyed_map: forall T: Type, map.map string T}. (* abstract T for better reusability *)
@@ -41,7 +40,6 @@ Section Pipeline1.
   Context {MM: Monad M}.
   Context {RVM: RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
-  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context {string_keyed_map_ok: forall T, map.ok (string_keyed_map T)}.
   Context {Registers_ok: map.ok Registers}.
   Context {PR: MetricPrimitives PRParams}.
@@ -58,12 +56,11 @@ Section Pipeline1.
               List.length (compile_ext_call posmap1 pos1 stackoffset c) =
               List.length (compile_ext_call posmap2 pos2 stackoffset c)).
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ width))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (width := width)),
        constants [word_cst]).
 
-  Local Hint Mode word.word - : typeclass_instances.
 
   Context (ml: MemoryLayout)
           (mlOk: MemoryLayoutOk ml).
@@ -87,11 +84,11 @@ Section Pipeline1.
 
   Definition imem(code_start code_pastend: word)(instrs: list Instruction): mem -> Prop :=
     (ptsto_bytes code_start (instrencode instrs) *
-     mem_available (word.add code_start (word.of_Z (Z.of_nat (List.length (instrencode instrs)))))
+     mem_available (Zmod.add code_start (bits.of_Z width (Z.of_nat (List.length (instrencode instrs)))))
                    code_pastend)%sep.
 
-  Lemma ptsto_bytes_to_program: forall instrs p_code,
-      word.unsigned p_code mod 4 = 0 ->
+  Lemma ptsto_bytes_to_program: forall instrs (p_code: word),
+      Zmod.unsigned p_code mod 4 = 0 ->
       Forall (fun i => verify i iset \/ valid_InvalidInstruction i) instrs ->
       iff1 (ptsto_bytes p_code (instrencode instrs))
            (program iset p_code instrs).
@@ -102,7 +99,7 @@ Section Pipeline1.
       rewrite <- IHinstrs; [|DivisibleBy4.solve_divisibleBy4|assumption].
       cbn [instrencode flat_map]; fold (instrencode instrs); rewrite !LittleEndian.to_list_split.
       cbv [ptsto_bytes]. rewrite array_append'. Morphisms.f_equiv; cycle 1.
-      { rewrite word.mul_1_l, LittleEndianList.length_le_split; Morphisms.f_equiv. }
+      { rewrite Zmod.mul_1_l, LittleEndianList.length_le_split; Morphisms.f_equiv. }
       cbv [ptsto_instr truncated_scalar].
       etransitivity. { eapply array1_iff_eq_of_list_word_at; trivial.
         rewrite LittleEndianList.length_le_split. case width_cases; intros ->; blia. }
@@ -113,31 +110,30 @@ Section Pipeline1.
 
   Lemma ptsto_bytes_range: forall bs (start pastend : word) m a v,
       ptsto_bytes start bs m ->
-      word.unsigned start + Z.of_nat (List.length bs) <= word.unsigned pastend ->
+      Zmod.unsigned start + Z.of_nat (List.length bs) <= Zmod.unsigned pastend ->
       map.get m a = Some v ->
-      word.unsigned start <= word.unsigned a < word.unsigned pastend.
+      Zmod.unsigned start <= Zmod.unsigned a < Zmod.unsigned pastend.
   Proof.
     induction bs; intros.
     - simpl in *. unfold emp in *. simp. rewrite map.get_empty in H1. discriminate.
     - simpl in *.
       unfold sep in H. simp.
       specialize IHbs with (1 := Hp2).
-      destr (Z.eqb (word.unsigned a0) (word.unsigned start)). 1: blia.
+      destr (Z.eqb (Zmod.unsigned a0) (Zmod.unsigned start)). 1: blia.
       specialize (IHbs pastend a0 v).
       destruct IHbs as [L R].
-      + rewrite word.unsigned_add. unfold word.wrap.
+      + rewrite Zmod.unsigned_add.
         eapply Z.le_trans. 2: eassumption.
         eapply Z.le_trans
-          with (m := word.unsigned start + word.unsigned (word.of_Z 1) + Z.of_nat (Datatypes.length bs)).
+          with (m := Zmod.unsigned start + Zmod.unsigned (bits.of_Z width 1) + Z.of_nat (Datatypes.length bs)).
         * apply Z.add_le_mono_r.
           apply Z.mod_le.
           -- repeat match goal with
-                    | |- context [word.unsigned ?w] => unique pose proof (word.unsigned_range w)
+                    | |- context [Zmod.unsigned ?w] => unique pose proof (bits.unsigned_range w width_nonneg)
                     end.
              blia.
           -- destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
-         * rewrite word.unsigned_of_Z.
-           unfold word.wrap.
+         * rewrite bits.unsigned_of_Z.
            replace (1 mod 2 ^ width) with 1. 1: blia.
            simpl.
            destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
@@ -147,22 +143,21 @@ Section Pipeline1.
         exfalso.
         unfold ptsto in *. subst mp.
         rewrite map.get_put_dec in H1.
-        destr (word.eqb start a0).
+        destr (Zmod.eqb start a0).
         * apply E. congruence.
         * rewrite map.get_empty in H1. discriminate.
-      + rewrite word.unsigned_add in L. unfold word.wrap in L.
+      + rewrite Zmod.unsigned_add in L.
         split; try assumption.
         eapply Z.le_trans. 2: eassumption.
         repeat match goal with
-               | |- context [word.unsigned ?w] => unique pose proof (word.unsigned_range w)
+               | |- context [Zmod.unsigned ?w] => unique pose proof (bits.unsigned_range w width_nonneg)
                end.
         rewrite Z.mod_small. 1: blia.
         split; [blia|].
         eapply Z.le_lt_trans.
-        2: exact (proj2 (word.unsigned_range pastend)).
+        2: exact (proj2 (bits.unsigned_range pastend width_nonneg)).
         eapply Z.le_trans. 2: eassumption.
-        rewrite word.unsigned_of_Z.
-        unfold word.wrap.
+        rewrite bits.unsigned_of_Z.
         replace (1 mod 2 ^ width) with 1. 1: blia.
         simpl.
         destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
@@ -176,17 +171,17 @@ Section Pipeline1.
       spec.(datamem_start) = ml.(heap_start) /\
       spec.(datamem_pastend) = ml.(heap_pastend) /\
       compile_prog compile_ext_call ml srcprog = Success (instrs, positions, required_stack_space) /\
-      required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
-      word.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
-        word.unsigned ml.(code_pastend) /\
+      required_stack_space <= Zmod.unsigned (Zmod.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
+      Zmod.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
+        Zmod.unsigned ml.(code_pastend) /\
       bvalidInstructions iset instrs = true /\
       (imem ml.(code_start) ml.(code_pastend) instrs *
        mem_available ml.(heap_start) ml.(heap_pastend) *
        mem_available ml.(stack_start) ml.(stack_pastend))%sep initial.(getMem) /\
-      (forall a, word.unsigned ml.(code_start) <= word.unsigned a < word.unsigned ml.(code_pastend) ->
+      (forall a, Zmod.unsigned ml.(code_start) <= Zmod.unsigned a < Zmod.unsigned ml.(code_pastend) ->
                  List.In a initial.(getXAddrs)) /\
       initial.(getPc) = ml.(code_start) /\
-      initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) /\
+      initial.(getNextPc) = Zmod.add initial.(getPc) (bits.of_Z width 4) /\
       regs_initialized.regs_initialized initial.(getRegs) /\
       initial.(getLog) = nil /\
       initial.(getTrace) = Some nil /\

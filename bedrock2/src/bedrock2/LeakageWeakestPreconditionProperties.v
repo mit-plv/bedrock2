@@ -5,9 +5,13 @@ Require bedrock2.LeakageWeakestPrecondition.
 Require Import Coq.Classes.Morphisms.
 
 Section WeakestPrecondition.
-  Context {width} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: LeakageSemantics.ExtSpec} {pick_sp: LeakageSemantics.PickSp}.
+  (* lets the implicit width of the WeakestPrecondition definitions be found from mem/locals *)
+  Local Hint Mode map.map - - : typeclass_instances.
 
   Ltac ind_on X :=
     intros;
@@ -29,23 +33,22 @@ Section WeakestPrecondition.
     match goal with x : X |- _ => induction x end;
     intros.
 
-  Local Hint Mode word.word - : typeclass_instances.
 
   (* we prove weakening lemmas for all WP definitions in a syntax-directed fashion,
    * moving from postcondition towards precondition one logical connective at a time. *)
-  Global Instance Proper_literal : Proper (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)) LeakageWeakestPrecondition.literal.
+  Global Instance Proper_literal : Proper (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)) (LeakageWeakestPrecondition.literal (width := width)).
   Proof using. clear. cbv [LeakageWeakestPrecondition.literal]; cbv [Proper respectful pointwise_relation Basics.impl dlet.dlet]. eauto. Qed.
 
-  Global Instance Proper_get : Proper (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))) LeakageWeakestPrecondition.get.
+  Global Instance Proper_get : Proper (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))) (LeakageWeakestPrecondition.get (width := width)).
   Proof using. clear. cbv [LeakageWeakestPrecondition.get]; cbv [Proper respectful pointwise_relation Basics.impl]; intros * ? (?&?&?); eauto. Qed.
 
-  Global Instance Proper_load : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)))) LeakageWeakestPrecondition.load.
+  Global Instance Proper_load : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)))) (LeakageWeakestPrecondition.load (width := width)).
   Proof using. clear. cbv [LeakageWeakestPrecondition.load]; cbv [Proper respectful pointwise_relation Basics.impl]; intros * ? (?&?&?); eauto. Qed.
 
-  Global Instance Proper_store : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))))) LeakageWeakestPrecondition.store.
+  Global Instance Proper_store : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))))) (LeakageWeakestPrecondition.store (width := width)).
   Proof using. clear. cbv [LeakageWeakestPrecondition.store]; cbv [Proper respectful pointwise_relation Basics.impl]; intros * ? (?&?&?); eauto. Qed.
 
-  Global Instance Proper_expr : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ (pointwise_relation _ Basics.impl) ==> Basics.impl)))))) LeakageWeakestPrecondition.expr.
+  Global Instance Proper_expr : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ (pointwise_relation _ Basics.impl) ==> Basics.impl)))))) (LeakageWeakestPrecondition.expr (width := width)).
   Proof using.
     clear.
     cbv [Proper respectful pointwise_relation Basics.impl LeakageSemantics.leak_binop]; ind_on Syntax.expr.expr;
@@ -79,7 +82,7 @@ Section WeakestPrecondition.
       cbn in *; intuition (try typeclasses eauto with core).
   Qed.
 
-  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {mem_ok : map.ok mem}.
   Context {locals_ok : map.ok locals}.
   Context {ext_spec_ok : LeakageSemantics.ext_spec.ok ext_spec}.
 
@@ -98,7 +101,6 @@ Section WeakestPrecondition.
       [  constr_eq x ext_spec_ok
        | constr_eq x locals_ok
        | constr_eq x mem_ok
-       | constr_eq x word_ok
        | constr_eq x pick_sp
        | constr_eq x ext_spec
        | constr_eq x locals
@@ -118,7 +120,7 @@ Section WeakestPrecondition.
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl)))) ==>
      Basics.impl)))))))) LeakageWeakestPrecondition.cmd.
-  Proof using ext_spec_ok locals_ok mem_ok word_ok.
+  Proof using ext_spec_ok locals_ok mem_ok .
     pose proof I. (* to keep naming *)
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl]; ind_on Syntax.cmd.cmd;
       cbn in *; cbv [dlet.dlet] in *; intuition eauto.
@@ -168,7 +170,7 @@ Section WeakestPrecondition.
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl)))) ==>
      Basics.impl))))))))) LeakageWeakestPrecondition.call.
-  Proof using word_ok mem_ok locals_ok ext_spec_ok.
+  Proof using  mem_ok locals_ok ext_spec_ok.
     cbv [Proper respectful pointwise_relation Basics.impl].
     intros. eapply LeakageSemantics.weaken_call; eassumption.
   Qed.
@@ -184,7 +186,7 @@ Section WeakestPrecondition.
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl)))) ==>
      Basics.impl))))))) LeakageWeakestPrecondition.program.
-  Proof using word_ok mem_ok locals_ok ext_spec_ok.
+  Proof using  mem_ok locals_ok ext_spec_ok.
     cbv [Proper respectful pointwise_relation Basics.impl  LeakageWeakestPrecondition.program]; intros.
     eapply Proper_cmd;
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  LeakageWeakestPrecondition.func];
@@ -204,7 +206,7 @@ Section WeakestPrecondition.
 
   Lemma expr_sound: forall m l e k post (H : LeakageWeakestPrecondition.expr m l k e post),
     exists v k', LeakageSemantics.eval_expr m l e k = Some (v, k') /\ post k' v.
-  Proof using word_ok.
+  Proof using .
     induction e; t.
     { destruct H. destruct H. eexists. eexists. rewrite H. eauto. }
     { eapply IHe in H; t. cbv [LeakageWeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
@@ -221,7 +223,7 @@ Section WeakestPrecondition.
   Lemma expr_complete: forall m l e k v k',
     LeakageSemantics.eval_expr m l e k = Some (v, k') ->
     LeakageWeakestPrecondition.dexpr m l k e v k'.
-  Proof using word_ok.
+  Proof using .
     induction e; cbn; intros.
     - inversion_clear H. split; reflexivity.
     - destruct_one_match_hyp. 2: discriminate. inversion H. subst.
@@ -251,7 +253,7 @@ Section WeakestPrecondition.
       inversion H. subst. eapply Proper_expr.
       2: { eapply IHe1. eassumption. }
       intros vc ? (?&?). subst.
-      destr (word.eqb a (word.of_Z 0)).
+      destr (Zmod.eqb a (bits.of_Z width 0)).
       + eapply IHe3. eassumption.
       + eapply IHe2. eassumption.
   Qed.
@@ -259,7 +261,7 @@ Section WeakestPrecondition.
   Lemma sound_args : forall m l args k P,
       LeakageWeakestPrecondition.list_map' (LeakageWeakestPrecondition.expr m l) k args P ->
       exists x k', LeakageSemantics.eval_call_args m l args k = Some (x, k') /\ P k' x.
-  Proof using word_ok.
+  Proof using .
     induction args; cbn; repeat (subst; t).
     eapply expr_sound in H; t; rewrite H.
     eapply IHargs in H0. t; rewrite H0.
@@ -285,7 +287,7 @@ Section WeakestPrecondition.
     : LeakageSemantics.exec e c k t m l post.
   Proof.
     ind_on Syntax.cmd; repeat (t; try match reverse goal with H : LeakageWeakestPrecondition.expr _ _ _ _ _ |- _ => eapply expr_sound in H end).
-    { destruct (BinInt.Z.eq_dec (Interface.word.unsigned x) (BinNums.Z0)) as [Hb|Hb]; cycle 1.
+    { destruct (BinInt.Z.eq_dec (Zmod.unsigned x) (BinNums.Z0)) as [Hb|Hb]; cycle 1.
       { econstructor; t. }
       { eapply LeakageSemantics.exec.if_false; t. } }
     { inversion H0. t. eapply sound_args in H; t. }
@@ -307,7 +309,7 @@ Section WeakestPrecondition.
   Lemma complete_args : forall m l args k vs k',
       LeakageSemantics.eval_call_args m l args k = Some (vs, k') ->
       LeakageWeakestPrecondition.dexprs m l k args vs k'.
-  Proof using word_ok.
+  Proof using .
     induction args; cbn; repeat (subst; t).
     1: inversion H; auto.
     destruct_one_match_hyp. 2: discriminate.
@@ -383,7 +385,7 @@ Section WeakestPrecondition.
            exists l0 : locals, map.putmany_of_list_zip action rets l = Some l0 /\
            post (leak_list klist :: k')%list (cons (map.empty, binds, args, (map.empty, rets)) t) m l0))
     : LeakageWeakestPrecondition.cmd call (cmd.interact action binds arges) k t m l post.
-  Proof using word_ok mem_ok ext_spec_ok.
+  Proof using  mem_ok ext_spec_ok.
     exists args, k'; split; [exact Hargs|].
     exists m.
     exists map.empty.
@@ -397,7 +399,7 @@ Section WeakestPrecondition.
       LeakageWeakestPrecondition.expr m l k e post1 ->
       LeakageWeakestPrecondition.expr m l k e post2 ->
       LeakageWeakestPrecondition.expr m l k e (fun k v => post1 k v /\ post2 k v).
-  Proof using word_ok.
+  Proof using .
     induction e; cbn; unfold literal, dlet.dlet, LeakageWeakestPrecondition.get; intros.
     - eauto.
     - decompose [and ex] H. decompose [and ex] H0. assert (x0 = x1) by congruence. subst. eauto.
@@ -438,7 +440,7 @@ Section WeakestPrecondition.
   Lemma dexpr_expr (m : mem) l e k P
     (H : LeakageWeakestPrecondition.expr m l k e P)
     : exists v k', LeakageWeakestPrecondition.dexpr m l k e v k' /\ P k' v.
-  Proof using word_ok.
+  Proof using .
     generalize dependent P; revert k; induction e; cbn.
     { cbv [LeakageWeakestPrecondition.literal dlet.dlet]; cbn; eauto. }
     { cbv [LeakageWeakestPrecondition.get]; intros ? ? (?&?&?). eauto 7. }
@@ -477,7 +479,7 @@ Section WeakestPrecondition.
         cbv [LeakageWeakestPrecondition.dexpr] in *.
         eexists; eexists; split; [|eassumption].
         eapply Proper_expr; [|eauto]; intros ? ? []. subst.
-        rewrite word.eqb_eq by reflexivity. assumption. }
+        rewrite Zmod.eqb_refl. assumption. }
       { case (IHe2 _ _ H') as (?&?&?&?).
         clear IHe1 IHe3 H H'.
         cbv [LeakageWeakestPrecondition.dexpr] in *.

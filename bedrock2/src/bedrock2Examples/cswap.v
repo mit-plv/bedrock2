@@ -35,17 +35,18 @@ Definition cswap := func! (c, x, y, n) {
 }.
 
 Require Import bedrock2.WeakestPrecondition bedrock2.Semantics bedrock2.ProgramLogic.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface bedrock2.Map.SeparationLogic.
 Require Import bedrock2.ZnWords.
 Import Coq.Init.Byte coqutil.Byte.
 Local Notation string := String.string.
 
-Local Notation "xs $@ a" := (Array.array ptsto (word.of_Z 1) a xs) (at level 10, format "xs $@ a").
+Local Notation "xs $@ a" := (Array.array ptsto (bits.of_Z _ 1) a xs) (at level 10, format "xs $@ a").
 
 Section WithParameters.
   Context {width} {BW: Bitwidth width}.
-  Context {word: word.word width} {mem: map.map word byte}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {ext_spec: ExtSpec}.
   Import ProgramLogic.Coercions.
 
@@ -55,12 +56,12 @@ Section WithParameters.
     fnspec! "cswap" (c x y n : word) / (xs ys : list byte) (R : mem -> Prop),
     { requires t m := m =* xs$@x * ys$@y * R /\
                       length xs = n :> Z /\ length ys = n :> Z
-                      /\ (c = word.of_Z 0%nat \/ c = word.of_Z 1%nat) ;
+                      /\ (c = (bits.of_Z width 0) \/ c = (bits.of_Z width 1)) ;
       ensures t' m :=
-        let (nxs, nys) := cswap_spec (Z.to_nat (word.unsigned c)) xs ys in
+        let (nxs, nys) := cswap_spec (Z.to_nat (Zmod.unsigned c)) xs ys in
         m =* nxs$@x * nys$@y * R /\ t=t' }.
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok : map.ok locals}
+  Context {mem_ok: map.ok mem} {locals_ok : map.ok locals}
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
@@ -82,7 +83,7 @@ Section WithParameters.
       (fun (v:nat) xs ys R t m c' x y n => PrimitivePair.pair.mk (
         m =* xs$@x * ys$@y * R /\ length xs = n :>Z /\ length ys = n :>Z /\ v = n :>Z /\ c' = c)
       (fun                 T M (C X Y N : word) => t = T /\
-                              let (nxs, nys) := cswap_spec (Z.to_nat (word.unsigned c14)) xs ys in
+                              let (nxs, nys) := cswap_spec (Z.to_nat (Zmod.unsigned c14)) xs ys in
                                   M =* nxs$@x * nys$@y * R))
       lt
       _ _ _ _ _ _ _ _); Loops.loop_simpl.
@@ -116,7 +117,7 @@ Section WithParameters.
 
         eexists _, _, _, _.
         split; split; ssplit; try ecancel_assumption; try lia_width.
-        { instantiate (1:= (Nat.pred (Z.to_nat (word.unsigned n0)))). lia_width. }
+        { instantiate (1:= (Nat.pred (Z.to_nat (Zmod.unsigned n0)))). lia_width. }
         1: lia_width.
 
         repeat straightline. cbv [cswap_spec] in *.
@@ -129,26 +130,23 @@ Section WithParameters.
         destruct H2 as [Hc14|Hc14]; rewrite Hc14 in *.
 
         {
-          replace (Z.to_nat (word.of_Z 0%nat)) with 0%nat in * by lia_width.
-          rewrite !word.sub_0_r, !word.and_0_r, !word.unsigned_xor_nowrap, !word.unsigned_of_Z_nowrap, !Z.lxor_0_l,
+          replace (Z.to_nat (bits.of_Z width 0)) with 0%nat in * by lia_width.
+          rewrite !Zmod.of_Z_0, !Zmod.sub_0_r, !word.and_0_r, !bits.unsigned_xor, !Zmod.unsigned_0, !bits.unsigned_of_Z_small, !Z.lxor_0_l,
             !byte.of_Z_unsigned in *; try lia_width; try exact eq_refl.
 
-          do 2 SeparationLogic.seprewrite (Array.array_cons (width:=width) (mem:=mem) ptsto (word.of_Z 1)).
+          do 2 SeparationLogic.seprewrite (Array.array_cons (width:=width) (mem:=mem) ptsto (bits.of_Z width 1)).
           ecancel_assumption.
         }
         {
-          replace (Z.to_nat (word.of_Z 1%nat)) with 1%nat in * by lia_width.
-          replace (word.sub (word.of_Z 0) (word.of_Z 1%nat)) with ((word.of_Z (width:=width)(-1))) in * by lia_width.
-          rewrite word.and_m1_r in *.
-          rewrite <- word.xor_assoc in *.
-          rewrite (word.xor_eq_0_iff (word.of_Z (byte.unsigned hys)) (word.of_Z (byte.unsigned hys))) in *; try exact eq_refl.
-          rewrite (word.xor_comm _ (word.of_Z (byte.unsigned hys))) in *.
-          rewrite <- word.xor_assoc in *.
-          rewrite (word.xor_eq_0_iff (word.of_Z (byte.unsigned hxs)) (word.of_Z (byte.unsigned hxs))) in *; try exact eq_refl.
-          rewrite !word.unsigned_xor_nowrap, !word.unsigned_of_Z_nowrap,
-            !Z.lxor_0_r, !byte.of_Z_unsigned in *; try lia_width; try exact eq_refl.
+          replace (Z.to_nat (bits.of_Z width 1)) with 1%nat in * by lia_width.
+          replace (Zmod.sub (bits.of_Z width 0) (bits.of_Z width 1)) with (bits.of_Z width (-1)) in * by lia_width.
+          rewrite Zmod.of_Z_m1, (word.and_m1_r _ width_pos) in *.
+          rewrite !bits.unsigned_xor, !bits.unsigned_of_Z_small in * by lia_width.
+          rewrite !Z.lxor_assoc, !Z.lxor_nilpotent, !Z.lxor_0_r in *.
+          rewrite (Z.lxor_comm (byte.unsigned hys) (byte.unsigned hxs)), <-!Z.lxor_assoc,
+            !Z.lxor_nilpotent, !Z.lxor_0_l, !byte.of_Z_unsigned in *.
 
-          do 2 SeparationLogic.seprewrite (Array.array_cons (width:=width) (mem:=mem) ptsto (word.of_Z 1)).
+          do 2 SeparationLogic.seprewrite (Array.array_cons (width:=width) (mem:=mem) ptsto (bits.of_Z width 1)).
           ecancel_assumption.
         }
       }

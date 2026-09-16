@@ -3,17 +3,17 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import coqutil.Tactics.Tactics coqutil.Tactics.fwd.
 Require Import coqutil.Byte.
-Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Map.Interface.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.is_emp.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.PurifySep.
 
-Definition sepapp{width: Z}{BW: Bitwidth width}{word: word.word width}
-  {mem: map.map word Byte.byte}
-  (P1 P2: word -> mem -> Prop){P1size: PredicateSize P1}: word -> mem -> Prop :=
-  fun addr => sep (P1 addr) (P2 (word.add addr (word.of_Z P1size))).
+Definition sepapp{width: Z}{BW: Bitwidth width}
+  {mem: map.map (bits width) Byte.byte}
+  (P1 P2: bits width -> mem -> Prop){P1size: PredicateSize P1}: bits width -> mem -> Prop :=
+  fun addr => sep (P1 addr) (P2 (Zmod.add addr (bits.of_Z width P1size))).
 
 Declare Scope sepapp_scope. Local Open Scope sepapp_scope.
 Infix "*+" := sepapp (at level 36, left associativity) : sepapp_scope.
@@ -41,9 +41,9 @@ Definition emp_at_addr{key value}{mem: map.map key value}
 #[export] Hint Extern 1 (PredicateSize (emp_at_addr _)) => exact 0 : typeclass_instances.
 
 (* pair of a predicate and its size, used as tree leaves *)
-Inductive sized_predicate{width: Z}{BW: Bitwidth width}{word: word.word width}
-  {mem: map.map word Byte.byte}: Type :=
-| mk_sized_predicate(p: word -> mem -> Prop)(sz: Z).
+Inductive sized_predicate{width: Z}{BW: Bitwidth width}
+  {mem: map.map (bits width) Byte.byte}: Type :=
+| mk_sized_predicate(p: bits width -> mem -> Prop)(sz: Z).
 
 (* We could also mark the sz argument of mk_sized_predicate as having type (PredicateSize p),
    but then mk_sized_predicate looks more dependently-typed than it actually is, and
@@ -52,8 +52,9 @@ Inductive sized_predicate{width: Z}{BW: Bitwidth width}{word: word.word width}
 Notation mk_inferred_size_predicate p := (mk_sized_predicate p (sizeof p%function)).
 
 Section WithParams.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}
-    {mem: map.map word byte} {mem_ok: map.ok mem}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte} {mem_ok: map.ok mem}.
 
   Import List.ListNotations. Local Open Scope list_scope.
 
@@ -69,7 +70,7 @@ Section WithParams.
     sepapp (sepapp P1 P2) P3 = sepapp P1 (sepapp P2 P3).
   Proof.
     unfold sepapp. extensionality addr.
-    rewrite sep_assoc_eq. rewrite <- word.add_assoc, word.ring_morph_add.
+    rewrite sep_assoc_eq. rewrite <- Zmod.add_assoc, Zmod.of_Z_add.
     reflexivity.
   Qed.
 
@@ -78,7 +79,7 @@ Section WithParams.
   Definition sepapp_sized_predicates(sp1 sp2: sized_predicate): sized_predicate :=
     match sp1, sp2 with
     | mk_sized_predicate p1 sz1, mk_sized_predicate p2 sz2 =>
-        mk_sized_predicate (@sepapp _ _ _ mem p1 p2 sz1) (sz1 + sz2)
+        mk_sized_predicate (@sepapp _ _ mem p1 p2 sz1) (sz1 + sz2)
     end.
 
   Definition proj_predicate(sp: sized_predicate): word -> mem -> Prop :=
@@ -96,7 +97,7 @@ Section WithParams.
 
   Lemma purify_sepapp: forall a p1 P1 {sz: PredicateSize p1} p2 P2,
       purify (p1 a) P1 ->
-      purify (p2 (word.add a (word.of_Z sz))) P2 ->
+      purify (p2 (Zmod.add a (bits.of_Z width sz))) P2 ->
       purify (sepapp p1 p2 a) (P1 /\ P2).
   Proof. unfold sepapp. intros. eapply purify_sep; assumption. Qed.
 
@@ -105,7 +106,7 @@ Section WithParams.
 
   Lemma purify_sepapps_cons: forall p P Q sz l a,
       purify (p a) P ->
-      purify (sepapps l (word.add a (word.of_Z sz))) Q ->
+      purify (sepapps l (Zmod.add a (bits.of_Z width sz))) Q ->
       purify (sepapps (cons (mk_sized_predicate p sz) l) a) (P /\ Q).
   Proof.
     unfold purify. intros. unfold sepapps in H1. simpl in H1.
@@ -123,7 +124,7 @@ Section WithParams.
 
   Lemma sepapps_cons: forall p l a,
       sepapps (cons p l) a = sep (proj_predicate p a)
-                                 (sepapps l (word.add a (word.of_Z (proj_size p)))).
+                                 (sepapps l (Zmod.add a (bits.of_Z width (proj_size p)))).
   Proof.
     intros. unfold sepapps. destruct p as [P sz]. simpl.
     destruct (List.fold_right sepapp_sized_predicates sized_emp l). simpl.
@@ -132,22 +133,22 @@ Section WithParams.
 
   Lemma sepapps_app: forall l1 l2 a,
       sepapps (l1 ++ l2) a = sep (sepapps l1 a)
-                                 (sepapps l2 (word.add a (word.of_Z (sepapps_size l1)))).
+                                 (sepapps l2 (Zmod.add a (bits.of_Z width (sepapps_size l1)))).
   Proof.
     induction l1; intros; simpl.
     - rewrite sepapps_nil. eapply iff1ToEq. rewrite sep_emp_True_l.
-      change (sepapps_size nil) with 0. rewrite word.add_0_r. reflexivity.
+      change (sepapps_size nil) with 0. rewrite Zmod.add_0_r. reflexivity.
     - rewrite 2sepapps_cons. rewrite IHl1.
       rewrite sep_assoc_eq.
       f_equal. f_equal. f_equal.
       change (sepapps_size (a :: l1)) with (proj_size a + sepapps_size l1).
-      rewrite word.ring_morph_add.
-      symmetry. apply word.add_assoc.
+      rewrite Zmod.of_Z_add.
+      symmetry. apply Zmod.add_assoc.
   Qed.
 
   Lemma expose_nth_sepapp: forall l n a P sz,
       List.nth_error l n = Some (mk_sized_predicate P sz) ->
-      sepapps l a = sep (P (word.add a (word.of_Z (sepapps_size (List.firstn n l)))))
+      sepapps l a = sep (P (Zmod.add a (bits.of_Z width (sepapps_size (List.firstn n l)))))
                         (sepapps (List.firstn n l ++
                                   cons (mk_sized_predicate (hole sz) sz)
                                   (List.skipn (S n) l)) a).
@@ -159,7 +160,7 @@ Section WithParams.
 
   Lemma merge_back_nth_sepapp: forall l n a P sz,
       List.nth_error l n = Some (mk_sized_predicate (hole sz) sz) ->
-      sep (P (word.add a (word.of_Z (sepapps_size (List.firstn n l))))) (sepapps l a) =
+      sep (P (Zmod.add a (bits.of_Z width (sepapps_size (List.firstn n l))))) (sepapps l a) =
         (sepapps (List.firstn n l ++ cons (mk_sized_predicate P sz) (List.skipn (S n) l)) a).
   Proof.
     intros. rewrite (List.nth_error_expose _ _ _ H) at 2.
@@ -203,7 +204,7 @@ Section WithParams.
     unfold sized_emp in *. do 2 destruct_one_match. simpl in P. apply proj1 in P.
     subst.
     extensionality a. unfold sepapp. eapply iff1ToEq.
-    rewrite word.add_0_r. eapply sep_emp_True_l.
+    rewrite Zmod.add_0_r. eapply sep_emp_True_l.
   Qed.
 
   Lemma interp_sepapp_tree_eq_of_flatten_eq(LHS RHS : Tree.Tree sized_predicate):

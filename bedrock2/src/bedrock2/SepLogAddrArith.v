@@ -1,6 +1,6 @@
 Require Export Coq.Lists.List. Export ListNotations.
 Require Export Coq.ZArith.ZArith. Open Scope Z_scope.
-Require Export coqutil.Word.Interface coqutil.Word.Properties.
+Require Export coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Export coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.rdelta coqutil.Tactics.destr coqutil.Decidable.
 Require Import coqutil.Tactics.rewr coqutil.Tactics.Tactics.
@@ -22,35 +22,28 @@ Proof. intros. congruence. Qed.
 (* unifies two separation logic clauses syntactically, instantiating as many evars
    as it wants, but for subterms of type word, applies word solver instead of syntatic unify,
    and for subterms of type Z, applies lia instead of syntactic unify *)
-Ltac wclause_unify OK :=
-  lazymatch type of OK with
-  | word.ok ?WORD =>
-    lazymatch goal with
-    | |- @eq ?T ?x ?y =>
-      tryif first [is_evar x | is_evar y | constr_eq x y] then (
-        reflexivity
-      ) else (
-        tryif (unify T (@word.rep _ WORD)) then (
-          solve [solve_word_eq OK]
-        ) else (
-          tryif (unify T Z) then (
-            solve [blia]
-          ) else (
-            lazymatch x with
-            | ?x1 ?x2 => lazymatch y with
-                         | ?y1 ?y2 => refine (f_equal2 _ _); wclause_unify OK
-                         | _ => fail "" x "is an application while" y "is not"
-                         end
-            | _ => lazymatch y with
-                   | ?y1 ?y2 => fail "" x "is not an application while" y "is"
-                   | _ => tryif constr_eq x y then reflexivity else fail "" x "does not match" y
-                   end
-            end
-          )
-        )
-      )
-    end
-  | _ => fail 1000 "OK does not have the right type"
+Ltac wclause_unify :=
+  lazymatch goal with
+  | |- @eq ?T ?x ?y =>
+    tryif first [is_evar x | is_evar y | constr_eq x y] then (
+      reflexivity
+    ) else (
+      lazymatch T with
+      | Zmod _ => solve [solve_word_eq]
+      | Z => solve [blia]
+      | _ =>
+          lazymatch x with
+          | ?x1 ?x2 => lazymatch y with
+                       | ?y1 ?y2 => refine (f_equal2 _ _); wclause_unify
+                       | _ => fail "" x "is an application while" y "is not"
+                       end
+          | _ => lazymatch y with
+                 | ?y1 ?y2 => fail "" x "is not an application while" y "is"
+                 | _ => tryif constr_eq x y then reflexivity else fail "" x "does not match" y
+                 end
+          end
+      end
+    )
   end.
 
 (* This can be overridden by the user.
@@ -85,19 +78,19 @@ Ltac addr P :=
   end.
 
 (* completely solves a sepclause equality or fails *)
-Ltac sepclause_eq OK :=
+Ltac sepclause_eq :=
   match goal with
   | |- ?G => assert_fails (has_evar G);
-             wclause_unify OK
+             wclause_unify
   | |- ?lhs = ?rhs => let tagL := tag lhs in
                       let tagR := tag rhs in
                       constr_eq tagL tagR;
-                      wclause_unify OK
+                      wclause_unify
   | |- ?lhs = ?rhs => let addrL := addr lhs in
                       let addrR := addr rhs in
                       assert_fails (has_evar addrL);
                       assert_fails (has_evar addrR);
-                      replace addrL with addrR by first[assumption | symmetry;assumption | solve_word_eq OK];
+                      replace addrL with addrR by first[assumption | symmetry;assumption | solve_word_eq];
                       (reflexivity || fail 10000 lhs "and" rhs "have the same address"
                       "according to addr, but can't be matched")
   end.
@@ -108,7 +101,7 @@ Ltac pick_nat n :=
   | S ?m => pick_nat m
   end.
 
-Ltac wcancel_step OK := once (
+Ltac wcancel_step := once (
   let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
   let jy := index_and_element_of RHS in (* <-- multi-success! *)
   let j := lazymatch jy with (?i, _) => i end in
@@ -117,20 +110,11 @@ Ltac wcancel_step OK := once (
   let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
   let l := eval cbv [List.length] in (List.length LHS) in
   let i := pick_nat l in (* <-- multi-success! *)
-  cancel_seps_at_indices i j; [sepclause_eq OK|]).
-
-Ltac word_rep_to_word_ok R :=
-  lazymatch constr:(@eq R (word.of_Z 0)) with
-  | @eq _ (@word.of_Z _ ?Inst _) => constr:(_: word.ok Inst)
-  end.
+  cancel_seps_at_indices i j; [sepclause_eq|]).
 
 Ltac wcancel :=
   cancel;
-  let OK := lazymatch goal with
-            | |- @iff1 (@map.rep (@word.rep ?W ?WordInst) ?V ?M) _ _ =>
-              constr:(_: word.ok WordInst)
-            end in
-  repeat wcancel_step OK;
+  repeat wcancel_step;
   try solve [ecancel_done'].
 
 (* mostly useful for debugging, once everything works, wcancel should do all the work *)

@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith coqutil.Z.div_mod_to_equations.
+Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.NotationsCustomEntry.
 Import Syntax BinInt String List.ListNotations ZArith.
 Require Import coqutil.Z.Lia.
@@ -13,13 +13,14 @@ Definition div3329 := func! (x) ~> ret {
   ret = (ret + (x - ret >> $1)) >> $11
 }.
 
-From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
-Import Interface Coq.Lists.List List.ListNotations.
+From coqutil Require Import Word.Properties Word.Bitwidth Tactics.letexists.
+Import Coq.Lists.List List.ListNotations.
 From bedrock2 Require Import Semantics LeakageSemantics FE310CSemantics LeakageWeakestPrecondition LeakageProgramLogic.
 Import LeakageProgramLogic.Coercions.
 Section WithParameters.
-  Context {word: word.word 32} {mem: Interface.map.map word Byte.byte}.
-  Context {word_ok : word.ok word} {mem_ok : Interface.map.ok mem}.
+  Local Notation word := (bits 32).
+  Context {mem: Interface.map.map word Byte.byte}.
+  Context {mem_ok : Interface.map.ok mem}.
   Context {pick_sp: PickSp}.
 
 #[global] Instance ctspec_of_div3329 : spec_of "div3329" :=
@@ -36,7 +37,7 @@ Qed.
   fnspec! "div3329_vartime" x ~> ret,
     { requires k t m := True ;
       ensures k' t' m' := t' = t /\ m' = m /\
-                            k' = [leak_word (word.of_Z 3329); leak_word x]++k }.
+                            k' = [leak_word (bits.of_Z 32 3329); leak_word x]++k }.
 
 Lemma div3329_vt : program_logic_goal_for_function! div3329_vartime.
 Proof.
@@ -47,11 +48,11 @@ Qed.
 
 Import Byte.
 Definition getchar_event c : LogItem :=
-  ((Interface.map.empty, "getchar", []), (Interface.map.empty, [word.of_Z (byte.unsigned c)])).
+  ((Interface.map.empty, "getchar", []), (Interface.map.empty, [bits.of_Z 32 (byte.unsigned c)])).
 #[global] Instance ctspec_of_getchar : spec_of "getchar" :=
   fnspec! exists f, "getchar" ~> ret,
     { requires k t m := True ; ensures k' t' m' :=
-        exists c, ret = word.of_Z (byte.unsigned c) /\
+        exists c, ret = bits.of_Z 32 (byte.unsigned c) /\
                k' = f ++ k /\ m' = m /\ t' = cons (getchar_event c) t }.
 
 Definition getline := func! (dst, n) ~> n {
@@ -64,7 +65,7 @@ Definition getline := func! (dst, n) ~> n {
   }
 }.
 
-Local Notation "xs $@ a" := (Array.array Separation.ptsto (word.of_Z 1) a xs) (at level 10, format "xs $@ a").
+Local Notation "xs $@ a" := (Array.array Separation.ptsto (bits.of_Z 32 1) a xs) (at level 10, format "xs $@ a").
 Local Infix "*" := Separation.sep.
 Local Infix "*" := Separation.sep : type_scope.
 
@@ -76,7 +77,7 @@ Definition getline_io n bs :=
 Local Fixpoint getline_leakage f dst n (bs : nat) (i : word) :=
   if i =? n then leak_bool false :: nil else
   match bs with
-  | S bs => getline_leakage f dst n bs (word.add i (word.of_Z 1)) ++ (leak_word (word.add dst i) :: leak_bool false :: f ++ leak_unit :: leak_bool true :: nil)
+  | S bs => getline_leakage f dst n bs (Zmod.add i (bits.of_Z 32 1)) ++ (leak_word (Zmod.add dst i) :: leak_bool false :: f ++ leak_unit :: leak_bool true :: nil)
   | O => leak_bool false :: leak_bool true :: f ++ leak_unit :: leak_bool true :: nil
   end.
 
@@ -85,7 +86,7 @@ Local Fixpoint getline_leakage f dst n (bs : nat) (i : word) :=
     { requires k t m := (d$@dst * R) m /\ length d = n :> Z ;
       ensures k' t' m' := exists bs es,
         k' = f dst n l ++ k /\
-        (bs$@dst * es$@(word.add dst l) * R) m' /\
+        (bs$@dst * es$@(Zmod.add dst l) * R) m' /\
         length bs = l :> Z /\
         length bs + length es = n :> Z /\
         t' = getline_io n bs ++ t 
@@ -108,12 +109,12 @@ Proof.
     (fun (v:Z) es R k t m  dst_ n_ i c => PrimitivePair.pair.mk (
       n_ = n /\ dst_ = dst /\ v = i :> Z /\
       i <= n /\
-      (es$@(word.add dst i) * R) m /\ length es = word.sub n i :> Z
+      (es$@(Zmod.add dst i) * R) m /\ length es = Zmod.sub n i :> Z
     )
     (fun                K T M DST N I C => DST = dst /\
-      exists bs ES, (bs$@(word.add dst i) * ES$@(word.add dst I) * R) M /\ I = N /\
-      length bs = word.sub I i :> Z /\
-      length ES = word.sub n I :> Z /\
+      exists bs ES, (bs$@(Zmod.add dst i) * ES$@(Zmod.add dst I) * R) M /\ I = N /\
+      length bs = Zmod.sub I i :> Z /\
+      length ES = Zmod.sub n I :> Z /\
       i <= N <= n /\
       T = getline_io (n-i) bs ++ t /\
       K = getline_leakage f dst n (length bs) i ++ k
@@ -129,14 +130,14 @@ Proof.
          PrimitivePair.pair._1 PrimitivePair.pair._2] in *;
     repeat straightline.
     { eapply Z.gt_wf. }
-    { split. { subst i. rewrite word.unsigned_of_Z_0. blia. }
-      subst i; rewrite word.add_0_r; split; [ecancel_assumption|]. rewrite word.sub_0_r; auto. }
+    { split. { subst i. rewrite Zmod.unsigned_0. blia. }
+      subst i; rewrite Zmod.add_0_r; split; [ecancel_assumption|]. rewrite Zmod.sub_0_r; auto. }
 
     { 
-      pose proof word.unsigned_range n.
-      pose proof word.unsigned_range x3 as Hx3.
-      subst br. rewrite word.unsigned_ltu in H2; case Z.ltb eqn:? in H2; 
-          rewrite ?word.unsigned_of_Z_1, ?word.unsigned_of_Z_0, ?word.unsigned_sub_nowrap  in *; try blia; [].
+      pose proof (bits.unsigned_range n width_nonneg).
+      pose proof (bits.unsigned_range x3 width_nonneg) as Hx3.
+      subst br. case Z.ltb eqn:? in H2; 
+          rewrite ?bits.unsigned_1, ?Zmod.unsigned_0, ?(word.unsigned_sub_nowrap _ _ width_pos)  in *; try blia; [].
       eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; cycle 1.
       { eapply H. exact I. }
       repeat straightline.
@@ -144,15 +145,15 @@ Proof.
       split; repeat straightline.
       split; repeat straightline.
       { left; repeat straightline.
-        { subst br. rewrite word.unsigned_ltu, Z.ltb_irrefl. apply word.unsigned_of_Z_0. }
+        { subst br. rewrite Z.ltb_irrefl. apply Zmod.unsigned_0. }
         eexists _, _; repeat straightline.
-        eapply word.if_nonzero, word.eqb_true in H4.
+        eapply word.if_nonzero, Zmod.eqb_eq in H4.
         instantiate (1:=nil); cbn [Array.array]; split.
         { ecancel_assumption. }
         { 
           split; trivial.
-          split. { rewrite word.unsigned_sub_nowrap; simpl length; blia. }
-          split. { rewrite word.unsigned_sub_nowrap; blia. }
+          split. { rewrite (word.unsigned_sub_nowrap _ _ width_pos); simpl length; blia. }
+          split. { rewrite (word.unsigned_sub_nowrap _ _ width_pos); blia. }
           split. { blia. }
           split. { (* I/O *)
             cbv [getline_io]. cbn [map rev List.app length]. case (Z.eqb_spec (n'0-x3) 0%nat) as []; try blia.
@@ -161,7 +162,8 @@ Proof.
             progress change 10 with (byte.unsigned Byte.x0a) in H4.
             pose proof byte.unsigned_range x2.
             pose proof byte.unsigned_range Byte.x0a.
-            eapply word.of_Z_inj_small, byte.unsigned_inj in H4; trivial; blia. }
+            subst x1; eapply bits.of_Z_inj in H4; rewrite 2 Z.mod_small in H4 by blia.
+            eapply byte.unsigned_inj in H4; trivial. }
           (* leakage *)
           subst k'''. cbn [getline_leakage leak_binop "++" length].
           rewrite (proj2 (Z.eqb_neq _ _)) by blia; trivial. simpl. rewrite <- app_assoc. reflexivity. } }
@@ -174,19 +176,19 @@ Proof.
       eexists _, _, _; repeat straightline.
       { instantiate (1:=x).
         subst i.
-        rewrite word.add_assoc.
-        split. { rewrite word.unsigned_add_nowrap; rewrite ?word.unsigned_of_Z_1; try blia. }
+        rewrite Zmod.add_assoc.
+        split. { rewrite (word.unsigned_add_nowrap _ _ width_pos); rewrite ?bits.unsigned_1; try blia. }
         split; [ecancel_assumption|].
         cbn [length] in *.
-        pose proof word.unsigned_of_Z_1.
-        pose proof word.unsigned_add_nowrap x3 (word.of_Z 1).
-        pose proof word.unsigned_sub_nowrap n (word.add x3 (word.of_Z 1)).
+        pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(blia)).
+        pose proof (word.unsigned_add_nowrap x3 (bits.of_Z 32 1) width_pos).
+        pose proof (word.unsigned_sub_nowrap n (Zmod.add x3 (bits.of_Z 32 1)) width_pos).
         blia. }
       { split.
         { subst i.
-          pose proof word.unsigned_of_Z_1.
-          pose proof word.unsigned_add_nowrap x3 (word.of_Z 1).
-          pose proof word.unsigned_sub_nowrap n (word.add x3 (word.of_Z 1)).
+          pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(blia)).
+          pose proof (word.unsigned_add_nowrap x3 (bits.of_Z 32 1) width_pos).
+          pose proof (word.unsigned_sub_nowrap n (Zmod.add x3 (bits.of_Z 32 1)) width_pos).
           blia. }
         repeat straightline.
         (* subroutine return *)
@@ -196,27 +198,27 @@ Proof.
         rename x10 into es.
         rename x6 into I.
         rename x3 into _i.
-        rewrite word.add_assoc in H10.
+        rewrite Zmod.add_assoc in H10.
 
         eexists (byte.of_Z x1 :: bs), (es).
         cbn ["$@" "++"].
         split. { ecancel_assumption. }
         split; trivial.
         split. { cbn [length]. rewrite Nat2Z.inj_succ, H15.
-          pose proof word.unsigned_of_Z_1.
-          pose proof word.unsigned_add_nowrap _i (word.of_Z 1) ltac:(blia).
-          rewrite 2 word.unsigned_sub_nowrap; blia. }
+          pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(blia)).
+          pose proof (word.unsigned_add_nowrap _i (bits.of_Z 32 1) width_pos ltac:(blia)).
+          rewrite 2 (word.unsigned_sub_nowrap _ _ width_pos); blia. }
         split; trivial.
         split. {
-          pose proof word.unsigned_of_Z_1.
-          pose proof word.unsigned_add_nowrap _i (word.of_Z 1) ltac:(blia).
+          pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(blia)).
+          pose proof (word.unsigned_add_nowrap _i (bits.of_Z 32 1) width_pos ltac:(blia)).
           blia. }
         split. { (* I/O *)
           subst T a0.
           cbv [getline_io]; cbn [rev List.map].
           repeat rewrite ?map_app, <-?app_comm_cons, <-?app_assoc; f_equal.
-          { pose proof word.unsigned_of_Z_1 as H_1.
-            rewrite (word.unsigned_add_nowrap _i (word.of_Z 1) ltac:(blia)), H_1; cbn [length].
+          { pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(blia)) as H_1.
+            rewrite (word.unsigned_add_nowrap _i (bits.of_Z 32 1) width_pos ltac:(blia)), H_1; cbn [length].
             case Z.eqb eqn:? at 1; case Z.eqb eqn:? at 1; trivial; try blia.
             { (* WHY manual? does zify do a bad job here? *) eapply Z.eqb_neq in Heqb1. blia. }
             { (* WHY manual? does zify do a bad job here? *) eapply Z.eqb_eq in Heqb1. blia. } }
@@ -226,7 +228,7 @@ Proof.
           f_equal.
           subst x1.
           pose proof byte.unsigned_range x2.
-          rewrite word.unsigned_of_Z_nowrap, byte.of_Z_unsigned; trivial; blia. }
+          rewrite bits.unsigned_of_Z_small, byte.of_Z_unsigned; trivial; blia. }
         (* leakage *)
         subst K a1; cbn [getline_leakage leak_binop length].
         rewrite (proj2 (Z.eqb_neq _ _)) by blia; trivial.
@@ -234,32 +236,32 @@ Proof.
 
     { (* buffer full *)
       replace x3 with n in *; cycle 1.
-      { subst br; rewrite word.unsigned_ltu in *; eapply word.if_zero, Z.ltb_nlt in H2.
-        apply word.unsigned_inj. blia. }
+      { subst br; eapply (word.if_zero _ width_pos), Z.ltb_nlt in H2.
+        apply Zmod.unsigned_inj. blia. }
       exists x, nil; cbn [Array.array].
       split. { ecancel_assumption. }
       split. { trivial. }
       split. { trivial. }
-      rewrite word.unsigned_sub_nowrap, Z.sub_diag in H7 by blia.
-      split. { rewrite word.unsigned_sub_nowrap, Z.sub_diag by blia; trivial. }
+      rewrite (word.unsigned_sub_nowrap _ _ width_pos), Z.sub_diag in H7 by blia.
+      split. { rewrite (word.unsigned_sub_nowrap _ _ width_pos), Z.sub_diag by blia; trivial. }
       split. { blia. }
       split. { destruct x; cbn [length] in *; try blia; cbn.
         rewrite Z.sub_diag; reflexivity. }
       destruct x; try (cbn in *; blia).
       cbn [getline_leakage length]; rewrite Z.eqb_refl; trivial. }
 
-    do 2 eexists. split. { subst k0 i. rewrite word.sub_0_r in *.
-      assert (length x3 = Z.to_nat (word.unsigned x0)) as -> by blia. reflexivity. }
+    do 2 eexists. split. { subst k0 i. rewrite Zmod.sub_0_r in *.
+      assert (length x3 = Z.to_nat (Zmod.unsigned x0)) as -> by blia. reflexivity. }
     subst i.
-    rewrite word.add_0_r in *.
+    rewrite Zmod.add_0_r in *.
     split.
     { ecancel_assumption. }
     split.
-    { rewrite H5. rewrite word.sub_0_r. trivial. }
+    { rewrite H5. rewrite Zmod.sub_0_r. trivial. }
     split.
-    { rewrite H5, H6, word.sub_0_r, word.unsigned_sub_nowrap; blia. }
+    { rewrite H5, H6, Zmod.sub_0_r, (word.unsigned_sub_nowrap _ _ width_pos); blia. }
     subst t0.
-    rewrite word.unsigned_of_Z_0, Z.sub_0_r.
+    rewrite Zmod.unsigned_0, Z.sub_0_r.
     trivial.
 
 (* Tue Jul  2 14:26:41 EDT 2024 *)
@@ -283,7 +285,7 @@ Definition password_checker := func! (password) ~> ret {
           t' = getline_io 8 bs ++ t /\
           length bs = l :> Z /\
           (k' = f k password_addr l) /\
-          (word.unsigned ret = 1 <-> bs = password) }.
+          (Zmod.unsigned ret = 1 <-> bs = password) }.
 
 Fail Lemma password_checker_ct : program_logic_goal_for_function! password_checker. (*Why*)
 Global Instance spec_of_memequal : spec_of "memequal" := spec_of_memequal.
@@ -294,7 +296,7 @@ Lemma password_checker_ct : program_logic_goal_for_function! password_checker.
 Proof.
   repeat straightline.
   eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; cycle 1.
-  { eapply H. split. 2: rewrite word.unsigned_of_Z; eassumption. ecancel_assumption. }
+  { eapply H. split. 2: rewrite bits.unsigned_of_Z; eassumption. ecancel_assumption. }
   repeat straightline.
   seprewrite_in_by @Array.bytearray_index_merge H9 ltac:(blia).
   eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; cycle 1.
@@ -303,22 +305,22 @@ Proof.
     { ecancel_assumption. }
     split.
     { rewrite ?app_length; blia. }
-    { rewrite H1. rewrite word.unsigned_of_Z. reflexivity. } }
+    { rewrite H1. rewrite bits.unsigned_of_Z. reflexivity. } }
   assert (length ((x0 ++ x1)) = 8%nat).
-  { rewrite ?app_length. rewrite word.unsigned_of_Z_nowrap in H11; blia. }
+  { rewrite ?app_length. rewrite bits.unsigned_of_Z_small in H11; blia. }
   repeat straightline.
   do 2 eexists. split. { ecancel_assumption. }
-  split. { subst a0. rewrite word.unsigned_of_Z. exact eq_refl. }
+  split. { subst a0. rewrite bits.unsigned_of_Z. exact eq_refl. }
   split. { eassumption. }
   split. { (* leakage *)
     subst a0. subst a. subst a2. instantiate (1 := fun _ _ => _). simpl. reflexivity. }
   { (* functional correctness *)
     subst ret.
-    destruct (word.eqb_spec x (word.of_Z 8)) as [->|?]; cycle 1.
-    { rewrite word.unsigned_and_nowrap, word.unsigned_of_Z_0, Z.land_0_l; split; try discriminate.
-      intros X%(f_equal (@length _)). case H13; clear H13; apply word.unsigned_inj.
-      rewrite <-H10, X, word.unsigned_of_Z_nowrap; blia. }
-    rewrite word.unsigned_and_nowrap, word.unsigned_of_Z_1.
+    destruct (Zmod.eqb_spec x 8) as [->|?]; cycle 1.
+    { rewrite bits.unsigned_and, Zmod.unsigned_0, Z.land_0_l; split; try discriminate.
+      intros X%(f_equal (@length _)). case H13; clear H13; apply Zmod.unsigned_inj.
+      rewrite <-H10, X, bits.unsigned_of_Z_small; blia. }
+    rewrite bits.unsigned_and, bits.unsigned_1 by blia.
     destruct x1; cycle 1.
     { cbn [length] in *. blia. }     { rewrite ?app_nil_r in *. rewrite <-H16.
       case H15 as [->|]; intuition try congruence. rewrite H15. trivial. } }
@@ -350,7 +352,7 @@ Definition semiprime := func! () ~> (p, q) {
     { requires k t m := True ;
       ensures k' t' m' :=
         k' = f ++ k /\ m' = m
-        /\ t' = [output_event (word.mul p q); getprime_event q; getprime_event p]++ t }.
+        /\ t' = [output_event (Zmod.mul p q); getprime_event q; getprime_event p]++ t }.
 
 Lemma semiprime_ct : program_logic_goal_for_function! semiprime.
 Proof.
@@ -374,7 +376,7 @@ Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.Separa
 
 (*#[global] Instance ctspec_of_maskloop : spec_of "maskloop" :=
   fun functions => forall k a, exists k_, forall a0 a1 R t m,
-      m =* ptsto a a0 * ptsto (word.add a (word.of_Z 1)) a1 * R ->
+      m =* ptsto a a0 * ptsto (Zmod.add a (bits.of_Z 32 1)) a1 * R ->
       LeakageWeakestPrecondition.call functions "maskloop" k t m [a]
         (fun k' t' m' rets => rets = [] /\ k' = k_).
 
@@ -393,8 +395,8 @@ Proof.
   repeat straightline.
   eexists nat, lt, (fun i k _ (m : mem) (l : locals) =>
     map.get l "a" = Some a /\
-    map.get l "i" = Some (word.of_Z (Z.of_nat i)) /\ (
-    i = 0%nat /\ m =* ptsto a a0 * ptsto (word.add a (word.of_Z 1)) a1 * R \/
+    map.get l "i" = Some (bits.of_Z 32 (Z.of_nat i)) /\ (
+    i = 0%nat /\ m =* ptsto a a0 * ptsto (Zmod.add a (bits.of_Z 32 1)) a1 * R \/
     i = 1%nat /\ False \/
     i = 2%nat /\ False)).
   Tactics.ssplit; auto using lt_wf.

@@ -1,43 +1,29 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Z.BitOps coqutil.Z.ZLib.
 Require Import coqutil.Tactics.destr.
 
 Local Open Scope Z_scope.
 
+(* The RISC-V M extension (riscv-coq's Utility) and bedrock2's Semantics.interp_binop
+   spell the same operations differently. *)
 Module word.
 
   Section RiscvWord.
-    Context {width: Z} {word: word.word width}.
+    Context {width: Z} {BW: Bitwidth width}.
+    Local Notation word := (bits width).
     Implicit Types x y z : word.
 
-    (* TODO maybe we can put more fundamental axioms here, and turn the axioms below into lemmas *)
-    Class riscv_ok: Prop := {
-      sru_ignores_hibits: forall y z,
-          word.sru y (word.of_Z (word.unsigned z mod 2 ^ Z.log2 width)) = word.sru y z;
-      slu_ignores_hibits: forall y z,
-          word.slu y (word.of_Z (word.unsigned z mod 2 ^ Z.log2 width)) = word.slu y z;
-      srs_ignores_hibits: forall y z,
-          word.srs y (word.of_Z (word.unsigned z mod 2 ^ Z.log2 width)) = word.srs y z;
-
-      divu0_simpl: forall y z,
-          (if word.eqb z (word.of_Z 0) then word.of_Z (2 ^ width - 1) else word.divu y z) =
-          word.divu y z;
-      modu0_simpl: forall y z,
-          (if word.eqb z (word.of_Z 0) then y else word.modu y z) =
-          word.modu y z;
-    }.
-
-    Lemma mulhuu_simpl{ok: word.ok word}{rok: riscv_ok}: forall y z,
-        word.of_Z (bitSlice (word.unsigned y * word.unsigned z) width (2 * width)) =
-        word.mulhuu y z.
+    Lemma mulhuu_simpl: forall y z,
+        bits.of_Z width (bitSlice (Zmod.unsigned y * Zmod.unsigned z) width (2 * width)) =
+        bits.of_Z width (Zmod.unsigned y * Zmod.unsigned z / 2 ^ width).
     Proof.
       intros. unfold bitSlice.
-      eapply word.unsigned_inj.
-      rewrite word.unsigned_mulhuu. unfold word.wrap.
       replace (2 * width - width) with width by lia.
-      pose proof word.width_pos.
+      pose proof width_pos. pose proof modulus_pos.
+      pose proof (bits.unsigned_range y width_nonneg).
+      pose proof (bits.unsigned_range z width_nonneg).
       rewrite Z.shiftl_mul_pow2 by lia.
       rewrite (Z.mul_comm (-1)).
       rewrite <- Z.opp_eq_mul_m1.
@@ -47,14 +33,29 @@ Module word.
       rewrite <- Z.ones_equiv.
       rewrite Z.land_ones by lia.
       rewrite Z.shiftr_div_pow2 by lia.
-      apply word.unsigned_of_Z_nowrap.
-      apply Z.mod_pos_bound.
-      apply Z.pow2_pos.
-      lia.
+      f_equal. apply Z.mod_small. split.
+      - apply Z.div_pos; lia.
+      - apply Z.div_lt_upper_bound; nia.
+    Qed.
+
+    Lemma divu0_simpl: forall y z,
+        (if Zmod.eqb z (bits.of_Z width 0) then bits.of_Z width (2 ^ width - 1) else Zmod.udiv y z) =
+        Zmod.udiv y z.
+    Proof.
+      intros. destr (Zmod.eqb z (bits.of_Z width 0)); trivial.
+      subst. rewrite Zmod.of_Z_0, Zmod.udiv_0_r.
+      apply Zmod.unsigned_inj. pose proof modulus_pos.
+      rewrite bits.unsigned_of_Z_small, bits.unsigned_m1, Z.ones_equiv; lia.
+    Qed.
+
+    Lemma modu0_simpl: forall y z,
+        (if Zmod.eqb z (bits.of_Z width 0) then y else Zmod.umod y z) =
+        Zmod.umod y z.
+    Proof.
+      intros. destr (Zmod.eqb z (bits.of_Z width 0)); trivial.
+      subst. rewrite Zmod.of_Z_0, Zmod.umod_0_r. reflexivity.
     Qed.
 
   End RiscvWord.
-
-  Arguments riscv_ok {_} _.
 
 End word.

@@ -2,7 +2,7 @@ Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth.
 Require coqutil.Map.SortedListZ.
 Require Import coqutil.Datatypes.ZList.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
@@ -15,8 +15,9 @@ Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2.RecordPredicates.
 
 Section WithMem.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
 
   (* TODO move,
      and maybe this could be used to define array and sepapps more conveniently? *)
@@ -28,7 +29,7 @@ Section WithMem.
 
     Definition layout_offsets(ps: list (word -> mem -> Prop))(offsets: list Z)(addr: word):
       mem -> Prop :=
-      layout_absolute ps (List.map (fun ofs => word.add addr (word.of_Z ofs)) offsets).
+      layout_absolute ps (List.map (fun ofs => Zmod.add addr (bits.of_Z width ofs)) offsets).
 
     Definition scattered_array(elem: E -> word -> mem -> Prop)
                               (vs: list E)(addrs: list word): mem -> Prop :=

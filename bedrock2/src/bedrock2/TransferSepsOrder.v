@@ -11,7 +11,7 @@ Require Import Coq.Program.Tactics.
 Require Export coqutil.Tactics.Tactics.
 Require Export coqutil.Tactics.autoforward.
 Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
-Require Export coqutil.Word.Interface coqutil.Word.Properties.
+Require Export coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Sorting.OrderToPermutation.
 Require Export coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.ltac_list_ops.
@@ -24,8 +24,9 @@ Require Export bedrock2.SepClause.
 Import List.ListNotations. Local Open Scope list_scope.
 
 Section TransferSepsOrder.
-  Context {width : Z} {word : Word.Interface.word width} {word_ok: word.ok word}
-          {mem : map.map word byte} {mem_ok: map.ok mem}.
+  Context {width : Z}.
+  Local Notation word := (bits width).
+  Context {mem : map.map word byte} {mem_ok: map.ok mem}.
 
   Lemma reorder_is_iff1: forall (order: list nat) (l: list (mem -> Prop)),
       List.length order = List.length l ->
@@ -45,7 +46,7 @@ End TransferSepsOrder.
 Ltac get_addr clause :=
   lazymatch clause with
   | _ ?a _ => lazymatch type of a with
-              | @word.rep _ _ => constr:(a)
+              | Zmod _ => constr:(a)
               end
   end.
 
@@ -124,8 +125,9 @@ Ltac transfer_sep_order :=
   end.
 
 Section TestTransferSepsOrder.
-  Context {width : Z} {word : Word.Interface.word width} {word_ok: word.ok word}
-          {mem : map.map word byte} {mem_ok: map.ok mem}.
+  Context {width : Z}.
+  Local Notation word := (bits width).
+  Context {mem : map.map word byte} {mem_ok: map.ok mem}.
 
   Lemma reordering_test: forall addr1 addr2 addr3 addr4 v1_old v1_new v2 v3 v4 R (m m': mem),
     seps [scalar addr1 v1_old; scalar addr2 v2; scalar addr3 v3; R] m ->

@@ -5,10 +5,10 @@ Export ListNotations.
 Require Export coqutil.Decidable.
 Require Import Coq.Program.Tactics.
 Require Import coqutil.Tactics.rewr.
-Require        compiler.ExprImp.
+Require compiler.ExprImp.
 Require Export compiler.FlattenExprDef.
 Require Export compiler.FlattenExpr.
-Require        compiler.FlatImp.
+Require compiler.FlatImp.
 Require Export riscv.Spec.Decode.
 Require Import riscv.Spec.LeakageOfInstr.
 Require Export riscv.Spec.Machine.
@@ -54,7 +54,6 @@ Require Znumtheory.
 
 Global Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
-Local Hint Mode word.word - : typeclass_instances.
 
 Local Arguments Z.mul: simpl never.
 Local Arguments Z.add: simpl never.
@@ -70,8 +69,7 @@ Local Open Scope ilist_scope.
 Section Pipeline1.
   Context {width: Z}.
   Context {BW: Bitwidth width}.
-  Context {word: word.word width}.
-  Context {word_ok: word.ok word}.
+  Local Notation word := (bits width).
   Context {mem: map.map word byte}.
   Context {Registers: map.map Z word}.
   Context {string_keyed_map: forall T: Type, map.map string T}. (* abstract T for better reusability *)
@@ -80,7 +78,6 @@ Section Pipeline1.
   Context {MM: Monad M}.
   Context {RVM: RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
-  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context {string_keyed_map_ok: forall T, map.ok (string_keyed_map T)}.
   Context {Registers_ok: map.ok Registers}.
   Context {PR: MetricPrimitives PRParams}.
@@ -99,7 +96,7 @@ Section Pipeline1.
   Context (ml: MemoryLayout)
           (mlOk: MemoryLayoutOk ml).
 
-  Let init_sp := word.unsigned ml.(stack_pastend).
+  Let init_sp := Zmod.unsigned ml.(stack_pastend).
 
   Local Notation source_env := (list (string * (list string * list string * Syntax.cmd))).
 
@@ -109,16 +106,16 @@ Section Pipeline1.
   Let init_sp_pos := ml.(code_start).
   (* 2) Call init function *)
   Let init_insts init_fun_pos := [[Jal RegisterNames.ra (3 * 4 + init_fun_pos)]].
-  Let init_pos := word.add ml.(code_start)
-         (word.of_Z (4 * (Z.of_nat (List.length (FlatToRiscvDef.compile_lit iset RegisterNames.sp init_sp))))).
+  Let init_pos := Zmod.add ml.(code_start)
+         (bits.of_Z width (4 * (Z.of_nat (List.length (FlatToRiscvDef.compile_lit iset RegisterNames.sp init_sp))))).
   (* 3) Call loop function *)
   Let loop_insts loop_fun_pos := [[Jal RegisterNames.ra (2 * 4 + loop_fun_pos)]].
-  Let loop_pos := word.add init_pos (word.of_Z 4).
+  Let loop_pos := Zmod.add init_pos 4.
   (* 4) Jump back to 3) *)
   Let backjump_insts := [[Jal Register0 (-4)]].
-  Let backjump_pos := word.add loop_pos (word.of_Z 4).
+  Let backjump_pos := Zmod.add loop_pos 4.
   (* 5) Code of the compiled functions *)
-  Let functions_pos := word.add backjump_pos (word.of_Z 4).
+  Let functions_pos := Zmod.add backjump_pos 4.
 
   Definition compile_prog(prog: source_env): result (list Instruction * list (string * Z) * Z) :=
     '(functions_insts, positions, required_stack_space) <- compile compile_ext_call prog;;
@@ -144,13 +141,13 @@ Section Pipeline1.
            (required_stack_space: Z)
            (init_fun_pos loop_fun_pos: Z) (R: mem -> Prop),
       compile compile_ext_call prog = Success (functions_instrs, positions, required_stack_space) /\
-      required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
+      required_stack_space <= Zmod.unsigned (Zmod.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
       map.get (map.of_list positions) "init"%string = Some init_fun_pos /\
       map.get (map.of_list positions) "loop"%string = Some loop_fun_pos /\
       exists mH,
         isReady spec mach.(getLog) mH /\ goodTrace spec mach.(getLog) /\
-        mach.(getPc) = word.add loop_pos (word.of_Z (if done then 4 else 0)) /\
+        mach.(getPc) = Zmod.add loop_pos (bits.of_Z width (if done then 4 else 0)) /\
         (exists kL0, mach.(getTrace) = Some kL0) /\
         machine_ok functions_pos ml.(stack_start) ml.(stack_pastend) functions_instrs mH R
                    (program iset init_sp_pos (init_sp_insts ++
@@ -161,9 +158,9 @@ Section Pipeline1.
 
   Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_good iset.
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ width))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (width := width)),
        constants [word_cst]).
 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
@@ -173,15 +170,15 @@ Section Pipeline1.
       spec.(datamem_start) = ml.(heap_start) /\
       spec.(datamem_pastend) = ml.(heap_pastend) /\
       compile_prog srcprog = Success (instrs, positions, required_stack_space) /\
-      required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
-      word.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
-        word.unsigned ml.(code_pastend) /\
+      required_stack_space <= Zmod.unsigned (Zmod.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
+      Zmod.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
+        Zmod.unsigned ml.(code_pastend) /\
       subset (footpr (program iset ml.(code_start) instrs)) (of_list initial.(getXAddrs)) /\
       (program iset ml.(code_start) instrs * R *
        mem_available ml.(heap_start) ml.(heap_pastend) *
        mem_available ml.(stack_start) ml.(stack_pastend))%sep initial.(getMem) /\
       initial.(getPc) = ml.(code_start) /\
-      initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) /\
+      initial.(getNextPc) = Zmod.add initial.(getPc) (bits.of_Z width 4) /\
       regs_initialized initial.(getRegs) /\
       initial.(getLog) = nil /\
       initial.(getTrace) = Some nil (*due to the statement of the compiler theorem, this just needs to not be None*) /\
@@ -189,12 +186,12 @@ Section Pipeline1.
 
   Lemma signed_of_Z_small: forall c,
       - 2 ^ 31 <= c < 2 ^ 31 ->
-      word.signed (word.of_Z c) = c.
+      Zmod.signed (bits.of_Z width c) = c.
   Proof.
-    clear -word_ok BW.
+    clear - BW.
     simpl.
     intros.
-    eapply word.signed_of_Z_nowrap.
+    rewrite Zmod.signed_of_Z. apply Z.smod_pow2_small. 1: exact width_pos.
     case width_cases as [E | E]; rewrite E; Lia.lia.
   Qed.
 
@@ -213,11 +210,11 @@ Section Pipeline1.
   Qed.
 
   Lemma stack_length_divisible:
-    word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) mod bytes_per_word = 0.
+    Zmod.unsigned (Zmod.sub (stack_pastend ml) (stack_start ml)) mod bytes_per_word = 0.
   Proof.
     intros.
     destruct mlOk.
-    rewrite word.unsigned_sub. unfold word.wrap.
+    rewrite Zmod.unsigned_sub.
     rewrite mod_2width_mod_bytes_per_word.
     rewrite Zminus_mod.
     rewrite stack_start_aligned.
@@ -278,7 +275,7 @@ Section Pipeline1.
     (* then, call init function (execute the Jal that jumps there) *)
     eapply runsToStep. {
       eapply RunInstruction.run_Jal; cbn.
-      3: solve_word_eq word_ok.
+      3: solve_word_eq.
       3: eassumption.
       3: wwcancel.
       { match goal with
@@ -300,7 +297,7 @@ Section Pipeline1.
     pose proof compiler_correct compile_ext_call leak_ext_call compile_ext_call_correct
       compile_ext_call_length_ignores_positions as P.
     unfold runsTo in P.
-    specialize P with (fname := "init"%string) (p_funcs := word.add loop_pos (word.of_Z 8)).
+    specialize P with (fname := "init"%string) (p_funcs := Zmod.add loop_pos 8).
     edestruct P as [f [pick_spH P'] ]; clear P.
     { eassumption. }
     { unfold compile. rewrite_match. reflexivity. }
@@ -325,7 +322,7 @@ Section Pipeline1.
       { apply stack_length_divisible. }
       { cbn. clear CP.
         rewrite GetPos in G. fwd.
-        subst loop_pos init_pos init_sp. solve_word_eq word_ok. }
+        subst loop_pos init_pos init_sp. solve_word_eq. }
       { cbn. apply map.get_put_same. }
       { destruct mlOk. solve_divisibleBy4. }
       { reflexivity. }
@@ -351,10 +348,8 @@ Section Pipeline1.
         wcancel.
         cancel_seps_at_indices 4%nat 0%nat. {
           f_equal.
-          solve_word_eq word_ok.
-          clear backjump_insts.
-          subst init_sp_insts.
-          solve_word_eq word_ok.
+          cbv [backjump_insts init_sp_insts]. cbn [Datatypes.length].
+          solve_word_eq.
         }
         cbn[seps].
         reflexivity.
@@ -372,9 +367,8 @@ Section Pipeline1.
         wcancel.
         cancel_seps_at_indices 0%nat 0%nat. {
           f_equal.
-          solve_word_eq word_ok.
-          subst init_sp_insts.
-          solve_word_eq word_ok.
+          cbv [backjump_insts init_sp_insts]. cbn [Datatypes.length].
+          solve_word_eq.
         }
         cbn [seps].
         reflexivity.
@@ -388,7 +382,7 @@ Section Pipeline1.
         destruct mlOk. solve_divisibleBy4.
       + do 2 rapply regs_initialized_put. eassumption.
       + rewrite map.get_put_diff by (cbv; discriminate).
-        rewrite map.get_put_same. unfold init_sp. rewrite word.of_Z_unsigned. reflexivity.
+        rewrite map.get_put_same. unfold init_sp. rewrite Zmod.of_Z_unsigned. reflexivity.
     - cbv beta. unfold ll_good. intros. fwd.
       match goal with
       | _: map.get ?positions "loop"%string = Some ?z |- _ => rename z into f_loop_rel_pos
@@ -404,7 +398,7 @@ Section Pipeline1.
       + unfold compile. rewrite_match. reflexivity.
       + destruct_RiscvMachine final. subst.
         subst loop_pos init_pos.
-        solve_word_eq word_ok.
+        solve_word_eq .
       + (* prove that machine_ok of ll_inv (i.e. all instructions, and just before jumping calling
            loop body function) is implied by the state proven by the compiler correctness lemma for
            the init function *)
@@ -413,7 +407,7 @@ Section Pipeline1.
           let G' := type of H in replace G with G'; [exact H|clear H]
         end.
         f_equal.
-        * unfold functions_pos, backjump_pos. solve_word_eq word_ok.
+        * unfold functions_pos, backjump_pos. solve_word_eq.
         * eapply iff1ToEq.
           unfold init_sp_insts, init_insts, loop_insts, backjump_insts.
           wwcancel.
@@ -425,12 +419,11 @@ Section Pipeline1.
   Proof.
     intros st. unfold ll_inv.
     eapply runsToGood_is_Invariant with (jump := - 4) (pc_start := loop_pos)
-                                        (pc_end := word.add loop_pos (word.of_Z 4)).
+                                        (pc_end := Zmod.add loop_pos 4).
     - intro D.
-      apply (f_equal word.unsigned) in D.
-      rewrite word.unsigned_add in D.
-      rewrite word.unsigned_of_Z in D.
-      unfold word.wrap in D.
+      apply (f_equal Zmod.unsigned) in D.
+      rewrite Zmod.unsigned_add in D.
+      rewrite bits.unsigned_of_Z in D.
       rewrite (Z.mod_small 4) in D; cycle 1. {
         simpl. pose proof four_fits. blia.
       }
@@ -449,7 +442,7 @@ Section Pipeline1.
       unfold ll_good, machine_ok in *.
       fwd.
       etransitivity. 1: eassumption.
-      destruct done; solve_word_eq word_ok.
+      destruct done; solve_word_eq.
     - (* Show that ll_ready (almost) ignores pc, nextPc, and metrics *)
       intros.
       unfold ll_good, machine_ok in *.
@@ -462,19 +455,21 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
-      + cbn. solve_word_eq word_ok.
+      + cbn. solve_word_eq.
       + cbn. simpl in Hp5p3. subst. simpl. reflexivity.
       + cbn. destruct mlOk. subst. simpl in *. subst loop_pos init_pos. solve_divisibleBy4.
     - unfold ll_good, machine_ok.
       intros. fwd. assumption.
     - cbv. intuition discriminate.
-    - solve_word_eq word_ok.
+    - solve_word_eq.
     - unfold ll_good, machine_ok.
       intros. fwd. split.
       + eexists. subst loop_pos init_sp_pos init_sp_insts init_pos backjump_pos backjump_insts.
+        cbv [init_insts loop_insts] in *. cbn [Datatypes.length] in *.
         wcancel_assumption.
       + eapply shrink_footpr_subset. 1: eassumption.
         subst loop_pos init_sp_pos init_sp_insts init_pos backjump_pos backjump_insts.
+        cbv [init_insts loop_insts] in *. cbn [Datatypes.length] in *.
         wwcancel.
     - intros. destruct_RiscvMachine initial. unfold ll_good, machine_ok in H. cbn in *. fwd.
       (* call loop function (execute the Jal that jumps there) *)
@@ -504,15 +499,15 @@ Section Pipeline1.
       unfold hl_inv in loop_body_correct.
       specialize loop_body_correct with (l := map.empty).
       lazymatch goal with
-      | H: context[@word.add ?w ?wo ?x (word.of_Z 0)] |- _ =>
-        replace (@word.add w wo x (word.of_Z 0)) with x in H
+      | H: context[@Zmod.add ?m ?x (Zmod.of_Z ?m 0)] |- _ =>
+        replace (@Zmod.add m x (Zmod.of_Z m 0)) with x in H
       end.
-      2: solve_word_eq word_ok.
+      2: solve_word_eq.
       subst.
       pose proof compiler_correct compile_ext_call leak_ext_call compile_ext_call_correct
         compile_ext_call_length_ignores_positions as P.
       unfold runsTo in P.
-      specialize P with (fname := "loop"%string) (p_funcs := word.add loop_pos (word.of_Z 8)) (ret_addr := word.add loop_pos (word.of_Z 4)).
+      specialize P with (fname := "loop"%string) (p_funcs := Zmod.add loop_pos 8) (ret_addr := Zmod.add loop_pos 4).
       edestruct P as [f [pick_spH P'] ]; clear P.
       { eassumption. }
       { eassumption. }
@@ -532,8 +527,8 @@ Section Pipeline1.
         all: simpl_MetricRiscvMachine_get_set.
         { apply stack_length_divisible. }
         { replace loop_rel_pos with loop_fun_pos by congruence.
-          solve_word_eq word_ok. }
-        { cbn. rewrite map.get_put_same. f_equal. solve_word_eq word_ok. }
+          solve_word_eq. }
+        { cbn. rewrite map.get_put_same. f_equal. solve_word_eq. }
         { subst loop_pos init_pos. destruct mlOk. solve_divisibleBy4. }
         { reflexivity. }
         { reflexivity. }
@@ -563,16 +558,16 @@ Section Pipeline1.
                  | H: _ |- _ => rewrite map.of_list_tuples in H; move H at bottom
                  end.
           apply_in_hyps (fun_pos_div4 (iset := iset)).
-          remember (word.add
-               (word.add
-                  (word.add (code_start ml)
-                     (word.of_Z
+          remember (Zmod.add
+               (Zmod.add
+                  (Zmod.add (code_start ml)
+                     (bits.of_Z width
                         (4 *
                          Z.of_nat
                            (Datatypes.length
                               (FlatToRiscvDef.compile_lit iset RegisterNames.sp
-                                 (word.unsigned (stack_pastend ml)))))))
-                  (word.of_Z 4)) (word.of_Z 0)) as X.
+                                 (Zmod.unsigned (stack_pastend ml)))))))
+                  (bits.of_Z width 4)) (bits.of_Z width 0)) as X.
           solve_divisibleBy4.
         * eapply regs_initialized_put. eassumption.
         * rewrite map.get_put_diff by (cbv; discriminate). assumption.
@@ -580,10 +575,10 @@ Section Pipeline1.
           | H: valid_machine {| getMetrics := ?M |} |- valid_machine {| getMetrics := ?M |} =>
             eqexact.eqexact H; f_equal; f_equal
           end.
-          { f_equal. solve_word_eq word_ok. }
-          { solve_word_eq word_ok. }
-          { solve_word_eq word_ok. }
-          { f_equal. f_equal. f_equal. f_equal. solve_word_eq word_ok. }
+          { f_equal. solve_word_eq. }
+          { solve_word_eq. }
+          { solve_word_eq. }
+          { f_equal. f_equal. f_equal. f_equal. solve_word_eq. }
       + cbv beta.
         intros.
         destruct_RiscvMachine final.

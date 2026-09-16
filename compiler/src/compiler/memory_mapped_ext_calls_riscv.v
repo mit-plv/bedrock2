@@ -25,7 +25,7 @@ Require Export riscv.Platform.MetricMaterializeRiscvProgram.
 Require Import coqutil.Map.Domain.
 Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Z.Lia.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.fwd.
@@ -36,7 +36,8 @@ Local Open Scope bool_scope.
 (* TODO move *)
 Section split_mcomp_sane.
 
-  Context {width: Z} {BW: Bitwidth width} {word: word width} {word_ok: word.ok word}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {Registers: map.map Register word}.
   Context {mem: map.map word byte}.
 
@@ -83,7 +84,8 @@ Section split_mcomp_sane.
 End split_mcomp_sane.
 
 Section Riscv.
-  Context {width: Z} {BW: Bitwidth width} {word: word width} {word_ok: word.ok word}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {mem: map.map word byte} {Registers: map.map Register word}.
   Context {ext_calls: MemoryMappedExtCalls}.
 
@@ -98,7 +100,7 @@ Section Riscv.
       forall m', map.split m' (getMem mach) mRcv ->
       post v
            (withLogItem ((map.empty, action, [addr]),
-                         (mRcv, [word.of_Z (LittleEndian.combine n v)]))
+                         (mRcv, [bits.of_Z width (LittleEndian.combine n v)]))
            (withMem m' mach))).
 
   Notation load n := (fun (ctxid: SourceType) a mach post =>
@@ -113,29 +115,29 @@ Section Riscv.
     let action := "memory_mapped_extcall_write" ++ String.of_nat (n * 8) in
     exists mKeep mGive, map.split (getMem mach) mKeep mGive /\
     write_step n (getLog mach) addr v mGive /\
-    let invalidated := list_union word.eqb (footprint_list addr n) (map.keys mGive) in
-    post (withXAddrs (list_diff word.eqb mach.(getXAddrs) invalidated)
-         (withLogItem ((mGive, action, [addr; word.of_Z (LittleEndian.combine n v)]),
+    let invalidated := list_union Zmod.eqb (footprint_list addr n) (map.keys mGive) in
+    post (withXAddrs (list_diff Zmod.eqb mach.(getXAddrs) invalidated)
+         (withLogItem ((mGive, action, [addr; bits.of_Z width (LittleEndian.combine n v)]),
                        (map.empty, []))
          (withMem mKeep mach))).
 
   Definition store(n: nat)(ctxid: SourceType) a v mach post :=
     match Memory.store_bytes n mach.(getMem) a v with
-    | Some m => post (withXAddrs (list_diff word.eqb mach.(getXAddrs) (footprint_list a n))
+    | Some m => post (withXAddrs (list_diff Zmod.eqb mach.(getXAddrs) (footprint_list a n))
                         (withMem m mach))
     | None => nonmem_store n ctxid a v mach post
     end.
 
   Definition updatePc(mach: RiscvMachine): RiscvMachine :=
-    withPc mach.(getNextPc) (withNextPc (word.add mach.(getNextPc) (word.of_Z 4)) mach).
+    withPc mach.(getNextPc) (withNextPc (Zmod.add mach.(getNextPc) (bits.of_Z width 4)) mach).
 
   Definition getReg(regs: Registers)(reg: Z): word :=
     if ((0 <? reg) && (reg <? 32)) then
       match map.get regs reg with
       | Some x => x
-      | None => word.of_Z 0
+      | None => (bits.of_Z width 0)
       end
-    else word.of_Z 0.
+    else (bits.of_Z width 0).
 
   Definition setReg(reg: Z)(v: word)(regs: Registers): Registers :=
     if ((0 <? reg) && (reg <? 32)) then map.put regs reg v else regs.
@@ -160,7 +162,7 @@ Section Riscv.
     | StoreWord ctxid a v => fun postF postA => store 4 ctxid a v mach (postF tt)
     | StoreDouble ctxid a v => fun postF postA => store 8 ctxid a v mach (postF tt)
     | StartCycle => fun postF postA =>
-        postF tt (withNextPc (word.add mach.(getPc) (word.of_Z 4)) mach)
+        postF tt (withNextPc (Zmod.add mach.(getPc) (bits.of_Z width 4)) mach)
     | EndCycleNormal => fun postF postA => postF tt (updatePc mach)
     | EndCycleEarly _ => fun postF postA => postA (updatePc mach) (* ignores postF containing the continuation *)
     | LeakEvent e => fun postF postA => postF tt (withLeakageEvent e mach)
@@ -576,7 +578,7 @@ Section Riscv.
         forget (map.domain mGive) as G.
         unfold PropSet.subset, PropSet.union, PropSet.diff, PropSet.elem_of,
           PropSet.set in *.
-        forget (@word.rep _ word) as T. clear -HS. firstorder.
+        forget (bits width) as T. clear -HS. firstorder.
       + unfold map.split in *. destruct HA as (? & HA). destruct Sp as (? & Sp). subst.
         eexists. split.
         * eexists. split. 1: eassumption. eexists. split.
@@ -635,12 +637,12 @@ Section Riscv.
   Qed.
 
   Lemma invalidateWrittenXAddrs_alt: forall n (a: word) xaddrs,
-      invalidateWrittenXAddrs n a xaddrs = list_diff word.eqb xaddrs (footprint_list a n).
+      invalidateWrittenXAddrs n a xaddrs = list_diff Zmod.eqb xaddrs (footprint_list a n).
   Proof.
     induction n; intros.
     - reflexivity.
-    - simpl. change (removeXAddr ?a ?l) with (List.removeb word.eqb a l).
-      rewrite IHn. rewrite (word.add_comm (word.of_Z 1)).
+    - simpl. change (removeXAddr ?a ?l) with (List.removeb Zmod.eqb a l).
+      rewrite IHn. rewrite (Zmod.add_comm (bits.of_Z width 1)).
       apply removeb_list_diff_comm.
   Qed.
 

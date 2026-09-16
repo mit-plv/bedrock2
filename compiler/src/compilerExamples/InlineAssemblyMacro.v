@@ -12,12 +12,14 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MinimalMMIO. (* not really *)
-Require Import coqutil.Word.Naive riscv.Utility.Words32Naive.
+Require Import coqutil.Word.Bitwidth riscv.Utility.Words32Naive.
 Require Import riscv.Utility.DefaultMemImpl32.
 Require Import coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Map.Z_keyed_SortedListMap.
 Require Import coqutil.Map.SortedListString.
 Import ListNotations.
+
+Local Notation word32 := (bits 32).
 
 Open Scope ilist_scope.
 
@@ -31,13 +33,13 @@ Definition act: Set := string.
 Inductive ext_spec: act -> list Empty_set -> list word32 ->
                     (list Empty_set -> list word32 -> Prop) -> Prop :=
 | ext_select: forall i selector args,
-    i = word.unsigned (word.sru selector (word.of_Z 2)) ->
+    i = Zmod.unsigned (Zmod.sru selector 2) ->
     0 <= i < Z.of_nat (length args) ->
     ext_spec "Select"%string nil (selector :: args)
              (fun t' results =>
                 t' = nil /\
                 exists garbageWord,
-                  results = [nth (Z.to_nat i) args (word.of_Z 0); garbageWord]).
+                  results = [nth (Z.to_nat i) args (bits.of_Z 32 0); garbageWord]).
 
 
 Definition map_with_index{A B: Type}(f: A -> Z -> B)(l: list A): list B :=

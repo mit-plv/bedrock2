@@ -21,11 +21,11 @@ Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.Separa
 Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import Tactics letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
-Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Naive.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Tactics.eplace Coq.setoid_ring.Ring_tac.
 
 Section WithParameters.
-  Context {mem: map.map word32 Byte.byte} {mem_ok: map.ok mem}.
+  Context {mem: map.map (bits 32) Byte.byte} {mem_ok: map.ok mem}.
   Implicit Types (R : mem -> Prop).
 
   Instance spec_of_swap : spec_of "swap" :=
@@ -39,7 +39,7 @@ Section WithParameters.
   Definition spec_of_swap_same : spec_of "swap" :=
     fnspec! "swap" a_addr b_addr / a R,
     { requires t m := m =* scalar a_addr a * R /\ b_addr = a_addr;
-      ensures T M :=  M =* scalar a_addr (word.of_Z 0) * R /\ T = t }.
+      ensures T M :=  M =* scalar a_addr (bits.of_Z _ 0) * R /\ T = t }.
 
   Lemma swap_same_weird :
     let spec_of_swap := spec_of_swap_same in

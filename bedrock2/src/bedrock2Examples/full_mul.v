@@ -7,7 +7,7 @@ Require Import bedrock2.ZnWords.
 From Coq Require Import Lia ZArith.
 
 Import Syntax BinInt String List.ListNotations.
-Import coqutil.Word.Interface coqutil.Word.Properties.
+Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
@@ -32,30 +32,30 @@ Definition br_full_mul :=
     { requires t m := True;
       ensures T M :=
         M = m /\ T = t /\
-          word.unsigned low + 2^64 * (word.unsigned high) =
-            (word.unsigned a) * (word.unsigned b)
+          Zmod.unsigned low + 2^64 * (Zmod.unsigned high) =
+            (Zmod.unsigned a) * (Zmod.unsigned b)
     }.
 
 Local Lemma mask_is_mod :
   forall a : BasicC64Semantics.word,
-    word.unsigned
-      (word.and
+    Zmod.unsigned
+      (Zmod.and
          a
-         (word.sub (word.slu (word.of_Z 1) (word.of_Z 32)) (word.of_Z 1))) =
-      (word.unsigned a) mod (2^32).
+         (Zmod.sub (Zmod.slu (bits.of_Z _ 1) 32) (bits.of_Z _ 1))) =
+      (Zmod.unsigned a) mod (2^32).
 Proof.
   intros.
   rewrite <- Z.land_ones by lia.
   specialize
-    (word.unsigned_and_nowrap
-       a (word.sub (word.slu (word.of_Z 1) (word.of_Z 32)) (word.of_Z 1)) ).
+    (bits.unsigned_and
+       a (Zmod.sub (Zmod.slu (bits.of_Z _ 1) 32) (bits.of_Z _ 1)) ).
   trivial.
 Qed.
 
 Local Lemma wrap_mul32_is_mul32 :
   forall a b,
     0 <= a < 2^32 ->
-    0 <= b < 2^32 -> word.wrap (a * b) = (a * b).
+    0 <= b < 2^32 -> (a * b) mod 2 ^ 64 = (a * b).
 Proof.
   intros.
   apply Zmod_small.
@@ -64,28 +64,28 @@ Qed.
 
 Local Lemma mul32_ub :
   forall a b : BasicC64Semantics.word,
-    (word.unsigned a) < 2^32 ->
-    (word.unsigned b) < 2^32 ->
-    word.unsigned (word.mul a b) < 2^64 - 2^33 + 2.
+    (Zmod.unsigned a) < 2^32 ->
+    (Zmod.unsigned b) < 2^32 ->
+    Zmod.unsigned (Zmod.mul a b) < 2^64 - 2^33 + 2.
 Proof.
   intros.
-  specialize (word.unsigned_range a).
-  specialize (word.unsigned_range b).
-  rewrite word.unsigned_mul.
+  specialize (bits.unsigned_range a width_nonneg).
+  specialize (bits.unsigned_range b width_nonneg).
+  rewrite Zmod.unsigned_mul.
   rewrite wrap_mul32_is_mul32 by ZnWords.
-  specialize (Zmult_le_compat_r (word.unsigned a) (2^32 - 1) (word.unsigned b)).
-  specialize (Zmult_le_compat_l (word.unsigned b) (2^32 - 1) (2^32 - 1)).
+  specialize (Zmult_le_compat_r (Zmod.unsigned a) (2^32 - 1) (Zmod.unsigned b)).
+  specialize (Zmult_le_compat_l (Zmod.unsigned b) (2^32 - 1) (2^32 - 1)).
   ZnWords.
 Qed.
 
 Local Lemma mul_half_words :
   forall a b : BasicC64Semantics.word,
-    word.unsigned a < 2^32 ->
-    word.unsigned b < 2^32 ->
-    word.unsigned (word.mul a b) = word.unsigned a * word.unsigned b.
+    Zmod.unsigned a < 2^32 ->
+    Zmod.unsigned b < 2^32 ->
+    Zmod.unsigned (Zmod.mul a b) = Zmod.unsigned a * Zmod.unsigned b.
 Proof.
   intros.
-  rewrite word.unsigned_mul.
+  rewrite Zmod.unsigned_mul.
   rewrite wrap_mul32_is_mul32; ZnWords.
 Qed.
 
@@ -93,7 +93,7 @@ Lemma full_mul_ok : program_logic_goal_for_function! br_full_mul.
 Proof.
   repeat straightline.
 
-  change n with (match word.of_Z 32 return BasicC64Semantics.word with x => x end) in *.
+  change n with (match bits.of_Z 64 32 return BasicC64Semantics.word with x => x end) in *.
   clear n.
 
   specialize (mask_is_mod a).
@@ -101,16 +101,16 @@ Proof.
   specialize (mask_is_mod ll).
   specialize (mask_is_mod lh).
   specialize (mask_is_mod hl).
-  specialize (mul_half_words (word.and a M) (word.and b M)).
-  specialize (mul_half_words (word.and a M) (word.sru b (word.of_Z 32))).
-  specialize (mul_half_words (word.sru a (word.of_Z 32)) (word.and b M)).
+  specialize (mul_half_words (Zmod.and a M) (Zmod.and b M)).
+  specialize (mul_half_words (Zmod.and a M) (Zmod.sru b 32)).
+  specialize (mul_half_words (Zmod.sru a 32) (Zmod.and b M)).
   specialize
-    (mul_half_words (word.sru a (word.of_Z 32)) (word.sru b (word.of_Z 32))).
+    (mul_half_words (Zmod.sru a 32) (Zmod.sru b 32)).
   specialize
-    (mul32_ub (word.and a M) (word.sru b (word.of_Z 32))).
+    (mul32_ub (Zmod.and a M) (Zmod.sru b 32)).
   specialize
-    (mul32_ub (word.sru a (word.of_Z 32)) (word.and b M)).
+    (mul32_ub (Zmod.sru a 32) (Zmod.and b M)).
   specialize
-    (mul32_ub (word.sru a (word.of_Z 32)) (word.sru b (word.of_Z 32))).
+    (mul32_ub (Zmod.sru a 32) (Zmod.sru b 32)).
   Time ZnWords.
 Qed.

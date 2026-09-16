@@ -12,7 +12,7 @@ Definition silly1 := func! (a) ~> c {
 
 Require Import coqutil.Macros.symmetry.
 
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import bedrock2.Semantics bedrock2.ProgramLogic bedrock2.Array.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import Coq.Lists.List coqutil.Map.OfListWord.
@@ -28,13 +28,9 @@ Require Import coqutil.Tactics.rewr.
 Require Import AdmitAxiom.
 
 Section WithParameters.
-  Context {word: word.word 32} {mem: map.map word Byte.byte}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
-  Add Ring wring : (Properties.word.ring_theory (word := word))
-        (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := word)),
-         constants [Properties.word_cst]).
-
+  Local Notation word := (bits 32).
+  Context {mem: map.map word Byte.byte}.
+  Context {mem_ok: map.ok mem}.
   Local Instance spec_of_silly1 : spec_of "silly1" := fun functions =>
       forall t m a bs R, Z.of_nat (length bs) = 32 ->
       (sep ((map.of_list_word_at a bs)) R) m ->
@@ -43,7 +39,7 @@ Section WithParameters.
 
   Ltac ring_simplify_unsigned_goal :=
     match goal with
-    |- context [word.unsigned ?x] =>
+    |- context [Zmod.unsigned ?x] =>
       let Hrw := fresh in
       eassert (let y := _ in x = y) as Hrw by (
         let y := fresh in
@@ -52,7 +48,7 @@ Section WithParameters.
       rewrite !Hrw; clear Hrw
     end.
   Ltac ring_simplify_unsigned_in H :=
-    match type of H with context [word.unsigned ?x] =>
+    match type of H with context [Zmod.unsigned ?x] =>
       let Hrw := fresh in
       eassert (let y := _ in x = y) as Hrw by (
         let y := fresh in
@@ -63,7 +59,7 @@ Section WithParameters.
   Ltac ring_simplify_unsigned :=
     try ring_simplify_unsigned_goal;
     repeat match goal with
-           | H: context [word.unsigned ?x] |- _ => ring_simplify_unsigned_in H
+           | H: context [Zmod.unsigned ?x] |- _ => ring_simplify_unsigned_in H
            end.
 
   Ltac unify_and_change lhs rhs :=
@@ -111,25 +107,25 @@ Section WithParameters.
 
   Ltac rewrite_unsigned_of_Z_goal :=
     match goal with
-    |- context [@word.unsigned ?w ?W ?X] =>
-      let E := constr:(@word.unsigned w W X) in
+    |- context [@Zmod.unsigned (2 ^ ?w) ?X] =>
+      let E := constr:(@Zmod.unsigned (2 ^ w) X) in
       let x := rdelta X in
-      let z := match x with word.of_Z ?z => z end in
-      rewrite ((@word.unsigned_of_Z w W _ z) : E = z mod 2^w)
+      let z := match x with Zmod.of_Z _ ?z => z end in
+      rewrite ((@bits.unsigned_of_Z w z) : E = z mod 2^w)
     end.
 
   Ltac rewrite_unsigned_of_Z_in H :=
-    match type of H with context [@word.unsigned ?w ?W ?X] =>
-      let E := constr:(@word.unsigned w W X) in
+    match type of H with context [@Zmod.unsigned (2 ^ ?w) ?X] =>
+      let E := constr:(@Zmod.unsigned (2 ^ w) X) in
       let x := rdelta X in
-      let z := match x with word.of_Z ?z => z end in
-      rewrite ((@word.unsigned_of_Z w W _ z) : E = z mod 2^w) in H
+      let z := match x with Zmod.of_Z _ ?z => z end in
+      rewrite ((@bits.unsigned_of_Z w z) : E = z mod 2^w) in H
     end.
 
   Ltac wordcstexpr_tac := (* hacky *)
     repeat first
           [ progress ring_simplify_unsigned
-          | rewrite !word.unsigned_add; cbv [word.wrap]
+          | rewrite !Zmod.unsigned_add
           | rewrite_unsigned_of_Z_goal ];
     repeat simplify_ZcstExpr_goal; trivial.
 
@@ -193,25 +189,25 @@ Section WithParameters.
     (a : word) (xs ys : list value)
     lxs (Hlxs : Z.of_nat (length xs) = lxs)
     : map.of_list_word_at a (xs ++ ys)
-    = putmany (map.of_list_word_at (word.add a (word.of_Z lxs)) ys) (map.of_list_word_at a xs).
-  Proof. subst lxs; apply map.of_list_word_at_app. Qed.
+    = putmany (map.of_list_word_at (Zmod.add a (bits.of_Z 32 lxs)) ys) (map.of_list_word_at a xs).
+  Proof. subst lxs; apply (map.of_list_word_at_app width_pos). Qed.
 
   Lemma map__adjacent_arrays_disjoint_n [value] [map : map.map word value] {ok : map.ok map}
     (a : word) (xs ys : list value)
     lxs (Hlxs : Z.of_nat (length xs) = lxs)
     (H :Z.of_nat (length xs) + Z.of_nat (length ys) <= 2 ^ 32)
-    : disjoint (map.of_list_word_at (word.add a (word.of_Z lxs)) ys) (map.of_list_word_at a xs).
-  Proof. subst lxs. auto using map.adjacent_arrays_disjoint. Qed.
+    : disjoint (map.of_list_word_at (Zmod.add a (bits.of_Z 32 lxs)) ys) (map.of_list_word_at a xs).
+  Proof. subst lxs. exact (map.adjacent_arrays_disjoint width_pos a xs ys H). Qed.
 
       Declare Scope word_scope.
       Bind Scope word_scope with word.
       Delimit Scope word_scope with word.
-      Local Notation "a + b" := (word.add a b) (at level 50, left associativity) : word_scope.
-      Local Infix "-" := word.sub : word_scope.
+      Local Notation "a + b" := (Zmod.add a b) (at level 50, left associativity) : word_scope.
+      Local Infix "-" := Zmod.sub : word_scope.
       Local Coercion Z.of_nat : nat >-> Z.
       Local Infix "$+" := putmany (at level 70).
       Local Notation "xs $@ a" := (map.of_list_word_at a%word xs) (at level 10, format "xs $@ a").
-      Local Notation "! x" := (word.of_Z x) (at level 10, format "! x").
+      Local Notation "! x" := (bits.of_Z 32 x) (at level 10, format "! x").
       Local Notation "a * b" := (sep a%type b%type) : type_scope.
       Local Open Scope word_scope.
 
@@ -226,7 +222,7 @@ Section WithParameters.
     (a : word) (xs ys : list value)
     lxs (Hlxs : Z.of_nat (length xs) = lxs) (Htotal : length xs + length ys <= 2^32)
     : Lift1Prop.iff1 ((map.of_list_word_at a (xs ++ ys)))
-      (sep ((map.of_list_word_at a xs)) ((map.of_list_word_at (word.add a (word.of_Z lxs)) ys))).
+      (sep ((map.of_list_word_at a xs)) ((map.of_list_word_at (Zmod.add a (bits.of_Z 32 lxs)) ys))).
   Proof.
     etransitivity.
     2: eapply sep_comm.
@@ -237,7 +233,7 @@ Section WithParameters.
 
   Lemma list_word_at_app_of_adjacent_eq [value] [map : map.map word value] {ok : map.ok map}
     (a b : word) (xs ys : list value)
-    (Hl: word.unsigned (word.sub b a) = Z.of_nat (length xs))
+    (Hl: Zmod.unsigned (Zmod.sub b a) = Z.of_nat (length xs))
     (Htotal : length xs + length ys <= 2^32)
     : Lift1Prop.iff1
         (sep ((map.of_list_word_at a xs)) ((map.of_list_word_at b ys)) )
@@ -245,7 +241,7 @@ Section WithParameters.
   Proof.
     etransitivity.
     2:symmetry; eapply sep_eq_of_list_word_at_app; trivial.
-    do 3 Morphisms.f_equiv. rewrite <-Hl, word.of_Z_unsigned. ring.
+    do 3 Morphisms.f_equiv. rewrite <-Hl, Zmod.of_Z_unsigned. ring.
   Qed.
 
   Lemma of_list_word_nil
@@ -257,17 +253,17 @@ Section WithParameters.
     (k : word) (v : value) : [v]$@k = put empty k v.
   Proof.
     cbv [of_list_word_at of_list_word seq length List.map of_func update].
-    rewrite word.unsigned_of_Z_0, Z2Nat.inj_0; cbv [MapKeys.map.map_keys nth_error].
+    rewrite Zmod.unsigned_0, Z2Nat.inj_0; cbv [MapKeys.map.map_keys nth_error].
     rewrite Properties.map.fold_singleton.
     f_equal; cbn [Z.of_nat].
-    eapply word.unsigned_inj; rewrite word.unsigned_add; cbv [word.wrap]; rewrite word.unsigned_of_Z_0, Z.add_0_r, Z.mod_small; trivial; eapply word.unsigned_range.
+    eapply Zmod.unsigned_inj; rewrite Zmod.unsigned_add; rewrite Zmod.unsigned_0, Z.add_0_r, Z.mod_small; trivial; eapply (bits.unsigned_range _ width_nonneg).
   Qed.
 
   Import Lift1Prop Morphisms.
   Lemma eq_of_list_word_iff_array1 [value] [map : map.map word value] {ok : map.ok map}
     (a : word) (bs : list value)
     (H : length bs <= 2 ^ 32) :
-    iff1 ((bs$@a)) (array ptsto (word.of_Z 1) a bs).
+    iff1 ((bs$@a)) (array ptsto (bits.of_Z 32 1) a bs).
   Proof.
     revert H; revert a; induction bs; cbn [array]; intros.
     { rewrite of_list_word_nil; cbv [emp iff1 sepclause_of_map]; intuition auto. }
@@ -277,9 +273,9 @@ Section WithParameters.
       2: reflexivity.
       2: cbn [length] in H; blia.
       change (a::bs) with ([a]++bs).
-      rewrite of_list_word_at_app.
+      rewrite (of_list_word_at_app width_pos).
       etransitivity.
-      1: eapply sep_eq_putmany, adjacent_arrays_disjoint; cbn [length] in *; blia.
+      1: eapply sep_eq_putmany, (adjacent_arrays_disjoint width_pos); cbn [length] in *; blia.
       etransitivity.
       2:eapply sep_comm.
       f_equiv.
@@ -298,7 +294,7 @@ Section WithParameters.
     end.
 
   Ltac split_bytes_base_addr bs a0 ai :=
-      let raw_i := constr:(word.unsigned (ai-a0)%word) in
+      let raw_i := constr:(Zmod.unsigned (ai-a0)%word) in
       let Hidx := fresh "Hidx" in
       eassert (raw_i = _) as Hidx by (
         ring_simplify_unsigned_goal; repeat rewrite_unsigned_of_Z_goal;
@@ -328,10 +324,10 @@ Section WithParameters.
       destruct (load_bytes (mR $+ bs$@a) a n) eqn:HN in *; cycle 1.
       { exfalso; eapply load_bytes_None in HN; case HN as (i&?&?).
         case (Properties.map.putmany_spec mR (bs$@a) (a+!(BinIntDef.Z.of_nat i))%word) as [(?&?&?)| (?&?) ]; try congruence.
-        rewrite get_of_list_word_at in H1; eapply nth_error_None in H1.
+        rewrite (get_of_list_word_at width_pos) in H1; eapply nth_error_None in H1.
         revert H1.
-        rewrite word.word_sub_add_l_same_l, word.unsigned_of_Z.
-        cbv [word.wrap]; rewrite Z.mod_small, Nat2Z.id; eauto; blia. }
+        rewrite word.word_sub_add_l_same_l, bits.unsigned_of_Z.
+        rewrite Z.mod_small, Nat2Z.id; eauto; blia. }
       transitivity (Some l); try congruence; f_equal; subst n.
       symmetry; eapply nth_error_ext_samelength.
       { symmetry; eauto using length_load_bytes. }
@@ -339,9 +335,9 @@ Section WithParameters.
       pose proof nth_error_load_bytes _ a _ _ HN i ltac:(trivial) as HH.
       epose proof H; eapply nth_error_nth' with (d:=Byte.x00) in H.
       erewrite Properties.map.get_putmany_right in HH; cycle 1.
-      { rewrite get_of_list_word_at.
-        rewrite word.word_sub_add_l_same_l, word.unsigned_of_Z.
-        cbv [word.wrap]; rewrite Z.mod_small, Nat2Z.id; eauto; blia. }
+      { rewrite (get_of_list_word_at width_pos).
+        rewrite word.word_sub_add_l_same_l, bits.unsigned_of_Z.
+        rewrite Z.mod_small, Nat2Z.id; eauto; blia. }
       congruence.
     Qed.
 
@@ -356,25 +352,25 @@ Section WithParameters.
   End __.
 
   Lemma load_four_bytes_of_sep_at bs a R (m:mem) (Hsep: ((bs$@a)*R) m) (Hl : length bs = 4%nat) :
-    load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
+    load access_size.four m a = Some (bits.of_Z 32 (LittleEndianList.le_combine bs)).
   Proof.
     eapply Scalars.load_four_bytes_of_sep_at; try eassumption.
   Qed.
 
   Lemma uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: ((bs$@a)*R) m /\ length bs = 4%nat) :
-    load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
+    load access_size.four m a = Some (bits.of_Z 32 (LittleEndianList.le_combine bs)).
   Proof. eapply Scalars.uncurried_load_four_bytes_of_sep_at; try eassumption. Qed.
 
   Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: ((bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
-    load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
+    load access_size.four m a = Some (bits.of_Z 32 (LittleEndianList.le_combine bs)).
   Proof. eapply Scalars.Z_uncurried_load_four_bytes_of_sep_at; try eassumption. Qed.
 
   (*
   Lemma store_four_of_sep addr (oldvalue : word32) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar32 addr oldvalue) R m)
-    (Hpost : forall m, sep (scalar32 addr (word.of_Z (word.unsigned value))) R m -> post m)
+    (Hpost : forall m, sep (scalar32 addr (bits.of_Z 32 (Zmod.unsigned value))) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.four m addr value = Some m1 /\ post m1.
   Proof.
   *)
@@ -385,7 +381,7 @@ Section WithParameters.
         let sz := eval cbv in (Z.of_nat (bytes_per (width:=32) sz)) in
         match goal with H : ?S m |- _ =>
         match S with context[?bs $@ ?a0] =>
-        let a_r := constr:(word.add a (word.of_Z sz)) in
+        let a_r := constr:(Zmod.add a (bits.of_Z 32 sz)) in
         split_bytes_base_addr bs a0 a_r end;
         match type of H with context[?bs $@ ?a0] =>
         split_bytes_base_addr bs a0 a end end
@@ -393,7 +389,7 @@ Section WithParameters.
         let sz := eval cbv in (Z.of_nat (bytes_per (width:=32) sz)) in
         match goal with H : ?S m |- _ =>
         match S with context[?bs $@ ?a0] =>
-        let a_r := constr:(word.add a (word.of_Z sz)) in
+        let a_r := constr:(Zmod.add a (bits.of_Z 32 sz)) in
         split_bytes_base_addr bs a0 a_r end;
         match type of H with context[?bs $@ ?a0] =>
         split_bytes_base_addr bs a0 a end end
@@ -501,7 +497,7 @@ Ltac simpl_lengths := repeat simpl_lengths_step.
 
     (* remerge *)
     seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
-      simpl_lengths; rewrite ?word.word_sub_add_l_same_l, ?word.unsigned_of_Z; trivial; clear;blia).
+      simpl_lengths; rewrite ?word.word_sub_add_l_same_l, ?bits.unsigned_of_Z; trivial; clear;blia).
     repeat seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
       rewrite ?app_length; wordcstexpr_tac; simpl_lengths; blia).
 
@@ -529,7 +525,7 @@ Ltac simpl_lengths := repeat simpl_lengths_step.
       reflexivity.
     }
 
-    repeat match goal with x := _ : word.rep |- _ => subst x end.
+    repeat match goal with x := _ : Zmod _ |- _ => subst x end.
     set_evars.
     replace (length l1 = 4%nat) with (Z.of_nat (length l1) = 4) by case proof_admitted.
 
@@ -538,7 +534,7 @@ Ltac simpl_lengths := repeat simpl_lengths_step.
     match goal with | |- context[Z.of_nat (length e) = ?n] =>
     match goal with H : ?S m |- _ =>
     match S with context[?bs $@ ?a0] =>
-    let a_r := constr:(word.add a (word.of_Z n)) in
+    let a_r := constr:(Zmod.add a (bits.of_Z 32 n)) in
     split_bytes_base_addr bs a0 a_r end;
     match type of H with context[?bs $@ ?a0] =>
     split_bytes_base_addr bs a0 a

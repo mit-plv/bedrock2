@@ -4,7 +4,7 @@ Import Syntax BinInt String List.ListNotations.
 Require Import bedrock2.ZnWords.
 From bedrock2 Require Import WeakestPrecondition ProgramLogic BasicC64Semantics.
 Require Import coqutil.Macros.ident_to_string.
-Import coqutil.Word.Interface.
+Import coqutil.Word.Bitwidth.
 Require Import coqutil.Tactics.Tactics.
 Require Import Lia ZArith.
 
@@ -42,21 +42,20 @@ Definition br_full_sub :=
         (* This pre-condition is not required in order to ensure the
          * post-condition, but formalizes on a condition on the
          * operation's expected usage. *)
-        word.unsigned borrow < 2;
+        Zmod.unsigned borrow < 2;
       ensures T M :=
         M = m /\ T = t /\
-          word.unsigned diff - 2^64 * word.unsigned out_borrow =
-            word.unsigned x - word.unsigned y - word.unsigned borrow
+          Zmod.unsigned diff - 2^64 * Zmod.unsigned out_borrow =
+            Zmod.unsigned x - Zmod.unsigned y - Zmod.unsigned borrow
     }.
 
 Lemma ltu_as_borrow :
   forall a b : BasicC64Semantics.word,
-    word.unsigned a - word.unsigned b =
-      word.unsigned (word.sub a b) - 2^64 * (if word.ltu a b then 1 else 0).
+    Zmod.unsigned a - Zmod.unsigned b =
+      Zmod.unsigned (Zmod.sub a b) - 2^64 * (if Zmod.unsigned a <? Zmod.unsigned b then 1 else 0).
 Proof.
   intros.
-  rewrite word.unsigned_ltu.
-  destr (word.unsigned a <? word.unsigned b);
+  destr (Zmod.unsigned a <? Zmod.unsigned b);
     ZnWords.
 Qed.
 
@@ -70,7 +69,7 @@ Proof.
   repeat
     (match goal with
      | X := _ |- _  => subst X end).
-  destruct (word.ltu x y);
-    destruct (word.ltu (word.sub x y) borrow);
+  destruct (Zmod.unsigned x <? Zmod.unsigned y);
+    destruct (Zmod.unsigned (Zmod.sub x y) <? Zmod.unsigned borrow);
     ZnWords.
 Qed.

@@ -1,10 +1,9 @@
 From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.Lia.
-Require Import coqutil.Z.div_mod_to_equations.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import riscv.Utility.Monads.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Platform.Memory.
@@ -34,7 +33,8 @@ From coqutil Require Import HList Memory SeparationMemory LittleEndianList.
 Import Utility.
 
 Section Go.
-  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+  Context {width} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {Registers: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
@@ -47,9 +47,9 @@ Section Go.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ width))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (width := width)),
        constants [word_cst]).
 
   Lemma spec_Bind_det{A B: Type}: forall (initialL: RiscvMachineL)
@@ -258,7 +258,7 @@ Section Go.
 
   Lemma go_endCycleNormal: forall (initialL: RiscvMachineL) (post: RiscvMachineL -> Prop),
       post (withPc initialL.(getNextPc)
-           (withNextPc (word.add initialL.(getNextPc) (word.of_Z 4))
+           (withNextPc (Zmod.add initialL.(getNextPc) (bits.of_Z width 4))
            (updateMetrics (addMetricInstructions 1) initialL))) ->
       mcomp_sat endCycleNormal initialL post.
   Proof. t spec_endCycleNormal. Qed.
@@ -304,16 +304,16 @@ Section Go.
       0 < z ->
       z + Z.of_nat (length l) < 2 ^ width ->
       map.get m addr = None ->
-      map.get (coqutil.Map.Memory.unchecked_store_bytes m (word.add addr (word.of_Z z)) l) addr = None.
+      map.get (coqutil.Map.Memory.unchecked_store_bytes m (Zmod.add addr (bits.of_Z width z)) l) addr = None.
   Proof.
     Import OfListWord.
     intros.
     cbv [Map.Memory.unchecked_store_bytes].
     rewrite map.get_putmany_left; [assumption|].
-    rewrite map.get_of_list_word_at, nth_error_None.
-    assert ((word.sub addr (word.add addr (word.of_Z z)))
-          = (word.opp (word.of_Z z))) as -> by ring.
-    rewrite word.unsigned_opp, word.unsigned_of_Z; cbv [word.wrap].
+    rewrite (map.get_of_list_word_at width_pos), nth_error_None.
+    assert ((Zmod.sub addr (Zmod.add addr (bits.of_Z width z)))
+          = (Zmod.opp (bits.of_Z width z))) as -> by ring.
+    rewrite Zmod.unsigned_opp, bits.unsigned_of_Z.
     rewrite (Z.mod_small z),  <-(Z.mod_add _ 1), Z.mod_small; blia.
   Qed.
 
@@ -339,7 +339,7 @@ Section Go.
   Qed.
 
   Ltac word_simpl :=
-    rewrite <-? word.add_assoc;
+    rewrite <-? Zmod.add_assoc;
     rewrite <-? word.ring_morph.(morph_add);
     simpl.
 
@@ -369,10 +369,11 @@ Section Go.
   Proof.
     unfold isXAddr4, ptsto_instr, truncated_scalar, sepclause_of_map. simpl.
     cbv [footpr footprint_underapprox subset elem_of of_list isXAddr1]; simpl; intros.
-    ssplit; apply H; clear H; intros; extract_ex1_and_emp_in_hyps; subst; rewrite OfListWord.map.get_of_list_word_at.
+    ssplit; apply H; clear H; intros; extract_ex1_and_emp_in_hyps; subst; rewrite (OfListWord.map.get_of_list_word_at width_pos).
     all : destruct nth_error eqn:E; eauto; apply nth_error_None in E;
       rewrite LittleEndianList.length_le_split, ?word.word_sub_add_l_same_l,
-        ?word.unsigned_sub_nowrap, ?word.unsigned_of_Z_nowrap in E; try blia.
+        ?(word.unsigned_sub_nowrap _ _ width_pos), ?bits.unsigned_of_Z_small,
+        ?(bits.unsigned_1 (proj2 (Z.le_succ_l 0 _) width_pos)) in E; try blia.
     all : destruct width_cases; subst width; clear; blia.
   Qed.
 
@@ -419,7 +420,7 @@ Section Go.
       eapply shrink_footpr_subset. 1: eassumption. simpl. ecancel.
     - rewrite getMem_withLeakageEvent. unfold Memory.loadWord.
       unfold truncated_scalar, Memory.bytes_per in A.
-      erewrite SeparationMemory.load_Z_of_sep; try exact _; cycle 1.
+      erewrite (SeparationMemory.load_Z_of_sep width_pos); try exact _; cycle 1.
       { ecancel_assumption. }
       { apply LittleEndianList.length_le_split. }
       { destruct width_cases as [E | E]; rewrite E; blia. }
@@ -447,7 +448,7 @@ Section Go.
       mcomp_sat (Bind (loadByte Execute addr) f) initialL post.
   Proof.
     intros; eapply go_loadByte; [|eassumption]; cbv [Memory.loadByte].
-    erewrite load_Z_of_sep; [ | exact _ | ecancel_assumption | reflexivity |
+    erewrite (load_Z_of_sep width_pos); [ | exact _ | ecancel_assumption | reflexivity |
         destruct width_cases as [E | E]; rewrite E; cbv; discriminate ].
     apply f_equal, tuple.to_list_inj; rewrite tuple.to_list_of_list.
     apply split_le_combine', tuple.length_to_list.
@@ -464,21 +465,21 @@ Section Go.
     cbn [invalidateWrittenXAddrs length].
     - intros addr R Hm; progress change (a::bs) with (List.app (a::nil) bs) in Hm.
       simpl length in *.
-      seprewrite_in sep_eq_of_list_word_at_app Hm. { exact (eq_refl 1). } { simpl length; Lia.lia. }
+      seprewrite_in (sep_eq_of_list_word_at_app width_pos) Hm. { exact (eq_refl 1). } { simpl length; Lia.lia. }
       specialize (IHbs ltac:(Lia.lia) _ _ ltac:(ecancel_assumption)).
       seprewrite_in (sep_comm Rexec) Hm.
-      change removeXAddr with (@List.removeb word word.eqb).
+      change removeXAddr with (@List.removeb word Zmod.eqb).
       rewrite ListSet.of_list_removeb.
       unfold subset.
       intros x Hx.
-      destr (word.eqb x addr).
+      destr (Zmod.eqb x addr).
       + subst. exfalso. clear IHbs.
         unfold sep, map.split, sepclause_of_map in Hm.
         simp.
         unfold elem_of, footpr, footprint_underapprox in Hx.
         specialize (Hx _ ltac:(eassumption)).
         destruct Hx as [w Hx].
-        rename Hmp1p0p1 into B; rewrite map.of_list_word_singleton in B.
+        rename Hmp1p0p1 into B; rewrite (map.of_list_word_singleton width_pos) in B.
         eapply B; [|eassumption].
         rewrite map.get_put_same; trivial.
       + unfold diff, elem_of, singleton_set. split; [|congruence].
@@ -498,7 +499,7 @@ Section Go.
       mcomp_sat (Bind (storeByte Execute addr v_new) f) initialL post.
   Proof.
     intros.
-    edestruct (fun a b => uncurried_store_bytes_of_sep a b (tuple.to_list v_old) (tuple.to_list v_new)) as (?&?&?).
+    edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (tuple.to_list v_old) (tuple.to_list v_new)) as (?&?&?).
     { ssplit; [ecancel_assumption|apply tuple.length_to_list..|].
       destruct width_cases as [E | E]; rewrite E; blia. }
     eapply go_storeByte; cbv [storeByte Memory.storeByte Platform.Memory.store_bytes].
@@ -516,7 +517,7 @@ Section Go.
       mcomp_sat (Bind (loadHalf Execute addr) f) initialL post.
   Proof.
     intros; eapply go_loadHalf; [|eassumption]; cbv [Memory.loadHalf].
-    erewrite load_Z_of_sep; [ | exact _ | ecancel_assumption | reflexivity |
+    erewrite (load_Z_of_sep width_pos); [ | exact _ | ecancel_assumption | reflexivity |
         destruct width_cases as [E | E]; rewrite E; cbv; discriminate ].
     apply f_equal, tuple.to_list_inj; rewrite tuple.to_list_of_list.
     apply split_le_combine', tuple.length_to_list.
@@ -535,7 +536,7 @@ Section Go.
       mcomp_sat (Bind (storeHalf Execute addr v_new) f) initialL post.
   Proof.
     intros.
-    edestruct (fun a b => uncurried_store_bytes_of_sep a b (tuple.to_list v_old) (tuple.to_list v_new)) as (?&?&?).
+    edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (tuple.to_list v_old) (tuple.to_list v_new)) as (?&?&?).
     { ssplit; [ecancel_assumption|apply tuple.length_to_list..|].
       destruct width_cases as [E | E]; rewrite E; blia. }
     eapply go_storeHalf; cbv [storeHalf Memory.storeHalf Platform.Memory.store_bytes].
@@ -553,7 +554,7 @@ Section Go.
       mcomp_sat (Bind (loadWord Execute addr) f) initialL post.
   Proof.
     intros; eapply go_loadWord; [|eassumption]; cbv [Memory.loadWord].
-    erewrite load_Z_of_sep; [ | exact _ | ecancel_assumption | reflexivity |
+    erewrite (load_Z_of_sep width_pos); [ | exact _ | ecancel_assumption | reflexivity |
         destruct width_cases as [E | E]; rewrite E; cbv; discriminate ].
     apply f_equal, tuple.to_list_inj; rewrite tuple.to_list_of_list.
     apply split_le_combine', tuple.length_to_list.
@@ -593,7 +594,7 @@ Section Go.
       mcomp_sat (Bind (storeWord Execute addr v_new) f) initialL post.
   Proof.
     intros.
-    edestruct (fun a b => uncurried_store_bytes_of_sep a b (tuple.to_list v_old) (tuple.to_list v_new)) as (?&?&?).
+    edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (tuple.to_list v_old) (tuple.to_list v_new)) as (?&?&?).
     { ssplit; [ecancel_assumption|apply tuple.length_to_list..|].
       destruct width_cases as [E | E]; rewrite E; blia. }
     eapply go_storeWord; cbv [storeWord Memory.storeWord Platform.Memory.store_bytes].
@@ -631,7 +632,7 @@ Section Go.
       mcomp_sat (Bind (loadDouble Execute addr) f) initialL post.
   Proof.
     intros; eapply go_loadDouble; [|eassumption]; cbv [Memory.loadDouble].
-    erewrite load_Z_of_sep; [ | exact _ | ecancel_assumption | reflexivity |
+    erewrite (load_Z_of_sep width_pos); [ | exact _ | ecancel_assumption | reflexivity |
         destruct width_cases as [E | E]; rewrite E; cbv; discriminate ].
     apply f_equal, tuple.to_list_inj; rewrite tuple.to_list_of_list.
     apply split_le_combine', tuple.length_to_list.
@@ -650,7 +651,7 @@ Section Go.
       mcomp_sat (Bind (storeDouble Execute addr v_new) f) initialL post.
   Proof.
     intros.
-    edestruct (fun a b => uncurried_store_bytes_of_sep a b (tuple.to_list v_old) (tuple.to_list v_new)) as (?&?&?).
+    edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (tuple.to_list v_old) (tuple.to_list v_new)) as (?&?&?).
     { ssplit; [ecancel_assumption|apply tuple.length_to_list..|].
       destruct width_cases as [E | E]; rewrite E; blia. }
     eapply go_storeDouble; cbv [storeDouble Memory.storeDouble Platform.Memory.store_bytes].
@@ -763,7 +764,7 @@ Ltac sidecondition :=
   | |- Memory.load ?sz ?m ?addr = Some ?v =>
     unfold Memory.load, Memory.load_Z in *;
     simpl_MetricRiscvMachine_mem;
-    erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ]
+    erewrite (load_bytes_of_sep width_pos); [ reflexivity | ecancel_assumption ]
   | |- Memory.load ?sz ?m ?addr = Some ?v => eassumption
   | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
   | |- _ => sidecondition_hook

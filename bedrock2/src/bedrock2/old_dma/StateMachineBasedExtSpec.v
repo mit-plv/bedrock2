@@ -1,11 +1,12 @@
 Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
-Require Import coqutil.Map.Interface coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Map.Interface coqutil.Word.Bitwidth.
 Require Import bedrock2.Semantics.
 
 Section WithMem.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
 
   Context {state: Type}.
   Context (is_initial_state: state -> Prop).

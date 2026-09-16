@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.Tactics.
@@ -7,11 +7,11 @@ Require Import bedrock2.Map.Separation.
 Require Import bedrock2.SepLib.
 Require Export bedrock2.sepapp.
 
-Inductive record_field_description{width: Z}{BW: Bitwidth width}{word: word.word width}
-  {mem: map.map word Byte.byte}(R: Type): Type :=
-| mk_record_field_description(F: Type)(getter: R -> F)(pred: F -> word -> mem -> Prop).
+Inductive record_field_description{width: Z}{BW: Bitwidth width}
+  {mem: map.map (bits width) Byte.byte}(R: Type): Type :=
+| mk_record_field_description(F: Type)(getter: R -> F)(pred: F -> bits width -> mem -> Prop).
 
-Arguments mk_record_field_description{width}{BW}{word}{mem}{R}{F}.
+Arguments mk_record_field_description{width}{BW}{mem}{R}{F}.
 
 (* Given a record_field_description for some type R and a variable r of type R,
    looks up the size of that record field (might depend on r) using typeclass search,
@@ -26,7 +26,7 @@ Ltac create_predicate fields :=
   lazymatch type of fields with
   | list (record_field_description ?R) =>
       lazymatch goal with
-      | r: R |- @word.rep _ _ -> @map.rep _ _ _ -> Prop =>
+      | r: R |- Zmod _ -> @map.rep _ _ _ -> Prop =>
           let res := map_with_ltac ltac:(infer_size r) fields in
           exact (sepapps res)
       end
@@ -151,9 +151,9 @@ Module Examples_TODO_move.
 
   Section WithMem.
     Local Open Scope Z_scope.
-    Context {width: Z} {BW: Bitwidth width}
-            {word: word.word width} {word_ok: word.ok word}
-            {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
+    Context {width: Z} {BW: Bitwidth width}.
+    Local Notation word := (bits width).
+    Context {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
 
     Goal c_struct_field:(uint32_t foo_size;) =
          mk_record_field_description foo_size (uint 32).

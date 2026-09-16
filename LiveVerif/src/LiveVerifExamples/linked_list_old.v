@@ -81,7 +81,9 @@ Derive malloc_node SuchThat (fun_correct! malloc_node) As malloc_node_ok. .**/
   simpl.
   unfold sepapp.
   (* TODO: automated memory cast *)
-  instantiate (1 := {| data := r0; next := r1 |}).
+  lazymatch goal with
+  | |- context[array uintptr 2 [| ?d; ?n |] _] => instantiate (1 := {| data := d; next := n |})
+  end.
   unfold array.
   simpl.
   intros m Hm. steps.

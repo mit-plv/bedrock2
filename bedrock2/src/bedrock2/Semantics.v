@@ -3,30 +3,30 @@ Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.
 Require coqutil.Map.SortedListString.
 Require Import bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
-Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import BinIntDef coqutil.Word.Bitwidth.
 Require Export bedrock2.Memory.
 Require Import Coq.Lists.List.
 
 (* BW is not needed on the rhs, but helps infer width *)
-Definition LogItem{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
-  ((mem * String.string * list word) * (mem * list word))%type.
+Definition LogItem{width: Z}{BW: Bitwidth width}{mem: map.map (bits width) byte} :=
+  ((mem * String.string * list (bits width)) * (mem * list (bits width)))%type.
 
-Definition trace{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
+Definition trace{width: Z}{BW: Bitwidth width}{mem: map.map (bits width) byte} :=
   list LogItem.
 
-Definition ExtSpec{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
+Definition ExtSpec{width: Z}{BW: Bitwidth width}{mem: map.map (bits width) byte} :=
   (* Given a trace of what happened so far,
      the given-away memory, an action label and a list of function call arguments, *)
-  trace -> mem -> String.string -> list word ->
+  trace -> mem -> String.string -> list (bits width) ->
   (* and a postcondition on the received memory and function call results, *)
-  (mem -> list word -> Prop) ->
+  (mem -> list (bits width) -> Prop) ->
   (* tells if this postcondition will hold *)
   Prop.
 
 Existing Class ExtSpec.
 
 Module ext_spec.
-  Class ok{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte}
+  Class ok{width: Z}{BW: Bitwidth width}{mem: map.map (bits width) byte}
           {ext_spec: ExtSpec}: Prop :=
   {
     (* Given a trace of previous interactions, the action name and arguments
@@ -43,55 +43,99 @@ Module ext_spec.
         Morphisms.Proper
           (Morphisms.respectful
              (Morphisms.pointwise_relation Interface.map.rep
-               (Morphisms.pointwise_relation (list word) Basics.impl)) Basics.impl)
+               (Morphisms.pointwise_relation (list (bits width)) Basics.impl)) Basics.impl)
           (ext_spec t mGive act args);
 
     intersect: forall t mGive a args
-                      (post1 post2: mem -> list word -> Prop),
+                      (post1 post2: mem -> list (bits width) -> Prop),
         ext_spec t mGive a args post1 ->
         ext_spec t mGive a args post2 ->
         ext_spec t mGive a args (fun mReceive resvals =>
                                    post1 mReceive resvals /\ post2 mReceive resvals);
   }.
 End ext_spec.
-Arguments ext_spec.ok {_ _ _ _} _.
+Arguments ext_spec.ok {_ _ _} _.
 
 Section operators.
-  Context {width : Z} {word : Word.Interface.word width}.
+  Context {width : Z}.
+  Local Notation word := (bits width).
+  (* Shift amounts are taken modulo the bitwidth, as on RISC-V and in C compilers
+     for shifts by less than the word size. *)
+  Local Notation shamt b := (Zmod.unsigned b mod 2 ^ Z.log2 width).
+
+  Definition slu (a b : word) : word := Zmod.slu a (shamt b).
+  Definition sru (a b : word) : word := Zmod.sru a (shamt b).
+  Definition srs (a b : word) : word := Zmod.srs a (shamt b).
+  Definition ltu (a b : word) : bool := Z.ltb (Zmod.unsigned a) (Zmod.unsigned b).
+  Definition lts (a b : word) : bool := Z.ltb (Zmod.signed a) (Zmod.signed b).
   Definition interp_op1 (op : op1) : word -> word :=
     match op with
-    | op1.not => word.not
-    | op1.opp => word.opp
+    | op1.not => Zmod.not
+    | op1.opp => Zmod.opp
     end.
 
   Definition interp_binop (bop : bopname) : word -> word -> word :=
     match bop with
-    | bopname.add => word.add
-    | bopname.sub => word.sub
-    | bopname.mul => word.mul
-    | bopname.mulhuu => word.mulhuu
-    | bopname.divu => word.divu
-    | bopname.remu => word.modu
-    | bopname.and => word.and
-    | bopname.or => word.or
-    | bopname.xor => word.xor
-    | bopname.sru => word.sru
-    | bopname.slu => word.slu
-    | bopname.srs => word.srs
-    | bopname.lts => fun a b =>
-      if word.lts a b then word.of_Z 1 else word.of_Z 0
-    | bopname.ltu => fun a b =>
-      if word.ltu a b then word.of_Z 1 else word.of_Z 0
+    | bopname.add => Zmod.add
+    | bopname.sub => Zmod.sub
+    | bopname.mul => Zmod.mul
+    | bopname.mulhuu => fun a b =>
+      bits.of_Z width (Zmod.unsigned a * Zmod.unsigned b / 2 ^ width)
+    | bopname.divu => Zmod.udiv
+    | bopname.remu => Zmod.umod
+    | bopname.and => Zmod.and
+    | bopname.or => Zmod.or
+    | bopname.xor => Zmod.xor
+    | bopname.sru => sru
+    | bopname.slu => slu
+    | bopname.srs => srs
+    | bopname.lts => fun a b => if lts a b then Zmod.one else Zmod.zero
+    | bopname.ltu => fun a b => if ltu a b then Zmod.one else Zmod.zero
     | bopname.eq => fun a b =>
-      if word.eqb a b then word.of_Z 1 else word.of_Z 0
+      if Zmod.eqb a b then Zmod.one else Zmod.zero
     end.
 End operators.
+
+(* simpl and cbn expose the masked amount and the Z comparison, as the
+   program logic's automation expects. *)
+Arguments slu {width} a b /.
+Arguments sru {width} a b /.
+Arguments srs {width} a b /.
+Arguments ltu {width} a b /.
+Arguments lts {width} a b /.
+
+Section shift_amounts.
+  Context {width : Z} {BW : Bitwidth width}.
+  Local Notation word := (bits width).
+
+  Lemma shamt_small k :
+    0 <= k < width ->
+    k mod 2 ^ Z.log2 width = k.
+  Proof. destruct width_cases as [-> | ->]; intros; apply Z.mod_small; cbn; lia. Qed.
+
+  Lemma unsigned_slu_shamtZ (x : word) n :
+    0 <= n < width ->
+    Zmod.unsigned (slu x (bits.of_Z width n)) = Z.shiftl (Zmod.unsigned x) n mod 2 ^ width.
+  Proof. intros; unfold slu; rewrite shamt_of_Z_small, Zmod.unsigned_slu by assumption; reflexivity. Qed.
+
+  Lemma unsigned_sru_shamtZ (x : word) n :
+    0 <= n < width ->
+    Zmod.unsigned (sru x (bits.of_Z width n)) = Z.shiftr (Zmod.unsigned x) n.
+  Proof. intros; unfold sru; rewrite shamt_of_Z_small, Zmod.unsigned_sru by lia; reflexivity. Qed.
+
+  Lemma signed_srs_shamtZ (x : word) n :
+    0 <= n < width ->
+    Zmod.signed (srs x (bits.of_Z width n)) = Z.shiftr (Zmod.signed x) n.
+  Proof. intros; unfold srs; rewrite shamt_of_Z_small, Zmod.signed_srs by lia; reflexivity. Qed.
+End shift_amounts.
 
 Definition env: map.map String.string Syntax.func := SortedListString.map _.
 #[export] Instance env_ok: map.ok env := SortedListString.ok _.
 
 Section semantics.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
 
@@ -104,7 +148,7 @@ Section semantics.
 
     Fixpoint eval_expr (e : expr) : option word :=
       match e with
-      | expr.literal v => Some (word.of_Z v)
+      | expr.literal v => Some (bits.of_Z width v)
       | expr.var x => map.get l x
       | expr.inlinetable aSize t index =>
           index' <- eval_expr index;
@@ -121,7 +165,7 @@ Section semantics.
           Some (interp_binop op v1 v2)
       | expr.ite c e1 e2 =>
           vc <- eval_expr c;
-          eval_expr (if word.eqb vc (word.of_Z 0) then e2 else e1)
+          eval_expr (if Zmod.eqb vc (bits.of_Z width 0) then e2 else e1)
       end.
 
     Fixpoint eval_call_args (arges : list expr) :=
@@ -137,7 +181,9 @@ Section semantics.
 End semantics.
 
 Module exec. Section WithParams.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
   Section WithEnv.
@@ -176,12 +222,12 @@ Module exec. Section WithParams.
       exec (cmd.stackalloc x n body) t mSmall l post
   | if_true: forall t m l e c1 c2 post v,
       eval_expr m l e = Some v ->
-      word.unsigned v <> 0 ->
+      Zmod.unsigned v <> 0 ->
       exec c1 t m l post ->
       exec (cmd.cond e c1 c2) t m l post
   | if_false: forall e c1 c2 t m l post v,
       eval_expr m l e = Some v ->
-      word.unsigned v = 0 ->
+      Zmod.unsigned v = 0 ->
       exec c2 t m l post ->
       exec (cmd.cond e c1 c2) t m l post
   | seq: forall c1 c2 t m l post mid,
@@ -190,12 +236,12 @@ Module exec. Section WithParams.
       exec (cmd.seq c1 c2) t m l post
   | while_false: forall e c t m l post v,
       eval_expr m l e = Some v ->
-      word.unsigned v = 0 ->
+      Zmod.unsigned v = 0 ->
       post t m l ->
       exec (cmd.while e c) t m l post
   | while_true: forall e c t m l post v mid,
       eval_expr m l e = Some v ->
-      word.unsigned v <> 0 ->
+      Zmod.unsigned v <> 0 ->
       exec c t m l mid ->
       (forall t' m' l', mid t' m' l' -> exec (cmd.while e c) t' m' l' post) ->
       exec (cmd.while e c) t m l post
@@ -219,7 +265,7 @@ Module exec. Section WithParams.
           post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l') ->
       exec (cmd.interact binds action arges) t m l post.
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
+  Context {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
 
   Lemma interact_cps: forall binds action arges args t m l post mKeep mGive,
       map.split m mKeep mGive ->
@@ -346,7 +392,9 @@ Module exec. Section WithParams.
 End exec. Notation exec := exec.exec.
 
 Section WithParams.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
 

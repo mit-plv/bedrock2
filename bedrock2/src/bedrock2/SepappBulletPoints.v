@@ -1,7 +1,7 @@
 (* Notations to display a list of sepapp predicates as a bullet point list *)
 
 Require Import Coq.ZArith.ZArith.
-Require Import coqutil.Map.Interface coqutil.Word.Interface.
+Require Import coqutil.Map.Interface coqutil.Word.Bitwidth.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.SepLib.
@@ -29,9 +29,9 @@ Notation "<{ + x + .. + y + z }>" :=
 Require Import bedrock2.SepBulletPoints.
 
 Section NotationTests.
-  Context {width : Z} {BW : Bitwidth.Bitwidth width}
-          {word : Interface.word.word width}
-          {mem : map.map word Init.Byte.byte}.
+  Context {width : Z} {BW : Bitwidth.Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem : map.map word Init.Byte.byte}.
 
   (* local, just for testing, real definition is elsewhere *)
   Context (scalar: word -> word -> mem -> Prop).

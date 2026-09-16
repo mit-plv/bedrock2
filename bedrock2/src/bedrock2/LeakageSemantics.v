@@ -3,7 +3,7 @@ Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.
 Require coqutil.Map.SortedListString.
 Require Import bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
-Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import BinIntDef coqutil.Word.Bitwidth.
 Require Export bedrock2.Memory.
 Require Import bedrock2.Semantics.
 Require Import Coq.Lists.List.
@@ -45,29 +45,29 @@ Ltac simpl_rev := repeat (match goal with
                             end
                           || rewrite rev_involutive in * || cbn [List.app List.rev] in * ).
 
-Inductive leakage_event {width: Z}{BW: Bitwidth width}{word: word.word width} : Type :=
+Inductive leakage_event {width: Z}{BW: Bitwidth width} : Type :=
 | leak_unit
 | leak_bool (b : bool)
-| leak_word (w : word)
-| leak_list (l : list word).
+| leak_word (w : bits width)
+| leak_list (l : list (bits width)).
 (* ^sometimes it's convenient that one io call leaks only one event
    See Interact case of spilling transform_trace function for an example. *)
-Definition leakage {width: Z}{BW: Bitwidth width}{word: word.word width} : Type :=
+Definition leakage {width: Z}{BW: Bitwidth width} : Type :=
   list leakage_event.
 
-Definition ExtSpec{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
+Definition ExtSpec{width: Z}{BW: Bitwidth width}{mem: map.map (bits width) byte} :=
   (* Given a trace of what happened so far,
      the given-away memory, an action label and a list of function call arguments, *)
-  trace -> mem -> String.string -> list word ->
+  trace -> mem -> String.string -> list (bits width) ->
   (* and a postcondition on the received memory, function call results, and leakage trace, *)
-  (mem -> list word -> list word -> Prop) ->
+  (mem -> list (bits width) -> list (bits width) -> Prop) ->
   (* tells if this postcondition will hold *)
   Prop.
 
 Existing Class ExtSpec.
 
 Module ext_spec.
-  Class ok{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte}
+  Class ok{width: Z}{BW: Bitwidth width}{mem: map.map (bits width) byte}
           {ext_spec: ExtSpec}: Prop :=
   {
     (* Given a trace of previous interactions, the action name and arguments
@@ -84,26 +84,27 @@ Module ext_spec.
         Morphisms.Proper
           (Morphisms.respectful
              (Morphisms.pointwise_relation Interface.map.rep
-                (Morphisms.pointwise_relation (list word)
-                   (Morphisms.pointwise_relation (list word) Basics.impl))) Basics.impl)
+                (Morphisms.pointwise_relation (list (bits width))
+                   (Morphisms.pointwise_relation (list (bits width)) Basics.impl))) Basics.impl)
              (ext_spec t mGive act args);
 
     intersect: forall t mGive a args
-                      (post1 post2: mem -> list word -> list word -> Prop),
+                      (post1 post2: mem -> list (bits width) -> list (bits width) -> Prop),
         ext_spec t mGive a args post1 ->
         ext_spec t mGive a args post2 ->
         ext_spec t mGive a args (fun mReceive resvals klist =>
                                    post1 mReceive resvals klist /\ post2 mReceive resvals klist);
   }.
 End ext_spec.
-Arguments ext_spec.ok {_ _ _ _} _.
+Arguments ext_spec.ok {_ _ _} _.
 
-Definition PickSp {width: Z}{BW: Bitwidth width}{word: word.word width} : Type :=
-  leakage -> word.
+Definition PickSp {width: Z}{BW: Bitwidth width} : Type :=
+  leakage -> bits width.
 Existing Class PickSp.
 
 Section binops.
-  Context {width : Z} {BW : Bitwidth width} {word : Word.Interface.word width}.
+  Context {width : Z} {BW : Bitwidth width}.
+  Local Notation word := (bits width).
   Definition leak_op1 (bop : op1) (x : word) : leakage :=
     match bop with
     | op1.not => nil
@@ -118,7 +119,9 @@ Section binops.
 End binops.
 
 Section semantics.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
 
@@ -130,7 +133,7 @@ Section semantics.
 
     Fixpoint eval_expr (e : expr) (k : leakage) : option (word * leakage) :=
       match e with
-      | expr.literal v => Some (word.of_Z v, k)
+      | expr.literal v => Some (bits.of_Z width v, k)
       | expr.var x => 'v <- map.get l x; Some (v, k)
       | expr.inlinetable aSize t index =>
           '(index', k') <- eval_expr index k;
@@ -149,7 +152,7 @@ Section semantics.
           Some (interp_binop op v1 v2, leak_binop op v1 v2 ++ k'')
       | expr.ite c e1 e2 =>
           '(vc, k') <- eval_expr c k;
-          let b := word.eqb vc (word.of_Z 0) in
+          let b := Zmod.eqb vc (bits.of_Z width 0) in
           eval_expr (if b then e2 else e1) (leak_bool (negb b) :: k')
       end.
 
@@ -166,7 +169,9 @@ Section semantics.
 End semantics.
 
 Module exec. Section WithParams.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec} {pick_sp: PickSp}.
   Section WithEnv.
@@ -206,12 +211,12 @@ Module exec. Section WithParams.
       exec (cmd.stackalloc x n body) k t mSmall l post
   | if_true: forall k t m l e c1 c2 post v k',
       eval_expr m l e k = Some (v, k') ->
-      word.unsigned v <> 0 ->
+      Zmod.unsigned v <> 0 ->
       exec c1 (leak_bool true :: k') t m l post ->
       exec (cmd.cond e c1 c2) k t m l post
   | if_false: forall e c1 c2 k t m l post v k',
       eval_expr m l e k = Some (v, k') ->
-      word.unsigned v = 0 ->
+      Zmod.unsigned v = 0 ->
       exec c2 (leak_bool false :: k') t m l post ->
       exec (cmd.cond e c1 c2) k t m l post
   | seq: forall c1 c2 k t m l post mid,
@@ -220,12 +225,12 @@ Module exec. Section WithParams.
       exec (cmd.seq c1 c2) k t m l post
   | while_false: forall e c k t m l post v k',
       eval_expr m l e k = Some (v, k') ->
-      word.unsigned v = 0 ->
+      Zmod.unsigned v = 0 ->
       post (leak_bool false :: k') t m l ->
       exec (cmd.while e c) k t m l post
   | while_true: forall e c k t m l post v k' mid,
       eval_expr m l e k = Some (v, k') ->
-      word.unsigned v <> 0 ->
+      Zmod.unsigned v <> 0 ->
       exec c (leak_bool true :: k') t m l mid ->
       (forall k'' t' m' l', mid k'' t' m' l' -> exec (cmd.while e c) k'' t' m' l' post) ->
       exec (cmd.while e c) k t m l post
@@ -249,7 +254,7 @@ Module exec. Section WithParams.
           post (leak_list klist :: k') (cons ((mGive, action, args), (mReceive, resvals)) t) m' l') ->
       exec (cmd.interact binds action arges) k t m l post.
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
+  Context {mem_ok: map.ok mem} {ext_spec_ok: ext_spec.ok ext_spec}.
 
   Lemma interact_cps: forall binds action arges args k' k t m l post mKeep mGive,
       map.split m mKeep mGive ->
@@ -378,7 +383,9 @@ Module exec. Section WithParams.
 End exec. Notation exec := exec.exec.
 
 Section WithParams.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec} {pick_sp : PickSp}.
 

@@ -138,14 +138,20 @@ Ltac is_ground' var_allowed e :=
   end.
 Ltac is_ground e := is_ground' ltac:(fun _ => fail) e.
 
+(* A bare power of two stays as it is: it is the modulus of the [bits] types, and
+   the lemmas about them are stated with [2 ^ n]. *)
 Ltac cbv_if_number e :=
   let t := type of e in
-  lazymatch rdelta t with
-  | Z => eval cbv in e
-  | N => eval cbv in e
-  | nat => eval cbv in e
-  | positive => eval cbv in e
-  | _ => e
+  lazymatch e with
+  | Z.pow 2 _ => e
+  | _ =>
+      lazymatch rdelta t with
+      | Z => eval cbv in e
+      | N => eval cbv in e
+      | nat => eval cbv in e
+      | positive => eval cbv in e
+      | _ => e
+      end
   end.
 
 Inductive groundcbv_delayed :=.

@@ -16,7 +16,7 @@ Require Import Coq.micromega.Lia.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require coqutil.Map.SortedListZ.
 Require Import coqutil.Datatypes.ZList.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
@@ -49,8 +49,9 @@ Proof.
 Qed.
 
 Section WithMem.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
 
   Definition read_RDH(s: e1000_state)(post: word -> e1000_state -> Prop): Prop :=
     False. (* TODO add is mGive and mReceive *)
@@ -118,7 +119,7 @@ Section WithMem.
       <{ * circular_buffer_slice tx_desc s.(tx_queue_capacity) s.(tx_queue_head)
                                  s.(tx_queue)[:len packets] /[tdba]
          * layout_absolute (List.map (fun pkt => array' (uint 8) pkt) packets)
-                           (List.map word.of_Z buf_addrs)
+                           (List.map (Zmod.of_Z (2 ^ width)) buf_addrs)
         }> mRcv ->
       e1000_step s ((map.empty, "MMIOREAD", [| /[E1000_TDH] |]), (mRcv, [|new_TDH|]))
         s{{ tx_queue := s.(tx_queue)[:len packets];
@@ -142,7 +143,7 @@ Section WithMem.
       <{ * circular_buffer_slice tx_desc s.(tx_queue_capacity) s.(tx_queue_head)
                                  new_descs /[tdba]
          * layout_absolute (List.map (fun pkt => array' (uint 8) pkt) packets)
-                           (List.map word.of_Z buf_addrs)
+                           (List.map (Zmod.of_Z (2 ^ width)) buf_addrs)
         }> mGive ->
       e1000_step s ((mGive, "MMIOWRITE", [| /[E1000_TDT]; new_TDT |]), (map.empty, nil))
         s{{ tx_queue := (s.(tx_queue) ++ new_descs)%list;
@@ -154,8 +155,10 @@ Section WithMem.
 
   Axiom TODO: False.
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {mem_ok: map.ok mem}.
 
+  (* Keep [inversion] from decomposing register addresses into the representation. *)
+  Local Opaque Zmod.of_Z.
   Lemma steps_agree_on_unique_state_fields: forall s1 s2 e s1' s2',
       agree_on_unique_state_fields s1 s2 ->
       e1000_step s1 e s1' ->
@@ -166,11 +169,9 @@ Section WithMem.
     intros. destruct s1 as [ [ ] ]; destruct s2 as [ [ ] ]; cbn -[map.empty map.rep] in *.
     inversion H0; clear H0; subst; inversion H1; clear H1; subst; record.simp; fwd.
     all: try lazymatch goal with
-      | H: /[_] = /[_] |- _ =>
-          eapply word.of_Z_inj_small in H;
-          [ discriminate H
-          | destruct width_cases as [W | W]; rewrite W; cbv;
-            clear; intuition congruence .. ]
+      | H: Zmod.Private_to_Z /[_] = Zmod.Private_to_Z /[_] |- _ =>
+          apply Zmod.unsigned_inj, bits.of_Z_inj in H;
+          destruct width_cases as [W | W]; rewrite W in H; cbv in H; discriminate H
       end.
     - lazymatch goal with
       | H1: _ = (_ + _) mod _, H2: _ = (_ + _) mod _ |- _ =>
@@ -220,11 +221,9 @@ Section WithMem.
     apply StateMachineBasedExtSpec.ext_spec_ok.
     intros. inversion H3; subst; clear H3; inversion H4; subst; clear H4.
     all: try lazymatch goal with
-      | H: /[_] = /[_] |- _ =>
-          eapply word.of_Z_inj_small in H;
-          [ discriminate H
-          | destruct width_cases as [W | W]; rewrite W; cbv;
-            clear; intuition congruence .. ]
+      | H: Zmod.Private_to_Z /[_] = Zmod.Private_to_Z /[_] |- _ =>
+          apply Zmod.unsigned_inj, bits.of_Z_inj in H;
+          destruct width_cases as [W | W]; rewrite W in H; cbv in H; discriminate H
       end.
     - (* read_RDH_step *)
       reflexivity.
@@ -280,6 +279,7 @@ Section WithMem.
     - reflexivity.
     - case TODO.
   Qed.
+  Local Transparent Zmod.of_Z.
 
   Definition trace_state_satisfies(t: trace)(P: e1000_state -> Prop): Prop :=
     (exists s, trace_can_lead_to is_initial_e1000_state e1000_step t s) /\

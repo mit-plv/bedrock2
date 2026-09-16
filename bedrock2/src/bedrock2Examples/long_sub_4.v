@@ -6,7 +6,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope.
 (** * Specification *)
 
 Local Notation eval := (fold_right (fun (a : word) (s : Z) => a + 2^64*s) 0).
-Local Notation array := (array scalar (word.of_Z 8)). (* 8 = array stride *)
+Local Notation array := (array scalar 8). (* 8 = array stride *)
 Local Instance spec_of_long_sub_4 : spec_of "long_sub_4" :=
   fnspec! "long_sub_4" (p_r p_x p_y b : word) / (x y r : list word) R ~> b_out,
   { requires t m := (* memory [m] contains 3 arrays with arbitrary aliasing *)

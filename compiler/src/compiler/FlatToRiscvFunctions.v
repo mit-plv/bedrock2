@@ -30,7 +30,6 @@ Require Import compiler.load_save_regs_correct.
 Require Import compiler.eqexact.
 Require Import compiler.RiscvWordProperties.
 Require Import compiler.on_hyp_containing.
-Require Import coqutil.Word.DebugWordEq.
 Require Import compiler.MemoryLayout.
 Require Import coqutil.Map.MapEauto.
 Require Import compiler.Registers.
@@ -48,8 +47,8 @@ Local Arguments Z.sub: simpl never.
 Section Proofs.
   Context {iset: Decode.InstructionSet}.
   Context {pos_map: map.map String.string Z}.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
-  Context {word_ok: word.ok word}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {locals: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {env: map.map String.string (list Z * list Z * FlatImp.stmt Z)}.
@@ -58,7 +57,6 @@ Section Proofs.
   Context {RVM: Machine.RiscvProgramWithLeakage M word}.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {ext_spec: LeakageSemantics.ExtSpec}.
-  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context {locals_ok: map.ok locals}.
   Context {mem_ok: map.ok mem}.
   Context {pos_map_ok: map.ok pos_map}.
@@ -68,9 +66,9 @@ Section Proofs.
   Context (compile_ext_call: pos_map -> Z -> Z -> stmt Z -> list Instruction).
   Context (leak_ext_call: word -> pos_map -> Z -> Z -> stmt Z -> list word -> list LeakageEvent).
 
-  Add Ring wring : (word.ring_theory (word := word))
+  Add Ring wring : (Zmod.ring_theory (2 ^ width))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
+       morphism (word.ring_morph (width := width)),
        constants [word_cst]).
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
@@ -96,7 +94,7 @@ Section Proofs.
       map.get impls f = Some impl ->
       iff1 (functions base finfo impls)
            (functions base finfo (map.remove impls f) *
-            program iset (word.add base (word.of_Z pos)) (compile_function finfo pos impl))%sep.
+            program iset (Zmod.add base (bits.of_Z width pos)) (compile_function finfo pos impl))%sep.
   Proof.
     intros. unfold functions.
     match goal with
@@ -156,11 +154,11 @@ Section Proofs.
     | H: fits_stack _ _ _ ?Code |- fits_stack _ _ _ ?Code => exact H
     | H: map.get ?R RegisterNames.sp = Some _ |- map.get ?R RegisterNames.sp = Some _ => exact H
     | |- ?G => assert_fails (has_evar G);
-               solve [ simpl_addrs; solve_word_eq word_ok
+               solve [ simpl_addrs; solve_word_eq
                      | reflexivity
                      | assumption
                      | solve_divisibleBy4
-                     | solve_valid_machine word_ok ]
+                     | solve_valid_machine ]
     | |- iff1 ?x _ =>
       simpl_MetricRiscvMachine_get_set;
       (tryif is_var x then
@@ -184,12 +182,12 @@ Section Proofs.
     end.
 
   Declare Scope word_scope.
-  Notation "! n" := (word.of_Z n) (at level 0, n at level 0, format "! n") : word_scope.
+  Notation "! n" := (bits.of_Z width n) (at level 0, n at level 0, format "! n") : word_scope.
   Notation "# n" := (Z.of_nat n) (at level 0, n at level 0, format "# n") : word_scope.
-  Infix "+" := word.add : word_scope.
-  Infix "-" := word.sub : word_scope.
-  Infix "*" := word.mul : word_scope.
-  Notation "- x" := (word.opp x) : word_scope.
+  Infix "+" := Zmod.add : word_scope.
+  Infix "-" := Zmod.sub : word_scope.
+  Infix "*" := Zmod.mul : word_scope.
+  Notation "- x" := (Zmod.opp x) : word_scope.
 
   Delimit Scope word_scope with word.
 
@@ -220,9 +218,9 @@ Section Proofs.
     simpl in *;
     repeat match goal with
            | |- exists _, _ => eexists
-           end; ssplit; simpl_word_exprs word_ok;
+           end; ssplit; simpl_word_exprs;
     match goal with
-    | |- _ => solve_word_eq word_ok
+    | |- _ => solve_word_eq
     | |- (_ <= _)%metricsL =>
         scost_unfold;
         repeat match goal with
@@ -236,8 +234,8 @@ Section Proofs.
     | |- exists _ _, _ => do 2 eexists; split; [align_trace|]; split; [reflexivity|]; intros;
                    rewrite fix_step; simpl; simpl_rev; repeat rewrite <- app_assoc; simpl;
                    cbn [leakage_events_rel leakage_events];
-                   try solve [repeat solve_word_eq word_ok || f_equal]
-    | |- _ => solve [ solve_valid_machine word_ok ]
+                   try solve [repeat solve_word_eq || f_equal]
+    | |- _ => solve [ solve_valid_machine ]
     | H:subset (footpr _) _
       |- subset (footpr _) _ => eapply rearrange_footpr_subset; [ exact H | solve [ wwcancel ] ]
     | |- _ => solve [ rewrite ?of_list_list_union in *; eauto 8 with map_hints ]
@@ -248,7 +246,7 @@ Section Proofs.
     simpl_MetricRiscvMachine_get_set;
     simpl_g_get;
     rewrite ?@length_save_regs, ?@length_load_regs in *;
-    simpl_word_exprs word_ok;
+    simpl_word_exprs;
     repeat match goal with
            | |- _ /\ _ => split
            | |- exists _, _ => eexists
@@ -396,14 +394,14 @@ Section Proofs.
   Lemma leakage_events_app a i1 i2 l1 l2 :
     length i1 = length l1 ->
     leakage_events a (i1 ++ i2) (l1 ++ l2) =
-      leakage_events a i1 l1 ++ leakage_events (word.add a (word.of_Z (4 * Z.of_nat (length i1)))) i2 l2.
+      leakage_events a i1 l1 ++ leakage_events (Zmod.add a (bits.of_Z width (4 * Z.of_nat (length i1)))) i2 l2.
   Proof.
     intros. revert a l1 H. induction i1; intros ad l1 H.
     - simpl. destruct l1; [|simpl in H; congruence].
-      f_equal. solve_word_eq word_ok.
+      f_equal. solve_word_eq.
     - simpl. destruct l1; [simpl in H; congruence|]. simpl. f_equal.
       f_equal. simpl in H. injection H as H. rewrite IHi1 by assumption. f_equal.
-      f_equal. solve_word_eq word_ok.
+      f_equal. solve_word_eq.
   Qed.
 
   Lemma length_load_regs i l x :
@@ -420,6 +418,11 @@ Section Proofs.
     intros. simpl. rewrite IHl. reflexivity.
   Qed.
     
+  (* The branch proofs below [simpl] the [execute] term of the branch instruction;
+     without this, [simpl] also turns its [Zmod.eqb] tests into a match on the
+     representation, which [simulate'] does not recognise. *)
+  Local Arguments Zmod.eqb : simpl never.
+
   Lemma compile_bcond_by_inverting_correct: forall cond (amt: Z) (initialL: RiscvMachineL) l b
                                                    (Exec R Rexec: mem -> Prop),
       subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
@@ -433,16 +436,16 @@ Section Proofs.
       (* [verify] (and decode-encode-id) only enforces divisibility by 2 because there could be
          compressed instructions, but we don't support them so we require divisibility by 4: *)
       amt mod 4 = 0 ->
-      word.unsigned initialL.(getPc) mod 4 = 0 ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      Zmod.unsigned initialL.(getPc) mod 4 = 0 ->
+      initialL.(getNextPc) = Zmod.add initialL.(getPc) (bits.of_Z width 4) ->
       mcomp_sat (Run.run1 iset) initialL (fun (finalL: RiscvMachineL) =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
         finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
-        finalL.(getPc) = word.add initialL.(getPc)
-                                  (word.of_Z (if b then 4 else amt)) /\
-        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getPc) = Zmod.add initialL.(getPc)
+                                  (bits.of_Z width (if b then 4 else amt)) /\
+        finalL.(getNextPc) = Zmod.add finalL.(getPc) (bits.of_Z width 4) /\
         finalL.(getMetrics) =
           (if b then
              (Platform.MetricLogging.addMetricLoads 1 (Platform.MetricLogging.addMetricInstructions 1 initialL.(getMetrics)))
@@ -464,7 +467,7 @@ Section Proofs.
         simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); intuition.
   Qed.
   
-  Local Notation exec e pick_sp := (@exec _ _ _ _ _ _ _ _ PostSpill isRegZ pick_sp e).
+  Local Notation exec e pick_sp := (@exec _ _ _ _ _ _ _ PostSpill isRegZ pick_sp e).
 
   Definition cost_compile_spec mc :=
     Platform.MetricLogging.addMetricInstructions 95
@@ -527,9 +530,9 @@ Section Proofs.
       insts ->
       valid_FlatImp_fun (argnames, retnames, body) ->
       pos mod 4 = 0 ->
-      word.unsigned program_base mod 4 = 0 ->
+      Zmod.unsigned program_base mod 4 = 0 ->
       map.get (getRegs mach) RegisterNames.ra = Some ret_addr ->
-      word.unsigned ret_addr mod 4 = 0 ->
+      Zmod.unsigned ret_addr mod 4 = 0 ->
       getPc mach = program_base + !pos ->
       mach.(getTrace) = Some initialKL ->
       iff1 (allx g)
@@ -649,7 +652,7 @@ Section Proofs.
     eapply runsToStep. {
       eapply run_store_word with (rs1 := RegisterNames.sp) (rs2 := RegisterNames.ra)
                                  (addr := p_sp - !bytes_per_word);
-        try solve [sidecondition | simpl; solve_divisibleBy4]; try solve_word_eq word_ok.
+        try solve [sidecondition | simpl; solve_divisibleBy4]; try solve_word_eq.
         simpl.
         rewrite map.get_put_diff by (clear; cbv; congruence).
         eassumption.
@@ -698,7 +701,7 @@ Section Proofs.
         - apply valid_FlatImp_var_implies_valid_register. }
       1: eassumption.
       2: reflexivity.
-      1: solve_word_eq word_ok.
+      1: solve_word_eq.
     }
 
     simpl.
@@ -789,7 +792,7 @@ Section Proofs.
             destruct_one_match_hyp; discriminate.
         - rewrite map.get_empty in C. discriminate.
       }
-      { rewrite map.get_put_same. f_equal. unfold framelength. solve_word_eq word_ok. }
+      { rewrite map.get_put_same. f_equal. unfold framelength. solve_word_eq. }
       {
         eapply preserve_regs_initialized_after_put.
         assumption.
@@ -797,7 +800,7 @@ Section Proofs.
       { exists remaining_stack, old_scratch. ssplit.
         - simpl_addrs. blia.
         - blia.
-        - wcancel_assumption.
+        - unfold framelength. wcancel_assumption.
       }
       { simpl. intros. rewrite PSP.
         cbv [fun_leakage fun_leakage_helper].
@@ -807,7 +810,7 @@ Section Proofs.
         f_equal. f_equal. f_equal. 2: reflexivity. f_equal.
         remember (p_sp + _) as new_sp. eassert (Esp: new_sp = _).
         2: { rewrite Esp. reflexivity. } 
-        subst. solve_word_eq word_ok. }
+        subst. solve_word_eq. }
     }
 
     unfold goodMachine.
@@ -1089,7 +1092,7 @@ Section Proofs.
           f_equal.
           subst FL.
           simpl_addrs.
-          solve_word_eq word_ok. }
+          solve_word_eq. }
         { rewrite !map.get_put_diff by assumption.
           clear A.
           (* initialL_regs to middle_regs *)
@@ -1124,7 +1127,7 @@ Section Proofs.
 
     ssplit.
     + eassumption.
-    + solve_word_eq word_ok.
+    + solve_word_eq.
     + exact OD.
     + assert ((Datatypes.length (modVars_as_list Z.eqb body)) <= 29)%nat by
         auto using NoDup_valid_FlatImp_vars_bound_length, NoDup_modVars_as_list, modVars_as_list_valid_FlatImp_var.
@@ -1185,8 +1188,8 @@ Section Proofs.
       2: { rewrite Esp in *. rewrite H2p7p2. f_equal. repeat f_equal.
            cbv [leakage_events_rel]. rewrite leakage_events_app.
            2: { rewrite length_load_regs, length_leak_load_regs. reflexivity. }
-           rewrite length_load_regs. simpl. repeat solve_word_eq word_ok || f_equal. }
-      subst. solve_word_eq word_ok.
+           rewrite length_load_regs. simpl. repeat solve_word_eq || f_equal. }
+      subst. solve_word_eq.
       
     + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
              middle_regs into lL.
@@ -1401,7 +1404,7 @@ Section Proofs.
       replace (bitwidth iset) with width.
       replace (Memory.bytes_per_word width) with bytes_per_word by reflexivity.
       simpl_addrs.
-      solve_word_eq word_ok.
+      solve_word_eq .
     + eapply preserve_regs_initialized_after_put.
       eapply preserve_regs_initialized_after_put.
       eapply preserve_regs_initialized_after_putmany_of_list_zip; cycle 1; try eassumption.
@@ -1431,6 +1434,23 @@ Section Proofs.
            | H : _ /\ _ |- _ => destruct H
            end;
     MetricsToRiscv.solve_MetricLog.
+
+  (* The machine shifts by the raw immediate of Slli/Srli/Srai, while the source
+     semantics masks the amount; the instruction is only valid for amounts below
+     the bitwidth, where the two agree. *)
+  Ltac shift_imm_range :=
+    lazymatch goal with
+    | |- 0 <= ?c < width =>
+        match goal with
+        | H: context[ptsto_instr _ _ (IInstruction ?i)] |- _ =>
+            let V := fresh in
+            assert (Encode.verify (IInstruction i) iset \/ valid_InvalidInstruction (IInstruction i)) as V
+              by (eapply invert_ptsto_instr; ecancel_assumption);
+            destruct V as [ [V _] | (? & _ & ?) ]; [ | discriminate ];
+            unfold Encode.respects_bounds in V; simpl in V; unfold Encode.verify_I_shift_66 in V;
+            rewrite bitwidth_matches in V; blia
+        end
+    end.
 
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
@@ -1628,14 +1648,14 @@ Section Proofs.
       | H: pos0 mod 4 = 0 |- _ => rename H into Mo; move Mo after V
       end.
       match goal with
-      | H: word.unsigned program_base mod 4 = 0 |- _ => rename H into Mo'; move Mo' after Mo
+      | H: Zmod.unsigned program_base mod 4 = 0 |- _ => rename H into Mo'; move Mo' after Mo
       end.
       eassert (GPC: mach.(getPc) = program_base + !pos0). {
-        subst mach. simpl. solve_word_eq word_ok.
+        subst mach. simpl. solve_word_eq.
       }
       move GPC after A.
       rename pos into pos_orig, pos0 into pos.
-      replace (!(4 * #1)) with (word.of_Z (word := word) 4). 2: { solve_word_eq word_ok. }
+      replace (!(4 * #1)) with (bits.of_Z width 4). 2: { solve_word_eq. }
       assert (OL: map.of_list_zip argnames argvs = Some st0) by assumption.
       move OL after Exb.
       set (stack_trash := old_stackvals).
@@ -1658,7 +1678,7 @@ Section Proofs.
            FlatImpConstraints.uses_standard_arg_regs body ->
            valid_FlatImp_vars body ->
            pos mod 4 = 0 ->
-           word.unsigned program_base mod 4 = 0 ->
+           Zmod.unsigned program_base mod 4 = 0 ->
            getPc initialL = program_base + !pos ->
            getTrace initialL = Some initialKL ->
            iff1 (FlatToRiscvCommon.allx g)
@@ -1709,7 +1729,7 @@ Section Proofs.
         subst mach. cbn. eauto with map_hints.
       }
       move Gra after GPC.
-      assert (word.unsigned ret_addr mod 4 = 0) as RaM by (subst ret_addr; solve_divisibleBy4).
+      assert (Zmod.unsigned ret_addr mod 4 = 0) as RaM by (subst ret_addr; solve_divisibleBy4).
       move RaM before Gra.
       replace mid_log with t in *.
       forget (Datatypes.length binds) as binds_count.
@@ -1755,7 +1775,7 @@ Section Proofs.
     - idtac "Case compile_stmt_correct/SLoad".
       progress unfold Memory.load, Memory.load_Z in *. fwd.
 
-      let Hl := constr:(SeparationMemory.sep_of_load_bytes _ _ _ _ ltac:(eassumption)) in
+      let Hl := constr:(SeparationMemory.sep_of_load_bytes width_pos _ _ _ _ ltac:(eassumption)) in
       let m := match type of Hl with _ ?m => m end in
       let Hm := match goal with H : context[eq m] |- _ => H end in
       epose proof seplog_subst_eq (mH:=m) Hm ltac:(ecancel) Hl as Hmem.
@@ -1763,7 +1783,7 @@ Section Proofs.
       
       eapply runsTo_det_step_with_valid_machine; [ assumption | simulate' | ].
       { unfold Memory.load, Memory.load_Z in *.
-        erewrite SeparationMemory.load_bytes_of_sep; trivial.
+        erewrite (SeparationMemory.load_bytes_of_sep width_pos); trivial.
         { ecancel_assumption. }
         { erewrite length_load_bytes; eauto. }
         { case sz, BW as [ [ -> | -> ] ]; cbv; clear; discriminate. } }
@@ -1778,13 +1798,13 @@ Section Proofs.
       simpl_MetricRiscvMachine_get_set.
       unfold Memory.store, Memory.store_Z, store_bytes in *; fwd.
 
-      let Hl := constr:(SeparationMemory.sep_of_load_bytes _ _ _ _ ltac:(eassumption)) in
+      let Hl := constr:(SeparationMemory.sep_of_load_bytes width_pos _ _ _ _ ltac:(eassumption)) in
       let m := match type of Hl with _ ?m => m end in
       let Hm := match goal with H : context[eq m] |- _ => H end in
       epose proof seplog_subst_eq (mH:=m) Hm ltac:(ecancel) Hl as Hmem.
 
       match goal with H : context[unchecked_store_bytes ?m ?a ?v] |- _ =>
-          edestruct (fun n _bs R => SeparationMemory.uncurried_store_bytes_of_sep a n _bs v R initialL_mem) as (?&Hstore&?);
+          edestruct (fun n _bs R => SeparationMemory.uncurried_store_bytes_of_sep width_pos a n _bs v R initialL_mem) as (?&Hstore&?);
           ssplit; [ecancel_assumption|..]
       end.
       { eapply length_load_bytes; eassumption. }
@@ -1804,11 +1824,11 @@ Section Proofs.
         { Morphisms.f_equiv. apply map.map_ext; intros i.
           rewrite !map.get_putmany_dec; destruct (map.get (_$@_)) eqn:?; trivial.
           rewrite map.get_remove_many_notin; trivial; intros ?%map.in_keys_inv.
-          erewrite ?map.get_of_list_word_at, ?map.get_of_list_word_at_domain, ?nth_error_None, ?LittleEndianList.length_le_split, ?length_load_bytes in  * by eauto; contradiction. }
+          erewrite ?(map.get_of_list_word_at width_pos), ?(map.get_of_list_word_at_domain width_pos), ?nth_error_None, ?LittleEndianList.length_le_split, ?length_load_bytes in  * by eauto; contradiction. }
         { intros i ? ? L%map.get_remove_many_Some_notin.
-          rewrite  ?map.get_of_list_word_at; intros ?%nth_error_Some_bound_index.
+          rewrite  ?(map.get_of_list_word_at width_pos); intros ?%nth_error_Some_bound_index.
           epose proof (fun v H => L (map.in_keys _ i v H)) as Hq; edestruct map.get eqn:Ei in Hq; eauto.
-          erewrite ?map.get_of_list_word_at, ?nth_error_None, ?LittleEndianList.length_le_split, ?length_load_bytes in * by eauto; blia. } }
+          erewrite ?(map.get_of_list_word_at width_pos), ?nth_error_None, ?LittleEndianList.length_le_split, ?length_load_bytes in * by eauto; blia. } }
 
     - idtac "Case compile_stmt_correct/SInlinetable".
       inline_iff1.
@@ -1818,7 +1838,7 @@ Section Proofs.
       }
       run1det.
       assert (Memory.load sz initialL_mem (program_base + !pos + !4 + index + !0) = Some v). {
-        rewrite word.add_0_r.
+        rewrite Zmod.add_0_r.
         eapply load_from_compile_byte_list. 1: eassumption.
         wcancel_assumption.
       }
@@ -1907,7 +1927,7 @@ Section Proofs.
           simpl_MetricRiscvMachine_get_set;
           simpl_g_get;
           rewrite ?@length_save_regs, ?@length_load_regs in *;
-          simpl_word_exprs word_ok;
+          simpl_word_exprs;
           ssplit;
           cycle -6.
         { reflexivity. }
@@ -1922,7 +1942,7 @@ Section Proofs.
         { match goal with
           | |- ?G => let t := type of Ab in replace G with t; [exact Ab|f_equal]
           end.
-          1: solve_word_eq word_ok.
+          1: solve_word_eq.
           rewrite @coqutil.Datatypes.List.length_flat_map with (n := Z.to_nat bytes_per_word).
           - simpl_addrs. rewrite !Z2Nat.id by blia. rewrite <- BPW. rewrite <- Z_div_exact_2; blia.
           - clear. intros. eapply LittleEndianList.length_le_split.
@@ -1947,7 +1967,7 @@ Section Proofs.
           | |- map.extends (map.put _ ?k ?v1) (map.put _ ?k ?v2) => replace v1 with v2
           end.
           - apply map.put_extends. assumption.
-          - simpl_addrs. solve_word_eq word_ok. }
+          - simpl_addrs. solve_word_eq. }
         { eauto with map_hints. }
         { eauto with map_hints. }
         { eauto with map_hints. }
@@ -2040,10 +2060,7 @@ Section Proofs.
            | y: operand |- _ =>
                destr y; simpl in *;
                [ run1det; run1done;
-                 rewrite ?word.srs_ignores_hibits,
-                   ?word.sru_ignores_hibits,
-                   ?word.slu_ignores_hibits,
-                   ?word.mulhuu_simpl,
+                 rewrite ?word.mulhuu_simpl,
                    ?word.divu0_simpl,
                    ?word.modu0_simpl;
                  eauto 8 with map_hints
@@ -2054,9 +2071,10 @@ Section Proofs.
        |- context[Z.eqb (-1) ?c] => destruct (Z.eqb_spec (-1) c) as [<-|] in *; simpl in *
        | _ =>  shelve end.
       { run1det; run1done. change (-1) with (Z.opp 1).
-        rewrite word.ring_morph_opp, word.mul_m1_r, word.sub_0_l; eauto with map_hints. }
+        rewrite Zmod.of_Z_opp, Zmod.mul_m1_r, Zmod.sub_0_l; eauto with map_hints. }
       all: [> ]. Unshelve.
 
+      all: try (erewrite (shamt_of_Z_small _) in * by shift_imm_range).
       all: match goal with
            | H: context[InvalidInstruction (-1)] |- _ =>  assert (Encode.verify (InvalidInstruction (-1)) iset \/
                   valid_InvalidInstruction (InvalidInstruction (-1))) by (eapply invert_ptsto_instr; ecancel_assumption)
@@ -2116,7 +2134,7 @@ Section Proofs.
 
           intros. destruct_RiscvMachine mid. fwd. run1done. 1: finishcost.
           intros. simpl. repeat rewrite <- app_assoc in *. rewrite H4p9p2.
-          repeat solve_word_eq word_ok || f_equal.
+          repeat solve_word_eq || f_equal.
 
     - idtac "Case compile_stmt_correct/SIf/Else".
       (* execute branch instruction, which will jump over then-branch *)
@@ -2212,8 +2230,8 @@ Section Proofs.
             rewrite fix_step. simpl. simpl_rev. rewrite H3p4p2.
             rewrite List.skipn_app_r by reflexivity. cbn [FixEq.Let_In_pf_nd].
             simpl_rev. repeat rewrite <- app_assoc.
-            cbn [leakage_events_rel leakage_events].
-            repeat solve_word_eq word_ok || f_equal. reflexivity. }
+            cbn [leakage_events_rel leakage_events List.app].
+            repeat solve_word_eq || f_equal. reflexivity. }
           simpl in *. intros. destruct_RiscvMachine middle. fwd.
           (* jump back to beginning of loop: *)
           eapply runsToStep.
@@ -2234,9 +2252,9 @@ Section Proofs.
             simpl_rev. repeat rewrite <- app_assoc.
             cbn [leakage_events_rel leakage_events].
             eassert (rev finalKL ++ _ = _) as ->. 2: rewrite H3p12p2.
-            { repeat rewrite <- app_assoc. simpl. repeat solve_word_eq word_ok || f_equal. }
-            rewrite List.skipn_app_r by reflexivity.
-            repeat solve_word_eq word_ok || reflexivity || f_equal. }
+            { repeat rewrite <- app_assoc. simpl. repeat solve_word_eq || f_equal. }
+            cbn [List.app]. rewrite ?List.skipn_app_r by reflexivity.
+            repeat solve_word_eq || reflexivity || f_equal. }
           (* at end of loop, just prove that computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd. run1done. 1: finishcost.
           intros. rewrite H3p4p2. rewrite List.skipn_app_r by reflexivity.
@@ -2244,11 +2262,11 @@ Section Proofs.
           simpl_rev. repeat rewrite <- app_assoc.
             cbn [leakage_events_rel leakage_events].
             eassert (rev finalKL ++ _ = _) as ->. 2: rewrite H3p12p2.
-            { repeat rewrite <- app_assoc. simpl. repeat solve_word_eq word_ok || f_equal. }
+            { repeat rewrite <- app_assoc. simpl. repeat solve_word_eq || f_equal. }
             rewrite List.skipn_app_r by reflexivity.
-            repeat solve_word_eq word_ok || reflexivity || f_equal.
+            repeat solve_word_eq || reflexivity || f_equal.
             eassert (rev finalKL0 ++ _ = _) as ->. 2: rewrite H3p22p2.
-            { repeat rewrite <- app_assoc. simpl. repeat solve_word_eq word_ok || f_equal. }
+            { repeat rewrite <- app_assoc. simpl. repeat solve_word_eq || f_equal. }
             reflexivity.
 
         * (* false: done, jump over body2 *)
@@ -2260,7 +2278,7 @@ Section Proofs.
           simpl_MetricRiscvMachine_get_set.
           intros. destruct_RiscvMachine mid. fwd. run1done. 1: finishcost.
           rewrite H3p4p2. rewrite List.skipn_app_r by reflexivity.
-          cbn [FixEq.Let_In_pf_nd]. repeat solve_word_eq word_ok || f_equal.
+          cbn [FixEq.Let_In_pf_nd]. repeat solve_word_eq || f_equal.
 
     - idtac "Case compile_stmt_correct/SSeq".
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]

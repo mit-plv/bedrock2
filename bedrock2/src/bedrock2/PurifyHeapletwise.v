@@ -1,7 +1,7 @@
 Require Import Ltac2.Ltac2.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Map.Interface.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Tactics.fold_hyps coqutil.Tactics.foreach_hyp.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.HeapletwiseHyps.
@@ -29,8 +29,8 @@ Ltac puri_simpli_zify_hyp fastMode h t :=
              let tp := type of hp in
              bottom_up_simpl_in_hyp_of_type hp tp;
              let tp := type of hp in
-             let wok := get_word_ok_or_dummy in
-             let zo := zify_hyp_option wok hp tp in
+             let bw := get_bitwidth_or_dummy in
+             let zo := zify_hyp_option bw hp tp in
              lazymatch fastMode with
              | true => idtac
              | false => assert_succeeds (idtac;
@@ -44,7 +44,7 @@ Ltac puri_simpli_zify_hyp fastMode h t :=
                | true => don't_clear_Z_hyp_if_derivable
                | false => do_clear_Z_hyp_if_derivable
                end in
-             foreach_hyp_upwards (apply_range_bounding_lemma_in_hyp maybe_clear wok)
+             foreach_hyp_upwards (apply_range_bounding_lemma_in_hyp maybe_clear bw)
       end).
 
 Ltac puri_simpli_zify_hyps fastMode :=

@@ -2,14 +2,12 @@ Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
 
-Require Import coqutil.Z.Lia.
+Require Import coqutil.Z.Lia coqutil.Word.Bitwidth.
 
 Require Import Kami.Kami.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.IsaRv32.
 Require Import Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
 Require Import Kami.Ex.ProcMemCorrect.
-
-Require Import processor.KamiWord.
 
 Local Open Scope Z_scope.
 
@@ -58,7 +56,7 @@ Section Parametrized.
             rf := evalConstT (rfInit procInit);
             pinit := false;
             pgm := evalVec (mapVec (@evalConstT _)
-                                   (replicate (ConstBit (wzero _)) iaddrSize));
+                                   (replicate (ConstBit (Zmod.zero)) iaddrSize));
             mem := evalConstT memInit |}.
   Proof.
     simpl; unfold pRegsToT.
@@ -197,10 +195,10 @@ Section Parametrized.
     apply H19; [reflexivity|].
 
     clear -e n.
-    assert (pinitOfsv = wones _).
-    { rewrite <-wnot_idempotent with (w:= pinitOfsv).
+    assert (pinitOfsv = (Zmod.opp Zmod.one)).
+    { rewrite <-(bits.not_not pinitOfsv).
       rewrite e.
-      apply wnot_zero.
+      apply bits.not_0.
     }
     subst.
 
@@ -220,8 +218,13 @@ Section Parametrized.
 End Parametrized.
 
 Definition width: Z := 32.
-Definition width_cases: width = 32 \/ width = 64 := or_introl eq_refl.
 Local Notation nwidth := (Z.to_nat width).
+(* Kami's word type is indexed by [nwidth], so [Z.of_nat nwidth] is the width
+   every word-typed term elaborates to.  riscv-coq's [MachineWidth (bits ?w)]
+   instance is resolved before [?w] is unified with that word, so the files
+   that state riscv-coq facts about the processor's word make this an
+   instance; with only coqutil's [Bitwidth 32] in scope, [?w] would be [32]. *)
+Definition BW: Bitwidth (Z.of_nat nwidth) := {| width_cases := or_introl eq_refl |}.
 
 Section PerInstAddr.
   Context {instrMemSizeLg memSizeLg: Z}.
@@ -293,7 +296,7 @@ Section PerInstAddr.
 
 End PerInstAddr.
 
-#[global] Instance kami_AbsMMIO (memSizeLg: N): AbsMMIO (Z.to_nat width) :=
+#[global] Instance kami_AbsMMIO (memSizeLg: N): AbsMMIO nwidth :=
   {| isMMIO :=
        fun _ addr => ($$(NToWord _ (2 ^ memSizeLg)) <= #addr)%kami_expr
   |}.

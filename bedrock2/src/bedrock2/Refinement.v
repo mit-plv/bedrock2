@@ -7,7 +7,8 @@ Require Import coqutil.Map.Interface.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 
 Section WithParams.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: bedrock2.Semantics.ExtSpec}.

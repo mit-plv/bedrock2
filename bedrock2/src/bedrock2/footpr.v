@@ -1,4 +1,4 @@
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Tactics.destr coqutil.Decidable.

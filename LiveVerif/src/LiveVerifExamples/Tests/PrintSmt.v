@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 Require Import Coq.Logic.Classical_Prop.
 Require Import coqutil.Tactics.ident_ops.
 
@@ -64,8 +64,7 @@ Ltac by_contradiction :=
   change smtFalseAlias;
   repeat lazymatch goal with
          | H: ?T |- _ => lazymatch T with
-                         | word.word _ => fail
-                         | @word.ok _ _ => fail
+                         | Bitwidth _ => fail
                          | _ => lazymatch type of T with
                                 | Prop => revert H
                                 (* clear unused variables, because otherwise the notations
@@ -84,9 +83,6 @@ Ltac undo_by_contradiction :=
 Ltac log_goal_as_smt name :=
   eval_constant_pows;
   by_contradiction;
-  let width := lazymatch goal with
-               | word: word.word ?width |- _ => width
-               end in
   (* markNamedSmtGoal width name; *)
   markSmtGoal;
   lazymatch goal with
@@ -141,7 +137,7 @@ Notation "'(check-sat)'" := smtFalseAlias (in custom smt_goal).
 
 (* Sorts: *)
 
-Notation "'(_' 'BitVec' Width ')'" := (@word.rep Width _)
+Notation "'(_' 'BitVec' Width ')'" := (bits Width)
   (in custom smt_sort, Width constr at level 0).
 Notation "'Int'" := Z
   (in custom smt_sort).
@@ -215,22 +211,22 @@ Notation "(+  a  b )" := (Z.add a b)
 Notation "(*  a  b )" := (Z.mul a b)
   (in custom smt_expr at level 0).
 
-Notation "'(bv2int'  a )" := (word.unsigned a)
+Notation "'(bv2int'  a )" := (Zmod.unsigned a)
   (in custom smt_expr at level 0).
-Notation "'((_'  'int2bv'  Width )  x )" := (@word.of_Z Width _ x)
+Notation "'((_'  'int2bv'  Width )  x )" := (bits.of_Z Width x)
   (in custom smt_expr at level 0, Width constr at level 0).
 
-Notation "'(bvneg'  a )" := (word.opp a)
+Notation "'(bvneg'  a )" := (Zmod.opp a)
   (in custom smt_expr at level 0).
-Notation "'(bvadd'  a  b )" := (word.add a b)
+Notation "'(bvadd'  a  b )" := (Zmod.add a b)
   (in custom smt_expr at level 0).
-Notation "'(bvsub'  a  b )" := (word.sub a b) (* NONSTANDARD *)
+Notation "'(bvsub'  a  b )" := (Zmod.sub a b) (* NONSTANDARD *)
   (in custom smt_expr at level 0).
 (*
-Notation "'(bvadd'  a  '(bvneg'  b ) )" := (word.sub a b)
+Notation "'(bvadd'  a  '(bvneg'  b ) )" := (Zmod.sub a b)
   (in custom smt_expr at level 0).
 *)
-Notation "'(bvult'  a  b )" := (word.ltu a b)
+Notation "'(bvult'  a  b )" := (Z.ltb (Zmod.unsigned a) (Zmod.unsigned b))
   (in custom smt_expr at level 0).
 
 Notation "( f  a )" := (f a)

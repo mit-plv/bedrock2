@@ -17,7 +17,8 @@ Import ListNotations.
 
 Section ForeverSafe.
 
-  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+  Context {width} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {Registers: map.map Z word}.
   Context {mem: map.map word byte}.
 

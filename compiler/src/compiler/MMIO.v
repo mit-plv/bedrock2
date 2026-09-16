@@ -30,7 +30,6 @@ Require Import compiler.util.Learning.
 Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.RiscvWordProperties.
 Require Import riscv.Platform.FE310ExtSpec.
-Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Datatypes.ListSet.
 Require Import bedrock2.FE310CSemantics.
 Import ListNotations.
@@ -103,20 +102,13 @@ Local Arguments Registers.reg_class.all: simpl never.
 
 Section MMIO1.
   Context {iset : InstructionSet} {bitwidth_iset : FlatToRiscvCommon.bitwidth_iset 32 iset}.
-  Context {word: Word.Interface.word 32}.
-  Context {word_ok: word.ok word}.
-  Context {word_riscv_ok: word.riscv_ok word}.
+  Local Notation word := (bits 32).
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
   Context {locals: map.map Z word}.
   Context {locals_ok: map.ok locals}.
   Context {funname_env: forall T, map.map String.string T}.
   Context {funname_env_ok: forall T, map.ok (funname_env T)}.
-
-  Add Ring wring : (word.ring_theory (word := word))
-      (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
-       constants [word_cst]).
 
   Definition leak_interact(abs_pos: word)(results: list Z) a (args: list Z) (leakage: list word):
     list LeakageEvent :=
@@ -144,7 +136,7 @@ Section MMIO1.
   
   Definition leak_ext_call(program_base: word)(_: funname_env Z)(pos _: Z)(s: stmt Z)(l: list word) :=
     match s with
-    | SInteract resvars action argvars => leak_interact (word.add program_base (word.of_Z pos)) resvars action argvars l
+    | SInteract resvars action argvars => leak_interact (Zmod.add program_base (bits.of_Z 32 pos)) resvars action argvars l
     | _ => []
     end.
   
@@ -185,7 +177,7 @@ Section MMIO1.
     intros. unfold load_bytes, map.undef_on, map.agree_on, map.getmany_of_tuple in *.
     simpl.
     rewrite H, map.get_empty; trivial.
-    rewrite word.add_0_r; assumption.
+    rewrite Zmod.add_0_r; assumption.
   Qed.
 
   Lemma loadWord_in_MMIO_is_None: forall (m: mem) (addr: word),
@@ -238,10 +230,10 @@ Section MMIO1.
   Lemma disjoint_MMIO_goal: forall (x y: word),
       isMMIOAddr x ->
       ~ isMMIOAddr y ->
-      word.unsigned x mod 4 = 0 ->
-      word.add (word.add (word.add x (word.of_Z 1)) (word.of_Z 1)) (word.of_Z 1) <> y /\
-      word.add (word.add x (word.of_Z 1)) (word.of_Z 1) <> y /\
-      word.add x (word.of_Z 1) <> y /\
+      Zmod.unsigned x mod 4 = 0 ->
+      Zmod.add (Zmod.add (Zmod.add x (bits.of_Z 32 1)) (bits.of_Z 32 1)) (bits.of_Z 32 1) <> y /\
+      Zmod.add (Zmod.add x (bits.of_Z 32 1)) (bits.of_Z 32 1) <> y /\
+      Zmod.add x (bits.of_Z 32 1) <> y /\
       x <> y.
   Proof.
     intros.
@@ -249,15 +241,14 @@ Section MMIO1.
     simpl in *.
     ssplit.
     all: intro C.
-    1: replace x with (word.sub y (word.of_Z 3)) in * by (subst y; solve_word_eq word_ok).
-    2: replace x with (word.sub y (word.of_Z 2)) in * by (subst y; solve_word_eq word_ok).
-    3: replace x with (word.sub y (word.of_Z 1)) in * by (subst y; solve_word_eq word_ok).
+    1: replace x with (Zmod.sub y 3) in * by (subst y; solve_word_eq).
+    2: replace x with (Zmod.sub y 2) in * by (subst y; solve_word_eq).
+    3: replace x with (Zmod.sub y (bits.of_Z 32 1)) in * by (subst y; solve_word_eq).
     4: replace x with y in * by (symmetry;assumption).
     all: clear C;
-      rewrite ?word.unsigned_sub, ?word.unsigned_of_Z in H, H1;
-      unfold word.wrap in *;
-      pose proof (word.unsigned_range y);
-      forget (word.unsigned y) as Y; clear x y;
+      rewrite ?Zmod.unsigned_sub, ?bits.unsigned_of_Z in H, H1;
+      pose proof (bits.unsigned_range y width_nonneg);
+      forget (Zmod.unsigned y) as Y; clear x y;
       let r := eval cbv in (2 ^ 32) in change (2 ^ 32) with r in *;
       Z.div_mod_to_equations;
       (* COQBUG (performance) https://github.com/coq/coq/issues/10743,
@@ -343,7 +334,7 @@ Section MMIO1.
         cbn in *. wwcancel.
       }
 
-      erewrite SeparationMemory.load_Z_of_sep; cycle 1; try exact _.
+      erewrite (SeparationMemory.load_Z_of_sep width_pos); cycle 1; try exact _.
       { cbv [ptsto_instr ] in *. ecancel_assumption. }
       { trivial. }
       { clear; cbv; discriminate. }
@@ -362,12 +353,15 @@ Section MMIO1.
       repeat fwd.
 
       unfold RiscvMachine.withLeakageEvent, getRegs, getReg.
-      destr ((0 <? z1) && (z1 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia].
-      destr ((0 <? z2) && (z2 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia].
-      replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto).
-      replace (map.get initialL_regs z2) with (Some x0) by (symmetry; unfold map.extends in *; eauto).
+      lazymatch goal with
+      | E: Registers.reg_class.all Registers.reg_class.arg = ?z1 :: ?z2 :: _ |- _ =>
+          destr ((0 <? z1) && (z1 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia];
+          destr ((0 <? z2) && (z2 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia];
+          replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto);
+          replace (map.get initialL_regs z2) with (Some x0) by (symmetry; unfold map.extends in *; eauto)
+      end.
 
-      cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite word.add_0_r.
+      cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite Zmod.add_0_r.
       unshelve erewrite (_ : _ = None); [eapply storeWord_in_MMIO_is_None; eauto|].
 
       cbv [MinimalMMIO.nonmem_store FE310_mmio].
@@ -378,13 +372,13 @@ Section MMIO1.
 
       eapply runsToNonDet.runsToDone.
       simpl_MetricRiscvMachine_get_set.
-      simpl_word_exprs word_ok.
+      simpl_word_exprs .
       unfold mmioStoreEvent, signedByteTupleToReg in *.
       unfold regToInt32.
       rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, LittleEndianList.length_le_split.
       rewrite sextend_width_nop by reflexivity.
-      rewrite Z.mod_small by apply word.unsigned_range.
-      rewrite word.of_Z_unsigned.
+      rewrite Z.mod_small by apply (bits.unsigned_range _ width_nonneg).
+      rewrite Zmod.of_Z_unsigned.
       apply eqb_eq in E. subst action.
       cbn -[invalidateWrittenXAddrs] in *.
       specialize (HPp1 mKeep). rewrite map.split_empty_r in HPp1. specialize (HPp1 eq_refl).
@@ -418,16 +412,16 @@ Section MMIO1.
           rename H into M0; change (isMMIOAddr x) in M0; move M0 at bottom
         end.
         lazymatch goal with
-        | H: word.unsigned x mod 4 = 0 |- _ => rename H into D4; move D4 at bottom
+        | H: Zmod.unsigned x mod 4 = 0 |- _ => rename H into D4; move D4 at bottom
         end.
         assert (forall {T: Type} (a b c: set T), subset a b -> subset b c -> subset a c)
           as subset_trans. {
           clear. unfold subset, PropSet.elem_of. intros. firstorder idtac.
         }
         eapply subset_trans. 1: eassumption.
-        clear -D4 M0 D word_ok.
+        clear -D4 M0 D .
         unfold invalidateWrittenXAddrs.
-        change removeXAddr with (@List.removeb word word.eqb).
+        change removeXAddr with (@List.removeb word Zmod.eqb).
         rewrite ?ListSet.of_list_removeb.
         unfold map.undef_on, map.agree_on, disjoint in *.
         unfold subset, diff, singleton_set, of_list, PropSet.elem_of in *.
@@ -439,7 +433,7 @@ Section MMIO1.
       }
       ssplit; eauto.
       unfold invalidateWrittenXAddrs.
-      change removeXAddr with (@List.removeb word word.eqb).
+      change removeXAddr with (@List.removeb word Zmod.eqb).
       rewrite ?ListSet.of_list_removeb.
       repeat apply disjoint_diff_l.
       assumption.
@@ -488,7 +482,7 @@ Section MMIO1.
         cbn in *. wwcancel.
       }
 
-      erewrite SeparationMemory.load_Z_of_sep; cycle 1; try exact _.
+      erewrite (SeparationMemory.load_Z_of_sep width_pos); cycle 1; try exact _.
       { cbv [ptsto_instr ] in *. ecancel_assumption. }
       { trivial. }
       { clear; cbv; discriminate. }
@@ -508,11 +502,14 @@ Section MMIO1.
       repeat fwd.
 
       unfold getReg, getRegs, RiscvMachine.withLeakageEvent.
-      destr ((0 <? z1) && (z1 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia].
-      replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto).
+      lazymatch goal with
+      | E: Registers.reg_class.all Registers.reg_class.arg = ?z1 :: _ |- _ =>
+          destr ((0 <? z1) && (z1 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia];
+          replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto)
+      end.
 
       split; try discriminate.
-      cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite word.add_0_r.
+      cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite Zmod.add_0_r.
       unshelve erewrite (_ : _ = None); [eapply loadWord_in_MMIO_is_None|]; eauto.
 
       cbv [MinimalMMIO.nonmem_load FE310_mmio].
@@ -526,7 +523,7 @@ Section MMIO1.
 
       eapply runsToNonDet.runsToDone.
       simpl_MetricRiscvMachine_get_set.
-      simpl_word_exprs word_ok. simpl.
+      simpl_word_exprs. simpl.
 
       unfold mmioLoadEvent, signedByteTupleToReg.
       match goal with
@@ -539,7 +536,10 @@ Section MMIO1.
       cbn in *.
       specialize (Pp1 mKeep). rewrite map.split_empty_r in Pp1. specialize (Pp1 eq_refl).
       unfold setReg.
-      destr ((0 <? z1) && (z1 <? 32))%bool; [|exfalso;blia].
+      lazymatch goal with
+      | E: Registers.reg_class.all Registers.reg_class.arg = ?z1 :: _ |- _ =>
+          destr ((0 <? z1) && (z1 <? 32))%bool; [|exfalso;blia]
+      end.
       do 5 eexists.
       split; eauto.
       split; eauto.

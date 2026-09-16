@@ -1,5 +1,5 @@
 Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 
 Ltac2 Type exn ::= [ Undo ].
 
@@ -37,8 +37,7 @@ Ltac log_sidecond :=
   repeat lazymatch goal with
     | H: ?t |- _ =>
         lazymatch t with
-        | word.word _ => fail (* arrived at top (section vars), exit repeat *)
-        | word.ok _ => fail (* arrived at top (section vars), exit repeat *)
+        | Bitwidth _ => fail (* arrived at top (section vars), exit repeat *)
         | _ => first [ let _ := constr:(_ : SidecondIrrelevant t) in clear H
                      | lazymatch type of t with
                        | Prop => revert H

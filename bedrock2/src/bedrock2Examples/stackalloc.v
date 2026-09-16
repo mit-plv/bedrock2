@@ -35,20 +35,21 @@ Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.Separa
 Require Import bedrock2.LeakageWeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
 Require Import bedrock2.LeakageProgramLogic bedrock2.Scalars.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 From coqutil.Tactics Require Import reference_to_string .
 From bedrock2 Require ToCString PrintListByte.
 
 (* where to put all of this? *)
 Require Import coqutil.Z.Lia.
 Section aLemmaThatDoesntBelongHere.
-  Context {width: Z} {word: word.word width} {word_ok : word.ok word}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Lemma word_to_bytes (a : word) :
-        a = word.of_Z (LittleEndianList.le_combine (LittleEndianList.le_split (Z.to_nat ((width + 7) / 8)) (word.unsigned a))).
+        a = bits.of_Z width (LittleEndianList.le_combine (LittleEndianList.le_split (Z.to_nat ((width + 7) / 8)) (Zmod.unsigned a))).
   Proof.
     rewrite LittleEndianList.le_combine_split. rewrite Z.mod_small.
-    - symmetry. apply word.of_Z_unsigned.
-    - assert (H := Properties.word.unsigned_range a). destruct H as [H1 H2].
+    - symmetry. apply Zmod.of_Z_unsigned.
+    - assert (H := bits.unsigned_range a width_nonneg). destruct H as [H1 H2].
 
       split; try apply H1. clear H1.
       eapply Z.lt_le_trans; try apply H2. clear H2.
@@ -57,20 +58,21 @@ Section aLemmaThatDoesntBelongHere.
       + replace ((width + 7) / 8 * 8) with (width + 7 - (width + 7) mod 8).
         -- assert (H := Z.mod_pos_bound (width + 7) 8). blia.
         -- rewrite Zdiv.Zmod_eq_full; blia.
-      + apply Z.div_pos; try blia. destruct word_ok. blia.
+      + apply Z.div_pos; try blia. pose proof width_pos. blia.
   Qed.
 
   Lemma word_to_bytes' (a : word) :
     exists l, length l = (Z.to_nat ((width + 7) / 8)) /\
-                a = word.of_Z (LittleEndianList.le_combine l).
+                a = bits.of_Z width (LittleEndianList.le_combine l).
   Proof.
     eexists. split; try apply word_to_bytes. apply LittleEndianList.length_le_split.
   Qed.
 End aLemmaThatDoesntBelongHere.
 
 Section WithParameters.
-  Context {word: word.word 32} {mem: map.map word Byte.byte}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Local Notation word := (bits 32).
+  Context {mem: map.map word Byte.byte}.
+  Context {mem_ok: map.ok mem}.
   Context {pick_sp: PickSp}.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
@@ -102,11 +104,6 @@ Section WithParameters.
       LeakageWeakestPrecondition.call functions
         "stacknondet" k t m [] (fun k' t' m' rets => exists a b, rets = [a;b] /\ a = b /\ m'=m/\t'=t).
 
-  Add Ring wring : (Properties.word.ring_theory (word := word))
-      (preprocess [autorewrite with rew_word_morphism],
-       morphism (Properties.word.ring_morph (word := word)),
-       constants [Properties.word_cst]).
-
   Lemma stacknondet_ok : program_logic_goal_for_function! stacknondet.
   Proof.
     repeat straightline.
@@ -122,7 +119,7 @@ Section WithParameters.
     cbn [Array.array] in Hm.
     Import Ring_tac.
     repeat straightline.
-    assert ((Array.array ptsto (word.of_Z 1) a [(Byte.byte.of_Z (word.unsigned v0)); b0; b1; b2] ⋆ R)%sep m1).
+    assert ((Array.array ptsto (bits.of_Z 32 1) a [(Byte.byte.of_Z (Zmod.unsigned v0)); b0; b1; b2] ⋆ R)%sep m1).
     { cbn [Array.array].
       use_sep_assumption; cancel; Morphisms.f_equiv; f_equal; f_equal; ring. }
     subst a.
@@ -130,16 +127,16 @@ Section WithParameters.
     repeat straightline.
     seprewrite_in_by (symmetry! @scalar32_of_bytes) H0 reflexivity.
     repeat straightline.
-    set [Byte.byte.of_Z (word.unsigned v0); b0; b1; b2] as ss in *.
+    set [Byte.byte.of_Z (Zmod.unsigned v0); b0; b1; b2] as ss in *.
     assert (length ss = Z.to_nat 4) by reflexivity.
     repeat straightline.
     Tactics.ssplit; eauto.
 
     subst v. subst v1. subst ss.
-    eapply Properties.word.unsigned_inj.
-    rewrite ?Properties.word.unsigned_sru_nowrap.
-    2,3: rewrite ?Properties.word.unsigned_of_Z_nowrap by Lia.lia; reflexivity.
-    rewrite ?Properties.word.unsigned_of_Z_nowrap; try Lia.lia.
+    eapply Zmod.unsigned_inj.
+    rewrite ?shamt_of_Z_small by Lia.lia.
+    rewrite ?Zmod.unsigned_sru by Lia.lia.
+    rewrite ?bits.unsigned_of_Z_small; try Lia.lia.
     2,3: eapply (LittleEndianList.le_combine_bound [_;_;_;_]).
     repeat change [?a;?b;?c;?d] with ([a]++[b;c;d]).
     rewrite 2LittleEndianList.le_combine_app, 2LittleEndianList.le_combine_1, 2Z.shiftr_lor; simpl Z.of_nat; f_equal.

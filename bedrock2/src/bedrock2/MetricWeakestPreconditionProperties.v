@@ -6,9 +6,13 @@ Require bedrock2.MetricWeakestPrecondition.
 Require Import Coq.Classes.Morphisms.
 
 Section MetricWeakestPrecondition.
-  Context {width} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: Semantics.ExtSpec}.
+  (* lets the implicit width of the WeakestPrecondition definitions be found from mem/locals *)
+  Local Hint Mode map.map - - : typeclass_instances.
 
   Ltac ind_on X :=
     intros;
@@ -29,23 +33,22 @@ Section MetricWeakestPrecondition.
     match goal with x : X |- _ => induction x end;
     intros.
 
-  Local Hint Mode word.word - : typeclass_instances.
 
   (* we prove weakening lemmas for all WP definitions in a syntax-directed fashion,
    * moving from postcondition towards precondition one logical connective at a time. *)
-  Global Instance Proper_literal : Proper (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))) MetricWeakestPrecondition.literal.
+  Global Instance Proper_literal : Proper (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))) (MetricWeakestPrecondition.literal (width := width)).
   Proof using. clear. cbv [MetricWeakestPrecondition.literal]; cbv [Proper respectful pointwise_relation Basics.impl dlet.dlet]. eauto. Qed.
 
-  Global Instance Proper_get : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)))) MetricWeakestPrecondition.get.
+  Global Instance Proper_get : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)))) (MetricWeakestPrecondition.get (width := width)).
   Proof using. clear. cbv [MetricWeakestPrecondition.get]; cbv [Proper respectful pointwise_relation Basics.impl]; intros * ? (?&?&?); eauto. Qed.
 
-  Global Instance Proper_load : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))))) MetricWeakestPrecondition.load.
+  Global Instance Proper_load : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))))) (MetricWeakestPrecondition.load (width := width)).
   Proof using. clear. cbv [MetricWeakestPrecondition.load]; cbv [Proper respectful pointwise_relation Basics.impl]; intros * ? (?&?&?); eauto. Qed.
 
-  Global Instance Proper_store : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))))) MetricWeakestPrecondition.store.
+  Global Instance Proper_store : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))))) (MetricWeakestPrecondition.store (width := width)).
   Proof using. clear. cbv [MetricWeakestPrecondition.store]; cbv [Proper respectful pointwise_relation Basics.impl]; intros * ? (?&?&?); eauto. Qed.
 
-  Global Instance Proper_expr : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))))) MetricWeakestPrecondition.expr.
+  Global Instance Proper_expr : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))))) (MetricWeakestPrecondition.expr (width := width)).
   Proof using.
     clear.
     cbv [Proper respectful pointwise_relation Basics.impl]; ind_on Syntax.expr.expr;
@@ -68,7 +71,7 @@ Section MetricWeakestPrecondition.
     eapply H; eauto. destruct a2. eapply IHa; eauto. destruct a2; eauto.
   Qed.
 
-  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {mem_ok : map.ok mem}.
   Context {locals_ok : map.ok locals}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
@@ -86,7 +89,6 @@ Section MetricWeakestPrecondition.
     repeat match goal with x : ?T |- _ => first
        [ constr_eq x ext_spec
        | constr_eq x locals
-       | constr_eq x word_ok
        | constr_eq x mem_ok
        | constr_eq x locals_ok
        | constr_eq x ext_spec_ok
@@ -105,7 +107,7 @@ Section MetricWeakestPrecondition.
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl)))) ==>
        Basics.impl))))))) MetricWeakestPrecondition.cmd.  
-  Proof using ext_spec_ok locals_ok mem_ok word_ok.
+  Proof using ext_spec_ok locals_ok mem_ok .
     pose proof I. (* to keep naming *)
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl]; ind_on Syntax.cmd.cmd;
       cbn in *; cbv [dlet.dlet] in *; intuition (try typeclasses eauto with core).
@@ -159,7 +161,7 @@ Section MetricWeakestPrecondition.
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation  _ Basics.impl)))) ==>
      Basics.impl)))))))))) MetricWeakestPrecondition.call.
-  Proof using word_ok mem_ok locals_ok ext_spec_ok.
+  Proof using  mem_ok locals_ok ext_spec_ok.
     cbv [Proper respectful pointwise_relation Basics.impl].
     intros. eapply MetricSemantics.weaken_call; eassumption.
   Qed.
@@ -174,7 +176,7 @@ Global Instance Proper_program :
      pointwise_relation _ (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ Basics.impl)))) ==>
      Basics.impl))))))) MetricWeakestPrecondition.program.
-   Proof using word_ok mem_ok locals_ok ext_spec_ok.
+   Proof using  mem_ok locals_ok ext_spec_ok.
     cbv [Proper respectful pointwise_relation Basics.impl  MetricWeakestPrecondition.program]; intros.
     eapply Proper_cmd;
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  MetricWeakestPrecondition.func];
@@ -197,7 +199,7 @@ Global Instance Proper_program :
 Lemma expr_sound m l e mc post (H : MetricWeakestPrecondition.expr m l e mc post)
     : exists v mc', MetricSemantics.eval_expr m l e mc = Some (v, mc') /\ post (v, mc').
 Proof using BW ext_spec ext_spec_ok locals
-locals_ok mem mem_ok width word word_ok.
+locals_ok mem mem_ok width  .
     ind_on Syntax.expr; t. { destruct H. destruct H. eexists. eexists. rewrite H. eauto. }
     { eapply IHe in H; t. cbv [MetricWeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe in H; t. cbv [MetricWeakestPrecondition.load] in H0; t. rewrite H. rewrite H0.
@@ -214,7 +216,7 @@ locals_ok mem mem_ok width word word_ok.
   Lemma expr_complete: forall m l e mc v mc',
     MetricSemantics.eval_expr m l e mc = Some (v, mc') ->
     MetricWeakestPrecondition.dexpr m l e mc (v, mc').
-  Proof using word_ok.
+  Proof using .
     induction e; cbn; intros.
     - inversion_clear H. reflexivity.
     - eexists; eexists; destruct (map.get l x); try inversion H; try reflexivity.
@@ -222,13 +224,13 @@ locals_ok mem mem_ok width word word_ok.
       eapply Proper_expr.
       2: { eapply IHe. rewrite E. reflexivity. }
       intros (addr, oldmc) ?. apply pair_equal_spec in H0; destruct H0.
-      subst r m0. unfold MetricWeakestPrecondition.load. eexists; split; eauto.
+      subst. unfold MetricWeakestPrecondition.load. eexists; split; eauto.
       apply Option.eq_of_eq_Some in H. auto.
     - repeat (destruct_one_match_hyp; try discriminate; []).
       eapply Proper_expr.
       2: { eapply IHe. rewrite E. reflexivity. }
       intros (addr, oldmc) ?. apply pair_equal_spec in H0; destruct H0.
-      subst r m0. unfold MetricWeakestPrecondition.load. eexists; split; eauto.
+      subst. unfold MetricWeakestPrecondition.load. eexists; split; eauto.
       apply Option.eq_of_eq_Some in H; auto.
     - repeat (destruct_one_match_hyp; try discriminate; []).
       eapply Proper_expr.
@@ -239,17 +241,17 @@ locals_ok mem mem_ok width word word_ok.
       eapply Proper_expr.
       2: { eapply IHe1. rewrite E. reflexivity. }
       intros (v1, oldmc1) ?. apply pair_equal_spec in H0; destruct H0.
-      subst r m0. 
+      subst. 
       eapply Proper_expr.
       2: { eapply IHe2. rewrite E0. reflexivity. }
       intros (v2, oldmc2)  ?. apply pair_equal_spec in H0; destruct H0.
-      subst r0 m1. congruence.
+      subst. congruence.
     - repeat (destruct_one_match_hyp; try discriminate; []).
       eapply Proper_expr.
       2: { eapply IHe1. rewrite E. reflexivity. }
       intros (vc, oldmc) ?. apply pair_equal_spec in H0; destruct H0.
-      subst r m0.
-      destr (word.eqb vc (word.of_Z 0)).
+      subst.
+      destr (Zmod.eqb vc (bits.of_Z width 0)).
       + eapply IHe3. eassumption.
       + eapply IHe2. eassumption.
   Qed.
@@ -259,7 +261,7 @@ Lemma sound_args : forall m l args mc P,
       MetricWeakestPrecondition.list_map (MetricWeakestPrecondition.expr m l) args mc P ->
       exists x mc', MetricSemantics.eval_call_args m l args mc = Some (x, mc') /\ P (x, mc').
 Proof using BW ext_spec ext_spec_ok locals locals_ok mem mem_ok
-width word word_ok.
+width  .
     induction args; cbn; repeat (subst; t).
     eapply expr_sound in H; t; rewrite H.
     eapply IHargs in H0; t; rewrite H0.
@@ -284,7 +286,7 @@ width word word_ok.
   Lemma sound_cmd e c t m l mc post (H: MetricWeakestPrecondition.cmd e c t m l mc post) : MetricSemantics.exec e c t m l mc post.
   Proof.
     ind_on Syntax.cmd; repeat (t; try match reverse goal with H: MetricWeakestPrecondition.expr _ _ _ _ _ |- _ => eapply expr_sound in H end).
-    { destruct (BinInt.Z.eq_dec (word.unsigned x) 0) as [|]; t. }
+    { destruct (BinInt.Z.eq_dec (Zmod.unsigned x) 0) as [|]; t. }
     { inversion H0. t. eapply sound_args in H; t. }
     { eapply sound_args in H; t. }
   Qed.
@@ -304,7 +306,7 @@ width word word_ok.
    Lemma complete_args : forall m l args mc vs,
       MetricSemantics.eval_call_args m l args mc = Some vs ->
       MetricWeakestPrecondition.dexprs m l args mc vs.
-  Proof using word_ok.
+  Proof using .
     induction args; cbn; repeat (subst; t).
     1: inversion H; reflexivity.
     destruct_one_match_hyp. 2: discriminate.
@@ -382,7 +384,7 @@ width word word_ok.
            exists l0 : locals, map.putmany_of_list_zip action rets l = Some l0 /\
            post (cons (map.empty, binds, args, (map.empty, rets)) t) m l0 (MetricCosts.cost_interact MetricCosts.PreSpill mc')))
     : MetricWeakestPrecondition.cmd call (cmd.interact action binds arges) t m l mc post.
-  Proof using word_ok mem_ok ext_spec_ok.
+  Proof using  mem_ok ext_spec_ok.
     exists args, mc'; split; [exact Hargs|].
     exists m.
     exists map.empty.
@@ -397,12 +399,12 @@ width word word_ok.
       MetricWeakestPrecondition.expr m l e mc post1 ->
       MetricWeakestPrecondition.expr m l e mc post2 ->
       MetricWeakestPrecondition.expr m l e mc (fun v => post1 v /\ post2 v).
-  Proof using word_ok. Admitted. 
+  Proof using . Admitted. 
 
   Lemma dexpr_expr (m : mem) l e mc P
     (H : MetricWeakestPrecondition.expr m l e mc P)
     : exists v, MetricWeakestPrecondition.dexpr m l e mc v /\ P v.
-  Proof using word_ok. Admitted.
+  Proof using . Admitted.
   *)
   
 End MetricWeakestPrecondition.

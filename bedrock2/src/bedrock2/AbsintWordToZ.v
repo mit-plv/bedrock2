@@ -1,7 +1,8 @@
 Require Import Coq.Strings.String Coq.ZArith.ZArith.
-From coqutil Require Import Word.Interface Word.Properties.
-From coqutil Require Import Tactics.rdelta Z.div_mod_to_equations.
+From coqutil Require Import Word.Bitwidth Word.Properties.
+From coqutil Require Import Tactics.rdelta.
 Require Import coqutil.Z.Lia.
+Require Import bedrock2.WordPushDownLemmas.
 Local Open Scope Z_scope.
 
 (** Bounds propagation *)
@@ -100,8 +101,8 @@ Ltac rbounded e :=
   | H :  _ <= e < _ |- _ => H
   | _ =>
     match re with
-    | word.unsigned ?a =>
-      named_pose_proof (zbsimp! (Properties.word.unsigned_range a : _ <= e < _))
+    | Zmod.unsigned ?a =>
+      named_pose_proof (zbsimp! (bits.unsigned_range a width_nonneg : _ <= e < _))
     | Z.div ?a ?b => (* TODO: non-constant denominator? *)
       let __ := match constr:(Set) with _ => requireZcstExpr b end in
       let Ha := rbounded a in
@@ -137,20 +138,16 @@ Local Infix "=~>" := absint_eq (at level 70, no associativity).
 
 Module unsigned.
   Section WithWord.
-    Context {width : Z} {word : word.word width} {word_ok : word.ok word}.
+    Context {width : Z} {BW: Bitwidth width}.
+    Local Notation word := (bits width).
     Local Notation "absint_lemma! pf" := (ltac:(
       cbv [absint_eq] in *;
       etransitivity; [ eapply pf | ]; cycle -1;
         [unshelve (repeat match goal with
-          | |- _ => progress unfold word.wrap in *
-          | |-context [Z.shiftr ?x (word.unsigned ?y)] => assert_fails(is_evar x||is_evar y);
-            setoid_rewrite (Z.shiftr_div_pow2 x (word.unsigned y) (proj1 (Properties.word.unsigned_range _)))
-          | |-context [Z.shiftl ?x (word.unsigned ?y)] => assert_fails(is_evar x||is_evar y);
-            setoid_rewrite (Z.shiftl_mul_pow2 x (word.unsigned y) (proj1 (Properties.word.unsigned_range _)))
           | |-context [?x mod (2^?y)] => assert_fails(is_evar x||is_evar y);
             rewrite (Z.mod_small x (2^y)) by shelve
-          | |-context [word.unsigned ?x] => assert_fails(is_evar x);
-            erewrite (_:word.unsigned _=_) by shelve
+          | |-context [Zmod.unsigned ?x] => assert_fails(is_evar x);
+            erewrite (_:Zmod.unsigned _=_) by shelve
           end; exact eq_refl)
         |..];
         (* WHY do I need [> here? *)
@@ -160,178 +157,184 @@ Module unsigned.
             match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end).. ]
       )) (at level 10, only parsing).
 
-    Definition absint_add (x y : word.rep) ux Hx uy Hy Hbounds : _ =~> _ :=
-      absint_lemma! (word.unsigned_add x y).
-    Definition absint_sub (x y : word.rep) ux Hx uy Hy Hbounds : word.unsigned _ =~> _ :=
-      absint_lemma! (word.unsigned_sub x y).
-    Definition absint_mul (x y : word.rep) ux Hx uy Hy Hbounds : word.unsigned _ =~> _ :=
-      absint_lemma! (word.unsigned_mul x y).
-    Definition absint_and (x y : word.rep) ux Hx uy Hy : word.unsigned _ =~> _ :=
-      absint_lemma! (Properties.word.unsigned_and_nowrap x y).
-    Definition absint_or (x y : word.rep) ux Hx uy Hy : word.unsigned _ =~> _ :=
-      absint_lemma! (Properties.word.unsigned_or_nowrap x y).
-    Definition absint_xor (x y : word.rep) ux Hx uy Hy : word.unsigned _ =~> _ :=
-      absint_lemma! (Properties.word.unsigned_xor_nowrap x y).
-    Definition absint_ndn (x y : word.rep) ux Hx uy Hy : word.unsigned _ =~> _ :=
-      absint_lemma! (Properties.word.unsigned_ndn_nowrap x y).
-    Definition absint_sru (x y : word.rep) ux Hx uy Hy Hshift  : word.unsigned _ =~> _ :=
-      absint_lemma! (Properties.word.unsigned_sru_nowrap x y).
-    Definition absint_slu (x y : word.rep) ux Hx uy Hy Hrange Hshift : word.unsigned _ =~> _ :=
-      absint_lemma! (word.unsigned_slu x y).
-    Definition absint_divu (x y : word.rep) ux Hx uy Hy Hnz  : word.unsigned _ =~> _ :=
-      absint_lemma! (Properties.word.unsigned_divu_nowrap x y).
-    Definition absint_modu (x y : word.rep) ux Hx uy Hy Hnz  : word.unsigned _ =~> _ :=
-      absint_lemma! (Properties.word.unsigned_modu_nowrap x y).
+    Definition absint_add (x y : word) ux Hx uy Hy Hbounds : _ =~> _ :=
+      absint_lemma! (Zmod.unsigned_add x y).
+    Definition absint_sub (x y : word) ux Hx uy Hy Hbounds : Zmod.unsigned _ =~> _ :=
+      absint_lemma! (Zmod.unsigned_sub x y).
+    Definition absint_mul (x y : word) ux Hx uy Hy Hbounds : Zmod.unsigned _ =~> _ :=
+      absint_lemma! (Zmod.unsigned_mul x y).
+    Definition absint_and (x y : word) ux Hx uy Hy : Zmod.unsigned _ =~> _ :=
+      absint_lemma! (bits.unsigned_and x y).
+    Definition absint_or (x y : word) ux Hx uy Hy : Zmod.unsigned _ =~> _ :=
+      absint_lemma! (bits.unsigned_or x y).
+    Definition absint_xor (x y : word) ux Hx uy Hy : Zmod.unsigned _ =~> _ :=
+      absint_lemma! (bits.unsigned_xor x y).
+    Lemma absint_ndn (x y : word) ux (Hx : Zmod.unsigned x = ux) uy (Hy : Zmod.unsigned y = uy) :
+      Zmod.unsigned (Zmod.ndn x y) =~> Z.ldiff ux uy.
+    Proof. subst. cbv [absint_eq]. apply Zmod.unsigned_ndn_small, Z.pow_nonneg. blia. Qed.
+    Lemma absint_sru (x : word) (n : Z) ux (Hx : Zmod.unsigned x = ux) un (Hn : n = un)
+      (Hshift : 0 <= un) : Zmod.unsigned (Zmod.sru x n) =~> ux / 2 ^ un.
+    Proof. subst. cbv [absint_eq]. rewrite Zmod.unsigned_sru, Z.shiftr_div_pow2 by assumption. reflexivity. Qed.
+    Lemma absint_slu (x : word) (n : Z) ux (Hx : Zmod.unsigned x = ux) un (Hn : n = un)
+      (Hrange : 0 <= ux * 2 ^ un < 2 ^ width) (Hshift : 0 <= un) :
+      Zmod.unsigned (Zmod.slu x n) =~> ux * 2 ^ un.
+    Proof. subst. cbv [absint_eq]. rewrite Zmod.unsigned_slu, Z.shiftl_mul_pow2, Z.mod_small by assumption. reflexivity. Qed.
+    Lemma absint_divu (x y : word) ux (Hx : Zmod.unsigned x = ux) uy (Hy : Zmod.unsigned y = uy)
+      (Hnz : uy <> 0) : Zmod.unsigned (Zmod.udiv x y) =~> ux / uy.
+    Proof. subst. cbv [absint_eq]. apply Zmod.unsigned_udiv_nonneg; trivial. apply Z.pow_nonneg. blia. Qed.
+    Lemma absint_modu (x y : word) ux (Hx : Zmod.unsigned x = ux) uy (Hy : Zmod.unsigned y = uy) :
+      Zmod.unsigned (Zmod.umod x y) =~> ux mod uy.
+    Proof. subst. cbv [absint_eq]. apply Zmod.unsigned_umod. Qed.
     Implicit Types (x y : word).
     (* TODO use it *)
-    Lemma absint_opp x (ux: Z) (Hx: word.unsigned x = ux) (Hnz: ux <> 0):
-      word.unsigned (word.opp x) =~> 2^width - ux.
+    Lemma absint_opp x (ux: Z) (Hx: Zmod.unsigned x = ux) (Hnz: ux <> 0):
+      Zmod.unsigned (Zmod.opp x) =~> 2^width - ux.
     Proof.
-      rewrite word.unsigned_opp. cbv [word.wrap].
+      rewrite Zmod.unsigned_opp.
       rewrite Z_mod_nz_opp_full.
-      - rewrite Z.mod_small; [rewrite Hx; reflexivity|]. apply word.unsigned_range.
-      - rewrite Z.mod_small; [rewrite Hx; apply Hnz|]. apply word.unsigned_range.
+      - rewrite Z.mod_small; [rewrite Hx; reflexivity|]. apply (bits.unsigned_range _ width_nonneg).
+      - rewrite Z.mod_small; [rewrite Hx; apply Hnz|]. apply (bits.unsigned_range _ width_nonneg).
     Qed.
 
-    Lemma absint_mask_r x y ux (Hx : word.unsigned x = ux) uy (Hy : word.unsigned y = uy) (Huy : uy = Z.ones (Z.log2 uy+1)):
-       word.unsigned (word.and x y) =~> Z.modulo ux (uy+1).
+    Lemma absint_mask_r x y ux (Hx : Zmod.unsigned x = ux) uy (Hy : Zmod.unsigned y = uy) (Huy : uy = Z.ones (Z.log2 uy+1)):
+       Zmod.unsigned (Zmod.and x y) =~> Z.modulo ux (uy+1).
     Proof.
       etransitivity; [eapply absint_and; eauto|].
       rewrite Huy.
       rewrite Z.land_ones, Z.ones_equiv; repeat (eapply f_equal2 || blia).
       enough (Z.log2 0 <= Z.log2 uy) by (change (Z.log2 0) with 0 in *; blia).
-      eapply Z.log2_le_mono; subst uy; eapply word.unsigned_range.
+      eapply Z.log2_le_mono; subst uy; eapply (bits.unsigned_range _ width_nonneg).
     Qed.
-    Lemma absint_mask_l y x uy (Hy : word.unsigned y = uy) ux (Hx : word.unsigned x = ux) (Huy : uy = Z.ones (Z.log2 uy+1)):
-       word.unsigned (word.and y x) =~> Z.modulo ux (uy+1).
+    Lemma absint_mask_l y x uy (Hy : Zmod.unsigned y = uy) ux (Hx : Zmod.unsigned x = ux) (Huy : uy = Z.ones (Z.log2 uy+1)):
+       Zmod.unsigned (Zmod.and y x) =~> Z.modulo ux (uy+1).
     Proof.
       etransitivity; [eapply absint_and; eauto|].
       rewrite Z.land_comm.
       rewrite Huy.
       rewrite Z.land_ones, Z.ones_equiv; repeat (eapply f_equal2 || blia).
       enough (Z.log2 0 <= Z.log2 uy) by (change (Z.log2 0) with 0 in *; blia).
-      eapply Z.log2_le_mono; subst uy; eapply word.unsigned_range.
+      eapply Z.log2_le_mono; subst uy; eapply (bits.unsigned_range _ width_nonneg).
     Qed.
   End WithWord.
 
   Ltac zify_expr e :=
     let re := rdelta e in
     lazymatch type of e with
-    | @word.rep ?width ?word_parameters =>
+    | Zmod (2 ^ ?width) =>
       match re with
-      | _ => match goal with H: word.unsigned e =~> _ |- _ => H end
-      | word.of_Z ?a =>
+      | _ => match goal with H: Zmod.unsigned e =~> _ |- _ => H end
+      | Zmod.of_Z _ ?a =>
         let Ba := rbounded a in
-        named_pose_proof (word.unsigned_of_Z_nowrap a (boundscheck (X0:=0) (X1:=2^width) Ba (eq_refl true)) : @absint_eq Z (@word.unsigned _ word_parameters e) a)
-      | word.and ?a ?b =>
+        named_pose_proof (bits.unsigned_of_Z_small a (boundscheck (X0:=0) (X1:=2^width) Ba (eq_refl true)) : @absint_eq Z (@Zmod.unsigned (2 ^ width) e) a)
+      | Zmod.and ?a ?b =>
         let Ha := zify_expr a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
         let Hb := zify_expr b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
-        named_pose_proof (absint_mask_r a b Ra Ha Rb Hb eq_refl : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.modulo Ra (Rb+1)))
-      | word.and ?a ?b =>
+        named_pose_proof (absint_mask_r a b Ra Ha Rb Hb eq_refl : @absint_eq Z (@Zmod.unsigned (2 ^ width) e) (Z.modulo Ra (Rb+1)))
+      | Zmod.and ?a ?b =>
         let Ha := zify_expr a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
         let Hb := zify_expr b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
-        named_pose_proof (absint_mask_l a b Ra Ha Rb Hb eq_refl : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.modulo Rb (Ra+1)))
+        named_pose_proof (absint_mask_l a b Ra Ha Rb Hb eq_refl : @absint_eq Z (@Zmod.unsigned (2 ^ width) e) (Z.modulo Rb (Ra+1)))
       | ?op ?a ?b =>
         let Ha := zify_expr a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
         let Hb := zify_expr b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in
         match op with
-        | word.and =>
-          named_pose_proof constr:(absint_and a b Ra Ha Rb Hb : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.land Ra Rb))
-        | word.or =>
-          named_pose_proof constr:(absint_or a b Ra Ha Rb Hb : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.lor Ra Rb))
-        | word.xor =>
-          named_pose_proof constr:(absint_xor a b Ra Ha Rb Hb : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.lxor Ra Rb))
-        | word.ndn =>
-          named_pose_proof constr:(absint_ndn a b Ra Ha Rb Hb : @absint_eq Z (@word.unsigned _ word_parameters e) (Z.ldiff Ra Rb))
+        | Zmod.and =>
+          named_pose_proof constr:(absint_and a b Ra Ha Rb Hb : @absint_eq Z (@Zmod.unsigned (2 ^ width) e) (Z.land Ra Rb))
+        | Zmod.or =>
+          named_pose_proof constr:(absint_or a b Ra Ha Rb Hb : @absint_eq Z (@Zmod.unsigned (2 ^ width) e) (Z.lor Ra Rb))
+        | Zmod.xor =>
+          named_pose_proof constr:(absint_xor a b Ra Ha Rb Hb : @absint_eq Z (@Zmod.unsigned (2 ^ width) e) (Z.lxor Ra Rb))
+        | Zmod.ndn =>
+          named_pose_proof constr:(absint_ndn a b Ra Ha Rb Hb : @absint_eq Z (@Zmod.unsigned (2 ^ width) e) (Z.ldiff Ra Rb))
 
-        | word.add =>
+        | Zmod.add =>
           let Re := named_pose_asfresh_or_id constr:(Ra+Rb) e in
           let Be := rbounded Re in
           let Hbounds := match type of Be with ?x0 <= ?x < ?x1 =>
                            constr:(@boundscheck x0 x x1 Be 0 (2^width) (@eq_refl bool true)) end in
-          named_pose_proof constr:(absint_add a b Ra Ha Rb Hb Hbounds : @absint_eq Z (@word.unsigned _ word_parameters e) Re)
-        | word.sub =>
+          named_pose_proof constr:(absint_add a b Ra Ha Rb Hb Hbounds : @absint_eq Z (@Zmod.unsigned (2 ^ width) e) Re)
+        | Zmod.sub =>
           let Re := named_pose_asfresh_or_id constr:(Ra-Rb) e in
           let Be := rbounded Re in
           let Hbounds := match type of Be with ?x0 <= ?x < ?x1 =>
                            constr:(@boundscheck x0 x x1 Be 0 (2^width) (@eq_refl bool true)) end in
-          named_pose_proof constr:(absint_sub a b Ra Ha Rb Hb Hbounds : @absint_eq Z (@word.unsigned _ word_parameters e) Re)
-        | word.mul =>
+          named_pose_proof constr:(absint_sub a b Ra Ha Rb Hb Hbounds : @absint_eq Z (@Zmod.unsigned (2 ^ width) e) Re)
+        | Zmod.mul =>
           let Re := named_pose_asfresh_or_id constr:(Ra*Rb) e in
           let Be := rbounded Re in
           let Hbounds := match type of Be with ?x0 <= ?x < ?x1 =>
                            constr:(@boundscheck x0 x x1 Be 0 (2^width) (@eq_refl bool true)) end in
-          named_pose_proof constr:(absint_mul a b Ra Ha Rb Hb Hbounds : @absint_eq Z (@word.unsigned _ word_parameters e) Re)
+          named_pose_proof constr:(absint_mul a b Ra Ha Rb Hb Hbounds : @absint_eq Z (@Zmod.unsigned (2 ^ width) e) Re)
 
-        | word.sru =>
+        | Zmod.sru =>
           let Re := named_pose_asfresh_or_id constr:((Ra / 2^Rb)) e in
           let Bb := rbounded Rb in
-          let pf := constr:(absint_sru a b Ra Ha Rb Hb (@boundscheck_lt _ Rb _ Bb width eq_refl): @absint_eq Z (@word.unsigned _ word_parameters e) Re) in
+          let pf := constr:(absint_sru a b Ra Ha Rb Hb (proj1 Bb): @absint_eq Z (@Zmod.unsigned (2 ^ width) e) Re) in
           named_pose_proof pf
-        | word.slu =>
+        | Zmod.slu =>
           let Re := named_pose_asfresh_or_id constr:((Ra * 2^Rb)) e in
           let Bb := rbounded Rb in
           let Be := rbounded Re in
-          named_pose_proof (absint_slu a b Ra Ha Rb Hb (boundscheck (X0:=0) (X1:=2^width) Be (eq_refl true)) (@boundscheck_lt _ Rb _ Bb width eq_refl): @absint_eq Z (@word.unsigned _ word_parameters e) Re)
+          named_pose_proof (absint_slu a b Ra Ha Rb Hb (boundscheck (X0:=0) (X1:=2^width) Be (eq_refl true)) (proj1 Bb): @absint_eq Z (@Zmod.unsigned (2 ^ width) e) Re)
         | _ => (* unknown binop or bad bounds, don't backtrack to keep Ha and Hb *)
-          constr:(@absint_eq_refl Z (@word.unsigned _ word_parameters e))
+          constr:(@absint_eq_refl Z (@Zmod.unsigned (2 ^ width) e))
          (* TODO: divu, modu (how do we prove denominator nonzero?) *)
         end
       | _ =>
-        constr:(@absint_eq_refl Z (@word.unsigned _ word_parameters e))
+        constr:(@absint_eq_refl Z (@Zmod.unsigned (2 ^ width) e))
       end
     | Z =>
       match e with
       | _ => match goal with H: e =~> _ |- _ => H end
-      | word.unsigned ?a => zify_expr a
+      | Zmod.unsigned ?a => zify_expr a
+      | Zmod.unsigned (Zmod.of_Z _ ?a) mod 2 ^ Z.log2 _ =>
+        named_pose_proof (unsigned_of_Z_shamt a eq_refl eq_refl : e =~> a)
       | _ => constr:(@absint_eq_refl Z e)
       end
     end.
 End unsigned.
 
-Require coqutil.Word.Naive.
 Module absint_test.
-  Import Word.Naive.
-  Fixpoint goal (x : word32) (n : nat) : Prop
+  Fixpoint goal (x : bits 32) (n : nat) : Prop
     := match n with
        | O => True
-       | S n' => let x := word.add x x in goal x n'
+       | S n' => let x := Zmod.add x x in goal x n'
        end.
-  Goal forall x X, 1 <= X < 2^60 -> absint_eq (word.unsigned x) X -> goal x 7.
+  Goal forall x X, 1 <= X < 2^60 -> absint_eq (Zmod.unsigned x) X -> goal x 7.
   Proof.
     cbv beta iota delta [goal].
     intros.
 
     let e := match goal with x := _ |- _ => x end in
-    let e := constr:(word.ndn (word.xor (word.or (word.and (word.sub (word.mul (word.slu (word.sru e (word.of_Z 16)) (word.of_Z 3)) x) x) x) x) x) x) in
+    let e := constr:(Zmod.ndn (Zmod.xor (Zmod.or (Zmod.and (Zmod.sub (Zmod.mul (Zmod.slu (Zmod.sru e 16) 3) x) x) x) x) x) x) in
     let H := unsigned.zify_expr e in
     idtac H.
 
 
    clear.
-   assert (x3 : word32) by exact (word.of_Z 0).
+   assert (x3 : bits 32) by exact Zmod.zero.
   let e :=
     constr:(
-word.unsigned
-  (word.add
-     (word.add
-        (word.sru
-           (word.add
-              (word.and (word.sru x3 (word.of_Z 16)) (word.of_Z 16383))
-              (word.of_Z 3)) (word.of_Z 2))
-        (word.sru
-           (word.add
-              (word.and (word.sru x3 (word.of_Z 16)) (word.of_Z 16383))
-              (word.of_Z 3)) (word.of_Z 2)))
-     (word.add
-        (word.sru
-           (word.add
-              (word.and (word.sru x3 (word.of_Z 16)) (word.of_Z 16383))
-              (word.of_Z 3)) (word.of_Z 2))
-        (word.sru
-           (word.add
-              (word.and (word.sru x3 (word.of_Z 16)) (word.of_Z 16383))
-              (word.of_Z 3)) (word.of_Z 2))))) in
+Zmod.unsigned
+  (Zmod.add
+     (Zmod.add
+        (Zmod.sru
+           (Zmod.add
+              (Zmod.and (Zmod.sru x3 16) (bits.of_Z 32 16383))
+              (bits.of_Z 32 3)) 2)
+        (Zmod.sru
+           (Zmod.add
+              (Zmod.and (Zmod.sru x3 16) (bits.of_Z 32 16383))
+              (bits.of_Z 32 3)) 2))
+     (Zmod.add
+        (Zmod.sru
+           (Zmod.add
+              (Zmod.and (Zmod.sru x3 16) (bits.of_Z 32 16383))
+              (bits.of_Z 32 3)) 2)
+        (Zmod.sru
+           (Zmod.add
+              (Zmod.and (Zmod.sru x3 16) (bits.of_Z 32 16383))
+              (bits.of_Z 32 3)) 2)))) in
      let H := unsigned.zify_expr e in
      idtac H;
      repeat match goal with H:?x =~> ?x |- _ => clear H end.

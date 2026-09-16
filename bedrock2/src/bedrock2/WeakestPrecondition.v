@@ -1,15 +1,17 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface coqutil.Map.OfListWord.
-Require Import Coq.ZArith.BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import Coq.ZArith.BinIntDef coqutil.Word.Bitwidth.
 Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 
 Section WeakestPrecondition.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
   Implicit Types (t : trace) (m : mem) (l : locals).
 
   Definition literal v (post : word -> Prop) : Prop :=
-    dlet! v := word.of_Z v in post v.
+    dlet! v := bits.of_Z width v in post v.
   Definition get (l : locals) (x : String.string) (post : word -> Prop) : Prop :=
     exists v, map.get l x = Some v /\ post v.
   Definition load s m a (post : _ -> Prop) : Prop :=
@@ -39,7 +41,7 @@ Section WeakestPrecondition.
         rec e (fun a =>
         load s (map.of_list_word t) a post)
       | expr.ite c e1 e2 =>
-        rec c (fun b => rec (if word.eqb b (word.of_Z 0) then e2 else e1) post)
+        rec c (fun b => rec (if Zmod.eqb b (bits.of_Z width 0) then e2 else e1) post)
     end.
     Fixpoint expr e := expr_body expr e.
   End WithMemAndLocals.
@@ -92,8 +94,8 @@ Section WeakestPrecondition.
           post t' m' l')
       | cmd.cond br ct cf =>
         exists v, dexpr m l br v /\
-        (word.unsigned v <> 0%Z -> rec ct t m l post) /\
-        (word.unsigned v = 0%Z -> rec cf t m l post)
+        (Zmod.unsigned v <> 0%Z -> rec ct t m l post) /\
+        (Zmod.unsigned v = 0%Z -> rec cf t m l post)
       | cmd.seq c1 c2 =>
         rec c1 t m l (fun t m l => rec c2 t m l post)
       | cmd.while _ _ => Semantics.exec e c t m l post
@@ -125,10 +127,10 @@ Notation call := Semantics.call (only parsing).
 
 Ltac unfold1_cmd e :=
   lazymatch e with
-    @cmd ?width ?BW ?word ?mem ?locals ?ext_spec ?CA ?c ?t ?m ?l ?post =>
+    @cmd ?width ?BW ?mem ?locals ?ext_spec ?CA ?c ?t ?m ?l ?post =>
     let c := eval hnf in c in
-    constr:(@cmd_body width BW word mem locals ext_spec CA
-                      (@cmd width BW word mem locals ext_spec CA) c t m l post)
+    constr:(@cmd_body width BW mem locals ext_spec CA
+                      (@cmd width BW mem locals ext_spec CA) c t m l post)
   end.
 Ltac unfold1_cmd_goal :=
   let G := lazymatch goal with |- ?G => G end in
@@ -137,9 +139,9 @@ Ltac unfold1_cmd_goal :=
 
 Ltac unfold1_expr e :=
   lazymatch e with
-    @expr ?width ?word ?mem ?locals ?m ?l ?arg ?post =>
+    @expr ?width ?mem ?locals ?m ?l ?arg ?post =>
     let arg := eval hnf in arg in
-    constr:(@expr_body width word mem locals m l (@expr width word mem locals m l) arg post)
+    constr:(@expr_body width mem locals m l (@expr width mem locals m l) arg post)
   end.
 Ltac unfold1_expr_goal :=
   let G := lazymatch goal with |- ?G => G end in

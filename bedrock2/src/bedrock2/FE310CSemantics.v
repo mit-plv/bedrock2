@@ -2,7 +2,7 @@ Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.Syntax bedrock2.Semantics bedrock2.LeakageSemantics.
 Require Import bedrock2.SemanticsRelations.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 Require Export coqutil.Word.Bitwidth32.
 
 Import String List.ListNotations.
@@ -14,19 +14,20 @@ Definition MMIOREAD : string := "MMIOREAD".
 Definition MMIOWRITE : string := "MMIOWRITE".
 
 Section WithParameters.
-  Context {word: word.word 32} {mem: Interface.map.map word Byte.byte}.
+  Local Notation word := (bits 32).
+  Context {mem: Interface.map.map word Byte.byte}.
   Import Interface.map.
 
   (* FIXME: this is a copypaste from [riscv.Platform.FE310ExtSpec.FE310_mmio] *)
   Definition isMMIOAddr (addr : word) :=
-    0x00020000 <= word.unsigned addr < 0x00022000 \/
-    0x10008000 <= word.unsigned addr < 0x10010000 \/
-    0x10012000 <= word.unsigned addr < 0x10013000 \/
-    0x10013000 <= word.unsigned addr < 0x10014000 \/
-    0x10024000 <= word.unsigned addr < 0x10025000.
+    0x00020000 <= Zmod.unsigned addr < 0x00022000 \/
+    0x10008000 <= Zmod.unsigned addr < 0x10010000 \/
+    0x10012000 <= Zmod.unsigned addr < 0x10013000 \/
+    0x10013000 <= Zmod.unsigned addr < 0x10014000 \/
+    0x10024000 <= Zmod.unsigned addr < 0x10025000.
   (* FIXME: this is a copypaste from [riscv.Platform.FE310ExtSpec.FE310_mmio] *)
   Definition isMMIOAligned (n : nat) (addr : word) :=
-    n = 4%nat /\ word.unsigned addr mod 4 = 0.
+    n = 4%nat /\ Zmod.unsigned addr mod 4 = 0.
 
 (* FE310 is a simple enough processor that our leakage assumptions are likely to hold.  There is no official documentation of whether multiply always takes the maximum time or not, but both https://eprint.iacr.org/2019/794.pdf and https://pure.tue.nl/ws/portalfiles/portal/169647601/Berg_S._ES_CSE.pdf quote a fixed number of cycles for FE310 multiplication in the context of cryptography. *)
   Global Instance leakage_ext_spec: LeakageSemantics.ExtSpec :=
@@ -34,12 +35,12 @@ Section WithParameters.
     if String.eqb "MMIOWRITE" a then
       exists addr val,
         args = [addr; val] /\
-        (mGive = Interface.map.empty /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0) /\
+        (mGive = Interface.map.empty /\ isMMIOAddr addr /\ Zmod.unsigned addr mod 4 = 0) /\
         post Interface.map.empty nil [addr]
     else if String.eqb "MMIOREAD" a then
       exists addr,
         args = [addr] /\
-        (mGive = Interface.map.empty /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0) /\
+        (mGive = Interface.map.empty /\ isMMIOAddr addr /\ Zmod.unsigned addr mod 4 = 0) /\
         forall val, post Interface.map.empty [val] [addr]
     else False.
 
@@ -71,13 +72,6 @@ Section WithParameters.
 
   Global Instance locals_ok: Interface.map.ok locals := SortedListString.ok _.
   Global Instance env_ok: Interface.map.ok env := SortedListString.ok _.
-
-  Context {word_ok: word.ok word}.
-  (* COPY-PASTE this at the beginning of any section in which you need `ring` for words *)
-  Add Ring wring : (Properties.word.ring_theory (word := word))
-        (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := word)),
-         constants [Properties.word_cst]).
 End WithParameters.
 
 Arguments locals: simpl never.

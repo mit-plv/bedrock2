@@ -26,12 +26,13 @@ Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.Separa
 Require bedrock2.LeakageWeakestPreconditionProperties.
 From coqutil.Tactics Require Import Tactics letexists eabstract.
 Require Import bedrock2.LeakageProgramLogic bedrock2.Scalars.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Tactics.rdelta.
 
 Section WithParameters.
-  Context {word: word.word 32} {mem: map.map word Byte.byte}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Local Notation word := (bits 32).
+  Context {mem: map.map word Byte.byte}.
+  Context {mem_ok: map.ok mem}.
   Context {pick_sp: PickSp}.
 
   Instance spec_of_swap : spec_of "swap" :=

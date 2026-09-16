@@ -70,7 +70,7 @@ Lemma list_app_eq_l: forall [A: Type] (xs1 xs2 ys: list A),
 Proof. unfold safe_implication. intros. subst. reflexivity. Qed.
 
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import coqutil.Word.Bitwidth coqutil.Word.Interface coqutil.Map.Interface.
+Require Import coqutil.Word.Bitwidth coqutil.Map.Interface.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.SepLib.
 
@@ -87,8 +87,9 @@ Proof. unfold safe_implication. apply Z.compare_gt_iff. Qed.
   : safe_implication.
 
 Section WithMem.
-  Context {width: Z}{BW: Bitwidth width}{word: word.word width}{word_ok: word.ok word}
-    {mem: map.map word Byte.byte}{mem_ok: map.ok mem}.
+  Context {width: Z}{BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}{mem_ok: map.ok mem}.
 
   (* Note: Not safe if elem doesn't fully determine its value *)
   Lemma array_impl_from_values_eq[E: Type](elem: E -> word -> mem -> Prop)
@@ -97,11 +98,11 @@ Section WithMem.
   Proof. unfold safe_implication. intros. subst. reflexivity. Qed.
 
   Lemma uintptr_from_uint: forall a w z,
-      safe_implication (w = word.of_Z z) (impl1 (uint width z a) (uintptr w a)).
+      safe_implication (w = bits.of_Z width z) (impl1 (uint width z a) (uintptr w a)).
   Proof. unfold safe_implication. intros. subst. apply uint_to_uintptr. Qed.
 
   Lemma uint_from_uintptr: forall a w z,
-      safe_implication (z = word.unsigned w) (impl1 (uintptr w a) (uint width z a)).
+      safe_implication (z = Zmod.unsigned w) (impl1 (uintptr w a) (uint width z a)).
   Proof. unfold safe_implication. intros. subst. apply uintptr_to_uint. Qed.
 End WithMem.
 
@@ -121,8 +122,9 @@ Global Hint Transparent PredicateSize : safe_implication.
 
 Module Tests.
   Section WithMem.
-    Context {width: Z}{BW: Bitwidth width}{word: word.word width}
-      {mem: map.map word Byte.byte}.
+    Context {width: Z}{BW: Bitwidth width}.
+    Local Notation word := (bits width).
+    Context {mem: map.map word Byte.byte}.
 
     Ltac t := safe_implication_step.
 

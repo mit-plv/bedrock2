@@ -18,7 +18,7 @@ Tactic Notation "prove" constr(c) "as" ident(h) := prove_as c h.
 Ltac swap_with_in old new h :=
   (replace old with new in h; cycle 1); [tweak_sidecond_hook .. | ].
 
-Tactic Notation "swap" constr(old) "with" constr(new) "in" constr(h) :=
+Tactic Notation "swap" open_constr(old) "with" open_constr(new) "in" constr(h) :=
   swap_with_in old new h.
 
 (* Note: This is more than just an alias: `clear` syntactically only accepts idents

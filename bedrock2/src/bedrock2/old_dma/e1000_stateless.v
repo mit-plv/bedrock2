@@ -14,7 +14,7 @@ Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Z.BitOps.
 Require coqutil.Map.SortedListZ.
 Require Import coqutil.Datatypes.ZList.
@@ -68,8 +68,9 @@ Module RCTL.
 End RCTL.
 
 Section WithMem.
-  Context {width: Z} {BW: Bitwidth width}
-          {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
 
   Local Notation IReg ofs init := (InitializedRegister (E1000_REGS + ofs) init)
     (only parsing).
@@ -257,7 +258,7 @@ Section WithMem.
    So the status field needs to be written by the NIC and concurrently be read by software,
    so we can't strictly assign this piece of memory to either NIC or software! *)
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {mem_ok: map.ok mem}.
 
   Axiom TODO: False.
 
@@ -401,13 +402,13 @@ Section WithMem.
     intros.
     eapply exec.interact_cps.
     2: {
-      cbn [eval_call_args eval_expr]. rewrite word.of_Z_unsigned. reflexivity.
+      cbn [eval_call_args eval_expr]. rewrite Zmod.of_Z_unsigned. reflexivity.
     }
     2: {
       unfold e1000_step.
       eexists. split. 1: eassumption. right.
       cbn [dispatch String.eqb].
-      rewrite (word.eqb_eq _ _ (eq_refl (register_address E1000_RDH))).
+      rewrite (Zmod.eqb_refl (register_address E1000_RDH)).
       cbn [read].
       (* looks promising, but still need to determine ?mGive and ?mKeep,
          and need to consolidate cps vs non-cps style *)

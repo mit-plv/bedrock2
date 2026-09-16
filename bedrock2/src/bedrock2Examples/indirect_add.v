@@ -13,7 +13,7 @@ Definition indirect_add_twice := func! (a, b) {
 }.
 
 Require Import bedrock2.WeakestPrecondition.
-Require Import coqutil.Word.Interface coqutil.Map.Interface bedrock2.Map.SeparationLogic.
+Require Import coqutil.Word.Bitwidth coqutil.Map.Interface bedrock2.Map.SeparationLogic.
 Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 
 Require bedrock2.WeakestPreconditionProperties.
@@ -21,15 +21,16 @@ From coqutil.Tactics Require Import letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 
 Section WithParameters.
-  Context {word: word.word 32} {mem: map.map word Byte.byte}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Local Notation word := (bits 32).
+  Context {mem: map.map word Byte.byte}.
+  Context {mem_ok: map.ok mem}.
 
-  Definition f (a b : word) := word.add (word.add a b) b.
+  Definition f (a b : word) := Zmod.add (Zmod.add a b) b.
 
   Instance spec_of_indirect_add : spec_of "indirect_add" :=
     fnspec! "indirect_add" a b c / va Ra vb Rb vc Rc,
     { requires t m := m =* scalar a va * Ra /\ m =* scalar b vb * Rb /\ m =* scalar c vc * Rc;
-      ensures t' m' := t=t' /\ m' =* scalar a (word.add vb vc) * Ra }.
+      ensures t' m' := t=t' /\ m' =* scalar a (Zmod.add vb vc) * Ra }.
   Instance spec_of_indirect_add_twice : spec_of "indirect_add_twice" :=
     fnspec! "indirect_add_twice" a b / va vb R,
     { requires t m := m =* scalar a va * scalar b vb * R;
@@ -63,7 +64,7 @@ Section WithParameters.
     indirect_add(a, a, c)
   }.
 
-  Definition g (a b c : word) := word.add (word.add a b) c.
+  Definition g (a b c : word) := Zmod.add (Zmod.add a b) c.
   Instance spec_of_indirect_add_three : spec_of "indirect_add_three" :=
     fnspec! "indirect_add_three" a b c / va vb vc Rb R,
     { requires t m := m =* scalar a va * scalar c vc * R /\ m =* scalar b vb * Rb;
@@ -107,7 +108,7 @@ Section WithParameters.
                seprewrite_in_by scalar_of_bytes H
                  ltac:(Lia.lia);
                  let x := fresh "x" in
-                 set (word.of_Z _) as x in H; clearbody x; move x at top
+                 set (bits.of_Z 32 _) as x in H; clearbody x; move x at top
            end.
     clear dependent mStack.
 
@@ -123,7 +124,7 @@ H4 : (scalar a0 x2 ⋆ (scalar c vc ⋆ Rc))%sep m2
 
     repeat straightline.
     (*
-H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
+H15 : (scalar a0 (Zmod.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
      *)
     (* H15 is an updated version of H1,
        but we really wanted to carry over H2,H3, and H4 as well *)
@@ -147,7 +148,7 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
                seprewrite_in_by scalar_of_bytes H
                  ltac:(Lia.lia);
                  let x := fresh "x" in
-                 set (word.of_Z _) as x in H; clearbody x; move x at top
+                 set (bits.of_Z 32 _) as x in H; clearbody x; move x at top
            end.
     clear dependent mStack.
 
@@ -170,7 +171,7 @@ H7 : (scalar a0 x
     repeat straightline.
 
     (*
-H9 : (scalar a0 (word.add va vb)
+H9 : (scalar a0 (Zmod.add va vb)
       ⋆ (fun m : mem =>
          (scalar out vout ⋆ R) m /\
          (scalar a va ⋆ Ra) m /\ (scalar b vb ⋆ Rb) m /\ (scalar c vc ⋆ Rc) m))%sep
@@ -188,7 +189,7 @@ H9 : (scalar a0 (word.add va vb)
 
     (* casting scalar to bytes for stack deallocation *)
     cbv [scalar truncated_word truncated_scalar] in *.
-    set ((LittleEndianList.le_split (bytes_per access_size.word) (word.unsigned (word.add va vb)))) as stackbytes in *.
+    set ((LittleEndianList.le_split (bytes_per access_size.word) (Zmod.unsigned (Zmod.add va vb)))) as stackbytes in *.
     extract_ex1_and_emp_in_hyps.
     assert (Datatypes.length stackbytes = 4%nat) by exact eq_refl.
     Import symmetry.
@@ -207,7 +208,7 @@ H9 : (scalar a0 (word.add va vb)
     fnspec! "indirect_add" a b c / va Ra vb Rb vc Rc,
     { requires t m := m =* scalar a va * Ra /\ m =* scalar b vb * Rb /\ m =* scalar c vc * Rc;
       ensures t' m' := t=t' /\
-        forall va Ra, m =* scalar a va * Ra -> m' =* scalar a (word.add vb vc) * Ra }.
+        forall va Ra, m =* scalar a va * Ra -> m' =* scalar a (Zmod.add vb vc) * Ra }.
 
   Lemma indirect_add_gen_ok : program_logic_goal_for_function! indirect_add.
   Proof.
@@ -237,7 +238,7 @@ H9 : (scalar a0 (word.add va vb)
                seprewrite_in_by scalar_of_bytes H
                  ltac:(Lia.lia);
                  let x := fresh "x" in
-                 set (word.of_Z _) as x in H; clearbody x; move x at top
+                 set (bits.of_Z 32 _) as x in H; clearbody x; move x at top
            end.
     clear dependent mStack.
 
@@ -247,7 +248,7 @@ H9 : (scalar a0 (word.add va vb)
     rename a2 into m.
     (*
 H15 : forall (va0 : word) (Ra : mem -> Prop),
-      (scalar a0 va0 ⋆ Ra)%sep m2 -> (scalar a0 (word.add va vb) ⋆ Ra)%sep m
+      (scalar a0 va0 ⋆ Ra)%sep m2 -> (scalar a0 (Zmod.add va vb) ⋆ Ra)%sep m
      *)
     eapply H15 in H1.
     eapply H15 in H2.
@@ -262,7 +263,7 @@ H15 : forall (va0 : word) (Ra : mem -> Prop),
     (*
 H15 : forall (va0 : word) (Ra : mem -> Prop),
       (scalar out va0 ⋆ Ra)%sep m ->
-      (scalar out (word.add (word.add va vb) vc) ⋆ Ra)%sep m'
+      (scalar out (Zmod.add (Zmod.add va vb) vc) ⋆ Ra)%sep m'
      *)
     specialize (H15 _ _ ltac:(ecancel_assumption)).
 

@@ -20,9 +20,8 @@ Require Import bedrock2.MetricLeakageSemantics.
 Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Map.OfListWord.
 Require Import coqutil.Word.Bitwidth.
-Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Tactics.fwd.
-Local Hint Mode Word.Interface.word - : typeclass_instances.
 
 Inductive bbinop: Set :=
 | BEq
@@ -232,7 +231,8 @@ Local Open Scope Z_scope.
 
 Section FlatImp1.
   Context {varname: Type} {varname_eqb: varname -> varname -> bool}.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {mem: map.map word byte} {locals: map.map varname word}
           {env: map.map String.string (list varname * list varname * stmt varname)}.
 
@@ -241,12 +241,12 @@ Section FlatImp1.
 
     Definition eval_bbinop(op: bbinop)(x y: word): bool :=
       match op with
-      | BEq  => word.eqb x y
-      | BNe  => negb (word.eqb x y)
-      | BLt  => word.lts x y
-      | BGe  => negb (word.lts x y)
-      | BLtu => word.ltu x y
-      | BGeu => negb (word.ltu x y)
+      | BEq  => Zmod.eqb x y
+      | BNe  => negb (Zmod.eqb x y)
+      | BLt  => Z.ltb (Zmod.signed x) (Zmod.signed y)
+      | BGe  => negb (Z.ltb (Zmod.signed x) (Zmod.signed y))
+      | BLtu => Z.ltb (Zmod.unsigned x) (Zmod.unsigned y)
+      | BGeu => negb (Z.ltb (Zmod.unsigned x) (Zmod.unsigned y))
       end.
 
     Definition eval_bcond(st: locals)(cond: bcond varname): option bool :=
@@ -258,7 +258,7 @@ Section FlatImp1.
         end
       | CondNez x =>
         match  map.get st x  with
-        | Some mx => Some (negb (word.eqb mx (word.of_Z 0)))
+        | Some mx => Some (negb (Zmod.eqb mx (bits.of_Z width 0)))
         | None => None
         end
       end.
@@ -298,12 +298,13 @@ End FlatImp1.
 Module exec.
   Section FlatImpExec.
     Context {varname: Type} {varname_eqb: varname -> varname -> bool}.
-    Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+    Context {width: Z} {BW: Bitwidth width}.
+    Local Notation word := (bits width).
     Context {mem: map.map word byte} {locals: map.map varname word}
             {env: map.map String.string (list varname * list varname * stmt varname)}.
     Context {ext_spec: ExtSpec}.
     Context {varname_eq_spec: EqDecider varname_eqb}
-            {word_ok: word.ok word}
+
             {mem_ok: map.ok mem}
             {locals_ok: map.ok locals}
             {env_ok: map.ok env}
@@ -322,7 +323,7 @@ Module exec.
     Definition lookup_op_locals (l: locals) (o: operand) :=
       match o with
       | Var vo => map.get l vo
-      | Const co => Some (word.of_Z co)
+      | Const co => Some (bits.of_Z width co)
       end.
 
     (* Helper functions for computing costs of instructions *)
@@ -380,14 +381,14 @@ Module exec.
         exec (SCall binds fname args) k t m l mc post
     | load: forall k t m l mc sz x a o v addr post,
         map.get l a = Some addr ->
-        load sz m (word.add addr (word.of_Z o)) = Some v ->
-        post (leak_word (word.add addr (word.of_Z o)) :: k) t m (map.put l x v) (cost_load isReg x a mc)->
+        load sz m (Zmod.add addr (bits.of_Z width o)) = Some v ->
+        post (leak_word (Zmod.add addr (bits.of_Z width o)) :: k) t m (map.put l x v) (cost_load isReg x a mc)->
         exec (SLoad sz x a o) k t m l mc post
     | store: forall k t m m' mc l sz a o addr v val post,
         map.get l a = Some addr ->
         map.get l v = Some val ->
-        store sz m (word.add addr (word.of_Z o)) val = Some m' ->
-        post (leak_word (word.add addr (word.of_Z o)) :: k) t m' l (cost_store isReg a v mc) ->
+        store sz m (Zmod.add addr (bits.of_Z width o)) val = Some m' ->
+        post (leak_word (Zmod.add addr (bits.of_Z width o)) :: k) t m' l (cost_store isReg a v mc) ->
         exec (SStore sz a v o) k t m l mc post
     | inlinetable: forall sz x table i v index k t m l mc post,
         (* compiled riscv code uses x as a tmp register and this shouldn't overwrite i *)
@@ -410,7 +411,7 @@ Module exec.
                 post k' t' mSmall' l' (cost_stackalloc isReg x mc'))) ->
         exec (SStackalloc x n body) k t mSmall l mc post
     | lit: forall k t m l mc x v post,
-        post k t m (map.put l x (word.of_Z v)) (cost_lit isReg x mc) ->
+        post k t m (map.put l x (bits.of_Z width v)) (cost_lit isReg x mc) ->
         exec (SLit x v) k t m l mc post
     | op: forall k t m l mc x op y y' z z' post,
         map.get l y = Some y' ->
@@ -775,12 +776,13 @@ Notation exec := exec.exec.
 Section FlatImp2.
   Context (varname: Type).
   Context {varname_eqb: varname -> varname -> bool}.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
   Context {mem: map.map word byte} {locals: map.map varname word}
           {env: map.map String.string (list varname * list varname * stmt varname)}.
   Context {ext_spec: ExtSpec} {pick_sp: PickSp}.
   Context {varname_eq_spec: EqDecider varname_eqb}
-          {word_ok: word.ok word}
+
           {mem_ok: map.ok mem}
           {locals_ok: map.ok locals}
           {env_ok: map.ok env}

@@ -1,7 +1,7 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Strings.String.
 Require Import Coq.Lists.List. Import ListNotations.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth32.
+Require Import coqutil.Word.Bitwidth32.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.forward.
 Require Import bedrock2.Syntax.
@@ -12,7 +12,7 @@ Require Import coqutil.Tactics.Simp.
 Require Import compiler.ExprImpEventLoopSpec.
 Require Import compiler.MemoryLayout.
 Require Import end2end.End2EndPipeline.
-Require Import end2end.Bedrock2SemanticsForKami. (* TODO why is the ok instance in that file not needed? *)
+Require Import end2end.Bedrock2SemanticsForKami.
 Require        riscv.Utility.InstructionNotations.
 Require        bedrock2.Hexdump.
 Require Import coqutil.Map.Z_keyed_SortedListMap.
@@ -34,24 +34,24 @@ Definition ml: MemoryLayout :=
   End2EndPipeline.ml instrMemSizeLg memSizeLg stack_size_in_bytes.
 
 Remark this_is_the_value_of_ml: ml = {|
-  MemoryLayout.code_start    := word.of_Z 0;
-  MemoryLayout.code_pastend  := word.of_Z (2 ^ 12);
-  MemoryLayout.heap_start    := word.of_Z (2 ^ 12);
-  MemoryLayout.heap_pastend  := word.of_Z (2 ^ 12 + 2 ^ 11);
-  MemoryLayout.stack_start   := word.of_Z (2 ^ 12 + 2 ^ 11);
-  MemoryLayout.stack_pastend := word.of_Z (2 ^ 13);
+  MemoryLayout.code_start    := bits.of_Z _ 0;
+  MemoryLayout.code_pastend  := bits.of_Z _ (2 ^ 12);
+  MemoryLayout.heap_start    := bits.of_Z _ (2 ^ 12);
+  MemoryLayout.heap_pastend  := bits.of_Z _ (2 ^ 12 + 2 ^ 11);
+  MemoryLayout.stack_start   := bits.of_Z _ (2 ^ 12 + 2 ^ 11);
+  MemoryLayout.stack_pastend := bits.of_Z _ (2 ^ 13);
 |}.
 Proof. reflexivity. Qed.
 
-Definition buffer_addr: Z := word.unsigned ml.(heap_start).
+Definition buffer_addr: Z := Zmod.unsigned ml.(heap_start).
 
 Definition spec: ProgramSpec := {|
   datamem_start := ml.(heap_start);
   datamem_pastend := ml.(heap_pastend);
   goodTrace iol := exists ioh, SPI.mmio_trace_abstraction_relation ioh iol /\
-                               goodHlTrace _ ioh;
+                               goodHlTrace ioh;
   isReady t m := exists buf R,
-    (Separation.sep (Array.array Scalars.scalar8 (word.of_Z 1) (word.of_Z buffer_addr) buf) R) m /\
+    (Separation.sep (Array.array Scalars.scalar8 (bits.of_Z _ 1) (bits.of_Z _ buffer_addr) buf) R) m /\
     Z.of_nat (Datatypes.length buf) = 1520;
 |}.
 
@@ -145,10 +145,8 @@ Proof.
     destruct H3; simp; eexists; constructor; try eassumption; constructor.
 Qed.
 
-Arguments goodHlTrace {_}.
-
 Lemma kami_and_lightbulb_abstract_bedrockTrace_the_same_way:
-  forall bedrockTrace (kamiTrace lightbulbTrace : list (string * word * word)),
+  forall bedrockTrace (kamiTrace lightbulbTrace : list (string * bits 32 * bits 32)),
     SPI.mmio_trace_abstraction_relation lightbulbTrace bedrockTrace ->
     KamiRiscvStep.traces_related kamiTrace bedrockTrace ->
     kamiTrace = lightbulbTrace.
@@ -161,7 +159,7 @@ Qed.
 
 Definition bytes_at(bs: list Init.Byte.byte)(addr: Z)
            (m: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg)): Prop :=
-  @kami_mem_contains_bytes bs 13 (word.of_Z addr) m.
+  @kami_mem_contains_bytes bs 13 (bits.of_Z _ addr) m.
 
 (* it's a prefix in the temporal sense -- since traces grow on the left,
    this definition looks more like a suffix *)
@@ -171,7 +169,7 @@ Definition prefix_of{A: Type}(l: list A)(P: list A -> Prop): Prop :=
 Theorem end2end_lightbulb: forall mem0 t state,
   bytes_at (instrencode lightbulb_insts) 0 mem0 ->
   Semantics.Behavior (p4mm mem0) state t ->
-  exists t': list (string * word * word),
+  exists t': list (string * bits 32 * bits 32),
     KamiRiscv.KamiLabelSeqR t t' /\
     prefix_of t' goodHlTrace.
 Proof.
@@ -187,8 +185,8 @@ Proof.
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q memSizeLg_valid.
-  specialize_first Q (Zkeyed_map (KamiWord.word 32)).
-  specialize_first Q (Zkeyed_map_ok (KamiWord.word 32)).
+  specialize_first Q (Zkeyed_map (bits 32)).
+  specialize_first Q (Zkeyed_map_ok (bits 32)).
   specialize_first Q mem_ok.
   specialize Q with (12 := KB). (* TODO add bigger numbers to coqutil.Tactics.forward.specialize_first *)
   (* specialize_first Q KB. *)
@@ -200,14 +198,14 @@ Proof.
             KamiRiscv.KamiLabelSeqR t t' /\
             (exists (suffix : list KamiRiscvStep.Event) (bedrockTrace : list RiscvMachine.LogItem),
                 KamiRiscvStep.traces_related (suffix ++ t') bedrockTrace /\
-                (exists ioh : list (lightbulb_spec.OP _),
+                (exists ioh : list lightbulb_spec.OP,
                     SPI.mmio_trace_abstraction_relation ioh bedrockTrace /\
                     goodHlTrace ioh)))
     as A. {
     clear -A.
     intro B. specialize (A B); clear B.
     clear mem0.
-    change (OP Consistency.word) with KamiRiscvStep.Event in *.
+    change OP with KamiRiscvStep.Event in *.
     unfold KamiRiscvStep.Event, prefix_of in *.
     simp.
     eexists. split. 1: exact Ap0.
@@ -245,7 +243,7 @@ Proof.
       | A: BinIntDef.Z.of_nat (Datatypes.length anybytes) = ?c |- _ =>
         let c' := eval cbv in c in change (BinIntDef.Z.of_nat (Datatypes.length anybytes) = c') in A
       end.
-      rewrite word.of_Z_unsigned.
+      rewrite Zmod.of_Z_unsigned.
       rewrite <-(firstn_skipn 1520 anybytes) in Hp1.
       unfold LowerPipeline.ptsto_bytes in Hp1.
       SeparationLogic.seprewrite_in @Array.bytearray_append Hp1.

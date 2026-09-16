@@ -28,15 +28,17 @@ Local Open Scope zlist_scope.
 Local Open Scope Z_scope.
 
 Section SepLog.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
+  Context {mem_ok: map.ok mem}.
 
   Import ZnWords.
 
   Lemma split_array_at_bw{E: Type}{inh: inhabited E} elem {elemSize: PredicateSize elem}:
     forall s n a i (vs vs1 vs2: list E),
-      word.unsigned (word.sub s a) / elemSize = i ->
-      word.unsigned (word.sub s a) mod elemSize = 0 ->
+      Zmod.unsigned (Zmod.sub s a) / elemSize = i ->
+      Zmod.unsigned (Zmod.sub s a) mod elemSize = 0 ->
       impl1 (sep (array elem i vs1 a)
                  (sep (array elem (n-i) vs2 s)
                       (emp (vs1 ++ vs2 = vs))))
@@ -66,22 +68,22 @@ Section SepLog.
   Lemma split_off_elem_from_array{E: Type}{inh: inhabited E}:
     forall a a' elem {elemSize: PredicateSize elem} n i,
       (* to be solved by reflexivity (instantiates i): *)
-      word.unsigned (word.sub a' a) / elemSize = i ->
+      Zmod.unsigned (Zmod.sub a' a) / elemSize = i ->
       (* to be solved by ZnWords: *)
-      ((word.unsigned (word.sub a' a)) mod elemSize = 0 /\ 0 <= i < n) ->
+      ((Zmod.unsigned (Zmod.sub a' a)) mod elemSize = 0 /\ 0 <= i < n) ->
       (* split direction: *)
       (forall (vs: list E) m,
           array elem n vs a m ->
           sep (elem vs[i] a')
               (sep (array elem i vs[:i] a)
                   (array elem (n-i-1) vs[i+1:]
-                      (word.add a' (word.of_Z elemSize)))) m) /\
+                      (Zmod.add a' (bits.of_Z width elemSize)))) m) /\
       (* merge direction: *)
       (forall vs1 vs2 v m,
           sep (array elem i vs1 a)
               (sep (elem v a')
                   (array elem (n-i-1) vs2
-                      (word.add a' (word.of_Z elemSize)))) m ->
+                      (Zmod.add a' (bits.of_Z width elemSize)))) m ->
           array elem n (vs1 ++ [|v|] ++ vs2) a m).
   Proof.
     split; intros.
@@ -101,9 +103,9 @@ Section SepLog.
       unfold with_mem in H4.
       heapletwise_step.
 
-      assert (a' = (word.add a
-        (word.of_Z (word.unsigned (width := width)
-          (word.of_Z elemSize) * len vs[:i])))) as Ha' by
+      assert (a' = (Zmod.add a
+        (bits.of_Z width (Zmod.unsigned (m := 2 ^ width)
+          (bits.of_Z width elemSize) * len vs[:i])))) as Ha' by
         (rewrite List.len_upto;
           destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
       rewrite <- Ha' in *; clear Ha'.
@@ -117,9 +119,9 @@ Section SepLog.
       eapply iff1ToEq in Happ.
       rewrite Happ; clear Happ; simpl.
 
-      assert (a' = (word.add a
-        (word.of_Z (word.unsigned (width := width)
-          (word.of_Z elemSize) * len vs1)))) as Ha' by
+      assert (a' = (Zmod.add a
+        (bits.of_Z width (Zmod.unsigned (m := 2 ^ width)
+          (bits.of_Z width elemSize) * len vs1)))) as Ha' by
         (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
       rewrite <- Ha' in *; clear Ha'.
 
@@ -133,10 +135,10 @@ Section SepLog.
     (* a = start of the entire array. a' = start of the subarray (i). *)
     (* size = number of elements to split off *)
     forall a a' elem {elemSize: PredicateSize elem} n (nbytes: Z) i (size: Z),
-      word.unsigned (word.sub a' a) / elemSize = i ->
+      Zmod.unsigned (Zmod.sub a' a) / elemSize = i ->
       nbytes / elemSize = size ->
 
-      (word.unsigned (word.sub a' a)) mod elemSize = 0 /\
+      (Zmod.unsigned (Zmod.sub a' a)) mod elemSize = 0 /\
       nbytes mod elemSize = 0 /\
       0 <= size /\
       0 <= i /\ i+size <= n ->
@@ -150,7 +152,7 @@ Section SepLog.
           (sep (array elem size vs[i:][:size] a')
         (* final part *)
             (array elem (n-i-size) vs[i+size:]
-              (word.add a' (word.of_Z (elemSize * size))))) m)
+              (Zmod.add a' (bits.of_Z width (elemSize * size))))) m)
 
       /\
 
@@ -161,7 +163,7 @@ Section SepLog.
           (sep (array elem size vsm a')
         (* final part *)
             (array elem (n-i-size) vsr
-              (word.add a' (word.of_Z (elemSize * size))))) m  ->
+              (Zmod.add a' (bits.of_Z width (elemSize * size))))) m  ->
 
         array elem n (vsl ++ vsm ++ vsr) a m
       ).
@@ -191,13 +193,13 @@ Section SepLog.
       heapletwise_step.
       rewrite List.len_add_sized_slice in * by ZnWords.
 
-      replace (word.add a
-               (word.of_Z (word.unsigned (width := width)
-                 (word.of_Z elemSize) * len vs[:i]))) with a' in * by
+      replace (Zmod.add a
+               (bits.of_Z width (Zmod.unsigned (m := 2 ^ width)
+                 (bits.of_Z width elemSize) * len vs[:i]))) with a' in * by
         (rewrite List.len_upto by ZnWords;
           destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
-      replace (word.of_Z (word.unsigned (word.of_Z elemSize) * size))
-        with (word.of_Z (word := word) (elemSize * size)) in * by
+      replace (bits.of_Z width (Zmod.unsigned (bits.of_Z width elemSize) * size))
+        with (bits.of_Z width (elemSize * size)) in * by
           (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
       repeat heapletwise_step; ZnWords.
     }
@@ -214,12 +216,12 @@ Section SepLog.
       eapply iff1ToEq in Happ.
       rewrite Happ; clear Happ.
 
-      replace (word.add a
-               (word.of_Z (word.unsigned (width := width)
-                 (word.of_Z elemSize) * len vsl))) with a' in * by
+      replace (Zmod.add a
+               (bits.of_Z width (Zmod.unsigned (m := 2 ^ width)
+                 (bits.of_Z width elemSize) * len vsl))) with a' in * by
         (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
-      replace (word.of_Z (word.unsigned (word.of_Z elemSize) * len vsm))
-        with (word.of_Z (word := word) (elemSize * len vsm)) in * by
+      replace (bits.of_Z width (Zmod.unsigned (bits.of_Z width elemSize) * len vsm))
+        with (bits.of_Z width (elemSize * len vsm)) in * by
           (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
 
       collect_heaplets_into_one_sepclause. cbn [seps] in D.
@@ -231,20 +233,20 @@ Section SepLog.
   Lemma split_anybytes_from_anybytes:
     (* a = start of the entire array. a' = start of the part to split off. *)
     forall a a' (nAll nReq: Z) i,
-      word.unsigned (word.sub a' a) = i ->
+      Zmod.unsigned (Zmod.sub a' a) = i ->
       0 <= nReq /\ 0 <= i /\ i+nReq <= nAll ->
       (forall m,
         (array (uint 8) nAll ? a) m ->
         sep (array (uint 8) i ? a)
           (sep (array (uint 8) nReq ? a')
-             (array (uint 8) (nAll-i-nReq) ? (word.add a' (word.of_Z nReq)))) m) /\
+             (array (uint 8) (nAll-i-nReq) ? (Zmod.add a' (bits.of_Z width nReq)))) m) /\
       (* Note: often, this second part will not be used, because the split-off
          bytes get initialized to something, but if the callee just used it as
          scratch space, this second part will be used *)
       (forall m,
         sep (array (uint 8) i ? a)
           (sep (array (uint 8) nReq ? a')
-             (array (uint 8) (nAll-i-nReq) ? (word.add a' (word.of_Z nReq)))) m  ->
+             (array (uint 8) (nAll-i-nReq) ? (Zmod.add a' (bits.of_Z width nReq)))) m  ->
         array (uint 8) nAll ? a m).
   Proof.
     split; intros.
@@ -254,7 +256,7 @@ Section SepLog.
       repeat heapletwise_step.
       subst i.
       rewrite ?Z.mul_1_l in *.
-      rewrite word.of_Z_unsigned in *.
+      rewrite Zmod.of_Z_unsigned in *.
       rewrite word.add_sub_r_same_r in *.
       repeat heapletwise_step.
     - repeat heapletwise_step.
@@ -267,7 +269,7 @@ Section SepLog.
       eapply merge_anyval_array.
       rewrite Z.mul_1_l.
       subst i.
-      rewrite word.of_Z_unsigned in *.
+      rewrite Zmod.of_Z_unsigned in *.
       rewrite word.add_sub_r_same_r in *.
       repeat heapletwise_step.
   Qed.
@@ -310,7 +312,7 @@ Section SepLog.
   Qed.
 
   Lemma split_off_field_from_sepapps: forall a a' sz ofs ofs_simpl l_old n,
-      word.unsigned (word.sub a' a) = ofs -> (* <- reflexivity determines ofs *)
+      Zmod.unsigned (Zmod.sub a' a) = ofs -> (* <- reflexivity determines ofs *)
       sepapps_offset n l_old = ofs_simpl /\ ofs_simpl = ofs -> (* <- determines n, ofs_simpl *)
       (forall P m,
           List.nth_error l_old n = Some (mk_sized_predicate P sz) ->
@@ -328,28 +330,28 @@ Section SepLog.
       rewrite sepapps_replace_spec.
     - rewrite (expose_nth_sepapp l_old n a P sz H1) in H2.
       eapply SeparationLogic.sep_comm. eqapply H2. f_equal.
-      rewrite H0. rewrite word.of_Z_unsigned, word.add_sub_r_same_r; trivial.
+      rewrite H0. rewrite Zmod.of_Z_unsigned, word.add_sub_r_same_r; trivial.
     - rewrite <- (merge_back_nth_sepapp l n a P sz H2).
       eapply SeparationLogic.sep_comm. eqapply H3. f_equal.
-      rewrite H1. rewrite word.of_Z_unsigned, word.add_sub_r_same_r; trivial.
+      rewrite H1. rewrite Zmod.of_Z_unsigned, word.add_sub_r_same_r; trivial.
   Qed.
 
 (* alternative way of expressing "1 past a'":
   Lemma split_off_elem_from_array{E: Type}{inh: inhabited E}:
     forall a a' elem {elemSize: PredicateSize elem} n i,
-      (word.unsigned (word.sub a' a)) mod elemSize = 0 ->
-      word.unsigned (word.sub a' a) / elemSize = i ->
+      (Zmod.unsigned (Zmod.sub a' a)) mod elemSize = 0 ->
+      Zmod.unsigned (Zmod.sub a' a) / elemSize = i ->
       (forall (vs: list E) m,
           array elem n vs a m ->
           sep (elem vs[i] a')
               (sep (array elem i vs[:i] a)
                    (array elem (n-i-1) vs[i+1:]
-                      (word.add a (word.of_Z (elemSize * (i + 1)))))) m) /\
+                      (Zmod.add a (bits.of_Z width (elemSize * (i + 1)))))) m) /\
       (forall vs1 vs2 v m,
           sep (array elem i vs1 a)
               (sep (elem v a')
                    (array elem (n-i-1) vs2
-                      (word.add a (word.of_Z (elemSize * (i + 1)))))) m ->
+                      (Zmod.add a (bits.of_Z width (elemSize * (i + 1)))))) m ->
           array elem n (vs1 ++ [|v|] ++ vs2) a m).
   Proof.
   Admitted.
@@ -461,7 +463,7 @@ Ltac split_range_from_hyp_default :=
       end;
       let pf := fresh in
       lazymatch type of H with
-      | with_mem _ (@array _ _ _ _ _ ?elem (*must match:*)size ?n ?vs ?start') =>
+      | with_mem _ (@array _ _ _ _ ?elem (*must match:*)size ?n ?vs ?start') =>
           unshelve epose proof
             (split_off_elem_from_array start' start elem n _ _ _) as pf;
           [ (* i *)
@@ -469,7 +471,7 @@ Ltac split_range_from_hyp_default :=
           | word_lia_hook_for_split_merge
           | eapply (proj1 pf) in H;
             turn_split_merge_lemma_into_merge_step pf ]
-      | with_mem _ (@array _ _ _ _ _ ?elem ?elemSize ?n ?vs ?start') =>
+      | with_mem _ (@array _ _ _ _ ?elem ?elemSize ?n ?vs ?start') =>
           unshelve epose proof
             (split_off_subarray_from_array start' start elem n size _ _ _ _ _) as pf;
           [ (* index of first element *)
@@ -547,21 +549,21 @@ Proof. unfold impl1, with_mem. intros. eauto. Qed.
 (* Returns a Prop claiming that start..start+size is a subrange of start'..start'+size'.
    Assumes 0<=size<2^width and 0<=size'<2^width.
    Both ranges may wrap around. *)
-Definition subrange{width: Z}{word: word.word width}(start: word)(size: Z)
-  (start': word)(size': Z) := word.unsigned (word.sub start start') + size <= size'.
+Definition subrange{width: Z}(start: bits width)(size: Z)
+  (start': bits width)(size': Z) := Zmod.unsigned (Zmod.sub start start') + size <= size'.
 
 Ltac is_subrange start size start' size' :=
   assert_succeeds (idtac; assert (subrange start size start' size') by
                      (unfold subrange; word_lia_hook_for_split_merge)).
 
-Definition inrange{width: Z}{word: word.word width}(addr: word)(start: word)(size: Z) :=
-  word.unsigned (word.sub addr start) <= size.
+Definition inrange{width: Z}(addr: bits width)(start: bits width)(size: Z) :=
+  Zmod.unsigned (Zmod.sub addr start) <= size.
 
 (* Check that addr is inside the range, and at least sometimes strictly so *)
 Ltac is_inside_range addr start size :=
   assert_succeeds (idtac; assert (inrange addr start size) by
                      (unfold inrange; word_lia_hook_for_split_merge));
-  assert_fails (idtac; assert (addr = start \/ word.unsigned (word.sub addr start) = size)
+  assert_fails (idtac; assert (addr = start \/ Zmod.unsigned (Zmod.sub addr start) = size)
                   by word_lia_hook_for_split_merge).
 
 Inductive PredicateSize_not_found{PredTp: Type}(pred: PredTp): Set :=

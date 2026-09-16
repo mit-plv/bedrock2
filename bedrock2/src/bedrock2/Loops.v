@@ -1,6 +1,6 @@
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.dlet.
 Require Import Coq.Classes.Morphisms BinIntDef.
-Require Import coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Interface. Import map.
+Require Import coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Bitwidth. Import map.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Properties.
 Require Import coqutil.Tactics.destr.
@@ -9,10 +9,12 @@ From bedrock2 Require Import Syntax Semantics Markers.
 From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
 
 Section Loops.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec}.
-  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {mem_ok : map.ok mem}.
   Context {locals_ok : map.ok locals}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
@@ -25,9 +27,9 @@ Section Loops.
       (exists v, inv v t m l) /\
       (forall v t m l, inv v t m l ->
         exists b, dexpr m l e b /\
-        (word.unsigned b <> 0%Z -> cmd call c t m l (fun t' m l =>
+        (Zmod.unsigned b <> 0%Z -> cmd call c t m l (fun t' m l =>
           exists v', inv v' t' m l /\ lt v' v)) /\
-        (word.unsigned b = 0%Z -> post t m l))) ->
+        (Zmod.unsigned b = 0%Z -> post t m l))) ->
      cmd call (cmd.while e c) t m l post.
   Proof.
     intros. destruct H as (measure & lt & inv & Hwf & HInit & Hbody).
@@ -36,7 +38,7 @@ Section Loops.
     eapply (well_founded_ind Hwf). intros.
     specialize Hbody with (1 := HInit). destruct Hbody as (b & Hb & Ht & Hf).
     eapply expr_sound in Hb. destruct Hb as (b' & Hb & ?). subst b'.
-    destr.destr (Z.eqb (word.unsigned b) 0).
+    destr.destr (Z.eqb (Zmod.unsigned b) 0).
     - specialize Hf with (1 := E). eapply exec.while_false; eassumption.
     - specialize Ht with (1 := E). eapply sound_cmd in Ht.
       eapply exec.while_true; eauto.
@@ -54,12 +56,12 @@ Section Loops.
     (Hbody: forall v g t m l,
       P v g t m l ->
       exists br, expr m l e (eq br) /\
-      (word.unsigned br <> 0%Z -> cmd call c t m l
+      (Zmod.unsigned br <> 0%Z -> cmd call c t m l
         (fun t' m' l' => exists v' g',
           P v' g' t' m' l' /\
           lt v' v /\
           (forall t'' m'' l'', Q v' g' t'' m'' l'' -> Q v g t'' m'' l''))) /\
-      (word.unsigned br = 0%Z -> Q v g t m l))
+      (Zmod.unsigned br = 0%Z -> Q v g t m l))
     (Hpost: forall t m l, Q v0 g0 t m l -> post t m l)
     : cmd call (cmd.while e c) t m l post.
   Proof.
@@ -89,12 +91,12 @@ Section Loops.
     (Hbody: forall v g t m l,
       P v g t m l ->
       exists br, expr m l e (eq br) /\
-      (word.unsigned br <> 0%Z -> cmd call c t m l
+      (Zmod.unsigned br <> 0%Z -> cmd call c t m l
         (fun t' m' l' => exists v' g',
           P v' g' t' m' l' /\
           lt v' v /\
           (forall t'' m'' l'', Q v' g' t'' m'' l'' -> Q v g t'' m'' l''))) /\
-      (word.unsigned br = 0%Z -> cmd call rest t m l (Q v g)))
+      (Zmod.unsigned br = 0%Z -> cmd call rest t m l (Q v g)))
     : cmd call (cmd.seq (cmd.while e c) rest) t m l (Q v0 g0).
   Proof.
     cbn. eapply tailrec_localsmap_1ghost with
@@ -148,7 +150,7 @@ Section Loops.
       repeat (match goal with H : _ |- _ => eapply IHks in H end); inversion H; subst; clear H.
     cbn [map.putmany_of_tuple tuple.of_list length].
     match goal with H : _ |- _ => rewrite H; clear H end.
-    assert (map.get m a = Some r -> put (remove m a) a r = m). {
+    assert (map.get m a = Some z -> put (remove m a) a z = m). {
       intro A.
       apply map_ext.
       intro k.
@@ -185,9 +187,9 @@ Section Loops.
     (Hbody : forall v t m l,
       invariant v t m l ->
       exists br, expr m l e (eq br) /\
-         (word.unsigned br <> 0 ->
+         (Zmod.unsigned br <> 0 ->
           cmd fs c t m l (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
-         (word.unsigned br = 0 -> post t m l))
+         (Zmod.unsigned br = 0 -> post t m l))
     : cmd fs (cmd.while e c) t m l post.
   Proof.
     eapply wp_while.
@@ -210,13 +212,13 @@ Section Loops.
       tuple.apply (invariant v t m) localstuple ->
       let l := reconstruct variables localstuple in
       exists br, expr m l e (eq br) /\
-         (word.unsigned br <> 0 ->
+         (Zmod.unsigned br <> 0 ->
           cmd call c t m l (fun t m l =>
             Markers.unique (Markers.left (tuple.existss (fun localstuple =>
               enforce variables localstuple l /\
               Markers.right (Markers.unique (exists v',
                 tuple.apply (invariant v' t m) localstuple /\ lt v' v))))))) /\
-         (word.unsigned br = 0 -> post t m l)))
+         (Zmod.unsigned br = 0 -> post t m l)))
     : cmd call (cmd.while e c) t m l post.
   Proof.
     eapply (while_localsmap (fun v t m l =>
@@ -255,7 +257,7 @@ Section Loops.
       match tuple.apply (hlist.apply (spec v) g t m) l with S_ =>
       S_.(1) ->
       Markers.unique (Markers.left (exists br, expr m localsmap e (eq br) /\ Markers.right (
-      (word.unsigned br <> 0%Z -> cmd call c t m localsmap
+      (Zmod.unsigned br <> 0%Z -> cmd call c t m localsmap
         (fun t' m' localsmap' =>
           Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
           Markers.unique (Markers.left (hlist.existss (fun g' => exists v',
@@ -263,7 +265,7 @@ Section Loops.
           S'.(1) /\ Markers.right (
             lt v' v /\
             forall T M, hlist.foralls (fun L => tuple.apply (S'.(2) T M) L -> tuple.apply (S_.(2) T M) L)) end))))))))) /\
-      (word.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l))))end))))
+      (Zmod.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) with Q0 => forall t m, hlist.foralls (fun l =>  tuple.apply (Q0 t m) l -> post t m (reconstruct variables l))end)
     , cmd call (cmd.while e c) t m localsmap post ).
   Proof.
@@ -300,13 +302,13 @@ Section Loops.
       let S := spec v t m l in let (P, Q) := S in
       P ->
       exists br, expr m l e (eq br) /\
-      (word.unsigned br <> 0%Z -> cmd call c t m l
+      (Zmod.unsigned br <> 0%Z -> cmd call c t m l
         (fun t' m' l' => exists v',
           let S' := spec v' t' m' l' in let '(P', Q') := S' in
           P' /\
           lt v' v /\
           forall T M L, Q' T M L -> Q T M L)) /\
-      (word.unsigned br = 0%Z -> Q t m l))
+      (Zmod.unsigned br = 0%Z -> Q t m l))
     (Hpost : forall t m l, Q0 t m l -> post t m l)
     : cmd call (cmd.while e c) t m l post.
   Proof.
@@ -346,23 +348,23 @@ Section Loops.
     {e c t} {m : mem} {l} {post : _->_->_-> Prop}
     {measure : Type} (invariant:_->_->_->_->Prop) lt
     (Hwf : well_founded lt)
-    (Henter : exists br, expr m l e (eq br) /\ (word.unsigned br = 0%Z -> post t m l))
+    (Henter : exists br, expr m l e (eq br) /\ (Zmod.unsigned br = 0%Z -> post t m l))
     (v0 : measure) (Hpre : invariant v0 t m l)
     (Hbody : forall v t m l, invariant v t m l ->
        cmd call c t m l (fun t m l =>
          exists br, expr m l e (eq br) /\
-         (word.unsigned br <> 0 -> exists v', invariant v' t m l /\ lt v' v) /\
-         (word.unsigned br =  0 -> post t m l)))
+         (Zmod.unsigned br <> 0 -> exists v', invariant v' t m l /\ lt v' v) /\
+         (Zmod.unsigned br =  0 -> post t m l)))
     : cmd call (cmd.while e c) t m l post.
   Proof.
     eapply wp_while.
     eexists (option measure), (with_bottom lt), (fun ov t m l =>
       exists br, expr m l e (eq br) /\
-      ((word.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v t m l) /\
-      (word.unsigned br =  0 -> ov = None /\ post t m l))).
+      ((Zmod.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v t m l) /\
+      (Zmod.unsigned br =  0 -> ov = None /\ post t m l))).
     split; auto using well_founded_with_bottom; []. split.
     { destruct Henter as [br [He Henter]].
-      destruct (BinInt.Z.eq_dec (word.unsigned br) 0).
+      destruct (BinInt.Z.eq_dec (Zmod.unsigned br) 0).
       { exists None, br; split; trivial.
         split; intros; try contradiction; split; eauto. }
       { exists (Some v0), br.
@@ -373,7 +375,7 @@ Section Loops.
     { intros Hc; destruct (Hcontinue Hc) as (v&?&Hinv); subst.
       eapply Proper_cmd; [ |eapply Hbody; eassumption].
       intros t' m' l' (br'&Ebr'&Hinv'&Hpost').
-      destruct (BinInt.Z.eq_dec (word.unsigned br') 0).
+      destruct (BinInt.Z.eq_dec (Zmod.unsigned br') 0).
       { exists None; split; try constructor.
         exists br'; split; trivial; [].
         split; intros; try contradiction.
@@ -396,21 +398,21 @@ Section Loops.
       let S := spec v t m l in let (P, Q) := S in
       P ->
       exists br, expr m l e (eq br) /\
-      (word.unsigned br <> 0%Z -> cmd call c t m l
+      (Zmod.unsigned br <> 0%Z -> cmd call c t m l
         (fun t' m' l' =>
-          (exists br, expr m' l' e (eq br) /\ word.unsigned br = 0 /\ Q t' m' l') \/
+          (exists br, expr m' l' e (eq br) /\ Zmod.unsigned br = 0 /\ Q t' m' l') \/
           exists v', let S' := spec v' t' m' l' in let '(P', Q') := S' in
           P' /\
           lt v' v /\
           forall T M L, Q' T M L -> Q T M L)) /\
-      (word.unsigned br = 0%Z -> Q t m l))
+      (Zmod.unsigned br = 0%Z -> Q t m l))
     (Hpost : forall t m l, Q0 t m l -> post t m l)
     : cmd call (cmd.while e c) t m l post.
   Proof.
     eapply wp_while.
     eexists (option measure), (with_bottom lt), (fun v t m l =>
       match v with
-      | None => exists br, expr m l e (eq br) /\ word.unsigned br = 0 /\ Q0 t m l
+      | None => exists br, expr m l e (eq br) /\ Zmod.unsigned br = 0 /\ Q0 t m l
       | Some v =>
           let S := spec v t m l in let '(P, Q) := S in
           P /\ forall T M L, Q T M L -> Q0 T M L
@@ -445,16 +447,16 @@ Section Loops.
       match tuple.apply (hlist.apply (spec v) g t m) l with S_ =>
       S_.(1) ->
       Markers.unique (Markers.left (exists br, expr m localsmap e (eq br) /\ Markers.right (
-      (word.unsigned br <> 0%Z -> cmd call c t m localsmap
+      (Zmod.unsigned br <> 0%Z -> cmd call c t m localsmap
         (fun t' m' localsmap' =>
           Markers.unique (Markers.left (hlist.existss (fun l' => enforce variables l' localsmap' /\ Markers.right (
-          Markers.unique (Markers.left (exists br, expr m' localsmap' e (eq br) /\ Markers.right ( word.unsigned br = 0 /\ tuple.apply (S_.(2) t' m') l') ) ) \/
+          Markers.unique (Markers.left (exists br, expr m' localsmap' e (eq br) /\ Markers.right ( Zmod.unsigned br = 0 /\ tuple.apply (S_.(2) t' m') l') ) ) \/
           Markers.unique (Markers.left (hlist.existss (fun g' => exists v',
           match tuple.apply (hlist.apply (spec v') g' t' m') l' with S' =>
           S'.(1) /\ Markers.right (
             lt v' v /\
             forall T M, hlist.foralls (fun L => tuple.apply (S'.(2) T M) L -> tuple.apply (S_.(2) T M) L)) end))))))))) /\
-      (word.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l))))end))))
+      (Zmod.unsigned br = 0%Z -> tuple.apply (S_.(2) t m) l))))end))))
     (Hpost : match (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) with Q0 => forall t m, hlist.foralls (fun l =>  tuple.apply (Q0 t m) l -> post t m (reconstruct variables l))end)
     , cmd call (cmd.while e c) t m localsmap post ).
   Proof.
@@ -462,7 +464,7 @@ Section Loops.
     eapply wp_while.
     eexists (option measure), (with_bottom lt), (fun vi ti mi localsmapi =>
       exists li, localsmapi = reconstruct variables li /\
-      match vi with None => exists br, expr mi localsmapi e (eq br) /\ word.unsigned br = 0 /\ tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) ti mi) li | Some vi =>
+      match vi with None => exists br, expr mi localsmapi e (eq br) /\ Zmod.unsigned br = 0 /\ tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) ti mi) li | Some vi =>
       exists gi, match tuple.apply (hlist.apply (spec vi) gi ti mi) li with S_ =>
       S_.(1) /\ forall T M L, tuple.apply (S_.(2) T M) L ->
         tuple.apply ((tuple.apply (hlist.apply (spec v0) g0 t m) l0).(2) T M) L end end).
@@ -498,14 +500,14 @@ Section Loops.
     {measure : Type} (invariant:_->_->_->ufunc word (length variables) Prop)
     lt (Hwf : well_founded lt)
     {post : _->_->_-> Prop}
-    (Henter : exists br, expr m l e (eq br) /\ (word.unsigned br = 0%Z -> post t m l))
+    (Henter : exists br, expr m l e (eq br) /\ (Zmod.unsigned br = 0%Z -> post t m l))
     (v0 : measure) (Hpre : tuple.apply (invariant v0 t m) localstuple)
     (Hbody : forall v t m, tuple.foralls (fun localstuple =>
       tuple.apply (invariant v t m) localstuple ->
        cmd call c t m (reconstruct variables localstuple) (fun t m l =>
          exists br, expr m l e (eq br) /\
-         (word.unsigned br <> 0 -> Markers.unique (Markers.left (tuple.existss (fun localstuple => enforce variables localstuple l /\ Markers.right (Markers.unique (exists v', tuple.apply (invariant v' t m) localstuple /\ lt v' v)))))) /\
-         (word.unsigned br =  0 -> post t m l))))
+         (Zmod.unsigned br <> 0 -> Markers.unique (Markers.left (tuple.existss (fun localstuple => enforce variables localstuple l /\ Markers.right (Markers.unique (exists v', tuple.apply (invariant v' t m) localstuple /\ lt v' v)))))) /\
+         (Zmod.unsigned br =  0 -> post t m l))))
     : cmd call (cmd.while e c) t m l post.
   Proof.
     eapply (atleastonce_localsmap (fun v t m l => exists localstuple, Logic.and (enforce variables localstuple l) (tuple.apply (invariant v t m) localstuple))); eauto.
@@ -524,14 +526,14 @@ Section Loops.
   Qed.
 
   Lemma while_zero_iterations {e c t l} {m : mem} {post : _->_->_-> Prop}
-    (HCond: expr m l e (eq (word.of_Z 0)))
+    (HCond: expr m l e (eq (bits.of_Z width 0)))
     (HPost: post t m l)
     : cmd call (cmd.while e c) t m l post.
   Proof.
     eapply (while_localsmap (fun n t' m' l' => t' = t /\ m' = m /\ l' = l) (PeanoNat.Nat.lt_wf 0) 0%nat).
     1: unfold split; auto. intros *. intros (? & ? & ?). subst.
     eexists. split. 1: exact HCond.
-    rewrite Properties.word.unsigned_of_Z_0.
+    rewrite Zmod.unsigned_0.
     split; intros; congruence.
   Qed.
 
@@ -547,11 +549,11 @@ Section Loops.
     (Hpre : (P v0 t l * R0) m)
     (Hbody : forall v t m l R, (P v t l * R) m ->
       exists br, expr m l e (eq br) /\
-      (word.unsigned br <> 0%Z -> cmd call c t m l
+      (Zmod.unsigned br <> 0%Z -> cmd call c t m l
         (fun t' m' l' => exists v' dR, (P v' t' l' * (R * dR)) m' /\
           lt v' v /\
           forall T L, Q v' T L * dR ==> Q v T L)) /\
-      (word.unsigned br = 0%Z -> (Q v t l * R) m))
+      (Zmod.unsigned br = 0%Z -> (Q v t l * R) m))
     (Hpost : forall t m l, (Q v0 t l * R0) m -> post t m l)
     : cmd call (cmd.while e c) t m l post.
   Proof.

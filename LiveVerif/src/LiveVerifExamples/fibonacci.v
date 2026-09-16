@@ -35,7 +35,7 @@ Proof. unfold safe_implication. intros. subst. reflexivity. Qed.
 (* Tells the proof automation to apply f_equal on goals of shape `fib _ = fib _` *)
 #[local] Hint Resolve fib_f_equal: safe_implication.
 
-(* TODO also something like  word.unsigned (if c then a else b) = ... ? *)
+(* TODO also something like  Zmod.unsigned (if c then a else b) = ... ? *)
 Lemma if_to_or: forall (c: bool) (P Q: Prop),
     (if c then P else Q) -> c = true /\ P \/ c = false /\ Q.
 Proof. intros. destruct c; auto. Qed.

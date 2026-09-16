@@ -2,7 +2,7 @@ Require Import coqutil.sanity coqutil.Byte.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Z.Lia.
 Require Import bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
-Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import BinIntDef coqutil.Word.Bitwidth.
 Require Export bedrock2.Memory.
 Require Import bedrock2.MetricLogging.
 Require Import bedrock2.Semantics.
@@ -11,7 +11,9 @@ Require Import bedrock2.MetricSemantics.
 Require Import bedrock2.MetricLeakageSemantics.
 
 Section MetricLeakageToSomething.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec} {pick_sp: PickSp}.
 
@@ -186,7 +188,9 @@ Section MetricLeakageToSomething.
 End MetricLeakageToSomething.
 
 Section LeakageToSomething.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: ExtSpec} {pick_sp: PickSp}.
 
@@ -365,7 +369,9 @@ Section LeakageToSomething.
 End LeakageToSomething.
 
 Section MetricToSomething.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: Semantics.ExtSpec}.
 
@@ -425,7 +431,9 @@ Section MetricToSomething.
 End MetricToSomething.
 
 Section PlainToSomething.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
   Context {ext_spec: Semantics.ExtSpec}.
 

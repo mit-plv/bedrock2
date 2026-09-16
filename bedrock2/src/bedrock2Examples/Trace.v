@@ -1,7 +1,7 @@
 Require Import coqutil.Z.Lia.
 Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Import Coq.Lists.List. Import ListNotations.
-Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth32.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties coqutil.Word.Bitwidth32.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics.
 Require Import Coq.Strings.String.
@@ -17,9 +17,8 @@ Module Import IOMacros.
   Class Interface := {
     width : Z;
     #[global] BW :: Bitwidth width;
-    #[global] word :: Word.Interface.word width;
-    #[global] mem :: map.map word Byte.byte;
-    #[global] locals :: map.map String.string word;
+    #[global] mem :: map.map (bits width) Byte.byte;
+    #[global] locals :: map.map String.string (bits width);
     #[global] ext_spec :: ExtSpec;
 
     (* macros to be inlined to read or write a word
@@ -30,14 +29,14 @@ Module Import IOMacros.
 
     (* means "this trace does nothing else than reading the given word", could require
        several events if we're polling until a word is available *)
-    read_word_trace: word -> trace -> Prop;
+    read_word_trace: bits width -> trace -> Prop;
     (* means "this trace does nothing else than outputting the given word", could require
        several events if we have to poll a "ready to accept next word" flag before writing *)
-    write_word_trace: word -> trace -> Prop;
+    write_word_trace: bits width -> trace -> Prop;
 
     (* the IOMacros module is allowed to reserve part of the address space,
        eg for MMIO, or to communicate with the kernel *)
-    is_reserved_addr: word -> Prop;
+    is_reserved_addr: bits width -> Prop;
 
     read_word_correct: forall t m l mc x tmp,
         (forall a, is_reserved_addr a -> map.get m a = None) ->
@@ -59,7 +58,7 @@ Section Squarer.
 
   Definition squarer_trace: trace -> Prop :=
     kleene (existsl (fun inp => IOMacros.read_word_trace inp +++
-                                IOMacros.write_word_trace (word.mul inp inp))).
+                                IOMacros.write_word_trace (Zmod.mul inp inp))).
 
   Definition squarer: cmd. Admitted.
 
@@ -78,17 +77,16 @@ Module SpiEth.
   Definition MMOutput := "MMOutput"%string.
 
   Section WithMem.
-    Import Word.Interface.
-    Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
-    Context {word_ok: word.ok word}.
+    Local Notation word := (bits 32).
+    Context {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
 
     Definition Event: Type := (mem * String.string * list word) * (mem * list word).
 
     Definition msb_set(x: word): Prop :=
-      word.and x (word.slu (word.of_Z 1) (word.of_Z 31)) <> word.of_Z 0.
+      Zmod.and x (Zmod.slu (bits.of_Z 32 1) 31) <> (bits.of_Z 32 0).
 
     Definition lo_byte(x: word): word :=
-      word.and x (word.of_Z 255).
+      Zmod.and x 255.
 
     Definition spi_rx     : Z := 0x1002404c.
     Definition spi_tx_fifo: Z := 0x10024048.
@@ -98,11 +96,11 @@ Module SpiEth.
 
     (* TODO should this be so specific or should it be the whole range? *)
     Definition isMMIOAddr(a: word): Prop :=
-      a = word.of_Z spi_rx      \/
-      a = word.of_Z spi_tx_fifo \/
-      a = word.of_Z spi_pinmux  \/
-      a = word.of_Z spi_sckdiv  \/
-      a = word.of_Z spi_csmode  .
+      a = bits.of_Z 32 spi_rx      \/
+      a = bits.of_Z 32 spi_tx_fifo \/
+      a = bits.of_Z 32 spi_pinmux  \/
+      a = bits.of_Z 32 spi_sckdiv  \/
+      a = bits.of_Z 32 spi_csmode  .
 
     (*  // Reads one byte over SPI and returns
         static inline w spi_read() {
@@ -114,11 +112,11 @@ Module SpiEth.
     Inductive read_byte: word -> list Event -> Prop :=
     | read_byte_go: forall x m,
         ~ msb_set x ->
-        read_byte (lo_byte x) [((m, MMInput, [word.of_Z spi_rx]), (m, [x]))]
+        read_byte (lo_byte x) [((m, MMInput, [bits.of_Z 32 spi_rx]), (m, [x]))]
     | read_byte_wait: forall x y m rest,
         msb_set x ->
         read_byte y rest ->
-        read_byte y (((m, MMInput, [word.of_Z spi_rx]), (m, [x])) :: rest).
+        read_byte y (((m, MMInput, [bits.of_Z 32 spi_rx]), (m, [x])) :: rest).
 
     (*  // Requires b < 256
         static inline void spi_write(w b) {
@@ -130,12 +128,12 @@ Module SpiEth.
     | write_byte_go: forall x b m,
         ~ msb_set x ->
         0 <= b < 256 ->
-        write_byte (word.of_Z b) [((m, MMInput, [word.of_Z spi_tx_fifo]), (m, [x]));
-                                  ((m, MMOutput, [word.of_Z spi_tx_fifo; word.of_Z b]), (m, []))]
+        write_byte (bits.of_Z 32 b) [((m, MMInput, [bits.of_Z 32 spi_tx_fifo]), (m, [x]));
+                                  ((m, MMOutput, [bits.of_Z 32 spi_tx_fifo; bits.of_Z 32 b]), (m, []))]
     | write_byte_wait: forall x b m rest,
         msb_set x ->
         write_byte b rest ->
-        write_byte b (((m, MMInput, [word.of_Z spi_tx_fifo]), (m, [x])) :: rest).
+        write_byte b (((m, MMInput, [bits.of_Z 32 spi_tx_fifo]), (m, [x])) :: rest).
 
     Context {locals: map.map String.string word}.
 
@@ -180,7 +178,7 @@ Module SpiEth.
     - (* read_word_correct: *)
       intros.
       eapply exec.seq with
-          (mid := fun t' m' l' mc' => t' = t /\ m' = m /\ l' = map.put l x (word.of_Z (-1))).
+          (mid := fun t' m' l' mc' => t' = t /\ m' = m /\ l' = map.put l x (bits.of_Z 32 (-1))).
       { eapply exec.set; [reflexivity|auto]. }
       { intros. case TODO. (* will require a loop invariant *) }
     - (* write_word_correct: *)
@@ -213,9 +211,8 @@ Module Syscalls.
      so we will have syscalls with 4 word arguments and 3 word return values *)
 
   Section WithMem.
-    Import Word.Interface.
-    Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
-    Context {word_ok: word.ok word}.
+    Local Notation word := (bits 32).
+    Context {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
 
     Definition Event: Type := (mem * SyscallAction * list word) * (mem * list word).
 
@@ -225,14 +222,14 @@ Module Syscalls.
     (* TODO what if the syscall changes the memory? Do we see the whole memory? *)
     Inductive read_word: word -> list Event -> Prop :=
     | read_word_go: forall m x ret2 err,
-        read_word x [((m, "Syscall"%string, [word.of_Z magicValue; word.of_Z magicValue;
-                                            word.of_Z magicValue; word.of_Z magicValue]),
+        read_word x [((m, "Syscall"%string, [bits.of_Z 32 magicValue; bits.of_Z 32 magicValue;
+                                            bits.of_Z 32 magicValue; bits.of_Z 32 magicValue]),
                       (m, [x; ret2; err]))].
 
     Inductive write_word: word -> list Event -> Prop :=
     | write_word_go: forall m x ret1 ret2 err,
-        write_word x [((m, "Syscall"%string, [x; word.of_Z magicValue;
-                                             word.of_Z magicValue; word.of_Z magicValue]),
+        write_word x [((m, "Syscall"%string, [x; bits.of_Z 32 magicValue;
+                                             bits.of_Z 32 magicValue; bits.of_Z 32 magicValue]),
                        (m, [ret1; ret2; err]))].
 
     Context {locals: map.map String.string word}.
@@ -283,7 +280,7 @@ Module Syscalls.
           { (* TODO need to specify that some ignored1, ignored2 are updated too *)
             case TODO. }
     - case TODO.
-      Unshelve. all: apply (word.of_Z 42) || apply map.empty || apply nil.
+      Unshelve. all: apply (bits.of_Z 32 42) || apply map.empty || apply nil.
     Defined.
 
   End WithMem.
@@ -292,8 +289,8 @@ End Syscalls.
 
 Module MMIOUsage.
   Section WithParams.
-    Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
-    Context {word_ok: word.ok word}.
+    Local Notation word := (bits 32).
+    Context {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
     Context {locals: map.map String.string word}.
 
     Definition squarer_correct := @squarer_correct SpiEth.MMIOMacros.
@@ -304,8 +301,8 @@ End MMIOUsage.
 
 Module SyscallsUsage.
   Section WithParams.
-    Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
-    Context {word_ok: word.ok word}.
+    Local Notation word := (bits 32).
+    Context {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
     Context {locals: map.map String.string word}.
 
     Definition squarer_correct := @squarer_correct Syscalls.SyscallIOMacros.

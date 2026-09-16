@@ -24,7 +24,7 @@ Definition insertionsort := func! (a, n) {
   }
 }.
 
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Tactics.Tactics.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
@@ -37,21 +37,23 @@ Require Import bedrock2.ZnWords.
 Require Import coqutil.Sorting.Permutation.
 
 Section WithParameters.
-  Context {word: word.word 32} {mem: map.map word Byte.byte}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Local Notation word := (bits 32).
+  Context {mem: map.map word Byte.byte}.
+  Context {mem_ok: map.ok mem}.
+  Local Arguments Z.pow : simpl never.
 
-  Definition nth(l: list word)(n: nat): word := List.nth n l (word.of_Z 0).
+  Definition nth(l: list word)(n: nat): word := List.nth n l (bits.of_Z 32 0).
 
   Definition Sorted(l: list word): Prop :=
     forall i j: nat, (i < j < List.length l)%nat ->
-                     word.unsigned (nth l i) <= word.unsigned (nth l j).
+                     Zmod.unsigned (nth l i) <= Zmod.unsigned (nth l j).
 
   Lemma Sorted_nil: Sorted [].
   Proof. intros i j (? & A). inversion A. Qed.
 
   Lemma Sorted_snoc: forall l a,
       Sorted l ->
-      (forall k, (k < List.length l)%nat -> word.unsigned (nth l k) <= word.unsigned a) ->
+      (forall k, (k < List.length l)%nat -> Zmod.unsigned (nth l k) <= Zmod.unsigned a) ->
       Sorted (l ++ [a]).
   Proof.
     unfold Sorted. intros. rewrite List.app_length in *. cbn in *.
@@ -65,8 +67,8 @@ Section WithParameters.
 
   Lemma Sorted_insert: forall left a1 a2 right,
       Sorted (left ++ a2 :: right) ->
-      (forall k, (k < List.length left)%nat -> word.unsigned (nth left k) <= word.unsigned a1) ->
-      word.unsigned a1 <= word.unsigned a2 ->
+      (forall k, (k < List.length left)%nat -> Zmod.unsigned (nth left k) <= Zmod.unsigned a1) ->
+      Zmod.unsigned a1 <= Zmod.unsigned a2 ->
       Sorted (left ++ [a1; a2] ++ right).
   Proof.
     unfold Sorted, nth in *.
@@ -96,8 +98,8 @@ Section WithParameters.
       + subst i. change (left ++ [a1] ++ a2 :: right) with (left ++ a1 :: a2 :: right).
         rewrite List.nth_middle. assumption.
     - rename j into j0. destruct j0 as [|j]. 1: exfalso; Lia.lia.
-      replace (List.nth (S j) (left ++ a1 :: a2 :: right) (word.of_Z 0))
-        with (List.nth j (left ++ a2 :: right) (word.of_Z 0)). 2: {
+      replace (List.nth (S j) (left ++ a1 :: a2 :: right) (bits.of_Z 32 0))
+        with (List.nth j (left ++ a2 :: right) (bits.of_Z 32 0)). 2: {
         change (left ++ a2 :: right) with (left ++ [a2] ++ right).
         rewrite List.app_assoc.
         rewrite List.app_nth2; rewrite List.app_length; cbn. 2: Lia.lia.
@@ -125,7 +127,7 @@ Section WithParameters.
           rewrite List.app_length. reflexivity.
         }
         rewrite List.nth_middle.
-        replace a2 with (List.nth (List.length left) (left ++ a2 :: right) (word.of_Z 0)) at 1. 2: {
+        replace a2 with (List.nth (List.length left) (left ++ a2 :: right) (bits.of_Z 32 0)) at 1. 2: {
           apply List.nth_middle.
         }
         apply H. Lia.lia.
@@ -136,14 +138,14 @@ Section WithParameters.
           rewrite <- List.app_assoc. reflexivity.
         }
         rewrite List.app_nth2; rewrite List.app_length; cbn. 2: Lia.lia.
-        replace (List.nth (j - (Datatypes.length left + 1)) right (word.of_Z 0)) with
-            (List.nth j (left ++ a2 :: right) (word.of_Z 0)). 2: {
+        replace (List.nth (j - (Datatypes.length left + 1)) right (bits.of_Z 32 0)) with
+            (List.nth j (left ++ a2 :: right) (bits.of_Z 32 0)). 2: {
           rewrite List.app_nth2 by Lia.lia.
           replace (j - Datatypes.length left)%nat with (S (j - (Datatypes.length left + 1))) by Lia.lia.
           reflexivity.
         }
-        replace (List.nth (i - (Datatypes.length left + 2)) right (word.of_Z 0)) with
-            (List.nth (i - 1) (left ++ a2 :: right) (word.of_Z 0)). 2: {
+        replace (List.nth (i - (Datatypes.length left + 2)) right (bits.of_Z 32 0)) with
+            (List.nth (i - 1) (left ++ a2 :: right) (bits.of_Z 32 0)). 2: {
           rewrite List.app_nth2 by Lia.lia.
           replace (i - 1 - Datatypes.length left)%nat with (S (i - (Datatypes.length left + 2))) by Lia.lia.
           reflexivity.
@@ -160,7 +162,7 @@ Section WithParameters.
 
   (* TODO generalize *)
   Lemma array_scalar32_max_size: forall addr xs (R: mem -> Prop) m,
-      (array scalar32 (word.of_Z 4) addr xs * R)%sep m ->
+      (array scalar32 4 addr xs * R)%sep m ->
       4 * Z.of_nat (Datatypes.length xs) <= 2 ^ 32.
   Proof.
     intros.
@@ -181,7 +183,7 @@ Section WithParameters.
     SeparationLogic.seprewrite_in @array_append H.
     SeparationLogic.seprewrite_in @array_cons H.
     SeparationLogic.seprewrite_in @array_cons H.
-    replace (word.add addr (word.of_Z (word.unsigned (word.of_Z 4) * Z.of_nat (Datatypes.length (h1 :: t1)))))
+    replace (Zmod.add addr (bits.of_Z 32 (Zmod.unsigned (bits.of_Z 32 4) * Z.of_nat (Datatypes.length (h1 :: t1)))))
       with addr in H by ZnWords.
     unfold scalar32 at 1 3 in H.
     unfold truncated_word, truncated_scalar in H.
@@ -194,14 +196,14 @@ Section WithParameters.
 
   Instance spec_of_insertionsort : spec_of "insertionsort" :=
     fnspec! "insertionsort" addr n / xs R,
-    { requires t m := n = word.of_Z (Z.of_nat (List.length xs)) /\ (array scalar32 (word.of_Z 4) addr xs * R) m;
+    { requires t m := n = bits.of_Z 32 (Z.of_nat (List.length xs)) /\ (array scalar32 4 addr xs * R) m;
       ensures t' m' := t = t' /\ exists ys,
-            Sorted ys /\ Permutation xs ys /\ (array scalar32 (word.of_Z 4) addr ys * R) m' }.
+            Sorted ys /\ Permutation xs ys /\ (array scalar32 4 addr ys * R) m' }.
 
   Definition sorted_except(unsortedLen: nat)(addr: word)(xs: list word)(m: mem)(R: mem -> Prop): Prop :=
     exists sorted unsorted,
       List.length unsorted = unsortedLen /\
-      (array scalar32 (word.of_Z 4) addr (sorted ++ unsorted) * R) m /\
+      (array scalar32 4 addr (sorted ++ unsorted) * R) m /\
       Sorted sorted /\ Permutation xs (sorted ++ unsorted).
 
   Lemma insertionsort_ok : program_logic_goal_for_function! insertionsort.
@@ -215,8 +217,8 @@ Section WithParameters.
     refine (tailrec HList.polymorphic_list.nil
         ["a"; "i"; "n"]
         (fun unsortedLen t m a i n => PrimitivePair.pair.mk
-          (Z.of_nat (List.length xs) = word.unsigned n /\
-           word.unsigned i + Z.of_nat unsortedLen = word.unsigned n /\
+          (Z.of_nat (List.length xs) = Zmod.unsigned n /\
+           Zmod.unsigned i + Z.of_nat unsortedLen = Zmod.unsigned n /\
            a = addr /\
            sorted_except unsortedLen addr xs m R)
           (fun T M A I N => T = t /\ sorted_except 0 addr xs M R))
@@ -241,17 +243,15 @@ Section WithParameters.
         rename x0 into i, x1 into n.
         replace 0%nat with v. 1: auto. subst br.
         (* COQBUG https://github.com/coq/coq/issues/3051 *)
-        let x := constr:(word.unsigned_ltu) in rewrite x in *.
-        destruct_one_match_hyp; ZnWords.
+                destruct_one_match_hyp; ZnWords.
       }
       (* if again, execute loop body: *)
       clear i n.
       rename x0 into i, x1 into n.
       subst br.
       match goal with
-      | H: context[word.ltu] |- _ =>
-        rewrite word.unsigned_ltu in H;
-        assert (word.unsigned i < word.unsigned n) by (destruct_one_match_hyp; ZnWords);
+      | H: context[Z.ltb] |- _ =>
+        assert (Zmod.unsigned i < Zmod.unsigned n) by (destruct_one_match_hyp; ZnWords);
         clear H
       end.
       match goal with
@@ -271,7 +271,7 @@ Section WithParameters.
       rewrite List.app_length in PL.
       rewrite @List.length_cons in *.
       match type of HM with
-      | context[word.add _ (word.mul _ ?x)] => replace x with i in HM by ZnWords
+      | context[Zmod.add _ (Zmod.mul _ ?x)] => replace x with i in HM by ZnWords
       end.
       eexists. split. {
         repeat straightline.
@@ -284,21 +284,21 @@ Section WithParameters.
           (fun remSortedLen seenSorted remSorted R t m a i0 j n0 e0 => PrimitivePair.pair.mk
             (List.length remSorted = remSortedLen /\
              i0 = i /\ a = addr /\ n0 = n /\ e0 = e /\ sorted = seenSorted ++ remSorted /\
-             word.unsigned j + Z.of_nat remSortedLen = word.unsigned i /\
-             (forall k: nat, (k < List.length seenSorted)%nat -> word.unsigned (nth sorted k) <= word.unsigned e) /\
-             (array scalar32 (word.of_Z 4) (word.add addr (word.mul (word.of_Z 4) j)) remSorted *
-              scalar32 (word.add addr (word.mul (word.of_Z 4) i)) e * R) m)
+             Zmod.unsigned j + Z.of_nat remSortedLen = Zmod.unsigned i /\
+             (forall k: nat, (k < List.length seenSorted)%nat -> Zmod.unsigned (nth sorted k) <= Zmod.unsigned e) /\
+             (array scalar32 4 (Zmod.add addr (Zmod.mul 4 j)) remSorted *
+              scalar32 (Zmod.add addr (Zmod.mul 4 i)) e * R) m)
             (fun T M A I J N E => T = t /\ I = i /\ N = n /\ e = E /\ a = A /\
-              word.unsigned J <= word.unsigned i /\
+              Zmod.unsigned J <= Zmod.unsigned i /\
               List.length remSorted = remSortedLen /\
               sorted = seenSorted ++ remSorted /\
-              word.unsigned e <= word.unsigned (nth (sorted ++ [e]) (Z.to_nat (word.unsigned J))) /\
-              (forall k: nat, (k < Z.to_nat (word.unsigned J))%nat -> word.unsigned (nth sorted k) <= word.unsigned e) /\
-              (array scalar32 (word.of_Z 4)
-                     (word.add addr (word.mul (word.of_Z 4)
-                                              (word.of_Z (word.unsigned i - Z.of_nat remSortedLen))))
+              Zmod.unsigned e <= Zmod.unsigned (nth (sorted ++ [e]) (Z.to_nat (Zmod.unsigned J))) /\
+              (forall k: nat, (k < Z.to_nat (Zmod.unsigned J))%nat -> Zmod.unsigned (nth sorted k) <= Zmod.unsigned e) /\
+              (array scalar32 4
+                     (Zmod.add addr (Zmod.mul 4
+                                              (bits.of_Z 32 (Zmod.unsigned i - Z.of_nat remSortedLen))))
                      remSorted *
-               scalar32 (word.add addr (word.mul (word.of_Z 4) i)) e * R) M))
+               scalar32 (Zmod.add addr (Zmod.mul 4 i)) e * R) M))
           lt _ (List.length sorted) _ _ _ _ _ _);
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
            HList.hlist.foralls HList.tuple.foralls
@@ -331,11 +331,11 @@ Section WithParameters.
           }
           split; intro C. {
             exfalso.
-            rewrite word.unsigned_ltu in C. rewrite Z.ltb_irrefl in C. rewrite word.unsigned_of_Z_0 in C.
+            rewrite Z.ltb_irrefl in C. rewrite Zmod.unsigned_0 in C.
             apply C. reflexivity.
           }
           destruct_one_match_hyp. {
-            rewrite word.unsigned_of_Z_1 in C. discriminate C.
+            rewrite bits.unsigned_1 in C by Lia.lia. discriminate C.
           }
           ssplit. all: try reflexivity || ZnWords.
           { unfold nth.
@@ -368,11 +368,11 @@ Section WithParameters.
         split; intro C. 2: {
           (* exiting loop because e' >= e found, so we know where to insert e *)
           destruct_one_match_hyp. {
-            rewrite word.unsigned_of_Z_1 in C. discriminate C.
+            rewrite bits.unsigned_1 in C by Lia.lia. discriminate C.
           }
           ssplit. all: try reflexivity || ZnWords.
           { unfold nth.
-            replace (Z.to_nat (word.unsigned j)) with (List.length seenSorted) by ZnWordsL.
+            replace (Z.to_nat (Zmod.unsigned j)) with (List.length seenSorted) by ZnWordsL.
             rewrite <- List.app_assoc. rewrite <- List.app_comm_cons.
             rewrite List.nth_middle.
             assumption. }
@@ -393,8 +393,8 @@ Section WithParameters.
           reflexivity.
         }
         (* running loop body (just increment j) *)
-        rewrite word.unsigned_ltu in C. destruct_one_match_hyp. 2: {
-          exfalso. rewrite word.unsigned_of_Z_0 in C. apply C. reflexivity.
+        destruct_one_match_hyp. 2: {
+          exfalso. rewrite Zmod.unsigned_0 in C. apply C. reflexivity.
         }
         repeat straightline.
 
@@ -442,17 +442,16 @@ Section WithParameters.
       | context[array scalar32 _ ?A sorted] => replace A with a in HM1 by ZnWords
       end.
 
-      remember (List.firstn (Z.to_nat (word.unsigned j)) sorted) as smaller.
-      remember (List.skipn (Z.to_nat (word.unsigned j)) sorted) as toShift.
+      remember (List.firstn (Z.to_nat (Zmod.unsigned j)) sorted) as smaller.
+      remember (List.skipn (Z.to_nat (Zmod.unsigned j)) sorted) as toShift.
       assert (sorted = smaller ++ toShift). {
         subst smaller toShift. symmetry. apply List.firstn_skipn.
       }
-      assert (word.unsigned j = Z.of_nat (List.length smaller)) as Ej. {
+      assert (Zmod.unsigned j = Z.of_nat (List.length smaller)) as Ej. {
         subst smaller. ZnWordsL.
       }
       rewrite Ej in *.
-      (* WHY do I need width:=width even with   Local Hint Mode word - : typeclass_instances. ? *)
-      replace j with (word.of_Z (width := 32) (Z.of_nat (Datatypes.length smaller))) by ZnWords.
+      replace j with (bits.of_Z 32 (Z.of_nat (Datatypes.length smaller))) by ZnWords.
       clear j Ej Heqsmaller HeqtoShift.
       rewrite List.app_nil_l in *.
       subst sorted.
@@ -466,17 +465,17 @@ Section WithParameters.
             (i0 = i /\ a = addr /\ n0 = n /\
              match StoShiftLen with
              | S toShiftLen => List.length toShift = toShiftLen /\
-                               word.unsigned j + Z.of_nat toShiftLen = word.unsigned i /\
-                               (array scalar32 (word.of_Z 4) (word.add addr (word.mul (word.of_Z 4) j))
+                               Zmod.unsigned j + Z.of_nat toShiftLen = Zmod.unsigned i /\
+                               (array scalar32 4 (Zmod.add addr (Zmod.mul 4 j))
                                       (toShift ++ [e]) * R) m
              | O => (* special precondition for just before exiting the loop: *)
-                    word.unsigned j = word.unsigned i + 1 /\ toShift = [] /\ R m
+                    Zmod.unsigned j = Zmod.unsigned i + 1 /\ toShift = [] /\ R m
              end)
             (fun T M A I J N E => T = t /\ I = i /\ N = n /\ A = a /\
                match StoShiftLen with
                | S toShiftLen =>
-                 (array scalar32 (word.of_Z 4)
-                   (word.add addr (word.mul (word.of_Z 4) (word.of_Z (word.unsigned i - Z.of_nat toShiftLen))))
+                 (array scalar32 4
+                   (Zmod.add addr (Zmod.mul 4 (bits.of_Z 32 (Zmod.unsigned i - Z.of_nat toShiftLen))))
                    (shelf :: toShift) * R) M
                | O => R M
                end))
@@ -514,10 +513,10 @@ Section WithParameters.
           (* if break, postcondition holds *)
           ssplit. all: try reflexivity.
           match goal with
-          | H: word.unsigned br = 0 |- _ => rename H into HC
+          | H: Zmod.unsigned br = 0 |- _ => rename H into HC
           end.
           subst br. move HC at bottom. destruct_one_match_hyp. {
-            rewrite word.unsigned_of_Z_1 in HC. discriminate HC.
+            rewrite bits.unsigned_1 in HC by Lia.lia. discriminate HC.
           }
           clear HC.
           destruct StoShiftLen as [|toShiftLen]; repeat straightline_cleanup. 2: {
@@ -527,19 +526,19 @@ Section WithParameters.
         }
         (* loop body of second inner loop: *)
         match goal with
-        | H: word.unsigned br <> 0 |- _ => rename H into HC
+        | H: Zmod.unsigned br <> 0 |- _ => rename H into HC
         end.
         subst br. move HC at bottom. destruct_one_match_hyp. 2: {
-          exfalso. rewrite word.unsigned_of_Z_0 in HC. apply HC. reflexivity.
+          exfalso. rewrite Zmod.unsigned_0 in HC. apply HC. reflexivity.
         }
         clear HC.
         destruct StoShiftLen as [|toShiftLen]; repeat straightline_cleanup. {
           exfalso. ZnWords.
         }
         assert (exists y ys, toShift ++ [e] = y :: ys) as Ey. {
-          destruct toShift.
+          destruct toShift as [|w toShift].
           - cbn. exists e, nil. reflexivity.
-          - exists r, (toShift ++ [e]). reflexivity.
+          - exists w, (toShift ++ [e]). reflexivity.
         }
         destruct Ey as (y & ys & Ey).
         match goal with
@@ -631,7 +630,7 @@ Section WithParameters.
           ecancel_done.
         }
         { match goal with
-          | H: word.unsigned _ <= word.unsigned _ |- _ => rename H into HLt; move HLt at bottom
+          | H: Zmod.unsigned _ <= Zmod.unsigned _ |- _ => rename H into HLt; move HLt at bottom
           end.
           unfold nth in HLt. rewrite Znat.Nat2Z.id in HLt. rewrite <- List.app_assoc in HLt.
           destruct toShift as [|e' toShift]; cycle 1.

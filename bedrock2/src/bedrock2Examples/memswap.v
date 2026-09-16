@@ -19,17 +19,18 @@ Definition memswap := func! (x, y, n) {
 }.
 
 Require Import bedrock2.WeakestPrecondition bedrock2.Semantics bedrock2.ProgramLogic.
-Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface bedrock2.Map.SeparationLogic.
 Require Import bedrock2.ZnWords.
 Import Coq.Init.Byte coqutil.Byte.
 Local Notation string := String.string.
 
-Local Notation "xs $@ a" := (Array.array ptsto (word.of_Z 1) a xs) (at level 10, format "xs $@ a").
+Local Notation "xs $@ a" := (Array.array ptsto (bits.of_Z _ 1) a xs) (at level 10, format "xs $@ a").
 
 Section WithParameters.
   Context {width} {BW: Bitwidth width}.
-  Context {word: word.word width} {mem: map.map word byte} {locals: map.map string word}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte} {locals: map.map string word}.
   Context {ext_spec: ExtSpec}.
   Import ProgramLogic.Coercions.
 
@@ -39,7 +40,7 @@ Section WithParameters.
                       length xs = n :>Z /\ length ys = n :>Z;
       ensures t' m := m =* ys$@x * xs$@y * R /\ t=t' }.
 
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok : map.ok locals}
+  Context {mem_ok: map.ok mem} {locals_ok : map.ok locals}
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
@@ -155,7 +156,7 @@ Section WithParameters.
         pose proof byte.unsigned_range hxs.
         pose proof byte.unsigned_range hys.
         use_sep_assumption.
-        rewrite !word.unsigned_of_Z_nowrap, !byte.of_Z_unsigned by ZnWords.
+        rewrite !bits.unsigned_of_Z_small, !byte.of_Z_unsigned by ZnWords.
         cancel. }
 
       intuition idtac. cbn. eauto.

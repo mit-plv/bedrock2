@@ -5,7 +5,7 @@ Require Import Coq.Strings.String.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Tactics.syntactic_unify.
 Require Import coqutil.Tactics.destr.
 Require Import coqutil.Tactics.fwd.
@@ -18,6 +18,7 @@ Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
 Require Import bedrock2.unzify.
+Require Import bedrock2.WordPushDownLemmas.
 Require Import bedrock2.Scalars.
 Require Import bedrock2.TacticError. Local Open Scope Z_scope.
 Require Import bedrock2.SuppressibleWarnings.
@@ -160,7 +161,7 @@ Ltac start :=
       intros_until_trace;
       let nB := fresh "Scope0" in pose proof (mk_scope_marker FunctionBody) as nB;
       lazymatch goal with
-      | |- forall (t : trace) (m : @map.rep (@word.rep _ _) Init.Byte.byte _), _ => intros
+      | |- forall (t : trace) (m : @map.rep (Zmod _) Init.Byte.byte _), _ => intros
       end;
       eapply prove_func;
       [ exact G
@@ -445,7 +446,8 @@ Ltac call lhs fname arges :=
    Use lower costs to override existing entries. *)
 Create HintDb wf_of_type.
 
-#[export] Hint Resolve word.well_founded_lt_unsigned | 4 : wf_of_type.
+#[export] Hint Extern 4 (well_founded _) =>
+  exact (word.well_founded_lt_unsigned width_pos) : wf_of_type.
 
 Lemma Z_lt_downto_0_wf: well_founded (fun n m : Z => 0 <= n < m).
 Proof. exact (Z.lt_wf 0). Qed.
@@ -683,8 +685,8 @@ Ltac is_substitutable_rhs_cleanup rhs :=
         | is_const rhs
         | lazymatch isZcst rhs with true => idtac end
         | lazymatch rhs with
-          | word.of_Z ?x => is_substitutable_rhs_cleanup x
-          | word.unsigned ?x => is_substitutable_rhs_cleanup x
+          | Zmod.of_Z _ ?x => is_substitutable_rhs_cleanup x
+          | Zmod.unsigned ?x => is_substitutable_rhs_cleanup x
           end ].
 
 Ltac cleanup_step :=
@@ -808,7 +810,7 @@ Ltac clear_mem_split_eqs :=
 
 Ltac clear_heaplets :=
   repeat match goal with
-    | m: @map.rep (@word.rep _ _) Coq.Init.Byte.byte _ |- _ => clear m
+    | m: @map.rep (Zmod _) Coq.Init.Byte.byte _ |- _ => clear m
     end.
 
 Ltac clear_traces :=
@@ -946,7 +948,7 @@ Ltac conclusion_shape_based_step logger :=
          remove this marker *)
       logger ltac:(fun _ => idtac "remove packaged_mem_clause_marker");
       change p
-  | |- @eq (@map.rep string (@word.rep _ _) _) ?LHS ?RHS =>
+  | |- @eq (@map.rep string (Zmod _) _) ?LHS ?RHS =>
       is_map_expr_with_ground_keys LHS;
       is_map_expr_with_ground_keys RHS;
       logger ltac:(fun _ => idtac "proving equality between two locals maps");
@@ -1272,6 +1274,7 @@ Ltac step0 logger0 :=
 
 Ltac step :=
   assert_no_error; (* <-- useful when debugging with `step. step. step. ...` *)
+  fold_pow2_moduli;
   step0 run_logger_thunk.
 
 Ltac step_silent := step0 ignore_logger_thunk.
@@ -1291,7 +1294,7 @@ Ltac one_step :=
   | |- _ => step_silent
   end.
 
-Ltac steps := can_continue; grepeat0 ltac:(fun _ => one_step).
+Ltac steps := can_continue; fold_pow2_moduli; grepeat0 ltac:(fun _ => one_step).
 
 (* find the first step that makes predicate succeed, ie run steps just until
    but without the first step that makes predicate succeed, so that this
@@ -1385,7 +1388,7 @@ Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an )
         (forall a1, .. (forall an, (forall g1, .. (forall gn,
            (forall t1 m1, pre ->
               WeakestPrecondition.call fs fname t1 m1
-                (@cons (@word.rep _ _) a1 .. (@cons (@word.rep _ _) an nil) ..)
+                (@cons (Zmod _) a1 .. (@cons (Zmod _) an nil) ..)
                 (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post))) .. )) .. ))
      : ProgramLogic.spec_of fname)
 (in custom funspec at level 1,
@@ -1423,7 +1426,7 @@ Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *
         (forall a1, .. (forall an, (forall g1, .. (forall gn,
            (forall t1 m1, pre ->
               WeakestPrecondition.call fs fname t1 m1
-                (@cons (@word.rep _ _) a1 .. (@cons (@word.rep _ _) an nil) ..)
+                (@cons (Zmod _) a1 .. (@cons (Zmod _) an nil) ..)
                 (fun t2 m2 retvs => retvs = nil /\ post))) .. )) .. ))
      : ProgramLogic.spec_of fname)
 (in custom funspec at level 1,
@@ -1464,7 +1467,7 @@ Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an )
         (forall a1, .. (forall an,
            (forall t1 m1, pre ->
               WeakestPrecondition.call fs fname t1 m1
-                (@cons (@word.rep _ _) a1 .. (@cons (@word.rep _ _) an nil) ..)
+                (@cons (Zmod _) a1 .. (@cons (Zmod _) an nil) ..)
                 (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post))) .. ))
      : ProgramLogic.spec_of fname)
 (in custom funspec at level 1,
@@ -1499,7 +1502,7 @@ Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /* *
         (forall a1, .. (forall an,
            (forall t1 m1, pre ->
               WeakestPrecondition.call fs fname t1 m1
-                (@cons (@word.rep _ _) a1 .. (@cons (@word.rep _ _) an nil) ..)
+                (@cons (Zmod _) a1 .. (@cons (Zmod _) an nil) ..)
                 (fun t2 m2 retvs => retvs = nil /\ post))) .. ))
      : ProgramLogic.spec_of fname)
 (in custom funspec at level 1,
