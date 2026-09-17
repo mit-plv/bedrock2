@@ -25,7 +25,6 @@ Require Import riscv.Spec.MetricPrimitives.
 Require Import coqutil.Z.Lia.
 Require Import compiler.util.Misc.
 Require Import riscv.Utility.Utility.
-Require Import coqutil.Z.BitOps.
 Require Import compiler.util.Common.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.MkMachineWidth.

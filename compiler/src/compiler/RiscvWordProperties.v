@@ -1,7 +1,8 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
-Require Import coqutil.Z.BitOps coqutil.Z.ZLib.
+Require Import coqutil.Z.ZLib.
+Require Import riscv.Utility.Utility.
 Require Import coqutil.Tactics.destr.
 
 Local Open Scope Z_scope.

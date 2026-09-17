@@ -15,7 +15,6 @@ Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
-Require Import coqutil.Z.BitOps.
 Require coqutil.Map.SortedListZ.
 Require Import coqutil.Datatypes.ZList.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
@@ -158,7 +157,7 @@ Section WithMem.
   Definition get_rx_buf_size(t: trace)(ret: Z -> Prop) :=
     let/c rctl := get_rw_reg E1000_RCTL t in
     let bsex := Z.testbit \[rctl] RCTL.BSEX in
-    let bsize := bitSlice \[rctl] RCTL.BSIZE_start RCTL.BSIZE_pastend in
+    let bsize := \[Zmod.slice RCTL.BSIZE_start RCTL.BSIZE_pastend rctl] in
     if bsex then
       match bsize with
       | 1 => ret 16384
@@ -336,7 +335,7 @@ Section WithMem.
   Definition get_receive_buf_size(t: trace)(ret: Z): Prop :=
     exists rctl, get_rw_reg0 t (register_address E1000_RCTL) = Some rctl /\
     let bsex := Z.testbit \[rctl] RCTL.BSEX in
-    let bsize := bitSlice \[rctl] RCTL.BSIZE_start RCTL.BSIZE_pastend in
+    let bsize := \[Zmod.slice RCTL.BSIZE_start RCTL.BSIZE_pastend rctl] in
     if bsex then
       match bsize with
       | 1 => ret = 16384
