@@ -98,7 +98,7 @@ Proof.
   exists res.
   repeat split; trivial.
   rewrite spec.
-  rewrite <-BitOps.or_to_plus.
+  rewrite <-bitblast.Z.or_to_plus.
   {
     rewrite Z.mul_comm.
     rewrite <-Z.shiftl_mul_pow2 by mlia.

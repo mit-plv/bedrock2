@@ -384,7 +384,7 @@ Section ScalarsLemmas.
         rewrite Byte.byte.unsigned_of_Z.
         unfold Byte.byte.wrap. rewrite Z.mod_small by assumption.
         unfold le_combine_z in *.
-        rewrite BitOps.or_to_plus.
+        rewrite bitblast.Z.or_to_plus.
         2: {
           eapply Z.bits_inj_0.
           intro i.
