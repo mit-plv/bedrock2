@@ -50,7 +50,7 @@ asm_prog_1 ++ [[
 
 Import Separation.
 Local Notation ptsto_bytes :=
-  (fun n addr v => OfListWord.map.of_list_word_at addr (HList.tuple.to_list (n:=n) v))
+  (fun n addr v => OfListWord.map.of_list_word_at addr (LittleEndianList.le_split n (Zmod.unsigned v)))
   (only parsing).
 
 Section Verif.
@@ -130,10 +130,7 @@ Section Verif.
   Opaque asm_prog_1.
 
   Definition gallina_prog_2(v1 v2: w32): word :=
-    gallina_prog_1 (bits.of_Z width (BitOps.signExtend 32 (LittleEndian.combine 4 v1)))
-                   (bits.of_Z width (BitOps.signExtend 32 (LittleEndian.combine 4 v2))).
-
-  Arguments LittleEndian.combine: simpl never.
+    gallina_prog_1 (bits.of_Z width (Zmod.signed v1)) (bits.of_Z width (Zmod.signed v2)).
 
   Axiom fix_updated_mem_TODO: False.
   Axiom fix_footpr_TODO: False.

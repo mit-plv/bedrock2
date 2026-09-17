@@ -752,7 +752,7 @@ Section LowerPipeline.
         simpl. rewrite rev_involutive. reflexivity.
       + cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).
-        exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (Zmod.unsigned x))) stack_trash).
+        exists (List.flat_map (fun x => LittleEndianList.le_split (Z.to_nat bytes_per_word) (Zmod.unsigned x)) stack_trash).
         rewrite !(iff1ToEq (sep_emp_2 _ _ _)).
         rewrite !(iff1ToEq (sep_assoc _ _ _)).
         eapply (sep_emp_l _ _); split.
@@ -764,7 +764,7 @@ Section LowerPipeline.
             rewrite <- Z_div_exact_2; try trivial.
             eapply Z.lt_gt; assumption. }
           intros w.
-          rewrite HList.tuple.length_to_list; trivial. }
+          rewrite LittleEndianList.length_le_split; trivial. }
         destruct frame_trash. 2: discriminate.
         use_sep_assumption.
         wwcancel.
@@ -786,11 +786,6 @@ Section LowerPipeline.
             solve_word_eq .
           }
 
-          Import Morphisms.
-          assert (Proper_flat_map : forall A B, Proper (pointwise_relation _ eq ==> eq ==> eq) (@flat_map A B)).
-          { clear; intros ? ? ? ? ? ? ? ?; subst; cbv [pointwise_relation] in *.
-            induction y0; cbn; congruence. }
-          setoid_rewrite LittleEndian.to_list_split.
           apply iff1ToEq, cast_word_array_to_bytes.
         }
         cbn [seps].

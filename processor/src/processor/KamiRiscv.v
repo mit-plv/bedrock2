@@ -5,7 +5,6 @@ Require Import Coq.Lists.List. Import ListNotations.
 Require Import Kami.Lib.Word.
 Require Import Kami.Ex.IsaRv32 riscv.Spec.Decode.
 Require Import riscv.Utility.Encode.
-Require Import coqutil.Word.LittleEndian.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.rdelta.

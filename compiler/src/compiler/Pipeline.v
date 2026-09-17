@@ -750,7 +750,7 @@ Section WithWordAndMem.
     Qed.
 
     Definition instrencode(p: list Instruction): list byte :=
-      List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
+      List.flat_map (fun inst => LittleEndianList.le_split 4 (encode inst)) p.
 
     Ltac hyp p :=
       multimatch goal with
