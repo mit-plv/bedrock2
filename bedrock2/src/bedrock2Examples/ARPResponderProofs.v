@@ -79,6 +79,6 @@ Goal program_logic_goal_for_function! arp.
   straightline.
 
   unshelve erewrite (_:a = Zmod.add ethbuf (bits.of_Z 32 (Z.of_nat (length (firstn 21 packet))))) in H4. {
-    rewrite List.length_firstn_inbounds by blia.
+    rewrite List.firstn_length_le by blia.
     trivial. }
 Abort.

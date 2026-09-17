@@ -153,7 +153,7 @@ Section WithParams.
                                   cons (mk_sized_predicate (hole sz) sz)
                                   (List.skipn (S n) l)) a).
   Proof.
-    intros. rewrite (List.nth_error_expose _ _ _ H) at 1.
+    intros. rewrite <-(List.firstn_skipn_middle _ _ H) at 1.
     rewrite ?sepapps_app, ?sepapps_cons. eapply iff1ToEq.
     cbn [proj_predicate proj_size]. unfold hole. cancel.
   Qed.
@@ -163,7 +163,7 @@ Section WithParams.
       sep (P (Zmod.add a (bits.of_Z width (sepapps_size (List.firstn n l))))) (sepapps l a) =
         (sepapps (List.firstn n l ++ cons (mk_sized_predicate P sz) (List.skipn (S n) l)) a).
   Proof.
-    intros. rewrite (List.nth_error_expose _ _ _ H) at 2.
+    intros. rewrite <-(List.firstn_skipn_middle _ _ H) at 2.
     rewrite ?sepapps_app, ?sepapps_cons. eapply iff1ToEq.
     cbn [proj_predicate proj_size]. unfold hole. cancel.
   Qed.

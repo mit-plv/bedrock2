@@ -249,7 +249,7 @@ Proof.
       SeparationLogic.seprewrite_in @Array.bytearray_append Hp1.
       SeparationLogic.seprewrite_in @SeparationLogic.sep_emp_True_r Hp1.
       eexists _, _; split;
-        [exact Hp1|rewrite List.length_firstn_inbounds; blia]. }
+        [exact Hp1|rewrite List.firstn_length_le; blia]. }
     subst a; rewrite app_nil_r.
     eexists; split; eauto.
     change x0 with (List.app nil x0).

@@ -138,7 +138,7 @@ Section WithParameters.
   Proof.
     pose proof eq_sym (firstn_skipn (Z.to_nat i) xsys).
     split; trivial.
-    rewrite length_firstn_inbounds, length_skipn; blia.
+    rewrite firstn_length_le, length_skipn; blia.
   Qed.
 
   Ltac lift_head_let_in H :=
@@ -171,7 +171,7 @@ Section WithParameters.
   Proof.
     pose proof eq_sym (firstn_skipn (Z.to_nat i) xsys).
     split; trivial.
-    rewrite length_firstn_inbounds, length_skipn; blia.
+    rewrite firstn_length_le, length_skipn; blia.
   Qed.
 
   Ltac List__splitZ bs n :=

@@ -260,8 +260,8 @@ Section Proofs.
     exists (List.firstn (List.length l - len)%nat l).
     exists (List.skipn (List.length l - len)%nat l).
     ssplit.
-    - eapply List.firstn_skipn_reassemble; reflexivity.
-    - rewrite List.length_firstn_inbounds; blia.
+    - symmetry; apply List.firstn_skipn.
+    - rewrite List.firstn_length_le; blia.
     - rewrite List.length_skipn; blia.
   Qed.
 
@@ -293,7 +293,7 @@ Section Proofs.
         * subst. contradiction.
         * apply In_removeb_diff; try congruence.
           eapply H0. simpl. auto.
-      + apply NoDup_removeb. assumption.
+      + apply NoDup_filter. assumption.
       + specialize (H0 a (or_introl eq_refl)).
         rewrite length_NoDup_removeb in IHl by assumption.
         destruct s; [simpl in *; contradiction|].
