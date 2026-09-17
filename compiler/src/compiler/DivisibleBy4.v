@@ -1,5 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
+Require Import coqutil.Z.ZLib.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Tactics.Tactics.
 Require Import riscv.Utility.Utility.
@@ -14,7 +15,7 @@ Lemma divisibleBy4Signed{width}{BW: Bitwidth width}:
     (Zmod.signed w) mod 4 = 0.
 Proof.
   intros.
-  rewrite <- Zmod.smod_unsigned, word.smodulo_pow2.
+  rewrite <- Zmod.smod_unsigned, Z.smodulo_pow2.
   pose proof (bits.unsigned_range w width_nonneg).
   remember (Zmod.unsigned w) as x. clear Heqx.
   destruct width_cases as [E | E]; simpl in *; rewrite E;
@@ -53,7 +54,7 @@ Ltac divisibleBy4_pre :=
   repeat (rewrite ?Zmod.unsigned_add, ?Zmod.signed_add,
                   ?Zmod.unsigned_sub, ?Zmod.signed_sub,
                   ?Zmod.unsigned_mul, ?Zmod.signed_mul,
-                  ?bits.unsigned_of_Z, ?Zmod.signed_of_Z, ?word.smodulo_pow2).
+                  ?bits.unsigned_of_Z, ?Zmod.signed_of_Z, ?Z.smodulo_pow2).
 
 Ltac solve_divisibleBy4 := divisibleBy4_pre; solve_mod4_0.
 

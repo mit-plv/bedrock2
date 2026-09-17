@@ -48,7 +48,7 @@ Section FlatToRiscvLiterals.
     addMetricInstructions cost (addMetricLoads cost initialMetrics).
 
   Lemma smodulo_signExtend: forall z, Z.smodulo z (2 ^ width) = signExtend width z.
-  Proof. intros. apply word.smodulo_pow2. Qed.
+  Proof. reflexivity. Qed.
 
   Lemma update_metrics_for_literal_bounded: forall v initialMetrics finalMetrics,
       updateMetricsForLiteral v initialMetrics = finalMetrics ->
@@ -105,7 +105,7 @@ Section FlatToRiscvLiterals.
       run1det.
       simpl_word_exprs .
       match_apply_runsTo.
-      erewrite signExtend_nop; eauto; try blia.
+      unfold signExtend. rewrite Z.smod_pow2_small by blia.
       destruct_one_match; reflexivity.
     - unfold compile_lit_32bit, leak_lit_32bit in *.
       simpl in P.

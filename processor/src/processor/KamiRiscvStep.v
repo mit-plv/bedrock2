@@ -8,6 +8,7 @@ Require Import Kami.Ex.IsaRv32 riscv.Spec.Decode.
 Require Import riscv.Utility.Encode.
 Require coqutil.Word.LittleEndian.
 Require Import coqutil.Word.Properties.
+Require Import coqutil.Word.SimplWordExpr.
 Require Export coqutil.Word.Bitwidth32.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
@@ -167,8 +168,7 @@ Section WordZ.
       signExtend (Z.of_nat sz) (Z.of_N (wordToN w)) = Zmod.signed w.
   Proof.
     intros.
-    rewrite Z_of_N_wordToN, <-Zmod.smod_unsigned, word.smodulo_pow2.
-    reflexivity.
+    rewrite Z_of_N_wordToN. apply Zmod.smod_unsigned.
   Qed.
 
   Lemma kami_evalSignExtendTrunc:
@@ -349,35 +349,15 @@ Section WordZ.
     reflexivity.
   Qed.
 
-  Lemma signExtend_word_of_Z_nop:
-    forall z, bits.of_Z (Z.of_nat nwidth) (signExtend 32 z) = bits.of_Z (Z.of_nat nwidth) z.
-  Proof.
-    intros.
-    apply bits.of_Z_inj.
-    unfold signExtend.
-    (* TODO remove once we're on Coq 8.12 *)
-    repeat match goal with
-           | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
-           end.
-    Z.div_mod_to_equations.
-    blia.
-  Qed.
-
   Lemma signExtend_combine_split_signed:
     forall (w: Word.word 32),
       signExtend 32 (LittleEndian.combine 4 (LittleEndian.split 4 (Zmod.signed w))) = Zmod.signed w.
   Proof.
     intros.
     rewrite LittleEndian.combine_split.
+    unfold signExtend. change (Z.of_nat 4 * 8) with 32. rewrite Z.smod_mod.
     etransitivity. 2: eapply Zmod.smod_signed.
-    rewrite word.smodulo_pow2.
-    unfold signExtend.
-    (* TODO remove once we're on Coq 8.12 *)
-    repeat match goal with
-           | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
-           end.
-    Z.div_mod_to_equations.
-    blia.
+    reflexivity.
   Qed.
 
   Lemma signExtend_combine_split_unsigned:
@@ -387,15 +367,9 @@ Section WordZ.
     intros.
     rewrite LittleEndian.combine_split.
     rewrite Z_of_N_wordToN.
+    unfold signExtend. change (Z.of_nat 4 * 8) with 32. rewrite Z.smod_mod.
     etransitivity. 2: eapply Zmod.smod_unsigned.
-    rewrite word.smodulo_pow2.
-    unfold signExtend.
-    (* TODO remove once we're on Coq 8.12 *)
-    repeat match goal with
-           | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
-           end.
-    Z.div_mod_to_equations.
-    blia.
+    reflexivity.
   Qed.
 
   Lemma Z_lor_comm_four_variant_1:
@@ -3037,15 +3011,13 @@ Section Equiv.
       rewrite <-?Z_of_N_wordToN.
       change (12 + 20)%nat with 32%nat.
       try change (Z.to_nat 32) with 32%nat.
-      set (x := bitSlice (Z.of_N (@wordToN 32 kinst)) 12 32).
       cbv [signExtend].
-      change (2 ^ (32 - 1)) with (2^31).
-      rewrite Zminus_mod_idemp_l.
-      replace (x * 2 ^ 12 + 2 ^ 31 - 2 ^ 31) with (x * 2 ^ 12) by blia.
-      rewrite Z.mod_small; try ring.
       change (Z.of_nat nwidth) with 32.
-      pose proof bitSlice_range_ex (Z.of_N (@wordToN 32 kinst)) 12 32.
-      blia.
+      rewrite Z.mod_smod.
+      change (@wordToN nwidth kinst) with (@wordToN 32 kinst).
+      pose proof (bitSlice_range_ex (Z.of_N (@wordToN 32 kinst)) 12 32 ltac:(blia)).
+      rewrite Z.mod_small by blia.
+      ring.
     }
 
     { (* auipc *)
@@ -3054,7 +3026,7 @@ Section Equiv.
       unfold Utility.add.
       eapply f_equal.
       rewrite Zmod.add_comm; eapply f_equal2; [|reflexivity].
-      rewrite signExtend_word_of_Z_nop.
+      rewrite sextend_width_nop by reflexivity.
       eapply Zmod.unsigned_inj.
       match goal with
       | |- Zmod.unsigned ?x = _ =>

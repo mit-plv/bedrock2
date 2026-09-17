@@ -11,6 +11,7 @@ Require Import Coq.Program.Tactics.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.ZArith.Zpow_facts.
 Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr.
+Require Import coqutil.Z.ZLib.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import bedrock2.groundcbv.
@@ -70,7 +71,7 @@ Ltac wordOps_to_ZModArith_getEq t :=
   | context[@Zmod.signed ?m (Zmod.srs ?x ?n)] => constr:(@Zmod.signed_srs m x n)
   | context[@Zmod.eqb ?m ?x ?y] =>
       constr:(eq_refl : @Zmod.eqb m x y = Z.eqb (Zmod.unsigned x) (Zmod.unsigned y))
-  | context[Z.smodulo ?z (2 ^ ?w)] => constr:(@word.smodulo_pow2 w z)
+  | context[Z.smodulo ?z (2 ^ ?w)] => constr:(@Z.smodulo_pow2 w z)
   | context[Z.ones ?n] => constr:(Z.ones_equiv n)
   | context[Z.shiftr ?a ?n] => constr:(Z.shiftr_div_pow2 a n)
   | context[Z.shiftl ?a ?n] => constr:(Z.shiftl_mul_pow2 a n)

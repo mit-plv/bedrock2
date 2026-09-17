@@ -1,6 +1,7 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
+Require Import coqutil.Z.ZLib.
 Require Import coqutil.Z.Lia.
 
 (* Folds a modulus evaluated to [Z.pow_pos 2 p] or to a literal back to [2 ^ k]. *)
@@ -241,7 +242,7 @@ Module word.
         Zmod.signed w = uw - 2 ^ width * ((uw + 2 ^ (width - 1)) / 2 ^ width).
     Proof.
       intros. subst uw.
-      rewrite <- Zmod.smod_unsigned, word.smodulo_pow2.
+      rewrite <- Zmod.smod_unsigned, Z.smodulo_pow2.
       pose proof modulus_pos.
       etransitivity.
       - eapply Z.sub_cancel_r. eapply Z.mod_eq. lia.
