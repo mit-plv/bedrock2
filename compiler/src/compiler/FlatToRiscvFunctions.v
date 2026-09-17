@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import bedrock2.LeakageSemantics.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.rewr.
@@ -178,7 +179,7 @@ Section Proofs.
                (* not sure why this line is needed, lia should be able to deal with (x := _) hyps,
                   maybe it changes some implicit args or universes? *)
                repeat match goal with x := _ |- _ => subst x end;
-               blia
+               lia
     end.
 
   Declare Scope word_scope.
@@ -208,7 +209,7 @@ Section Proofs.
   Lemma valid_FlatImp_var_isRegZ : forall x,
       valid_FlatImp_var x -> isRegZ x = true.
   Proof.
-    unfold valid_FlatImp_var, isRegZ; blia.
+    unfold valid_FlatImp_var, isRegZ; lia.
   Qed.
   Hint Resolve valid_FlatImp_var_isRegZ.
 
@@ -230,7 +231,7 @@ Section Proofs.
     | |- iff1 ?x ?x => reflexivity
     (* `exists stack_trash frame_trash, ...` from goodMachine *)
     | |- exists _ _, _ = _ /\ _ = _ /\ (_ * _)%sep _ =>
-      eexists _, _; (split; [|split]); [..|wcancel_assumption]; blia
+      eexists _, _; (split; [|split]); [..|wcancel_assumption]; lia
     | |- exists _ _, _ => do 2 eexists; split; [align_trace|]; split; [reflexivity|]; intros;
                    rewrite fix_step; simpl; simpl_rev; repeat rewrite <- app_assoc; simpl;
                    cbn [leakage_events_rel leakage_events];
@@ -261,14 +262,14 @@ Section Proofs.
     exists (List.skipn (List.length l - len)%nat l).
     ssplit.
     - symmetry; apply List.firstn_skipn.
-    - rewrite List.firstn_length_le; blia.
-    - rewrite List.length_skipn; blia.
+    - rewrite List.firstn_length_le; lia.
+    - rewrite List.length_skipn; lia.
   Qed.
 
   Ltac split_from_right nameOrig nameL nameR len :=
     let nL := fresh in let nR := fresh in
     destruct (split_from_right nameOrig len) as [ nL [ nR [ ? [ ? ? ] ] ] ];
-    [ try blia
+    [ try lia
     | subst nameOrig;
       rename nL into nameL, nR into nameR ].
 
@@ -283,7 +284,7 @@ Section Proofs.
       (List.length l <= List.length s)%nat.
   Proof.
     induction l; intros.
-    - simpl. blia.
+    - simpl. lia.
     - simpl. fwd.
       specialize (IHl (removeb aeqb a s)).
       specialize_hyp IHl.
@@ -297,7 +298,7 @@ Section Proofs.
       + specialize (H0 a (or_introl eq_refl)).
         rewrite length_NoDup_removeb in IHl by assumption.
         destruct s; [simpl in *; contradiction|].
-        simpl in *. blia.
+        simpl in *. lia.
   Qed.
 
   Lemma NoDup_valid_FlatImp_vars_bound_length: forall xs,
@@ -311,8 +312,8 @@ Section Proofs.
       eapply (proj1 (Forall_forall valid_FlatImp_var xs)) in H0.
       2: eassumption.
       unfold valid_FlatImp_var in *.
-      cbv. blia.
-    - cbv. repeat apply NoDup_cons; cbv; try blia.
+      cbv. lia.
+    - cbv. repeat apply NoDup_cons; cbv; try lia.
       apply NoDup_nil.
   Qed.
 
@@ -576,7 +577,7 @@ Section Proofs.
       | H: fits_stack _ _ _ _ |- _ => apply fits_stack_nonneg in H
       end.
       subst FL. simpl in *.
-      blia.
+      lia.
     }
 
     (* note: left-to-right rewriting with all [length _ = length _] equations has to
@@ -597,7 +598,7 @@ Section Proofs.
           (List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg)) by (symmetry;assumption).
       rewrite List.firstn_length.
       change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
-      clear. blia.
+      clear. lia.
     }
     destruct AC as (arg_count & AC & ?). subst argnames.
 
@@ -625,7 +626,7 @@ Section Proofs.
              end.
       split.
       - do 2 rewrite <- List.app_assoc; reflexivity.
-      - blia.
+      - lia.
     }
     repeat match type of TheSplit with
            | exists x, _ => destruct TheSplit as [x TheSplit]
@@ -787,7 +788,7 @@ Section Proofs.
           unfold reg_class.get in E0. fwd.
           unfold FlatToRiscvDef.valid_FlatImp_var.
           destruct_one_match_hyp.
-          + fwd. blia.
+          + fwd. lia.
           + destruct_one_match_hyp. 1: discriminate.
             destruct_one_match_hyp; discriminate.
         - rewrite map.get_empty in C. discriminate.
@@ -798,8 +799,8 @@ Section Proofs.
         assumption.
       }
       { exists remaining_stack, old_scratch. ssplit.
-        - simpl_addrs. blia.
-        - blia.
+        - simpl_addrs. lia.
+        - lia.
         - unfold framelength. wcancel_assumption.
       }
       { simpl. intros. rewrite PSP.
@@ -893,7 +894,7 @@ Section Proofs.
         intro C.
         eapply In_list_diff_weaken in C.
         specialize (F _ C).
-        unfold valid_FlatImp_var, RegisterNames.sp in F. blia.
+        unfold valid_FlatImp_var, RegisterNames.sp in F. lia.
       - reflexivity.
       - eassumption.
       - etransitivity. 1: eassumption. wwcancel.
@@ -920,13 +921,13 @@ Section Proofs.
       exists (List.length retnames). ssplit. 2: congruence. 2: {
         rewrite List.firstn_length in *.
         change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat in *.
-        blia.
+        lia.
       }
       replace retnames with
           (List.firstn (Datatypes.length retnames) (reg_class.all reg_class.arg)) by (symmetry;assumption).
       rewrite List.firstn_length.
       change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
-      clear. blia.
+      clear. lia.
     }
     destruct RC as (ret_count & RC & ? & ?). subst retnames binds_count.
 
@@ -960,7 +961,7 @@ Section Proofs.
         2: eapply In_list_diff_weaken; exact C.
         clear -B.
         unfold valid_FlatImp_var, RegisterNames.sp in *.
-        blia.
+        lia.
       }
     }
 
@@ -1055,7 +1056,7 @@ Section Proofs.
           2: eapply In_list_diff_weaken; eassumption.
           clear -BB.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
-          blia.
+          lia.
         }
         rewrite map.get_put_dec. destruct_one_match. 1: {
           exfalso.
@@ -1068,7 +1069,7 @@ Section Proofs.
           2: eapply In_list_diff_weaken; eassumption.
           clear -BB.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
-          blia.
+          lia.
         }
         rewrite map.get_put_diff by congruence.
         rewrite D. rewrite <- E0.
@@ -1139,7 +1140,7 @@ Section Proofs.
       assert (#(Datatypes.length
                   (list_diff Z.eqb (modVars_as_list Z.eqb body)
                              (List.firstn ret_count (reg_class.all reg_class.arg)))) <= 29) by
-        blia.
+        lia.
       clear - H8 H2p6.
 
       cbv[lowerMetrics] in *.
@@ -1179,7 +1180,7 @@ Section Proofs.
              end.
       cbn in H2p6.
       (* cost_compile_spec constraint: cost_compile_spec >= (...93...) i think? *)
-      blia.
+      lia.
 
     + do 2 eexists. split; [solve [align_trace]|]. simpl. cbv [final_trace]. simpl.
       split; [reflexivity|]. intros. cbv [fun_leakage fun_leakage_helper].
@@ -1395,7 +1396,7 @@ Section Proofs.
         intros *. intro E. destr (reg_class.get a); try discriminate E.
         unfold reg_class.get in E0. fwd.
         unfold FlatToRiscvDef.valid_FlatImp_var. destruct_one_match_hyp.
-        -- fwd. blia.
+        -- fwd. lia.
         -- destruct_one_match_hyp. 1: discriminate.
            destruct_one_match_hyp; discriminate.
       * eapply G. exact C.
@@ -1419,7 +1420,7 @@ Section Proofs.
       }
       subst FL new_ra.
       simpl_addrs.
-      ssplit. 1: blia. 1: reflexivity.
+      ssplit. 1: lia. 1: reflexivity.
       wcancel_assumption.
     + reflexivity.
     + assumption.
@@ -1448,7 +1449,7 @@ Section Proofs.
               by (eapply invert_ptsto_instr; ecancel_assumption);
             destruct V as [ [V _] | (? & _ & ?) ]; [ | discriminate ];
             unfold Encode.respects_bounds in V; simpl in V; unfold Encode.verify_I_shift_66 in V;
-            rewrite bitwidth_matches in V; blia
+            rewrite bitwidth_matches in V; lia
         end
     end.
 
@@ -1633,7 +1634,7 @@ Section Proofs.
               (g.(rem_stackwords) - framelength (argnames, retnames, body))%Z in FS
       end.
       2: {
-        unfold framelength. subst g. simpl. blia.
+        unfold framelength. subst g. simpl. lia.
       }
       (* already in valid_FlatImp_fun
       match goal with
@@ -1828,7 +1829,7 @@ Section Proofs.
         { intros i ? ? L%map.get_remove_many_Some_notin.
           rewrite  ?(map.get_of_list_word_at width_pos); intros ?%nth_error_Some_bound_index.
           epose proof (fun v H => L (map.in_keys _ i v H)) as Hq; edestruct map.get eqn:Ei in Hq; eauto.
-          erewrite ?(map.get_of_list_word_at width_pos), ?nth_error_None, ?LittleEndianList.length_le_split, ?length_load_bytes in * by eauto; blia. } }
+          erewrite ?(map.get_of_list_word_at width_pos), ?nth_error_None, ?LittleEndianList.length_le_split, ?length_load_bytes in * by eauto; lia. } }
 
     - idtac "Case compile_stmt_correct/SInlinetable".
       inline_iff1.
@@ -1846,7 +1847,7 @@ Section Proofs.
       rewrite !map.put_put_same in *.
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
-        blia.
+        lia.
       }
       run1done.
 
@@ -1854,7 +1855,7 @@ Section Proofs.
       rename H1 into IHexec.
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
-        blia.
+        lia.
       }
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       eapply runsToStep. {
@@ -1874,11 +1875,11 @@ Section Proofs.
         | H: fits_stack _ _ _ _ |- _ => apply fits_stack_nonneg in H; move H at bottom
         end.
         rewrite BPW in *.
-        blia.
+        lia.
       }
       assert (0 <= n / bytes_per_word) as Nonneg. {
         assert (0 <= n) as K by assumption. clear -B48 enough_stack_space K.
-        Z.div_mod_to_equations. blia.
+        Z.div_mod_to_equations. lia.
       }
       split_from_right frame_trash remaining_frame allocated_stack (Z.to_nat (n / bytes_per_word)).
       match goal with
@@ -1903,12 +1904,12 @@ Section Proofs.
         rewrite BPW in *.
         forget bytes_per_word as B.
         forget (Datatypes.length remaining_frame) as L.
-        assert (0 <= #L) as A1 by blia.
-        assert (0 <= n) as A2 by blia.
-        assert (n mod B = 0) as A3 by blia.
-        assert (B = 4 \/ B = 8) as A4 by blia.
+        assert (0 <= #L) as A1 by lia.
+        assert (0 <= n) as A2 by lia.
+        assert (n mod B = 0) as A3 by lia.
+        assert (B = 4 \/ B = 8) as A4 by lia.
         clear -A1 A2 A3 A4.
-        Z.to_euclidean_division_equations. blia.
+        Z.to_euclidean_division_equations. lia.
       }
 
       assert (sp_val :pick_sp1 k = p_sp + !(bytes_per_word * #(Datatypes.length remaining_frame))).
@@ -1944,7 +1945,7 @@ Section Proofs.
           end.
           1: solve_word_eq.
           rewrite @coqutil.Datatypes.List.length_flat_map with (n := Z.to_nat bytes_per_word).
-          - simpl_addrs. rewrite !Z2Nat.id by blia. rewrite <- BPW. rewrite <- Z_div_exact_2; blia.
+          - simpl_addrs. rewrite !Z2Nat.id by lia. rewrite <- BPW. rewrite <- Z_div_exact_2; lia.
           - clear. intros. eapply LittleEndianList.length_le_split.
         }
         { unfold map.split; split. 1: reflexivity. assumption. }
@@ -1952,7 +1953,7 @@ Section Proofs.
         { eassumption. }
         { rewrite BPW in *.
           match goal with
-          | H: fits_stack ?N _ _ _ |- fits_stack ?N' _ _ _ => replace N' with N; [exact H|blia]
+          | H: fits_stack ?N _ _ _ |- fits_stack ?N' _ _ _ => replace N' with N; [exact H|lia]
           end. }
         { reflexivity. }
         { assumption. }
@@ -2027,7 +2028,7 @@ Section Proofs.
       + simpl.
         assert (x <> RegisterNames.sp). {
           unfold valid_FlatImp_var, RegisterNames.sp in *.
-          blia.
+          lia.
         }
         run1done.
         cbn.
@@ -2044,7 +2045,7 @@ Section Proofs.
     - idtac "Case compile_stmt_correct/SOp".
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
-        blia.
+        lia.
       }
       inline_iff1;
       match goal with
@@ -2101,7 +2102,7 @@ Section Proofs.
     - idtac "Case compile_stmt_correct/SSet".
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
-        blia.
+        lia.
       }
       inline_iff1.
       run1det. run1done.

@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 (*
 Formalization of a subset of the functionality of Intel's 8254x Network Interface Cards.
 

@@ -203,7 +203,7 @@ Section WithParameters.
     assert (Memory.bytes_per_word (bitwidth iset) = 4 \/ Memory.bytes_per_word (bitwidth iset) = 8). {
       unfold Memory.bytes_per_word. destruct iset; cbv; auto.
     }
-    induction s; simpl; Z.div_mod_to_equations; blia.
+    induction s; simpl; Z.div_mod_to_equations; lia.
   Qed.
 
   Lemma framesize_nonneg{BWM: bitwidth_iset width iset}: forall argvars resvars body,
@@ -216,14 +216,14 @@ Section WithParameters.
       unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
     }
     Z.div_mod_to_equations.
-    blia.
+    lia.
   Qed.
 
   Lemma fits_stack_nonneg{BWM: bitwidth_iset width iset}: forall M N e s,
       fits_stack M N e s ->
       0 <= M /\ 0 <= N.
   Proof using BW.
-    induction 1; try blia. pose proof (framesize_nonneg argnames retnames body). blia.
+    induction 1; try lia. pose proof (framesize_nonneg argnames retnames body). lia.
   Qed.
 
   (* Ghost state used to describe low-level state introduced by the compiler.
@@ -400,13 +400,13 @@ Section FlatToRiscv1.
       destruct width_cases as [E | E]; rewrite E; reflexivity.
     }
     destruct (Z.eqb_spec a b).
-    - subst a. rewrite Z.sub_diag. rewrite Z.mod_0_l by blia.
-      rewrite Z.mod_small; [reflexivity|blia].
-    - rewrite (Z.mod_small 1) by blia.
+    - subst a. rewrite Z.sub_diag. rewrite Z.mod_0_l by lia.
+      rewrite Z.mod_small; [reflexivity|lia].
+    - rewrite (Z.mod_small 1) by lia.
       destruct (Z.ltb_spec ((a - b) mod 2 ^ width) 1); [exfalso|reflexivity].
       pose proof (Z.mod_pos_bound (a - b) (2 ^ width)).
-      assert ((a - b) mod 2 ^ width = 0) as A by blia.
-      apply Znumtheory.Zmod_divide in A; [|blia].
+      assert ((a - b) mod 2 ^ width = 0) as A by lia.
+      apply Znumtheory.Zmod_divide in A; [|lia].
       unfold Z.divide in A.
       destruct A as [k A].
       assert (k <> 0); Lia.nia.
@@ -453,7 +453,7 @@ Section FlatToRiscv1.
       rewrite ?E; trivial;
       rewrite ?Zmod.of_Z_signed; simpl_word_exprs;
       destruct initialL; eqapply Hpost; f_equal; f_equal.
-      all: rewrite ?bits.unsigned_of_Z, Z.mod_small; trivial; eapply load_Z_bound in E; blia.
+      all: rewrite ?bits.unsigned_of_Z, Z.mod_small; trivial; eapply load_Z_bound in E; lia.
   Qed.
 
   Lemma go_leak_load: forall sz (x a ofs: Z) (addr: word) (initialL: RiscvMachineL) post (f : option LeakageEvent -> M unit),
@@ -780,7 +780,7 @@ Section FlatToRiscv1.
         * destruct (BinInt.Z.to_nat (Zmod.unsigned (Zmod.sub k addr))) eqn: F.
           -- exfalso. apply E. apply (f_equal Z.of_nat) in F.
              rewrite Z2Nat.id in F. 2: {
-               pose proof (bits.unsigned_range (Zmod.sub k addr) width_nonneg). blia.
+               pose proof (bits.unsigned_range (Zmod.sub k addr) width_nonneg). lia.
              }
              apply (f_equal (Zmod.of_Z (2 ^ width))) in F.
              rewrite (Zmod.of_Z_unsigned (Zmod.sub k addr)) in F.
@@ -789,20 +789,20 @@ Section FlatToRiscv1.
              ring.
           -- f_equal.
              pose proof (bits.unsigned_range (Zmod.sub k addr) width_nonneg).
-             assert (Z.of_nat (S n) < 2 ^ width) by blia.
+             assert (Z.of_nat (S n) < 2 ^ width) by lia.
              apply (f_equal Z.of_nat) in F.
-             rewrite Z2Nat.id in F by blia.
+             rewrite Z2Nat.id in F by lia.
              apply (f_equal (Zmod.of_Z (2 ^ width))) in F.
              rewrite (Zmod.of_Z_unsigned (Zmod.sub k addr)) in F.
              ring_simplify (Zmod.sub k (Zmod.add addr (bits.of_Z width 1))).
              rewrite F.
-             replace (Z.of_nat (S n)) with (1 + Z.of_nat n) by blia.
+             replace (Z.of_nat (S n)) with (1 + Z.of_nat n) by lia.
              match goal with
              | |- Z.to_nat (Zmod.unsigned ?x) = n => ring_simplify x
              end.
              rewrite bits.unsigned_of_Z.
-             rewrite Z.mod_small by blia.
-             blia.
+             rewrite Z.mod_small by lia.
+             lia.
   Qed.
 
   Lemma program_compile_byte_list: forall table (addr: word),

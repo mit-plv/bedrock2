@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry.
 Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import bedrock2Examples.SPI.
@@ -243,7 +244,7 @@ Section WithParameters.
         (left + right); eexists _, _; split; exact eq_refl
     end.
 
-  Local Ltac slv := solve [ trivial | eauto 2 using TracePredicate.any_app_more | assumption | blia | trace_alignment | mmio_trace_abstraction ].
+  Local Ltac slv := solve [ trivial | eauto 2 using TracePredicate.any_app_more | assumption | lia | trace_alignment | mmio_trace_abstraction ].
 
   Ltac t :=
     match goal with
@@ -300,14 +301,14 @@ Section WithParameters.
     { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !bits.unsigned_of_Z.
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. blia. }
+      cbv -[Z.le Z.lt]. lia. }
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !bits.unsigned_of_Z.
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. blia. }
+      cbv -[Z.le Z.lt]. lia. }
     repeat straightline.
 
     straightline_call.
@@ -316,7 +317,7 @@ Section WithParameters.
       revert H7.
       evl.
       intros.
-      Z.div_mod_to_equations. blia.
+      Z.div_mod_to_equations. lia.
     }
     repeat t.
     straightline_call.
@@ -325,32 +326,32 @@ Section WithParameters.
       revert H7.
       evl.
       intros.
-      Z.div_mod_to_equations. blia.
+      Z.div_mod_to_equations. lia.
     }
     repeat t.
     straightline_call.
     1: {
       match goal with |- Zmod.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
-      Z.div_mod_to_equations. blia.
+      Z.div_mod_to_equations. lia.
     }
     repeat t.
     straightline_call.
     1: {
       match goal with |- Zmod.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
-      Z.div_mod_to_equations. blia.
+      Z.div_mod_to_equations. lia.
     }
     repeat t.
     straightline_call.
     1: {
       match goal with |- Zmod.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
-      Z.div_mod_to_equations. blia.
+      Z.div_mod_to_equations. lia.
     }
     repeat t.
 
     straightline_call.
     1: {
       match goal with |- Zmod.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
-      Z.div_mod_to_equations. blia.
+      Z.div_mod_to_equations. lia.
     }
     repeat t.
 
@@ -360,7 +361,7 @@ Section WithParameters.
       pose proof (bits.unsigned_range v width_nonneg).
       repeat match goal with x := _ |- _ => subst x end.
       evl.
-      Z.div_mod_to_equations. blia.
+      Z.div_mod_to_equations. lia.
     }
 
     t.
@@ -391,7 +392,7 @@ Section WithParameters.
     { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !bits.unsigned_of_Z.
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. blia. }
+      cbv -[Z.le Z.lt]. lia. }
     t.
     t.
     t.
@@ -406,7 +407,7 @@ Section WithParameters.
     { subst addr addr0. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !bits.unsigned_of_Z.
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. blia. }
+      cbv -[Z.le Z.lt]. lia. }
     repeat t.
 
     do 6 letexists.
@@ -446,29 +447,29 @@ Section WithParameters.
     all : try (rewrite Byte.byte.unsigned_of_Z; eapply Z.mod_small).
 
     all : pose proof (bits.unsigned_range a width_nonneg).
-    all : rewrite ?bits.unsigned_and, ?Zmod.unsigned_sru, ?bits.unsigned_of_Z by blia; rewrite ?bits.unsigned_of_Z.
+    all : rewrite ?bits.unsigned_and, ?Zmod.unsigned_sru, ?bits.unsigned_of_Z by lia; rewrite ?bits.unsigned_of_Z.
     all : repeat match goal with |- context G[?x mod 2 ^ 32] => let g := context G [x] in change g end.
     all : change 255 with (Z.ones 8).
-    all : rewrite ?Z.shiftr_div_pow2, ?Z.land_ones by blia.
-    1,2: clear -H7 H36; Z.div_mod_to_equations; blia.
+    all : rewrite ?Z.shiftr_div_pow2, ?Z.land_ones by lia.
+    1,2: clear -H7 H36; Z.div_mod_to_equations; lia.
 
     cbv [List.app].
     repeat match goal with x := _ |- _ => subst x end.
     cbv [LittleEndianList.le_combine].
     evl.
-    repeat rewrite ?bits.unsigned_of_Z, Zmod.unsigned_sru by blia.
+    repeat rewrite ?bits.unsigned_of_Z, Zmod.unsigned_sru by lia.
 
     try erewrite ?bits.unsigned_of_Z.
     repeat match goal with |- context G [?a mod ?b] => let goal := context G [a] in change goal end.
-    rewrite ?Z.shiftl_mul_pow2 by (clear; blia).
+    rewrite ?Z.shiftl_mul_pow2 by (clear; lia).
 
     change 255 with (Z.ones 8).
-    rewrite <-!Z.shiftl_mul_pow2 by blia.
+    rewrite <-!Z.shiftl_mul_pow2 by lia.
     pose proof (bits.unsigned_range v width_nonneg).
     set (@Zmod.unsigned _ v) as X in *.
     rewrite ?Byte.byte.unsigned_of_Z.
     unfold Byte.byte.wrap.
-    rewrite <- ?Z.land_ones by blia.
+    rewrite <- ?Z.land_ones by lia.
     prove_Zeq_bitwise.
   Qed.
 
@@ -484,7 +485,7 @@ Section WithParameters.
           let t := eval cbv in (a mod 2 ^ 32) in
           let g := context G [t] in
           change g
-      | |- _ <= _ < _ => blia
+      | |- _ <= _ < _ => lia
       | |- _ /\ _ => split
     end.
 
@@ -529,7 +530,7 @@ Section WithParameters.
             let g := context G [t] in
             change g
         end.
-        clear; blia. }
+        clear; lia. }
       repeat straightline.
       split_if.
       {
@@ -558,14 +559,14 @@ Section WithParameters.
           subst v. subst i.
           rewrite Zmod.unsigned_sub, bits.unsigned_of_Z.
           change (1 mod 2 ^ 32) with 1.
-          rewrite Z.mod_small; blia. }
+          rewrite Z.mod_small; lia. }
         repeat t.
         rewrite app_nil_r.
         eexists (S _).
         split.
         { eapply multiple_expand_right, concat_app; eauto.
           destruct (Zmod.eqb_spec x5 2271560481); subst.
-          { subst v0. rewrite bits.unsigned_1 in H3 by blia. inversion H3. }
+          { subst v0. rewrite bits.unsigned_1 in H3 by lia. inversion H3. }
           eexists. split; eauto.
           intro X.
           eapply H10.
@@ -578,7 +579,7 @@ Section WithParameters.
         rewrite Zmod.unsigned_sub, bits.unsigned_of_Z.
         pose proof (bits.unsigned_range x0 width_nonneg).
         change (1 mod 2 ^ 32) with 1.
-        rewrite Z.mod_small; try blia. }
+        rewrite Z.mod_small; try lia. }
       { left. right.
         split. { intro X. subst err. rewrite bits.unsigned_of_Z in X. inversion X. }
         rewrite app_nil_r.
@@ -589,15 +590,15 @@ Section WithParameters.
           pose proof (bits.unsigned_range x0 width_nonneg).
           rewrite Zmod.unsigned_sub, bits.unsigned_of_Z in H9.
           change (1 mod 2 ^ 32) with 1 in H9.
-          rewrite Z.mod_small in H9; try blia. }
+          rewrite Z.mod_small in H9; try lia. }
         rewrite Z.add_1_r.
-        rewrite Znat.Z2Nat.inj_succ by (clear; blia).
+        rewrite Znat.Z2Nat.inj_succ by (clear; lia).
         rewrite Znat.Nat2Z.id.
 
         eapply multiple_expand_right, concat_app; eauto.
         eexists; split; eauto.
         destruct (Zmod.eqb_spec x5 2271560481); subst.
-        { subst v0. rewrite bits.unsigned_1 in H3 by blia. inversion H3. }
+        { subst v0. rewrite bits.unsigned_1 in H3 by lia. inversion H3. }
         intro X.
         eapply H10.
         eapply Zmod.unsigned_inj; rewrite bits.unsigned_of_Z.
@@ -646,7 +647,7 @@ Section WithParameters.
       repeat match goal with x := _ |- _ => subst x end;
       cbv [isMMIOAddr SPI_CSMODE_ADDR];
       rewrite !bits.unsigned_of_Z;
-      trivial; cbv -[Z.le Z.lt]; blia.
+      trivial; cbv -[Z.le Z.lt]; lia.
 
     all : try (
       repeat match goal with x := _ ++ _ |- _ => subst x end;
@@ -670,15 +671,15 @@ Section WithParameters.
     all : repeat rewrite <-app_assoc.
 
     all : eauto using TracePredicate.any_app_more.
-    { evl. rewrite Zmod.unsigned_sru by blia.
-      rewrite Z.shiftr_div_pow2 by blia.
+    { evl. rewrite Zmod.unsigned_sru by lia.
+      rewrite Z.shiftr_div_pow2 by lia.
       clear -H8.
       change 0x400 with (4*256) in *.
-      Z.div_mod_to_equations. blia. }
+      Z.div_mod_to_equations. lia. }
     { rewrite bits.unsigned_and. evl.
       change 255 with (Z.ones 8).
       rewrite Z.land_ones;
-      Z.div_mod_to_equations; blia. }
+      Z.div_mod_to_equations; lia. }
 
     right.
     eexists; eauto.
@@ -714,20 +715,20 @@ Section WithParameters.
       | _ => cbv [Byte.byte.wrap]; rewrite Z.mod_small
       | _ => solve [trivial]
       end.
-    { rewrite Zmod.unsigned_sru by blia.
-      rewrite Z.shiftr_div_pow2 by blia.
+    { rewrite Zmod.unsigned_sru by lia.
+      rewrite Z.shiftr_div_pow2 by lia.
       generalize dependent a; clear; intros.
       change 0x400 with (4*256) in *.
-      Z.div_mod_to_equations. blia. }
+      Z.div_mod_to_equations. lia. }
     { rewrite bits.unsigned_and. evl.
-      change 255 with (Z.ones 8); rewrite Z.land_ones by blia.
-      Z.div_mod_to_equations. blia. }
+      change 255 with (Z.ones 8); rewrite Z.land_ones by lia.
+      Z.div_mod_to_equations. lia. }
     repeat match goal with x := _ |- _ => subst x end.
     cbv [LittleEndianList.le_combine].
 
     repeat rewrite ?bits.unsigned_or, <-?Z.lor_assoc by (rewrite ?bits.unsigned_of_Z; exact eq_refl).
     change (Z.shiftl 0 8) with 0 in *; rewrite Z.lor_0_r.
-    rewrite !Z.shiftl_lor, !Z.shiftl_shiftl in * by blia.
+    rewrite !Z.shiftl_lor, !Z.shiftl_shiftl in * by lia.
     repeat f_equal.
 
     (* little-endian word conversion, automatable (bitwise Z and word) *)
@@ -739,8 +740,8 @@ Section WithParameters.
     all : change (8+16) with 24.
     all : cbv [Byte.byte.wrap].
     all : clear.
-    all : rewrite ?Z.shiftl_mul_pow2 by blia.
-    all : try (Z.div_mod_to_equations; blia).
+    all : rewrite ?Z.shiftl_mul_pow2 by lia.
+    all : try (Z.div_mod_to_equations; lia).
   Qed.
 
   Import WeakestPrecondition SeparationLogic Array Scalars ProgramLogic.Coercions.
@@ -820,7 +821,7 @@ Section WithParameters.
       2: { contradiction H16. rewrite Zmod.unsigned_0; trivial. }
       pose proof (bits.unsigned_range l width_nonneg) as Hl. rewrite H13 in Hl.
       eapply (f_equal (Zmod.of_Z (2 ^ 32))) in H13. rewrite Zmod.of_Z_unsigned in H13.
-      rewrite bits.unsigned_of_Z in E; rewrite Z.mod_small in E by blia.
+      rewrite bits.unsigned_of_Z in E; rewrite Z.mod_small in E by lia.
       subst l.
       rename bs into bs0.
       rename x5 into bs.

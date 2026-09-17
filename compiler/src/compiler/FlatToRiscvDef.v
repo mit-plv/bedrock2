@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Macros.unique.
 Require Import coqutil.Decidable.
 Require Import compiler.FlatImp.
@@ -38,14 +39,14 @@ Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Pro
 Definition valid_FlatImp_var(x: Z): Prop := 3 <= x < 32.
 
 Lemma sp_not_valid_FlatImp_var: ~ valid_FlatImp_var RegisterNames.sp.
-Proof. unfold valid_FlatImp_var, RegisterNames.sp. clear. blia. Qed.
+Proof. unfold valid_FlatImp_var, RegisterNames.sp. clear. lia. Qed.
 
 Lemma ra_not_valid_FlatImp_var: ~ valid_FlatImp_var RegisterNames.ra.
-Proof. unfold valid_FlatImp_var, RegisterNames.ra. clear. blia. Qed.
+Proof. unfold valid_FlatImp_var, RegisterNames.ra. clear. lia. Qed.
 
 Lemma valid_FlatImp_var_implies_valid_register: forall (x: Z),
     valid_FlatImp_var x -> valid_register x.
-Proof. unfold valid_FlatImp_var, valid_register. intros. blia. Qed.
+Proof. unfold valid_FlatImp_var, valid_register. intros. lia. Qed.
 
 Section FlatToRiscv1.
 
@@ -747,12 +748,12 @@ Section FlatToRiscv1.
         all: try (left; constructor; constructor).
         - assert (H0 := skipn_length (length skip) k). left.
           rewrite H. assert (H1:= @f_equal _ _ (@length _) _ _ e3).
-          simpl in H1. blia.
+          simpl in H1. lia.
         - assert (H := skipn_length (length skip) k). left.
-          assert (H1 := @f_equal _ _ (@length _) _ _ e3). simpl in H1. blia.
+          assert (H1 := @f_equal _ _ (@length _) _ _ e3). simpl in H1. lia.
         - destruct (length (List.skipn (length skip) k) =? length k)%nat eqn:E.
           + apply Nat.eqb_eq in E. rewrite E. right. constructor. constructor.
-          + apply Nat.eqb_neq in E. left. blia.
+          + apply Nat.eqb_neq in E. left. lia.
       Defined.
 
       Definition stmt_leakage

@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import compiler.util.Common.
 Require Import bedrock2.LeakageSemantics.
 Require Import bedrock2.Map.SeparationLogic.
@@ -80,7 +81,7 @@ Section Spilling.
   Proof.
     induction l; simpl; intros.
     - assumption.
-    - eapply IHl. blia.
+    - eapply IHl. lia.
   Qed.
 
   Lemma Forall_le_max: forall (l: list Z), Forall (fun x : Z => x <= fold_left Z.max l 0) l.
@@ -95,7 +96,7 @@ Section Spilling.
         apply Z.le_max_l.
   Qed.
 
-  Hint Extern 1 => blia : max_var_sound.
+  Hint Extern 1 => lia : max_var_sound.
   Hint Extern 1 => cbv beta : max_var_sound.
   Hint Extern 1 => eapply Forall_vars_stmt_impl; cycle -1 : max_var_sound.
   Hint Resolve Forall_and : max_var_sound.
@@ -120,10 +121,10 @@ Section Spilling.
     all: eapply Forall_and;
          [ eapply Forall_and;
            [ eapply Forall_impl; [|eassumption];
-             cbv beta; intros; blia
+             cbv beta; intros; lia
            | eapply Forall_impl; [|eapply Forall_le_max];
-             cbv beta; intros; blia ]
-         | eapply Forall_impl; [|eassumption]; cbv beta; blia ].
+             cbv beta; intros; lia ]
+         | eapply Forall_impl; [|eassumption]; cbv beta; lia ].
   Qed.
 
   Context {width} {BW: Bitwidth width}.
@@ -467,12 +468,12 @@ Section Spilling.
       all: try (left; constructor; constructor).
     - assert (H0 := skipn_length (length skip) k). left.
       rewrite H. assert (H1:= @f_equal _ _ (@length _) _ _ e3).
-      simpl in H1. blia.
+      simpl in H1. lia.
     - assert (H := skipn_length (length skip) k). left.
-      assert (H1 := @f_equal _ _ (@length _) _ _ e3). simpl in H1. blia.
+      assert (H1 := @f_equal _ _ (@length _) _ _ e3). simpl in H1. lia.
     - destruct (length (List.skipn (length skip) k) =? length k)%nat eqn:E.
       + apply Nat.eqb_eq in E. rewrite E. right. constructor. constructor.
-      + apply Nat.eqb_neq in E. left. blia.
+      + apply Nat.eqb_neq in E. left. lia.
   Defined.
 
   Definition stmt_leakage
@@ -622,8 +623,8 @@ Section Spilling.
     induction args; simpl; intros.
     - exact I.
     - fwd. split.
-      + unfold set_var_to_reg, stack_loc, fp, a0, a7 in *. destr (32 <=? a); simpl; blia.
-      + eapply IHargs; try blia. assumption.
+      + unfold set_var_to_reg, stack_loc, fp, a0, a7 in *. destr (32 <=? a); simpl; lia.
+      + eapply IHargs; try lia. assumption.
   Qed.
 
   Lemma set_reg_range_to_vars_valid_vars: forall args start,
@@ -635,8 +636,8 @@ Section Spilling.
     induction args; simpl; intros.
     - exact I.
     - fwd. split.
-      + eapply IHargs; try blia. assumption.
-      + unfold set_reg_to_var, stack_loc, fp, a0, a7 in *. destr (32 <=? a); simpl; blia.
+      + eapply IHargs; try lia. assumption.
+      + unfold set_reg_to_var, stack_loc, fp, a0, a7 in *. destr (32 <=? a); simpl; lia.
   Qed.
 
   Lemma spill_stmt_valid_vars: forall s m,
@@ -656,15 +657,15 @@ Section Spilling.
                          spill_bcond, max_var_bcond, ForallVars_bcond, prepare_bcond,
                          load_iarg_reg, load_iarg_reg, save_ires_reg, stack_loc in *
              end;
-      try blia;
+      try lia;
       fwd;
       repeat match goal with
       | IH: _, H: Forall_vars_stmt _ _ |- _ =>
         specialize IH with (2 := H);
         match type of IH with
-        | ?P -> _ => let A := fresh in assert P as A by blia; specialize (IH A); clear A
+        | ?P -> _ => let A := fresh in assert P as A by lia; specialize (IH A); clear A
         end
-      end; eauto;   intuition try blia;
+      end; eauto;   intuition try lia;
       try eapply set_reg_range_to_vars_valid_vars;
       try eapply set_vars_to_reg_range_valid_vars;
       unfold a0, a7 in *;
@@ -672,8 +673,8 @@ Section Spilling.
       rewrite ?List.firstn_length;
       try eapply List.Forall_firstn;
       try (eapply List.Forall_impl; [|eapply arg_range_Forall]; cbv beta);
-      try blia;
-      (eapply Forall_impl; [|eassumption]); cbv beta; unfold fp; blia.
+      try lia;
+      (eapply Forall_impl; [|eassumption]); cbv beta; unfold fp; lia.
   Qed.
 
   (* potentially uninitialized argument registers (used also as spilling temporaries) *)
@@ -721,14 +722,14 @@ Section Spilling.
       rewrite map.get_put_dec in H. rewrite map.get_empty in H. unfold fp, spill_tmp, a0, a7 in *.
       specialize (Ap0p1 k).
       destruct_one_match_hyp; fwd; subst; destruct_one_match_hyp; fwd; subst.
-      + blia.
-      + specialize H1 with (1 := H). blia.
+      + lia.
+      + specialize H1 with (1 := H). lia.
       + eauto.
       + eauto.
     - assumption.
     - intros. rewrite map.get_put_dec in H. unfold spill_tmp, a0, a7 in *.
       destruct_one_match_hyp.
-      + blia.
+      + lia.
       + eauto.
   Qed.
 
@@ -738,7 +739,7 @@ Section Spilling.
       (forall x v, map.get lRegs x = Some v -> fp < x < 32 /\ (x < a0 \/ a7 < x)) ->
       (eq lRegs * arg_regs * ptsto fp fpval)%sep (map.put l (spill_tmp i) v).
   Proof.
-    intros. assert (a0 <= spill_tmp i <= a7) by (unfold spill_tmp, a0, a7; blia).
+    intros. assert (a0 <= spill_tmp i <= a7) by (unfold spill_tmp, a0, a7; lia).
     unfold spill_tmp. eapply put_arg_reg; eassumption.
   Qed.
 
@@ -753,19 +754,19 @@ Section Spilling.
   Proof.
     intros.
     unfold leak_load_iarg_reg, load_iarg_reg, stack_loc, iarg_reg, related in *. fwd.
-    assert (isRegZ (9 + i) = true) by (unfold isRegZ; blia).
-    assert (isRegZ fp = true) by (unfold isRegZ; (assert (fp = 5) by auto); blia).
+    assert (isRegZ (9 + i) = true) by (unfold isRegZ; lia).
+    assert (isRegZ fp = true) by (unfold isRegZ; (assert (fp = 5) by auto); lia).
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. ecancel_assumption.
-      + eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
-        eapply H0p6. 1: blia.
+      + eapply load_from_word_array. 1: ecancel_assumption. 2: lia.
+        eapply H0p6. 1: lia.
         unfold sep in H0p4. fwd.
         eapply map.get_split_r. 1,3: eassumption.
         destr (map.get mp r); [exfalso|reflexivity].
-        specialize H0p2 with (1 := E0). blia.
+        specialize H0p2 with (1 := E0). lia.
       + unfold cost_load.
-        assert (isRegZ r = false) by (unfold isRegZ; blia); rewrite H4 in H3.
+        assert (isRegZ r = false) by (unfold isRegZ; lia); rewrite H4 in H3.
         unfold spill_tmp in H3. rewrite H0; rewrite H1.
         eapply H3.
         repeat match goal with
@@ -782,9 +783,9 @@ Section Spilling.
         unfold sep in H0p4. destruct H0p4 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
         eapply map.get_split_l. 1: exact S2. 2: assumption.
         destr (map.get lStack r); [exfalso|reflexivity].
-        specialize H0p3 with (1 := E0). blia.
+        specialize H0p3 with (1 := E0). lia.
       }
-      assert (isRegZ r = true) by (unfold isRegZ; blia); rewrite H4 in H3.
+      assert (isRegZ r = true) by (unfold isRegZ; lia); rewrite H4 in H3.
       eapply H3.
       repeat match goal with
              | |- exists _, _ => eexists
@@ -808,12 +809,12 @@ Section Spilling.
   (*   destr (32 <=? r). *)
   (*   - eapply exec.load. *)
   (*     + eapply get_sep. ecancel_assumption. *)
-  (*     + eapply load_from_word_array. 1: ecancel_assumption. 2: blia. *)
-  (*       eapply H0p6. 1: blia. *)
+  (*     + eapply load_from_word_array. 1: ecancel_assumption. 2: lia. *)
+  (*       eapply H0p6. 1: lia. *)
   (*       unfold sep in H0p4. fwd. *)
   (*       eapply map.get_split_r. 1,3: eassumption. *)
   (*       destr (map.get mp r); [exfalso|reflexivity]. *)
-  (*       specialize H0p2 with (1 := E0). blia. *)
+  (*       specialize H0p2 with (1 := E0). lia. *)
   (*     + repeat match goal with *)
   (*              | |- exists _, _ => eexists *)
   (*              | |- _ /\ _ => split *)
@@ -828,7 +829,7 @@ Section Spilling.
   (*       unfold sep in H0p4. destruct H0p4 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'. *)
   (*       eapply map.get_split_l. 1: exact S2. 2: assumption. *)
   (*       destr (map.get lStack r); [exfalso|reflexivity]. *)
-  (*       specialize H0p3 with (1 := E0). blia. *)
+  (*       specialize H0p3 with (1 := E0). lia. *)
   (*     } *)
   (*     repeat match goal with *)
   (*            | |- exists _, _ => eexists *)
@@ -859,19 +860,19 @@ Section Spilling.
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. ecancel_assumption.
-      + eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
-        eapply H0p6. 1: blia.
+      + eapply load_from_word_array. 1: ecancel_assumption. 2: lia.
+        eapply H0p6. 1: lia.
         unfold sep in H0p4. fwd.
         eapply map.get_split_r. 1,3: eassumption.
         destr (map.get mp r); [exfalso|reflexivity].
-        specialize H0p2 with (1 := E0). blia.
+        specialize H0p2 with (1 := E0). lia.
       + repeat match goal with
                | |- exists _, _ => eexists
                | |- _ /\ _ => split
                | |- _ => eassumption || reflexivity
                end.
         1: eapply put_tmp; eassumption.
-        unfold cost_load. assert (isRegZ (9+i) = true) by (unfold isRegZ; blia); rewrite H0.
+        unfold cost_load. assert (isRegZ (9+i) = true) by (unfold isRegZ; lia); rewrite H0.
         assert (fp = 5) by auto; rewrite H1; cbn.
         destr (isRegZ r); solve_MetricLog.
     - eapply exec.skip.
@@ -882,7 +883,7 @@ Section Spilling.
         unfold sep in H0p4. destruct H0p4 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
         eapply map.get_split_l. 1: exact S2. 2: assumption.
         destr (map.get lStack r); [exfalso|reflexivity].
-        specialize H0p3 with (1 := E0). blia.
+        specialize H0p3 with (1 := E0). lia.
       }
       repeat match goal with
              | |- exists _, _ => eexists
@@ -935,27 +936,27 @@ Section Spilling.
             - unfold map.disjoint. intros.
               specialize H0p2 with (1 := H0).
               rewrite map.get_put_dec in H1. destr (x =? k).
-              + blia.
-              + specialize H0p3 with (1 := H1). blia.
+              + lia.
+              + specialize H0p3 with (1 := H1). lia.
           }
           1: eassumption.
           1: {
             intros. rewrite map.get_put_dec in H0. destr (x =? x0).
-            - blia.
+            - lia.
             - eauto.
           }
           2: {
             intros.
             intros. rewrite map.get_put_dec in H1. destr (x =? r).
             - apply Option.eq_of_eq_Some in H1. subst. assumption.
-            - eapply Nj. 1: blia. eauto.
+            - eapply Nj. 1: lia. eauto.
           }
           1: { unfold spill_tmp. eapply put_tmp; eauto. }
-          1: blia. 1: reflexivity.
+          1: lia. 1: reflexivity.
           unfold cost_store. unfold spill_tmp; cbn.
           destr (isRegZ x); solve_MetricLog.
       }
-      blia.
+      lia.
     - eapply exec.skip.
       (* even though we did nothing, we have to reconstruct the `related` from the `related` that *)
   (*        held *before* the SOp *)
@@ -976,12 +977,12 @@ Section Spilling.
         - unfold map.disjoint. intros.
           specialize H0p3 with (1 := H0).
           rewrite map.get_put_dec in H1. destr (x =? k).
-          + blia.
-          + specialize H0p2 with (1 := H1). blia.
+          + lia.
+          + specialize H0p2 with (1 := H1). lia.
       }
       1: {
         intros. rewrite map.get_put_dec in H0. destr (x =? x0).
-        - blia.
+        - lia.
         - eauto.
       }
       2: {
@@ -990,8 +991,8 @@ Section Spilling.
         intros. fwd.
         unfold ptsto, map.disjoint in *. subst.
         rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty in H1.
-        repeat destruct_one_match_hyp; subst; fwd; try congruence; try blia.
-        specialize H0p8 with (1 := H1). blia.
+        repeat destruct_one_match_hyp; subst; fwd; try congruence; try lia.
+        specialize H0p8 with (1 := H1). lia.
       }
       all: try eassumption. 1: reflexivity.
       destr (isRegZ x); solve_MetricLog.
@@ -1025,7 +1026,7 @@ Section Spilling.
           assert (isRegZ (spill_tmp 1) = true) by auto; rewrite H.
           assert (isRegZ fp = true) by auto; rewrite H0.
           clear H H0.
-          destr (isRegZ x); try blia.
+          destr (isRegZ x); try lia.
           eapply H1.
           repeat match goal with
                  | |- exists _, _ => eexists
@@ -1042,27 +1043,27 @@ Section Spilling.
             - unfold map.disjoint. intros.
               specialize Hp2 with (1 := H).
               rewrite map.get_put_dec in H0. destr (x =? k).
-              + blia.
+              + lia.
               + eauto with zarith.
           }
           1: eassumption.
           1: {
             intros. rewrite map.get_put_dec in H. destr (x =? x0).
-            - blia.
+            - lia.
             - eauto.
           }
           2: {
             intros.
             intros. rewrite map.get_put_dec in H0. destr (x =? r).
             - apply Option.eq_of_eq_Some in H0. subst. assumption.
-            - eapply Nj. 1: blia. eauto.
+            - eapply Nj. 1: lia. eauto.
           }
           1: { unfold spill_tmp. eapply put_tmp; eauto. }
-          blia.
+          lia.
       }
-      blia.
+      lia.
     - eapply exec.skip.
-      destr (isRegZ x); try blia.
+      destr (isRegZ x); try lia.
       eapply H1.
       (* even though we did nothing, we have to reconstruct the `related` from the `related` that *)
   (*        held *before* the SOp *)
@@ -1082,12 +1083,12 @@ Section Spilling.
         - unfold map.disjoint. intros.
           specialize Hp3 with (1 := H).
           rewrite map.get_put_dec in H0. destr (x =? k).
-          + blia.
+          + lia.
           + eauto with zarith.
       }
       1: {
         intros. rewrite map.get_put_dec in H. destr (x =? x0).
-        - blia.
+        - lia.
         - eauto.
       }
       2: {
@@ -1096,8 +1097,8 @@ Section Spilling.
         intros. fwd.
         unfold ptsto, map.disjoint in *. subst.
         rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty in H0.
-        repeat destruct_one_match_hyp; subst; fwd; try congruence; try blia.
-        specialize Hp8 with (1 := H0). blia.
+        repeat destruct_one_match_hyp; subst; fwd; try congruence; try lia.
+        specialize Hp8 with (1 := H0). lia.
       }
       all: try eassumption.
   Qed.
@@ -1113,11 +1114,11 @@ Section Spilling.
     destr (y =? z).
     - replace z' with y' in * by congruence.
       unfold iarg_reg, spill_tmp. destruct_one_match.
-      + rewrite map.get_put_diff by blia. rewrite map.get_put_same. reflexivity.
+      + rewrite map.get_put_diff by lia. rewrite map.get_put_same. reflexivity.
       + rewrite map.get_put_same. reflexivity.
     - rewrite map.get_put_diff.
       + rewrite map.get_put_same. reflexivity.
-      + unfold iarg_reg, spill_tmp, a0, a7, fp in *. repeat destruct_one_match; blia.
+      + unfold iarg_reg, spill_tmp, a0, a7, fp in *. repeat destruct_one_match; lia.
   Qed.
 
   (* Need to repeat in each section because autorewrite does not run typeclass search to
@@ -1188,13 +1189,13 @@ Section Spilling.
       simpl in H6. cbv [leak_set_var_to_reg stack_loc] in H6.
       destr (32 <=? a).
       + edestruct store_to_word_array with (i := a - 32).
-        1: ecancel_assumption. 1: blia.
+        1: ecancel_assumption. 1: lia.
         fwd.
         eapply exec.store.
         { eapply get_sep. ecancel_assumption. }
         { eassumption. }
         { eassumption. }
-        eapply IHargs; try eassumption; try blia.
+        eapply IHargs; try eassumption; try lia.
         (* establish related for IH: *)
         * unfold related.
           eexists (map.put lStack a v), lRegs, _.
@@ -1202,20 +1203,20 @@ Section Spilling.
           { reflexivity. }
           { ecancel_assumption. }
           { eassumption. }
-          { intros. rewrite map.get_put_dec in H. destr (a =? x0). 1: blia. eauto. }
+          { intros. rewrite map.get_put_dec in H. destr (a =? x0). 1: lia. eauto. }
           { apply sep_comm. eapply sep_eq_put. 1: apply sep_comm; assumption.
             intros lRegs' w ? G. subst lRegs'.
-            match goal with H: _ |- _ => specialize H with (1 := G) end. blia. }
+            match goal with H: _ |- _ => specialize H with (1 := G) end. lia. }
           { eassumption. }
           { intros b A0 w B0.
           rewrite map.get_put_dec in B0.
           destr (a =? b). 1: congruence.
-          match goal with H: _ |- _ => eapply H end. 1: blia.
-          match goal with H: _ |- _ => eapply H end. 1: blia.
+          match goal with H: _ |- _ => eapply H end. 1: lia.
+          match goal with H: _ |- _ => eapply H end. 1: lia.
           assumption. }
-          { blia. }
+          { lia. }
         * intros. apply H6; auto.
-          -- cbn in *. destr (isRegZ start); try blia; destr (isRegZ a); try blia.
+          -- cbn in *. destr (isRegZ start); try lia; destr (isRegZ a); try lia.
              rewrite H0. unfold cost_store, isRegZ. cbn.
              rewrite cost_set_vars_to_reg_range_commutes.
              rewrite (proj2 (Z.leb_le start 31)) by assumption.
@@ -1223,30 +1224,30 @@ Section Spilling.
           -- subst. rewrite rev_app_distr. rewrite <- app_assoc. reflexivity.
       + eapply exec.set.
         { eassumption. }
-        eapply IHargs; try eassumption; try blia. 2: {
+        eapply IHargs; try eassumption; try lia. 2: {
           eapply map.getmany_of_list_put_diff. 2: eassumption.
-          eapply List.not_In_Z_seq. blia.
+          eapply List.not_In_Z_seq. lia.
         }
         * unfold related. eexists lStack, (map.put lRegs a v), _.
           ssplit.
           { reflexivity. }
           { ecancel_assumption. }
-          { intros. rewrite map.get_put_dec in H. destr (a =? x). 1: blia. eauto. }
+          { intros. rewrite map.get_put_dec in H. destr (a =? x). 1: lia. eauto. }
           { eassumption. }
           { eapply sep_eq_put. 1: assumption.
             intros lStack' w ? G. subst lStack'.
-            match goal with H: _ |- _ => specialize H with (1 := G) end. blia. }
+            match goal with H: _ |- _ => specialize H with (1 := G) end. lia. }
           { apply sep_assoc. eapply sep_eq_put. 1: ecancel_assumption.
             unfold ptsto, arg_regs.
             intros l w (l_arg_regs & l_fpval & (? & ?) & ? & ?) G. subst.
           rewrite map.get_putmany_dec, map.get_put_dec, map.get_empty in G.
-          destr (fp =? a). 1: unfold fp; blia.
+          destr (fp =? a). 1: unfold fp; lia.
           match goal with H: _ |- _ => specialize H with (1 := G) end.
-          unfold a0, a7 in *. blia. }
+          unfold a0, a7 in *. lia. }
           { assumption. }
           { assumption. }
         * intros. apply H6; auto.
-          cbn in *. destr (isRegZ start); try blia; destr (isRegZ a); try blia.
+          cbn in *. destr (isRegZ start); try lia; destr (isRegZ a); try lia.
           rewrite H0. unfold cost_set, isRegZ. cbn.
           rewrite cost_set_vars_to_reg_range_commutes.
           rewrite (proj2 (Z.leb_le a 31)) by assumption.
@@ -1290,17 +1291,17 @@ Section Spilling.
       cbn [leak_set_reg_range_to_vars] in H5. cbv [leak_set_reg_to_var stack_loc] in H5.
       destr (32 <=? a).
       + eapply exec.seq_cps.
-        eapply IHargs; try eassumption; try blia.
+        eapply IHargs; try eassumption; try lia.
         intros.
         unfold related in H3. simp.
         eapply exec.load.
         * eapply get_sep. ecancel_assumption.
-        * eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
-          eapply H3p5. 1: blia.
+        * eapply load_from_word_array. 1: ecancel_assumption. 2: lia.
+          eapply H3p5. 1: lia.
           unfold sep in H3p3. simp.
           eapply map.get_split_r. 1,3: eassumption.
           destr (map.get mp a); [exfalso|reflexivity].
-          specialize H3p1 with (1 := E0). blia.
+          specialize H3p1 with (1 := E0). lia.
         * eapply H5.
           -- unfold related.
              repeat match goal with
@@ -1308,19 +1309,19 @@ Section Spilling.
                     | |- _ /\ _ => split
                     | |- _ => eassumption || reflexivity
                     end.
-             eapply put_arg_reg; try eassumption. blia.
+             eapply put_arg_reg; try eassumption. lia.
           -- cbn [List.unfoldn]. eapply map.getmany_of_list_cons.
              ++ apply map.get_put_same.
              ++ rewrite Z.add_comm.
                 eapply map.getmany_of_list_put_diff. 2: eassumption.
                 eauto using List.not_In_Z_seq with zarith.
-          -- cbn. destr (isRegZ start); destr (isRegZ a); cbn in *; try blia.
+          -- cbn. destr (isRegZ start); destr (isRegZ a); cbn in *; try lia.
              rewrite H6; unfold cost_load, isRegZ; cbn.
              rewrite (proj2 (Z.leb_le start 31)) by assumption.
              reflexivity.
           -- subst. rewrite rev_app_distr. rewrite <- app_assoc. reflexivity.
       + eapply exec.seq_cps.
-        eapply IHargs; try eassumption; try blia.
+        eapply IHargs; try eassumption; try lia.
         intros.
         unfold related in H3. simp.
         eapply exec.set.
@@ -1330,7 +1331,7 @@ Section Spilling.
           subst lRegs' lStack'.
           eapply map.get_split_l. 1: exact S2. 2: exact G.
           destr (map.get lStack a); [exfalso|reflexivity].
-          specialize H3p2 with (1 := E0). blia.
+          specialize H3p2 with (1 := E0). lia.
         * eapply H5. 2: {
             cbn [List.unfoldn].
             eapply map.getmany_of_list_cons.
@@ -1344,8 +1345,8 @@ Section Spilling.
                     | |- _ /\ _ => split
                     | |- _ => eassumption || reflexivity
                     end.
-             eapply put_arg_reg; try eassumption. blia.
-          -- cbn. destr (isRegZ start); destr (isRegZ a); cbn in *; try blia.
+             eapply put_arg_reg; try eassumption. lia.
+          -- cbn. destr (isRegZ start); destr (isRegZ a); cbn in *; try lia.
              rewrite H6; unfold cost_set, isRegZ; cbn.
              rewrite (proj2 (Z.leb_le a 31)) by assumption.
              rewrite (proj2 (Z.leb_le start 31)) by assumption.
@@ -1393,13 +1394,13 @@ Section Spilling.
   Ltac add_bounds :=
     repeat match goal with
            | _: context[cost_set_reg_range_to_vars ?x ?y ?z] |- _ =>
-               add_hypothesis (cost_set_reg_range_to_vars_bound y x z 8 ltac:(blia))
+               add_hypothesis (cost_set_reg_range_to_vars_bound y x z 8 ltac:(lia))
            | _: context[cost_set_vars_to_reg_range ?x ?y ?z] |- _ =>
-               add_hypothesis (cost_set_vars_to_reg_range_bound x y z 8 ltac:(blia))
+               add_hypothesis (cost_set_vars_to_reg_range_bound x y z 8 ltac:(lia))
            | |- context[cost_set_reg_range_to_vars ?x ?y ?z] =>
-               add_hypothesis (cost_set_reg_range_to_vars_bound y x z 8 ltac:(blia))
+               add_hypothesis (cost_set_reg_range_to_vars_bound y x z 8 ltac:(lia))
            | |- context[cost_set_vars_to_reg_range ?x ?y ?z] =>
-               add_hypothesis (cost_set_vars_to_reg_range_bound x y z 8 ltac:(blia))
+               add_hypothesis (cost_set_vars_to_reg_range_bound x y z 8 ltac:(lia))
            end.
 
   (* end silly seeming section *)
@@ -1477,7 +1478,7 @@ Section Spilling.
     intros. rewrite map.get_putmany_dec in H. destr (map.get mq0 k); fwd; eauto.
     eapply map.of_list_zip_forall_keys in H0.
     2: eapply List.unfoldn_Z_seq_Forall.
-    unfold map.forall_keys in H0. specialize H0 with (1 := H). unfold a0 in H0. blia.
+    unfold map.forall_keys in H0. specialize H0 with (1 := H). unfold a0 in H0. lia.
   Qed.
 
   (* used at the beginning of a function *)
@@ -1498,13 +1499,13 @@ Section Spilling.
       eauto using @map.disjoint_empty_r.
     - fwd. apply sep_comm. eapply sep_on_undef_put.
       + eapply map.not_in_of_list_zip_to_get_None. 1: eassumption.
-        eapply not_in_arg_regs; unfold fp, RegisterNames.a0, RegisterNames.a7; blia.
+        eapply not_in_arg_regs; unfold fp, RegisterNames.a0, RegisterNames.a7; lia.
       + unfold arg_regs.
         eapply map.of_list_zip_forall_keys in H. 2: {
           apply List.Forall_firstn.
           apply arg_range_Forall.
         }
-        unfold map.forall_keys in *. intros. specialize H with (1 := H3). blia.
+        unfold map.forall_keys in *. intros. specialize H with (1 := H3). lia.
     - intros. rewrite map.get_empty in H4. discriminate.
     - assumption.
   Qed.
@@ -1530,7 +1531,7 @@ Section Spilling.
       fwd.
       eapply map.zipped_lookup_Some_in in E.
       pose proof arg_range_Forall as Q.
-      eapply Forall_forall in Q. 2: eapply List.In_firstn_to_In. 2: exact E. blia.
+      eapply Forall_forall in Q. 2: eapply List.In_firstn_to_In. 2: exact E. lia.
     }
     repeat match goal with
            | |- exists _, _ => eexists
@@ -1546,7 +1547,7 @@ Section Spilling.
         eapply map.zipped_lookup_Some_in in E.
         pose proof arg_range_Forall as Q.
         eapply Forall_forall in Q. 2: eapply List.In_firstn_to_In. 2: exact E.
-        destr (fp =? k). 1: unfold fp in *; exfalso; blia.
+        destr (fp =? k). 1: unfold fp in *; exfalso; lia.
         erewrite map.get_putmany_of_list_zip. 2: exact PM.
         rewrite F. reflexivity.
       + destr (map.get mA' k).
@@ -1557,14 +1558,14 @@ Section Spilling.
     - unfold map.disjoint. intros * G1 G2.
       rewrite ?map.get_put_dec, ?map.get_empty in G2. fwd.
       rewrite map.get_putmany_dec in G1. destruct_one_match_hyp; fwd.
-      + unfold arg_regs in AA. specialize (AA _ _ E). unfold fp in AA. blia.
-      + specialize (H _ _ G1). unfold fp in H. blia.
+      + unfold arg_regs in AA. specialize (AA _ _ E). unfold fp in AA. lia.
+      + specialize (H _ _ G1). unfold fp in H. lia.
     - unfold map.disjoint. intros * G1 G2.
       unfold arg_regs in AA.
       specialize (AA _ _ G2).
       specialize (H _ _ G1).
       unfold a0, a7 in H.
-      blia.
+      lia.
   Qed.
 
   Definition spilling_correct_for(e1 e2 : env)(s1 : stmt): Prop :=
@@ -1651,12 +1652,12 @@ Section Spilling.
     assert (length argnames1 = length argvals) as LA. {
       rewrite List.firstn_length in *.
       change (length (reg_class.all reg_class.arg)) with 8%nat in *.
-      blia.
+      lia.
     }
     eapply map.sameLength_putmany_of_list in LA.
     destruct LA as (lFH4 & PA).
     specialize Ex with (1 := PA).
-    rewrite !arg_regs_alt by blia.
+    rewrite !arg_regs_alt by lia.
     assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
       unfold bytes_per_word. destruct width_cases as [E' | E']; rewrite E'; cbv; auto.
     }
@@ -1671,36 +1672,36 @@ Section Spilling.
     destruct (anybytes_to_array_1 (mem_ok := mem_ok) _ _ _ A) as (bytes & Pt & L).
     edestruct (byte_list_to_word_list_array bytes) as (words & L' & F). {
       rewrite L.
-      rewrite Z2Nat.id by blia.
+      rewrite Z2Nat.id by lia.
       destr (0 <=? (maxvar' - 31)).
       - rewrite Z2Nat.id by assumption. rewrite Z.mul_comm. apply Z_mod_mult.
-      - replace (Z.of_nat (Z.to_nat (maxvar' - 31))) with 0 by blia.
+      - replace (Z.of_nat (Z.to_nat (maxvar' - 31))) with 0 by lia.
         rewrite Z.mul_0_r.
         apply Zmod_0_l.
     }
     eapply F in Pt. clear F.
     assert (length words = Z.to_nat (maxvar' - 31)) as L''. {
-      Z.to_euclidean_division_equations; blia.
+      Z.to_euclidean_division_equations; lia.
     }
     eapply exec.seq_cps.
     eapply set_vars_to_reg_range_correct.
     { eapply fresh_related with (m1 := m) (frame := eq map.empty).
       - eassumption.
-      - blia.
+      - lia.
       - exact L''.
       - rewrite sep_eq_empty_r.
         unfold sep. eauto. }
     { eassumption. }
     { eapply map.getmany_of_list_put_diff. {
-        eapply List.not_In_Z_seq. unfold fp, a0. blia.
+        eapply List.not_In_Z_seq. unfold fp, a0. lia.
       }
       eapply map.putmany_of_list_zip_to_getmany_of_list.
-      - rewrite <- arg_regs_alt by blia. exact OL2.
+      - rewrite <- arg_regs_alt by lia. exact OL2.
       - eapply List.NoDup_unfoldn_Z_seq.
     }
-    { blia. }
+    { lia. }
     { reflexivity. }
-    { unfold a0, a7. blia. }
+    { unfold a0, a7. lia. }
     { eapply Forall_impl. 2: eapply Forall_and.
       2: eapply List.forallb_to_Forall.
       3: eassumption.
@@ -1711,7 +1712,7 @@ Section Spilling.
       }
       2: eapply Forall_le_max.
       cbv beta.
-      subst maxvar'. clear. blia. }
+      subst maxvar'. clear. lia. }
     intros kL4 mL4 lFL4 mcL4 R Hcost HkL4.
     eapply exec.seq_cps.
     eapply exec.weaken. {
@@ -1726,7 +1727,7 @@ Section Spilling.
           intros *.
           rewrite ?Bool.andb_true_iff, ?Bool.orb_true_iff, ?Z.ltb_lt. reflexivity.
         }
-        cbv beta. subst maxvar'. blia. }
+        cbv beta. subst maxvar'. lia. }
       intros. subst a kL4. simpl. simpl_rev. repeat rewrite <- app_assoc.
       rewrite List.skipn_app_r.
       2: { rewrite rev_length. reflexivity. }
@@ -1735,9 +1736,9 @@ Section Spilling.
     subst. fwd.
     eapply set_reg_range_to_vars_correct.
     { eassumption. }
-    { blia. }
+    { lia. }
     { reflexivity. }
-    { unfold a0, a7. blia. }
+    { unfold a0, a7. lia. }
     { eapply Forall_impl. 2: eapply Forall_and.
       2: eapply List.forallb_to_Forall.
       3: eassumption.
@@ -1748,7 +1749,7 @@ Section Spilling.
       }
       2: eapply Forall_le_max.
       cbv beta.
-      subst maxvar'. clear. blia. }
+      subst maxvar'. clear. lia. }
     { eassumption. }
     rename R into R0.
     intros kFL6 lFL6 mcL6 R GM HCost HkFL6.
@@ -1779,7 +1780,7 @@ Section Spilling.
       erewrite List.flat_map_const_length. 2: {
         intros w. rewrite LittleEndianList.length_le_split; trivial.
       }
-      blia. }
+      lia. }
     { eassumption. }
     { add_bounds.
       unfold cost_stackalloc, cost_spill_spec in *. (* TODO XXX *)
@@ -1793,19 +1794,19 @@ Section Spilling.
       (i <= 20) ->
       (isRegZ (iarg_reg i a) = true).
   Proof.
-    intros. unfold isRegZ, iarg_reg. destr (32 <=? a); unfold spill_tmp; blia.
+    intros. unfold isRegZ, iarg_reg. destr (32 <=? a); unfold spill_tmp; lia.
   Qed.
 
   Lemma ires_reg_isReg: forall r,
       (isRegZ (ires_reg r) = true).
   Proof.
-    intros. unfold isRegZ, ires_reg. destr (32 <=? r); unfold spill_tmp; blia.
+    intros. unfold isRegZ, ires_reg. destr (32 <=? r); unfold spill_tmp; lia.
   Qed.
 
   Ltac isReg_helper :=
     match goal with
-    | |- context[(isRegZ (iarg_reg _ _))] => rewrite iarg_reg_isReg by blia
-    | H: context[(isRegZ (iarg_reg _ _))] |- _ => rewrite iarg_reg_isReg in H by blia
+    | |- context[(isRegZ (iarg_reg _ _))] => rewrite iarg_reg_isReg by lia
+    | H: context[(isRegZ (iarg_reg _ _))] |- _ => rewrite iarg_reg_isReg in H by lia
     | |- context[(isRegZ (ires_reg _))] => rewrite ires_reg_isReg
     | H: context[(isRegZ (ires_reg _))] |- _ => rewrite ires_reg_isReg in H
     end.
@@ -1824,7 +1825,7 @@ Section Spilling.
     induction 1; intros; cbn [spill_stmt valid_vars_src Forall_vars_stmt] in *; fwd.
     - (* exec.interact *)
       eapply exec.seq_cps.
-      eapply set_reg_range_to_vars_correct; try eassumption; try (unfold a0, a7; blia).
+      eapply set_reg_range_to_vars_correct; try eassumption; try (unfold a0, a7; lia).
       intros *. intros R GM ? ?. subst. clear l2 H4.
       unfold related in R. fwd.
       spec (subst_split (ok := mem_ok) m) as A.
@@ -1835,7 +1836,7 @@ Section Spilling.
       eapply exec.seq_cps.
       eapply @exec.interact with (mGive := mGive).
       + eapply map.split_comm. exact B.
-      + rewrite arg_regs_alt by blia. 1: eassumption.
+      + rewrite arg_regs_alt by lia. 1: eassumption.
       + eassumption.
       + intros.
         match goal with
@@ -1849,7 +1850,7 @@ Section Spilling.
                 List.length resvals) as HL. {
           eapply map.putmany_of_list_zip_sameLength in P. rewrite <- P.
           rewrite List.firstn_length. change (length (reg_class.all reg_class.arg)) with 8%nat.
-          blia.
+          lia.
         }
         eapply map.sameLength_putmany_of_list in HL. destruct HL as (l2'' & ER).
         eexists. split. 1: exact ER.
@@ -1857,11 +1858,11 @@ Section Spilling.
         eapply set_vars_to_reg_range_correct; cycle 1.
         { eassumption. }
         { eapply map.putmany_of_list_zip_to_getmany_of_list.
-          - rewrite <- arg_regs_alt by blia. eassumption.
+          - rewrite <- arg_regs_alt by lia. eassumption.
           - eapply List.NoDup_unfoldn_Z_seq. }
-        { blia. }
+        { lia. }
         { reflexivity. }
-        { unfold a0, a7. blia. }
+        { unfold a0, a7. lia. }
         { eassumption. }
         { intros. do 6 eexists. split. 1: eassumption. ssplit.
           - eapply H2p1.
@@ -1919,7 +1920,7 @@ Section Spilling.
       eapply exec.seq_cps.
       apply_in_hyps @map.getmany_of_list_length.
       apply_in_hyps @map.putmany_of_list_zip_sameLength.
-      eapply set_reg_range_to_vars_correct; try eassumption || (unfold a0, a7 in *; blia).
+      eapply set_reg_range_to_vars_correct; try eassumption || (unfold a0, a7 in *; lia).
       intros kCL2 lCL2 ? ? ? ? ?. subst.
       assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
         unfold bytes_per_word. destruct width_cases as [E' | E']; rewrite E'; cbv; auto.
@@ -1927,11 +1928,11 @@ Section Spilling.
       eapply exec.seq_cps.
       assert (length (List.firstn (length params) (reg_class.all reg_class.arg)) = length argvs)
         as L. {
-        rewrite List.firstn_length. change (length (reg_class.all reg_class.arg)) with 8%nat. blia.
+        rewrite List.firstn_length. change (length (reg_class.all reg_class.arg)) with 8%nat. lia.
       }
       eapply map.sameLength_putmany_of_list in L.
       destruct L as (lFL3 & P).
-      rewrite !arg_regs_alt by blia.
+      rewrite !arg_regs_alt by lia.
       eapply exec.call_cps; try eassumption.
       set (maxvar' := (Z.max (max_var fbody)
                              (Z.max (fold_left Z.max params 0) (fold_left Z.max rets 0)))) in *.
@@ -1943,23 +1944,23 @@ Section Spilling.
       destruct (anybytes_to_array_1 (mem_ok := mem_ok) _ _ _ A) as (bytes & Pt & L).
       edestruct (byte_list_to_word_list_array bytes) as (words & L' & F). {
         rewrite L.
-        rewrite Z2Nat.id by blia.
+        rewrite Z2Nat.id by lia.
         destr (0 <=? (maxvar' - 31)).
         - rewrite Z2Nat.id by assumption. rewrite Z.mul_comm. apply Z_mod_mult.
-        - replace (Z.of_nat (Z.to_nat (maxvar' - 31))) with 0 by blia.
+        - replace (Z.of_nat (Z.to_nat (maxvar' - 31))) with 0 by lia.
           rewrite Z.mul_0_r.
           apply Zmod_0_l.
       }
       eapply F in Pt. clear F.
       assert (length words = Z.to_nat (maxvar' - 31)) as L''. {
-        Z.to_euclidean_division_equations; blia.
+        Z.to_euclidean_division_equations; lia.
       }
       eapply exec.seq_cps.
       unfold related in H4. fwd. rename lStack into lStack1, lRegs into lRegs1.
       eapply set_vars_to_reg_range_correct.
       { eapply fresh_related with (m1 := m) (frame := (word_array fpval stackwords * frame)%sep).
         - eassumption.
-        - blia.
+        - lia.
         - exact L''.
         - enough ((eq m * word_array fpval stackwords * frame * word_array a words)%sep mCombined).
           1: ecancel_assumption.
@@ -1968,15 +1969,15 @@ Section Spilling.
           split. 1: ecancel_assumption. exact Pt. }
       { eassumption. }
       { eapply map.getmany_of_list_put_diff. {
-          eapply List.not_In_Z_seq. unfold fp, a0. blia.
+          eapply List.not_In_Z_seq. unfold fp, a0. lia.
         }
         eapply map.putmany_of_list_zip_to_getmany_of_list.
-        - rewrite <- arg_regs_alt by blia. exact P.
+        - rewrite <- arg_regs_alt by lia. exact P.
         - eapply List.NoDup_unfoldn_Z_seq.
       }
-      { blia. }
+      { lia. }
       { reflexivity. }
-      { unfold a0, a7. blia. }
+      { unfold a0, a7. lia. }
       { eapply Forall_impl. 2: eapply Forall_and.
         2: eapply List.forallb_to_Forall.
         3: eassumption.
@@ -1987,7 +1988,7 @@ Section Spilling.
         }
         2: eapply Forall_le_max.
         cbv beta.
-        subst maxvar'. clear. blia. }
+        subst maxvar'. clear. lia. }
       intros kL4 mL4 lFL4 mcL4 R ? ?. subst.
       eapply exec.seq_cps.
       eapply exec.weaken. {
@@ -2000,7 +2001,7 @@ Section Spilling.
           2: { unfold is_valid_src_var.
                intros *.
                rewrite ?Bool.andb_true_iff, ?Bool.orb_true_iff, ?Z.ltb_lt. reflexivity. }
-          cbv beta. subst maxvar'. blia.
+          cbv beta. subst maxvar'. lia.
         - intros. rewrite associate_one_left. rewrite H6. rewrite sfix_step.
           simpl_rev. simpl. rewrite H. simpl_rev.
           repeat rewrite <- app_assoc. reflexivity. }
@@ -2012,9 +2013,9 @@ Section Spilling.
       fwd. rename l' into lCH8.
       eapply set_reg_range_to_vars_correct.
       { eassumption. }
-      { blia. }
+      { lia. }
       { reflexivity. }
-      { unfold a0, a7. blia. }
+      { unfold a0, a7. lia. }
       { eapply Forall_impl. 2: eapply Forall_and.
         2: eapply List.forallb_to_Forall.
         3: eassumption.
@@ -2025,7 +2026,7 @@ Section Spilling.
         }
         2: eapply Forall_le_max.
         cbv beta.
-        subst maxvar'. clear. blia. }
+        subst maxvar'. clear. lia. }
       { eassumption. }
       rename R into R0.
       intros kFL6 lFL6 mcL6 R GM ? ?. subst.
@@ -2061,9 +2062,9 @@ Section Spilling.
         erewrite List.flat_map_const_length. 2: {
           intros w. rewrite LittleEndianList.length_le_split; trivial.
         }
-        simpl. blia. }
+        simpl. lia. }
       { eassumption. }
-      { rewrite arg_regs_alt by blia. eassumption. }
+      { rewrite arg_regs_alt by lia. eassumption. }
       { exact PM67. }
       eapply set_vars_to_reg_range_correct.
       { unfold related. eexists lStack1, lRegs1, _. ssplit.
@@ -2076,16 +2077,16 @@ Section Spilling.
           apply_in_hyps @map.getmany_of_list_length.
           apply_in_hyps @map.putmany_of_list_zip_sameLength.
           replace (length rets) with (length binds) by congruence.
-          rewrite arg_regs_alt by blia. exact PM67. }
+          rewrite arg_regs_alt by lia. exact PM67. }
         { eassumption. }
         { eassumption. }
       }
       { eassumption. }
       { eapply map.putmany_of_list_zip_to_getmany_of_list. 1: exact PM67.
         eapply List.NoDup_unfoldn_Z_seq. }
-      { blia. }
+      { lia. }
       { reflexivity. }
-      { unfold a0, a7. blia. }
+      { unfold a0, a7. lia. }
       { eassumption. }
       { intros k22 m22 l22 mc22 R22 ? ?. subst. do 6 eexists. ssplit; try eassumption.
         - move Hmetrics at bottom. add_bounds. cost_solve.
@@ -2097,7 +2098,7 @@ Section Spilling.
 
     - (* exec.load *)
       eapply exec.seq_cps.
-      eapply load_iarg_reg_correct; (blia || eassumption || idtac).
+      eapply load_iarg_reg_correct; (lia || eassumption || idtac).
       intros.
       eapply exec.seq_cps.
       pose proof H2 as A. unfold related in A. fwd.
@@ -2110,8 +2111,8 @@ Section Spilling.
 
     - (* exec.store *)
       Import LittleEndianList.
-      eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
-      eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
+      eapply exec.seq_cps. eapply load_iarg_reg_correct; (lia || eassumption || idtac). intros.
+      eapply exec.seq_cps. eapply load_iarg_reg_correct; (lia || eassumption || idtac). intros.
       pose proof H6 as A. unfold related in A. fwd.
       cbv [store store_Z] in *; fwd.
       eapply (SeparationMemory.store_bytes_in_sep width_pos) in H1;
@@ -2132,10 +2133,10 @@ Section Spilling.
       + intros. rewrite sfix_step. simpl. simpl_rev. repeat rewrite <- app_assoc.
         reflexivity.
     - (* exec.inlinetable *)
-      eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
+      eapply exec.seq_cps. eapply load_iarg_reg_correct; (lia || eassumption || idtac). intros.
       eapply exec.seq_cps.
       eapply exec.inlinetable.
-      { unfold ires_reg, iarg_reg, spill_tmp, fp, a0, a7 in *. destr (32 <=? x); destr (32 <=? i); try blia. }
+      { unfold ires_reg, iarg_reg, spill_tmp, fp, a0, a7 in *. destr (32 <=? x); destr (32 <=? i); try lia. }
       { rewrite map.get_put_same. reflexivity. }
       { eassumption. }
       eapply save_ires_reg_correct''; eauto. after_save_ires_reg_correct''.
@@ -2171,10 +2172,10 @@ Section Spilling.
       eapply save_ires_reg_correct''; eauto. after_save_ires_reg_correct''.      
     - (* exec.op *)
       unfold exec.lookup_op_locals in *.
-      eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
+      eapply exec.seq_cps. eapply load_iarg_reg_correct; (lia || eassumption || idtac).
       clear H3. intros. destruct_one_match; fwd.
       { eapply exec.seq_cps. eapply exec.seq_cps.
-        eapply load_iarg_reg_correct; (blia || eassumption || idtac).
+        eapply load_iarg_reg_correct; (lia || eassumption || idtac).
         clear H2. intros. eapply exec.op.
         { eapply get_iarg_reg_1; eauto with zarith. }
         { unfold exec.lookup_op_locals in *. apply map.get_put_same. }
@@ -2186,15 +2187,15 @@ Section Spilling.
         { eapply save_ires_reg_correct''; eauto. after_save_ires_reg_correct''.
           destruct op; reflexivity. } }
     - (* exec.set *)
-      eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
+      eapply exec.seq_cps. eapply load_iarg_reg_correct; (lia || eassumption || idtac). intros.
       eapply exec.seq_cps.
       eapply exec.set. 1: apply map.get_put_same.
       eapply save_ires_reg_correct''; eauto. after_save_ires_reg_correct''.
     - (* exec.if_true *)
       unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; fwd.
       + eapply exec.seq_assoc.
-        eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
-        eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
+        eapply exec.seq_cps. eapply load_iarg_reg_correct; (lia || eassumption || idtac). intros.
+        eapply exec.seq_cps. eapply load_iarg_reg_correct; (lia || eassumption || idtac). intros.
         eapply exec.if_true. {
           cbn. erewrite get_iarg_reg_1 by eauto with zarith. rewrite map.get_put_same. congruence.
         }
@@ -2208,7 +2209,7 @@ Section Spilling.
           -- align_trace.
           -- intros. rewrite sfix_step. simpl. simpl_rev.
              repeat rewrite <- app_assoc in *. rewrite H5p4. reflexivity.
-      + eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
+      + eapply exec.seq_cps. eapply load_iarg_reg_correct; (lia || eassumption || idtac). intros.
         eapply exec.if_true. {
           cbn. rewrite map.get_put_same. rewrite word.eqb_ne by assumption. reflexivity.
         }
@@ -2225,8 +2226,8 @@ Section Spilling.
     - (* exec.if_false *)
       unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; fwd.
       + eapply exec.seq_assoc.
-        eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
-        eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
+        eapply exec.seq_cps. eapply load_iarg_reg_correct; (lia || eassumption || idtac). intros.
+        eapply exec.seq_cps. eapply load_iarg_reg_correct; (lia || eassumption || idtac). intros.
         eapply exec.if_false. {
           cbn. erewrite get_iarg_reg_1 by eauto with zarith. rewrite map.get_put_same. congruence.
         }
@@ -2240,7 +2241,7 @@ Section Spilling.
           -- align_trace.
           -- intros. rewrite sfix_step. simpl. simpl_rev.
              repeat rewrite <- app_assoc in *. rewrite H5p4. reflexivity.
-      + eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac). intros.
+      + eapply exec.seq_cps. eapply load_iarg_reg_correct; (lia || eassumption || idtac). intros.
         eapply exec.if_false. {
           cbn. rewrite map.get_put_same. rewrite (proj2 (Zmod.eqb_eq _ _)); reflexivity.
         }
@@ -2264,10 +2265,10 @@ Section Spilling.
       unfold prepare_bcond. destr cond; cbn [ForallVars_bcond] in *; fwd.
       + specialize H0 with (1 := H3p1). cbn in H0. fwd.
         eapply exec.seq.
-        { eapply load_iarg_reg_correct''; (blia || eassumption || idtac). }
+        { eapply load_iarg_reg_correct''; (lia || eassumption || idtac). }
         cbv beta. intros. fwd.
         eapply exec.weaken. {
-          eapply load_iarg_reg_correct''; (blia || eassumption || idtac).
+          eapply load_iarg_reg_correct''; (lia || eassumption || idtac).
         }
         cbv beta. intros. fwd. cbn [eval_bcond spill_bcond].
         erewrite get_iarg_reg_1 by eauto with zarith.
@@ -2289,7 +2290,7 @@ Section Spilling.
              rewrite H3p4. rewrite List.skipn_app_r by reflexivity. reflexivity.
           -- cbv beta. intros. fwd. eapply exec.weaken.
              ++ eapply IH12 with (f := fun _ => _); try eassumption.
-                { repeat split; eauto; blia. }
+                { repeat split; eauto; lia. }
                 intros. rewrite associate_one_left. repeat rewrite app_assoc.
                 rewrite H8. rewrite sfix_step. simpl. simpl_rev. rewrite H3p4.
                 rewrite List.skipn_app_r by reflexivity. cbv [Let_In_pf_nd].
@@ -2306,7 +2307,7 @@ Section Spilling.
                     rewrite H5p8. reflexivity.
       + specialize H0 with (1 := H3p1). cbn in H0. fwd.
         eapply exec.weaken. {
-          eapply load_iarg_reg_correct''; (blia || eassumption || idtac).
+          eapply load_iarg_reg_correct''; (lia || eassumption || idtac).
         }
         cbv beta. intros. fwd. cbn [eval_bcond spill_bcond].
         rewrite map.get_put_same. eexists. split; [reflexivity|].
@@ -2327,7 +2328,7 @@ Section Spilling.
              rewrite H3p4. rewrite List.skipn_app_r by reflexivity. reflexivity.
           -- cbv beta. intros. fwd. eapply exec.weaken.
              ++ eapply IH12 with (f := fun _ => _); try eassumption.
-                { repeat split; eauto; blia. }
+                { repeat split; eauto; lia. }
                 intros. rewrite associate_one_left. repeat rewrite app_assoc.
                 rewrite H8. rewrite sfix_step. simpl. simpl_rev. rewrite H3p4.
                 rewrite List.skipn_app_r by reflexivity. cbv [Let_In_pf_nd].

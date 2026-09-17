@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Tactics.invert_hyp.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Platform.MetricLogging.
@@ -61,7 +62,7 @@ Section FlatToRiscvLiterals.
     unfold updateMetricsForLiteral.
     destruct initialMetrics.
     simpl.
-    repeat (destruct_one_match; try blia).
+    repeat (destruct_one_match; try lia).
   Qed.
 
   Ltac match_apply_runsTo :=
@@ -105,7 +106,7 @@ Section FlatToRiscvLiterals.
       run1det.
       simpl_word_exprs .
       match_apply_runsTo.
-      unfold signExtend. rewrite Z.smod_pow2_small by blia.
+      unfold signExtend. rewrite Z.smod_pow2_small by lia.
       destruct_one_match; reflexivity.
     - unfold compile_lit_32bit, leak_lit_32bit in *.
       simpl in P.
@@ -129,9 +130,9 @@ Section FlatToRiscvLiterals.
         * unfold signExtend_bitwise. Zbitwise.
           (* TODO these should also be solved by Zbitwise *)
           {
-            assert (32 <= i < width) by blia.
+            assert (32 <= i < width) by lia.
             destruct B.
-            assert (31 < i) by blia.
+            assert (31 < i) by lia.
             assert (0 < 31) by reflexivity.
             erewrite testbit_above_signed' with (i := i); try eassumption.
             change (Z.log2_up (2 ^ 31)) with (32 - 1).
@@ -140,7 +141,7 @@ Section FlatToRiscvLiterals.
           {
             destruct B.
             assert (0 < 31) by reflexivity.
-            assert (31 < width - 1) by blia.
+            assert (31 < width - 1) by lia.
             erewrite testbit_above_signed' with (i := width - 1); try eassumption.
             change (Z.log2_up (2 ^ 31)) with (32 - 1).
             Btauto.btauto.
@@ -173,20 +174,20 @@ Section FlatToRiscvLiterals.
         assert (width = 64) as W64. {
           clear -E0 BW.
           destruct width_cases as [E | E]; rewrite E in *; try reflexivity.
-          exfalso. blia.
+          exfalso. lia.
         }
         (repeat rewrite ?bits.unsigned_of_Z, ?bits.unsigned_xor, ?Zmod.unsigned_slu);
         rewrite W64; try reflexivity.
         clear.
         change (10 mod 2 ^ 64) with 10.
         change (11 mod 2 ^ 64) with 11.
-        rewrite <-! Z.land_ones by blia.
+        rewrite <-! Z.land_ones by lia.
         rewrite! signExtend_alt_bitwise by reflexivity.
         unfold bitSlice, signExtend_bitwise.
         Zbitwise.
         (* TODO this should be done by Zbitwise, but not too eagerly because it's very
            expensive on large goals *)
-        all: replace (i - 11 - 11 - 10 + 32) with i by blia.
+        all: replace (i - 11 - 11 - 10 + 32) with i by lia.
         all: Btauto.btauto.
       + solve_word_eq.
       + solve_word_eq.

@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Tactics.Tactics.
 Require Import riscv.Spec.Primitives.
@@ -96,9 +97,9 @@ Section Proofs.
         simpl. intros. simp. destruct_RiscvMachine final.
         repeat split; try solve [sidecondition].
         - replace (Z.of_nat (S (List.length oldvalues)))
-            with (1 + Z.of_nat (List.length oldvalues)) by blia.
+            with (1 + Z.of_nat (List.length oldvalues)) by lia.
           etransitivity; [eassumption|].
-          replace (List.length vars) with (List.length oldvalues) by blia.
+          replace (List.length vars) with (List.length oldvalues) by lia.
           solve_word_eq .
         - rewrite H0p7. MetricsToRiscv.solve_MetricLog.
         - subst. destruct getTrace; [|reflexivity]. simpl. repeat rewrite <- app_assoc.
@@ -149,7 +150,7 @@ Section Proofs.
     - simpl in *. simp.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       assert (valid_register a). {
-        unfold valid_register, valid_FlatImp_var in *. blia.
+        unfold valid_register, valid_FlatImp_var in *. lia.
       }
       destruct values as [|value values]; simpl in *; [discriminate|].
       eapply runsToNonDet.runsToStep. {
@@ -178,8 +179,8 @@ Section Proofs.
           { rewrite <- Zmod.add_assoc. rewrite <- Zmod.of_Z_add. reflexivity. }
           ecancel.
         * rewrite map.get_put_diff. 1: assumption.
-          unfold RegisterNames.sp, valid_FlatImp_var in *. blia.
-        * blia.
+          unfold RegisterNames.sp, valid_FlatImp_var in *. lia.
+        * lia.
         * eassumption.
         * etransitivity. 1: eassumption. ecancel.
       + simpl. intros. simp.

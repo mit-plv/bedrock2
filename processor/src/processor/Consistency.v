@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import String BinInt.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
@@ -50,13 +51,13 @@ Section FetchOk.
     unfold alignedXAddrsRange; fold alignedXAddrsRange.
     intros; destruct H.
     - subst.
-      apply N.le_lt_trans with (m:= N.of_nat (base + n)); [|blia].
+      apply N.le_lt_trans with (m:= N.of_nat (base + n)); [|lia].
       rewrite wordToN_nat.
       apply N.compare_ge_iff.
       rewrite <-Nnat.Nat2N.inj_compare.
       apply Nat.compare_ge_iff.
       apply wordToNat_natToWord_le.
-    - etransitivity; [eauto|blia].
+    - etransitivity; [eauto|lia].
   Qed.
 
   Context {mem: map.map word byte}.
@@ -193,7 +194,7 @@ Section FetchOk.
     intros.
 
     assert (Z.pow 2 (Z.of_nat (2 + ninstrMemSizeLg)) < Z.pow 2 memSizeLg) as Hkmemp
-        by (apply Z.pow_lt_mono_r; blia).
+        by (apply Z.pow_lt_mono_r; lia).
 
     assert (Z.ltb (Zmod.unsigned rpc) (Z.pow 2 memSizeLg) = true) as Hrpc0.
     { destruct H0 as [? _].
@@ -201,7 +202,7 @@ Section FetchOk.
       destruct (Z.ltb_spec (Zmod.unsigned rpc) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2, Z_of_N_wordToN in H0.
-      blia.
+      lia.
     }
 
     assert (Z.ltb (Zmod.unsigned (Zmod.add rpc 1)) (Z.pow 2 memSizeLg) = true) as Hrpc1.
@@ -210,7 +211,7 @@ Section FetchOk.
       destruct (Z.ltb_spec (Zmod.unsigned (Zmod.add rpc 1)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2, Z_of_N_wordToN in H0.
-      blia.
+      lia.
     }
 
     assert (Z.ltb (Zmod.unsigned (Zmod.add rpc 2)) (Z.pow 2 memSizeLg) = true) as Hrpc2.
@@ -219,7 +220,7 @@ Section FetchOk.
       destruct (Z.ltb_spec (Zmod.unsigned (Zmod.add rpc 2)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2, Z_of_N_wordToN in H0.
-      blia.
+      lia.
     }
 
     assert (Z.ltb (Zmod.unsigned (Zmod.add rpc 3)) (Z.pow 2 memSizeLg) = true) as Hrpc3.
@@ -228,7 +229,7 @@ Section FetchOk.
       destruct (Z.ltb_spec (Zmod.unsigned (Zmod.add rpc 3)) (Z.pow 2 memSizeLg)); [reflexivity|].
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2, Z_of_N_wordToN in H0.
-      blia.
+      lia.
     }
 
     cbv [Memory.footprint HList.tuple.unfoldn].

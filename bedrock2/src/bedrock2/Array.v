@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 From Coq Require Import ZArith Ring Lia.
 Require Import coqutil.Map.Interface coqutil.Map.Memory coqutil.Map.Separation coqutil.Map.SeparationMemory coqutil.Map.SeparationLogic coqutil.Lift1Prop.
 Require bedrock2.Memory.
@@ -53,7 +54,7 @@ Section Array.
       { eapply Zmod.unsigned_inj.
         repeat (rewrite ?Zmod.unsigned_add, ?bits.unsigned_of_Z, ?Z.mul_0_r, ?Z.mul_1_r, ?Zmod_0_l, ?Z.add_0_r, ?Z.mul_add_distr_l, ?bits.mod_to_Z, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l); trivial.
         f_equal.
-        blia. }
+        lia. }
   Qed.
 
   Lemma array_append' xs ys start:
@@ -84,7 +85,7 @@ Section Array.
     destruct B; cbn [array hd_error tl]; [solve[cancel]|].
     subst A; destruct (Compare_dec.le_le_S_dec (length xs) n) as [Hle|Hle].
     { rewrite firstn_all2, <-app_nil_r in H by assumption; eapply app_inv_head in H; discriminate H. }
-    rewrite firstn_length_le by blia; reflexivity.
+    rewrite firstn_length_le by lia; reflexivity.
   Qed.
 
   Context {default : T}.
@@ -98,7 +99,7 @@ Section Array.
     rewrite <-(firstn_skipn n xs), app_length in H.
     destruct (skipn n xs) in *; cbn [tl hd hd_error] in *; [|assumption].
     { cbn [length] in H. rewrite PeanoNat.Nat.add_0_r in H.
-      rewrite firstn_length in H. blia. }
+      rewrite firstn_length in H. lia. }
   Qed.
 
   Lemma array_address_inbounds xs start a
@@ -114,25 +115,25 @@ Section Array.
     pose proof (bits.unsigned_range size width_nonneg).
     pose proof (bits.unsigned_range (Zmod.sub a start) width_nonneg).
     destruct (Z.eq_dec (Zmod.unsigned size) 0) as [Hz|Hnz].
-    { rewrite Hz in *. blia. }
+    { rewrite Hz in *. lia. }
     replace a with (Zmod.add start (Zmod.mul (bits.of_Z width (Z.of_nat n)) size)); cycle 1.
     { subst n.
-      rewrite Znat.Z2Nat.id by (eapply Z.div_pos; blia).
+      rewrite Znat.Z2Nat.id by (eapply Z.div_pos; lia).
       eapply Zmod.unsigned_inj.
       repeat rewrite ?Zmod.unsigned_add, ?Zmod.unsigned_mul, ?bits.unsigned_of_Z.
       repeat (rewrite ?Zdiv.Zmult_mod_idemp_l, ?Zdiv.Zmult_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l).
       rewrite Z.mul_comm, <-Zdiv.Z_div_exact_full_2 by trivial.
       repeat (rewrite ?Zmod.unsigned_sub, ?Zdiv.Zminus_mod_idemp_r, ?Zdiv.Zminus_mod_idemp_l, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l).
-      replace (Zmod.unsigned start + (Zmod.unsigned a - Zmod.unsigned start)) with (Zmod.unsigned a) by blia.
+      replace (Zmod.unsigned start + (Zmod.unsigned a - Zmod.unsigned start)) with (Zmod.unsigned a) by lia.
       rewrite Z.mod_small by assumption; trivial. }
     eplace (Zmod.mul (bits.of_Z width (Z.of_nat n)) size) with (bits.of_Z width (Zmod.unsigned size * Z.of_nat n)).
     { eapply Zmod.unsigned_inj.
       repeat (rewrite ?bits.unsigned_of_Z, ?Zmod.unsigned_mul, ?Zdiv.Zmult_mod_idemp_r, ?Zdiv.Zmult_mod_idemp_l).
-      f_equal. blia. }
+      f_equal. lia. }
     eapply (array_index_nat_inbounds xs start n); subst n.
     rewrite <-Znat.Nat2Z.id.
-    eapply Znat.Z2Nat.inj_lt; try eapply Z.div_pos; try blia; [].
-    eapply Z.div_lt_upper_bound; blia.
+    eapply Znat.Z2Nat.inj_lt; try eapply Z.div_pos; try lia; [].
+    eapply Z.div_lt_upper_bound; lia.
   Qed.
 
 End Array.
@@ -210,11 +211,11 @@ Section WithWord.
       2: eapply Proper_sep_iff1.
       3: eapply IHbs.
       2: reflexivity.
-      2: cbn [length] in H; blia.
+      2: cbn [length] in H; lia.
       change (a::bs) with (cons a nil++bs).
       rewrite (map.of_list_word_at_app width_pos).
       etransitivity.
-      1: eapply sep_eq_putmany, (map.adjacent_arrays_disjoint width_pos); cbn [length] in *; blia.
+      1: eapply sep_eq_putmany, (map.adjacent_arrays_disjoint width_pos); cbn [length] in *; lia.
       etransitivity.
       2:eapply sep_comm.
       Morphisms.f_equiv.
@@ -321,7 +322,7 @@ Section ByteArray.
   Proof.
     replace (Z.of_nat (length xs))
        with (Z.mul (Zmod.unsigned (bits.of_Z width 1)) (Z.of_nat (length xs)));
-      auto using array_append; []; rewrite bits.unsigned_1 by (pose proof width_pos; blia); blia.
+      auto using array_append; []; rewrite bits.unsigned_1 by (pose proof width_pos; lia); lia.
   Qed.
 
   Lemma bytearray_index_merge xs ys (start i : word)

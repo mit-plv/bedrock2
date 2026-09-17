@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry.
 
 Import Syntax.Coercions BinInt String List.ListNotations.
@@ -53,12 +54,12 @@ Section aLemmaThatDoesntBelongHere.
 
       split; try apply H1. clear H1.
       eapply Z.lt_le_trans; try apply H2. clear H2.
-      apply Z.pow_le_mono_r; try blia.
+      apply Z.pow_le_mono_r; try lia.
       rewrite Znat.Z2Nat.id.
       + replace ((width + 7) / 8 * 8) with (width + 7 - (width + 7) mod 8).
-        -- assert (H := Z.mod_pos_bound (width + 7) 8). blia.
-        -- rewrite Zdiv.Zmod_eq_full; blia.
-      + apply Z.div_pos; try blia. pose proof width_pos. blia.
+        -- assert (H := Z.mod_pos_bound (width + 7) 8). lia.
+        -- rewrite Zdiv.Zmod_eq_full; lia.
+      + apply Z.div_pos; try lia. pose proof width_pos. lia.
   Qed.
 
   Lemma word_to_bytes' (a : word) :

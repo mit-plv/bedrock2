@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.ZLib.
@@ -19,7 +20,7 @@ Proof.
   pose proof (bits.unsigned_range w width_nonneg).
   remember (Zmod.unsigned w) as x. clear Heqx.
   destruct width_cases as [E | E]; simpl in *; rewrite E;
-    Z.div_mod_to_equations; blia.
+    Z.div_mod_to_equations; lia.
 Qed.
 
 Definition divisibleBy4{width}(x: bits width): Prop := (Zmod.unsigned x) mod 4 = 0.
@@ -108,7 +109,7 @@ Section Modu.
   Ltac div4_sidecondition :=
     pose proof four_fits;
     rewrite ?bits.unsigned_of_Z; rewrite ?Z.mod_small;
-    blia.
+    lia.
 
   Lemma divisibleBy4_alt(x: word): divisibleBy4 x -> divisibleBy4' x.
   Proof.

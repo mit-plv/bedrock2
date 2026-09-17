@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Tactics.rewr.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
@@ -102,10 +103,10 @@ Section Pipeline1.
       { rewrite Zmod.mul_1_l, LittleEndianList.length_le_split; Morphisms.f_equiv. }
       cbv [ptsto_instr truncated_scalar].
       etransitivity. { eapply array1_iff_eq_of_list_word_at; trivial.
-        rewrite LittleEndianList.length_le_split. case width_cases; intros ->; blia. }
+        rewrite LittleEndianList.length_le_split. case width_cases; intros ->; lia. }
       rewrite !sep_assoc, !sep_emp_emp, <-sep_emp_True_r; Morphisms.f_equiv; [cancel|].
       apply RunInstruction.iff1_emp; simpl Memory.bytes_per; intuition auto.
-      all : case width_cases; intros ->; blia.
+      all : case width_cases; intros ->; lia.
   Qed.
 
   Lemma ptsto_bytes_range: forall bs (start pastend : word) m a v,
@@ -119,7 +120,7 @@ Section Pipeline1.
     - simpl in *.
       unfold sep in H. simp.
       specialize IHbs with (1 := Hp2).
-      destr (Z.eqb (Zmod.unsigned a0) (Zmod.unsigned start)). 1: blia.
+      destr (Z.eqb (Zmod.unsigned a0) (Zmod.unsigned start)). 1: lia.
       specialize (IHbs pastend a0 v).
       destruct IHbs as [L R].
       + rewrite Zmod.unsigned_add.
@@ -131,10 +132,10 @@ Section Pipeline1.
           -- repeat match goal with
                     | |- context [Zmod.unsigned ?w] => unique pose proof (bits.unsigned_range w width_nonneg)
                     end.
-             blia.
+             lia.
           -- destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
          * rewrite bits.unsigned_of_Z.
-           replace (1 mod 2 ^ width) with 1. 1: blia.
+           replace (1 mod 2 ^ width) with 1. 1: lia.
            simpl.
            destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
       + unfold map.split in *. simp.
@@ -152,13 +153,13 @@ Section Pipeline1.
         repeat match goal with
                | |- context [Zmod.unsigned ?w] => unique pose proof (bits.unsigned_range w width_nonneg)
                end.
-        rewrite Z.mod_small. 1: blia.
-        split; [blia|].
+        rewrite Z.mod_small. 1: lia.
+        split; [lia|].
         eapply Z.le_lt_trans.
         2: exact (proj2 (bits.unsigned_range pastend width_nonneg)).
         eapply Z.le_trans. 2: eassumption.
         rewrite bits.unsigned_of_Z.
-        replace (1 mod 2 ^ width) with 1. 1: blia.
+        replace (1 mod 2 ^ width) with 1. 1: lia.
         simpl.
         destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
   Qed.

@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import coqutil.sanity coqutil.Byte.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.
@@ -440,7 +441,7 @@ Module exec. Section WithParams.
   Local Ltac solve_picksps_equal :=
     intros; cbv beta; f_equal;
     repeat (rewrite rev_app_distr || cbn [rev app]); rewrite List.skipn_app_r;
-    [|repeat (rewrite app_length || rewrite rev_length || simpl); blia];
+    [|repeat (rewrite app_length || rewrite rev_length || simpl); lia];
     repeat rewrite <- app_assoc; rewrite List.skipn_app_r;
     [|rewrite rev_length; reflexivity];
     repeat (rewrite rev_app_distr || cbn [rev app] || rewrite rev_involutive);

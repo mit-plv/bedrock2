@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 (* Based on riscv.Platform.MinimalMMIO and riscv.Platform.MetricMinimalMMIO,
    but with a different nonmem_load and nonmem_store *)
 
@@ -660,7 +661,7 @@ Section Riscv.
     | H : exists _, _ |- _ => destruct H
     | H : _ /\ _ |- _ => destruct H
     | |- _ => rewrite <- invalidateWrittenXAddrs_alt
-    | |- _ => solve [ intuition (eauto || blia) ]
+    | |- _ => solve [ intuition (eauto || lia) ]
     | H : _ \/ _ |- _ => destruct H
     | |- context[match ?x with _ => _ end] => destruct x eqn:?
     | |- _ => progress unfold getReg, setReg

@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Export Coq.Lists.List.
 Require Import bedrock2.LeakageSemantics.
 Require Import Coq.ZArith.ZArith.
@@ -523,13 +524,13 @@ Section WithWordAndMem.
       debool.
       ssplit.
       - rewrite ?List.firstn_length. change (List.length (Registers.reg_class.all _)) with 8%nat.
-        f_equal. blia.
+        f_equal. lia.
       - rewrite ?List.firstn_length. change (List.length (Registers.reg_class.all _)) with 8%nat.
-        f_equal. blia.
+        f_equal. lia.
       - cbn. ssplit.
-        + blia.
-        + blia.
-        + eapply set_vars_to_reg_range_valid_vars; unfold a0, a7; try blia.
+        + lia.
+        + lia.
+        + eapply set_vars_to_reg_range_valid_vars; unfold a0, a7; try lia.
           eapply List.forallb_to_Forall. 2: eassumption.
           unfold is_valid_src_var. intros. debool. assumption.
         + eapply spill_stmt_valid_vars. 1: reflexivity.
@@ -538,8 +539,8 @@ Section WithWordAndMem.
           eapply FlatImp.forallb_vars_stmt_correct.
           2: eassumption.
           unfold is_valid_src_var.
-          intros; rewrite ?Bool.andb_true_iff, ?Z.ltb_lt; unfold fp; blia.
-        + eapply set_reg_range_to_vars_valid_vars; unfold a0, a7; try blia.
+          intros; rewrite ?Bool.andb_true_iff, ?Z.ltb_lt; unfold fp; lia.
+        + eapply set_reg_range_to_vars_valid_vars; unfold a0, a7; try lia.
           eapply List.forallb_to_Forall. 2: eassumption.
           unfold is_valid_src_var. intros. debool. assumption.
       - cbn. ssplit.
@@ -568,7 +569,7 @@ Section WithWordAndMem.
         unfold spill_fun in Sp. fwd.
         rewrite !List.firstn_length.
         change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
-        blia.
+        lia.
       }
       fwd.
       exists argnames2, retnames2, fbody2, l'.

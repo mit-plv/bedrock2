@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.Lists.List.
 Require Import coqutil.Z.Lia.
 Require Import compiler.util.Common.
@@ -39,7 +40,7 @@ Unset Universe Minimization ToSet.
   allFreshVars s := fun x => (s <= x)
 |}).
 - abstract (intros; repeat autounfold with unf_basic_set_defs unf_derived_set_defs;
-            inversion H; subst; clear H; intuition blia).
+            inversion H; subst; clear H; intuition lia).
 - abstract (intros; repeat autounfold with unf_basic_set_defs unf_derived_set_defs;
-            apply listmaxZ_spec in H; blia).
+            apply listmaxZ_spec in H; lia).
 Defined.

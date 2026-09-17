@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.NotationsCustomEntry.
 Import Syntax BinInt String List.ListNotations ZArith.
@@ -130,14 +131,14 @@ Proof.
          PrimitivePair.pair._1 PrimitivePair.pair._2] in *;
     repeat straightline.
     { eapply Z.gt_wf. }
-    { split. { subst i. rewrite Zmod.unsigned_0. blia. }
+    { split. { subst i. rewrite Zmod.unsigned_0. lia. }
       subst i; rewrite Zmod.add_0_r; split; [ecancel_assumption|]. rewrite Zmod.sub_0_r; auto. }
 
     { 
       pose proof (bits.unsigned_range n width_nonneg).
       pose proof (bits.unsigned_range x3 width_nonneg) as Hx3.
       subst br. case Z.ltb eqn:? in H2; 
-          rewrite ?bits.unsigned_1, ?Zmod.unsigned_0, ?(word.unsigned_sub_nowrap _ _ width_pos)  in *; try blia; [].
+          rewrite ?bits.unsigned_1, ?Zmod.unsigned_0, ?(word.unsigned_sub_nowrap _ _ width_pos)  in *; try lia; [].
       eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; cycle 1.
       { eapply H. exact I. }
       repeat straightline.
@@ -152,24 +153,24 @@ Proof.
         { ecancel_assumption. }
         { 
           split; trivial.
-          split. { rewrite (word.unsigned_sub_nowrap _ _ width_pos); simpl length; blia. }
-          split. { rewrite (word.unsigned_sub_nowrap _ _ width_pos); blia. }
-          split. { blia. }
+          split. { rewrite (word.unsigned_sub_nowrap _ _ width_pos); simpl length; lia. }
+          split. { rewrite (word.unsigned_sub_nowrap _ _ width_pos); lia. }
+          split. { lia. }
           split. { (* I/O *)
-            cbv [getline_io]. cbn [map rev List.app length]. case (Z.eqb_spec (n'0-x3) 0%nat) as []; try blia.
+            cbv [getline_io]. cbn [map rev List.app length]. case (Z.eqb_spec (n'0-x3) 0%nat) as []; try lia.
             rewrite app_nil_r. subst a0. simpl.
             eapply f_equal2; f_equal; trivial.
             progress change 10 with (byte.unsigned Byte.x0a) in H4.
             pose proof byte.unsigned_range x2.
             pose proof byte.unsigned_range Byte.x0a.
-            subst x1; eapply bits.of_Z_inj in H4; rewrite 2 Z.mod_small in H4 by blia.
+            subst x1; eapply bits.of_Z_inj in H4; rewrite 2 Z.mod_small in H4 by lia.
             eapply byte.unsigned_inj in H4; trivial. }
           (* leakage *)
           subst k'''. cbn [getline_leakage leak_binop "++" length].
-          rewrite (proj2 (Z.eqb_neq _ _)) by blia; trivial. simpl. rewrite <- app_assoc. reflexivity. } }
+          rewrite (proj2 (Z.eqb_neq _ _)) by lia; trivial. simpl. rewrite <- app_assoc. reflexivity. } }
 
       (* store *)
-      destruct x as [|x_0 x]. { cbn [length] in *; blia. }
+      destruct x as [|x_0 x]. { cbn [length] in *; lia. }
       cbn [Array.array] in *.
       repeat straightline.
       right; repeat straightline.
@@ -177,19 +178,19 @@ Proof.
       { instantiate (1:=x).
         subst i.
         rewrite Zmod.add_assoc.
-        split. { rewrite (word.unsigned_add_nowrap _ _ width_pos); rewrite ?bits.unsigned_1; try blia. }
+        split. { rewrite (word.unsigned_add_nowrap _ _ width_pos); rewrite ?bits.unsigned_1; try lia. }
         split; [ecancel_assumption|].
         cbn [length] in *.
-        pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(blia)).
+        pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(lia)).
         pose proof (word.unsigned_add_nowrap x3 (bits.of_Z 32 1) width_pos).
         pose proof (word.unsigned_sub_nowrap n (Zmod.add x3 (bits.of_Z 32 1)) width_pos).
-        blia. }
+        lia. }
       { split.
         { subst i.
-          pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(blia)).
+          pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(lia)).
           pose proof (word.unsigned_add_nowrap x3 (bits.of_Z 32 1) width_pos).
           pose proof (word.unsigned_sub_nowrap n (Zmod.add x3 (bits.of_Z 32 1)) width_pos).
-          blia. }
+          lia. }
         repeat straightline.
         (* subroutine return *)
         subst i.
@@ -205,53 +206,53 @@ Proof.
         split. { ecancel_assumption. }
         split; trivial.
         split. { cbn [length]. rewrite Nat2Z.inj_succ, H15.
-          pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(blia)).
-          pose proof (word.unsigned_add_nowrap _i (bits.of_Z 32 1) width_pos ltac:(blia)).
-          rewrite 2 (word.unsigned_sub_nowrap _ _ width_pos); blia. }
+          pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(lia)).
+          pose proof (word.unsigned_add_nowrap _i (bits.of_Z 32 1) width_pos ltac:(lia)).
+          rewrite 2 (word.unsigned_sub_nowrap _ _ width_pos); lia. }
         split; trivial.
         split. {
-          pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(blia)).
-          pose proof (word.unsigned_add_nowrap _i (bits.of_Z 32 1) width_pos ltac:(blia)).
-          blia. }
+          pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(lia)).
+          pose proof (word.unsigned_add_nowrap _i (bits.of_Z 32 1) width_pos ltac:(lia)).
+          lia. }
         split. { (* I/O *)
           subst T a0.
           cbv [getline_io]; cbn [rev List.map].
           repeat rewrite ?map_app, <-?app_comm_cons, <-?app_assoc; f_equal.
-          { pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(blia)) as H_1.
-            rewrite (word.unsigned_add_nowrap _i (bits.of_Z 32 1) width_pos ltac:(blia)), H_1; cbn [length].
-            case Z.eqb eqn:? at 1; case Z.eqb eqn:? at 1; trivial; try blia.
-            { (* WHY manual? does zify do a bad job here? *) eapply Z.eqb_neq in Heqb1. blia. }
-            { (* WHY manual? does zify do a bad job here? *) eapply Z.eqb_eq in Heqb1. blia. } }
+          { pose proof (bits.unsigned_of_Z_small (n := 32) 1 ltac:(lia)) as H_1.
+            rewrite (word.unsigned_add_nowrap _i (bits.of_Z 32 1) width_pos ltac:(lia)), H_1; cbn [length].
+            case Z.eqb eqn:? at 1; case Z.eqb eqn:? at 1; trivial; try lia.
+            { (* WHY manual? does zify do a bad job here? *) eapply Z.eqb_neq in Heqb1. lia. }
+            { (* WHY manual? does zify do a bad job here? *) eapply Z.eqb_eq in Heqb1. lia. } }
           f_equal.
           cbn [map List.app].
           f_equal.
           f_equal.
           subst x1.
           pose proof byte.unsigned_range x2.
-          rewrite bits.unsigned_of_Z_small, byte.of_Z_unsigned; trivial; blia. }
+          rewrite bits.unsigned_of_Z_small, byte.of_Z_unsigned; trivial; lia. }
         (* leakage *)
         subst K a1; cbn [getline_leakage leak_binop length].
-        rewrite (proj2 (Z.eqb_neq _ _)) by blia; trivial.
+        rewrite (proj2 (Z.eqb_neq _ _)) by lia; trivial.
         repeat (simpl || rewrite <- app_assoc). reflexivity. } }
 
     { (* buffer full *)
       replace x3 with n in *; cycle 1.
       { subst br; eapply (word.if_zero _ width_pos), Z.ltb_nlt in H2.
-        apply Zmod.unsigned_inj. blia. }
+        apply Zmod.unsigned_inj. lia. }
       exists x, nil; cbn [Array.array].
       split. { ecancel_assumption. }
       split. { trivial. }
       split. { trivial. }
-      rewrite (word.unsigned_sub_nowrap _ _ width_pos), Z.sub_diag in H7 by blia.
-      split. { rewrite (word.unsigned_sub_nowrap _ _ width_pos), Z.sub_diag by blia; trivial. }
-      split. { blia. }
-      split. { destruct x; cbn [length] in *; try blia; cbn.
+      rewrite (word.unsigned_sub_nowrap _ _ width_pos), Z.sub_diag in H7 by lia.
+      split. { rewrite (word.unsigned_sub_nowrap _ _ width_pos), Z.sub_diag by lia; trivial. }
+      split. { lia. }
+      split. { destruct x; cbn [length] in *; try lia; cbn.
         rewrite Z.sub_diag; reflexivity. }
-      destruct x; try (cbn in *; blia).
+      destruct x; try (cbn in *; lia).
       cbn [getline_leakage length]; rewrite Z.eqb_refl; trivial. }
 
     do 2 eexists. split. { subst k0 i. rewrite Zmod.sub_0_r in *.
-      assert (length x3 = Z.to_nat (Zmod.unsigned x0)) as -> by blia. reflexivity. }
+      assert (length x3 = Z.to_nat (Zmod.unsigned x0)) as -> by lia. reflexivity. }
     subst i.
     rewrite Zmod.add_0_r in *.
     split.
@@ -259,7 +260,7 @@ Proof.
     split.
     { rewrite H5. rewrite Zmod.sub_0_r. trivial. }
     split.
-    { rewrite H5, H6, Zmod.sub_0_r, (word.unsigned_sub_nowrap _ _ width_pos); blia. }
+    { rewrite H5, H6, Zmod.sub_0_r, (word.unsigned_sub_nowrap _ _ width_pos); lia. }
     subst t0.
     rewrite Zmod.unsigned_0, Z.sub_0_r.
     trivial.
@@ -298,16 +299,16 @@ Proof.
   eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; cycle 1.
   { eapply H. split. 2: rewrite bits.unsigned_of_Z; eassumption. ecancel_assumption. }
   repeat straightline.
-  seprewrite_in_by @Array.bytearray_index_merge H9 ltac:(blia).
+  seprewrite_in_by @Array.bytearray_index_merge H9 ltac:(lia).
   eapply LeakageWeakestPreconditionProperties.Proper_call; repeat intro; cycle 1.
   { eapply H0. split.
     { ecancel_assumption. } split.
     { ecancel_assumption. }
     split.
-    { rewrite ?app_length; blia. }
+    { rewrite ?app_length; lia. }
     { rewrite H1. rewrite bits.unsigned_of_Z. reflexivity. } }
   assert (length ((x0 ++ x1)) = 8%nat).
-  { rewrite ?app_length. rewrite bits.unsigned_of_Z_small in H11; blia. }
+  { rewrite ?app_length. rewrite bits.unsigned_of_Z_small in H11; lia. }
   repeat straightline.
   do 2 eexists. split. { ecancel_assumption. }
   split. { subst a0. rewrite bits.unsigned_of_Z. exact eq_refl. }
@@ -319,10 +320,10 @@ Proof.
     destruct (Zmod.eqb_spec x 8) as [->|?]; cycle 1.
     { rewrite bits.unsigned_and, Zmod.unsigned_0, Z.land_0_l; split; try discriminate.
       intros X%(f_equal (@length _)). case H13; clear H13; apply Zmod.unsigned_inj.
-      rewrite <-H10, X, bits.unsigned_of_Z_small; blia. }
-    rewrite bits.unsigned_and, bits.unsigned_1 by blia.
+      rewrite <-H10, X, bits.unsigned_of_Z_small; lia. }
+    rewrite bits.unsigned_and, bits.unsigned_1 by lia.
     destruct x1; cycle 1.
-    { cbn [length] in *. blia. }     { rewrite ?app_nil_r in *. rewrite <-H16.
+    { cbn [length] in *. lia. }     { rewrite ?app_nil_r in *. rewrite <-H16.
       case H15 as [->|]; intuition try congruence. rewrite H15. trivial. } }
 Qed.
 

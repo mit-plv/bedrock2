@@ -314,7 +314,7 @@ Section Go.
     assert ((Zmod.sub addr (Zmod.add addr (bits.of_Z width z)))
           = (Zmod.opp (bits.of_Z width z))) as -> by ring.
     rewrite Zmod.unsigned_opp, bits.unsigned_of_Z.
-    rewrite (Z.mod_small z),  <-(Z.mod_add _ 1), Z.mod_small; blia.
+    rewrite (Z.mod_small z),  <-(Z.mod_add _ 1), Z.mod_small; lia.
   Qed.
 
   Lemma mod_eq_to_diff: forall e1 e2 m,
@@ -323,7 +323,7 @@ Section Go.
       (e1 - e2) mod m = 0.
   Proof.
     intros. rewrite !Z.mod_eq in H0 by assumption.
-    replace (e1 - e2) with (m * (e1 / m) - m * (e2 / m)) by blia.
+    replace (e1 - e2) with (m * (e1 / m) - m * (e2 / m)) by lia.
     rewrite Z.mod_eq by assumption.
     rewrite <- Z.mul_sub_distr_l.
     rewrite (Z.mul_comm m (e1 / m - e2 / m)).
@@ -367,8 +367,8 @@ Section Go.
     all : destruct nth_error eqn:E; eauto; apply nth_error_None in E;
       rewrite LittleEndianList.length_le_split, ?word.word_sub_add_l_same_l,
         ?(word.unsigned_sub_nowrap _ _ width_pos), ?bits.unsigned_of_Z_small,
-        ?(bits.unsigned_1 (proj2 (Z.le_succ_l 0 _) width_pos)) in E; try blia.
-    all : destruct width_cases; subst width; clear; blia.
+        ?(bits.unsigned_1 (proj2 (Z.le_succ_l 0 _) width_pos)) in E; try lia.
+    all : destruct width_cases; subst width; clear; lia.
   Qed.
 
   Definition not_InvalidInstruction(inst: Decode.Instruction): Prop :=
@@ -417,7 +417,7 @@ Section Go.
       erewrite (SeparationMemory.load_Z_of_sep width_pos); try exact _; cycle 1.
       { ecancel_assumption. }
       { apply LittleEndianList.length_le_split. }
-      { destruct width_cases as [E | E]; rewrite E; blia. }
+      { destruct width_cases as [E | E]; rewrite E; lia. }
       rewrite LittleEndianList.le_combine_split, Z.mod_small by apply encode_range; trivial.
     - rewrite bits.unsigned_of_Z_small by apply encode_range.
       destruct H1.
@@ -488,7 +488,7 @@ Section Go.
     intros.
     edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (le_split 1 (Zmod.unsigned v_old)) (le_split 1 (Zmod.unsigned v_new))) as (?&?&?).
     { ssplit; [ecancel_assumption|apply length_le_split..|].
-      destruct width_cases as [E | E]; rewrite E; blia. }
+      destruct width_cases as [E | E]; rewrite E; lia. }
     eapply go_storeByte; cbv [storeByte Memory.storeByte Platform.Memory.store_bytes Map.Memory.store_Z].
     { eassumption. }
     eapply H1; [|ecancel_assumption].
@@ -524,7 +524,7 @@ Section Go.
     intros.
     edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (le_split 2 (Zmod.unsigned v_old)) (le_split 2 (Zmod.unsigned v_new))) as (?&?&?).
     { ssplit; [ecancel_assumption|apply length_le_split..|].
-      destruct width_cases as [E | E]; rewrite E; blia. }
+      destruct width_cases as [E | E]; rewrite E; lia. }
     eapply go_storeHalf; cbv [storeHalf Memory.storeHalf Platform.Memory.store_bytes Map.Memory.store_Z].
     { eassumption. }
     eapply H1; [|ecancel_assumption].
@@ -581,7 +581,7 @@ Section Go.
     intros.
     edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (le_split 4 (Zmod.unsigned v_old)) (le_split 4 (Zmod.unsigned v_new))) as (?&?&?).
     { ssplit; [ecancel_assumption|apply length_le_split..|].
-      destruct width_cases as [E | E]; rewrite E; blia. }
+      destruct width_cases as [E | E]; rewrite E; lia. }
     eapply go_storeWord; cbv [storeWord Memory.storeWord Platform.Memory.store_bytes Map.Memory.store_Z].
     { eassumption. }
     cbv [store_bytes] in *; destruct load_bytes in *; Option.inversion_option; subst.
@@ -637,7 +637,7 @@ Section Go.
     intros.
     edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (le_split 8 (Zmod.unsigned v_old)) (le_split 8 (Zmod.unsigned v_new))) as (?&?&?).
     { ssplit; [ecancel_assumption|apply length_le_split..|].
-      destruct width_cases as [E | E]; rewrite E; blia. }
+      destruct width_cases as [E | E]; rewrite E; lia. }
     eapply go_storeDouble; cbv [storeDouble Memory.storeDouble Platform.Memory.store_bytes Map.Memory.store_Z].
     { eassumption. }
     eapply H1; [|ecancel_assumption].

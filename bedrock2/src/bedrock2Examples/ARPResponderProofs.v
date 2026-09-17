@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 From Coq Require Import Strings.String Lists.List ZArith.BinInt.
 From coqutil.Word Require Import Bitwidth.
 From bedrock2 Require Import Semantics BasicC32Semantics ProgramLogic.
@@ -17,7 +18,7 @@ Local Notation bytes := (array scalar8 (bits.of_Z _ 1)).
 Ltac seplog_use_array_load1 H i :=
   let iNat := eval cbv in (Z.to_nat i) in
   unshelve SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
-    [exact iNat|exact (bits.of_Z _ 0)|blia|];
+    [exact iNat|exact (bits.of_Z _ 0)|lia|];
   change ((Zmod.unsigned (bits.of_Z 32 1) * Z.of_nat iNat)%Z) with i in *.
 
 
@@ -43,7 +44,7 @@ Goal program_logic_goal_for_function! arp.
   lazymatch goal with H: _ m |- _ =>
     let iNat := eval cbv in (Z.to_nat i) in
     SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
-    [instantiate (1 := iNat); blia|match goal with H : _ |- _ => instantiate (1 := byte.of_Z 0) in H end];
+    [instantiate (1 := iNat); lia|match goal with H : _ |- _ => instantiate (1 := byte.of_Z 0) in H end];
     eapply load_one_of_sep;
     change (bits.of_Z 32 (Zmod.unsigned (bits.of_Z 32 1) * Z.of_nat iNat)) with (bits.of_Z 32 i) in *;
     SeparationLogic.ecancel_assumption
@@ -66,7 +67,7 @@ Goal program_logic_goal_for_function! arp.
     let iNat := eval cbv in (Z.to_nat i) in
     pose i;
     SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
-    [instantiate (1 := iNat); blia|match goal with H : _ |- _ => instantiate (1 := byte.of_Z 0) in H end];
+    [instantiate (1 := iNat); lia|match goal with H : _ |- _ => instantiate (1 := byte.of_Z 0) in H end];
     eapply store_one_of_sep;
     change (bits.of_Z 32 (Zmod.unsigned (bits.of_Z 32 1) * Z.of_nat iNat)) with (bits.of_Z 32 i) in *;
     [SeparationLogic.ecancel_assumption|]
@@ -79,6 +80,6 @@ Goal program_logic_goal_for_function! arp.
   straightline.
 
   unshelve erewrite (_:a = Zmod.add ethbuf (bits.of_Z 32 (Z.of_nat (length (firstn 21 packet))))) in H4. {
-    rewrite List.firstn_length_le by blia.
+    rewrite List.firstn_length_le by lia.
     trivial. }
 Abort.

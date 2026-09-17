@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Z.Lia.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Macros.WithBaseName.
@@ -161,8 +162,8 @@ Section WithParameters.
     let iNat := eval cbv in (Z.to_nat i) in
     let H0 := fresh in pose proof H as H0;
     unshelve SeparationLogic.seprewrite_in @array_index_nat_inbounds H0;
-      [exact iNat|exact Byte.x00|blia|];
-    replace ((Zmod.unsigned (bits.of_Z 32 1) * Z.of_nat iNat)%Z) with i in * by (rewrite bits.unsigned_of_Z_small by blia; exact eq_refl).
+      [exact iNat|exact Byte.x00|lia|];
+    replace ((Zmod.unsigned (bits.of_Z 32 1) * Z.of_nat iNat)%Z) with i in * by (rewrite bits.unsigned_of_Z_small by lia; exact eq_refl).
   Local Ltac trans_ltu :=
     match goal with
     | H : Zmod.unsigned ?v <> 0 |- _ =>
@@ -193,7 +194,7 @@ Section WithParameters.
     1: letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr val; cbv [isMMIOAddr];
       rewrite !bits.unsigned_of_Z; split; trivial.
-      cbv -[Z.le Z.lt]. blia. }
+      cbv -[Z.le Z.lt]. lia. }
     repeat straightline.
 
     repeat (eauto || straightline || split_if || eapply interact_nomem || trans_ltu).
@@ -201,7 +202,7 @@ Section WithParameters.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr0 val0; cbv [isMMIOAddr];
       rewrite !bits.unsigned_of_Z; split; trivial.
-      cbv -[Z.le Z.lt]. blia. }
+      cbv -[Z.le Z.lt]. lia. }
     repeat straightline.
 
     repeat (eauto || straightline || split_if || eapply interact_nomem || trans_ltu).
@@ -228,7 +229,7 @@ Section WithParameters.
   Lemma lightbulb_loop_ok : program_logic_goal_for_function! lightbulb_loop.
   Proof.
     repeat (match goal with H : or _ _ |- _ => destruct H; intuition idtac end
-          || straightline || straightline_call || split_if || ecancel_assumption || eauto || blia).
+          || straightline || straightline_call || split_if || ecancel_assumption || eauto || lia).
     all : split; [shelve|].
     all : eexists; split.
     all: repeat (eapply align_trace_cons || exact (eq_sym (List.app_nil_l _)) || eapply align_trace_app).
@@ -243,7 +244,7 @@ Section WithParameters.
     all : eexists; split; [ eauto | ].
     all : try seprewrite_in @bytearray_index_merge H6; eauto.
     all : try rewrite List.app_length.
-    all : try blia.
+    all : try lia.
   Qed.
 
   Local Ltac prove_ext_spec :=
@@ -267,7 +268,7 @@ Section WithParameters.
     rewrite <-!(Z.land_ones _ 32) by (cbv; congruence).
     rewrite <-byte.wrap_unsigned at 2. cbv [byte.wrap].
     change (Z.land 255 (Z.ones 32)) with (Z.ones 8).
-    rewrite <-Z.land_ones by blia.
+    rewrite <-Z.land_ones by lia.
     Z.bitwise. Btauto.btauto.
   Qed.
 
@@ -292,13 +293,13 @@ Section WithParameters.
     1: letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr r; cbv [isMMIOAddr];
       rewrite !bits.unsigned_of_Z; split; trivial.
-      cbv -[Z.le Z.lt]. blia. }
+      cbv -[Z.le Z.lt]. lia. }
     1: repeat straightline.
     1: repeat straightline; eapply interact_nomem; repeat straightline.
     1: letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr r; cbv [isMMIOAddr];
       rewrite !bits.unsigned_of_Z; split; trivial.
-      cbv -[Z.le Z.lt]. blia. }
+      cbv -[Z.le Z.lt]. lia. }
     1: repeat straightline.
 
     1: repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).
@@ -334,19 +335,19 @@ Section WithParameters.
       eexists; repeat split.
       all : rewrite ?bits.unsigned_of_Z in H6.
       all : try eassumption.
-      1: blia.
+      1: lia.
       cbv [gpio_set one existsl concat].
       eexists _, ([_]), ([_]); repeat split; repeat f_equal.
       eapply Zmod.unsigned_inj.
       rewrite ?byte_mask_byte.
       rewrite ?bits.unsigned_and.
-      rewrite bits.unsigned_1 by blia.
+      rewrite bits.unsigned_1 by lia.
       change 1 with (Z.ones 1).
-      rewrite Z.land_ones, Z.bit0_mod by blia.
+      rewrite Z.land_ones, Z.bit0_mod by lia.
       rewrite !bits.unsigned_of_Z.
       rewrite 2(Z.mod_small _ (2^32)); try exact eq_refl.
-      1: match goal with |- 0 <= byte.unsigned ?x < _ => pose proof byte.unsigned_range x end; blia.
-      clear; Z.div_mod_to_equations; blia. }
+      1: match goal with |- 0 <= byte.unsigned ?x < _ => pose proof byte.unsigned_range x end; lia.
+      clear; Z.div_mod_to_equations; lia. }
 
     (* parse failures *)
     all : right; repeat split; eauto.
@@ -441,16 +442,16 @@ Section WithParameters.
               pose proof (bits.unsigned_range b width_nonneg);
               let H := fresh in
               pose proof Zmod.unsigned_sub a b as H;
-              rewrite Z.mod_small in H by blia
+              rewrite Z.mod_small in H by lia
         end.
         match goal with H10 : _ ?a0 |- store _ ?a0 _ _ _ => rewrite <- (List.firstn_skipn 4 _) in H10;
           SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H10 end.
         { instantiate (1:= bits.of_Z 32 4).
           rewrite bits.unsigned_of_Z.
-          rewrite List.firstn_length_le; [exact eq_refl|]. Z.div_mod_to_equations. blia. }
+          rewrite List.firstn_length_le; [exact eq_refl|]. Z.div_mod_to_equations. lia. }
         do 2 straightline.
         match goal with H12:_|-_ => seprewrite_in @scalar32_of_bytes H12 end.
-        { eapply List.firstn_length_le; Z.div_mod_to_equations; blia. }
+        { eapply List.firstn_length_le; Z.div_mod_to_equations; lia. }
         straightline.
         (* after store *)
         do 3 straightline.
@@ -463,7 +464,7 @@ Section WithParameters.
           rewrite Zmod.unsigned_add; rewrite Z.mod_small;
           replace (Zmod.unsigned (bits.of_Z 32 4)) with 4.
           2,4: rewrite bits.unsigned_of_Z; exact eq_refl.
-          1,2: try (Z.div_mod_to_equations; blia). }
+          1,2: try (Z.div_mod_to_equations; lia). }
         { replace (Zmod.add x9 i)
             with (Zmod.add (Zmod.add x9 x11) (bits.of_Z 32 4)) by (subst i; ring).
           ecancel_assumption. }
@@ -483,8 +484,8 @@ Section WithParameters.
             { rewrite bits.unsigned_of_Z; exact eq_refl. } { ecancel_assumption. } }
           { subst RECV. rewrite List.app_length, LittleEndianList.length_le_split.
             rewrite H26. subst x22. rewrite List.length_skipn. simpl bytes_per.
-            enough ((4 <= length x7)%nat) by blia.
-            Z.div_mod_to_equations; blia. }
+            enough ((4 <= length x7)%nat) by lia.
+            Z.div_mod_to_equations; lia. }
           cbv [truncate_word truncate_Z] in *.
           repeat match goal with x := _ |- _ => is_var x; subst x end; subst.
           eexists; split.
@@ -507,7 +508,7 @@ Section WithParameters.
         rewrite H13.
         subst br.
         destruct (Z.ltb (Zmod.unsigned x11) (Zmod.unsigned num_bytes)) eqn:HJ.
-        { rewrite bits.unsigned_1 in H11 by blia. inversion H11. }
+        { rewrite bits.unsigned_1 in H11 by lia. inversion H11. }
         eapply Z.ltb_nlt in HJ.
         ZnWords. }
       repeat straightline.
@@ -540,7 +541,7 @@ Section WithParameters.
           rewrite ?Znat.Z2Nat.id by eapply (bits.unsigned_range _ width_nonneg).
           transitivity (Zmod.unsigned num_bytes); [ZnWords|exact eq_refl]. } }
         { pose proof (bits.unsigned_range num_bytes width_nonneg).
-          rewrite List.length_skipn. blia. }
+          rewrite List.length_skipn. lia. }
         rewrite H11, List.firstn_length_le, ?Znat.Z2Nat.id; cbn [List.skipn].
         all: try ZnWords.
         }
@@ -549,14 +550,14 @@ Section WithParameters.
         progress replace (Zmod.unsigned (bits.of_Z 32 1521)) with 1521 in * by
           (rewrite bits.unsigned_of_Z; exact eq_refl).
         all : cbn [seps array List.firstn List.skipn] in *.
-        eexists _; split; eauto; repeat split; try blia.
+        eexists _; split; eauto; repeat split; try lia.
         { SeparationLogic.seprewrite_in @bytearray_index_merge H10.
           { rewrite H11, List.firstn_length. ZnWords. }
           eassumption. }
         { 1:rewrite List.app_length, List.length_skipn, H11, List.firstn_length.
           replace (Zmod.sub num_bytes (bits.of_Z 32 0)) with num_bytes by ring.
           enough (Z.to_nat (Zmod.unsigned num_bytes) <= length buf)%nat by ZnWords.
-          rewrite ?Znat.Z2Nat.id by eapply (bits.unsigned_range _ width_nonneg); blia. }
+          rewrite ?Znat.Z2Nat.id by eapply (bits.unsigned_range _ width_nonneg); lia. }
         right. right. split; eauto using TracePredicate.any_app_more. } }
 
     all: eexists; split;
@@ -586,10 +587,10 @@ Section WithParameters.
       subst v0.
 
       destruct (Z.ltb (Zmod.unsigned num_bytes) (Zmod.unsigned (bits.of_Z 32 1521))) eqn:?.
-      all : rewrite bits.unsigned_of_Z in Heqb; rewrite ?bits.unsigned_1, ?Zmod.unsigned_0 in H6 by blia; try inversion H6.
+      all : rewrite bits.unsigned_of_Z in Heqb; rewrite ?bits.unsigned_1, ?Zmod.unsigned_0 in H6 by lia; try inversion H6.
       eapply Z.ltb_nlt in Heqb; revert Heqb.
       repeat match goal with |- context [?x] => match type of x with _ => subst x end end.
-      cbv [lan9250_decode_length]. split. 2: rewrite !shamt_of_Z_small in Heqb by blia; cbn in *; blia.
+      cbv [lan9250_decode_length]. split. 2: rewrite !shamt_of_Z_small in Heqb by lia; cbn in *; lia.
       subst v. rewrite bits.unsigned_and, bits.unsigned_of_Z in H2. eapply H2. }
     { left.
       split; [exact eq_refl|].

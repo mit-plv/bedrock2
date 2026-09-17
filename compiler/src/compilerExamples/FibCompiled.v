@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.Arith.Arith.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import coqutil.Decidable.
@@ -48,7 +49,7 @@ Section FibCompiled.
     - reflexivity.
     - simpl. destruct n.
       + reflexivity.
-      + blia.
+      + lia.
   Qed.
 
   Lemma fib_pos: forall n,
@@ -59,11 +60,11 @@ Section FibCompiled.
     - induction N.
       + intros. exfalso. apply Nat.nlt_0_r in H. exact H.
       + intros.
-        destruct n; [simpl; blia|].
-        destruct n; [simpl; blia|].
+        destruct n; [simpl; lia|].
+        destruct n; [simpl; lia|].
         rewrite fib_invert.
         generalize (IHN n) (IHN (S n)).
-        blia.
+        lia.
   Qed.
 
   Lemma fib_inc: forall n m,
@@ -74,10 +75,10 @@ Section FibCompiled.
    - apply Z.le_refl.
    - apply Z.le_trans with (fib m); [assumption|].
      destruct m.
-     + simpl. blia.
+     + simpl. lia.
      + rewrite fib_invert.
        pose proof (fib_pos m).
-       blia.
+       lia.
   Qed.
 
   Ltac fib_next :=
@@ -115,7 +116,7 @@ Section FibCompiled.
       apply Nat.lt_le_pred in H.
       simpl in H.
       specialize (Hinc H).
-      blia.
+      lia.
   Qed.
 
   Local Notation instructionsH := (bedrock2.MetricLogging.instructions).
@@ -157,7 +158,7 @@ Section FibCompiled.
     intros.
     simpl.
     f_equal.
-    repeat (rewrite Z.mod_small; [|blia]).
+    repeat (rewrite Z.mod_small; [|lia]).
     assumption.
   Qed.
 *)
@@ -218,7 +219,7 @@ Section FibCompiled.
     match goal with
     | |- map.get (map.put _ _ _) _ = Some _ =>
       rewrite map.get_put_diff; [assumption|discriminate] || apply map.get_put_same
-    | |- _ => assumption || simpl; blia
+    | |- _ => assumption || simpl; lia
     end.
 
   Ltac eval_var_solve :=
@@ -318,8 +319,8 @@ Section FibCompiled.
         * reflexivity.
       + repeat split.
         * assumption.
-        * simpl. blia.
-        * replace n with i by blia.
+        * simpl. lia.
+        * replace n with i by lia.
           rewrite Nat.add_1_r.
           etransitivity; [ eassumption | reflexivity ].
     - intros.
@@ -328,40 +329,40 @@ Section FibCompiled.
       + simpl. destruct_one_match.
         * simpl. rewrite Zdiv.Zmod_1_l; [discriminate | cbv; reflexivity].
         * repeat match goal with
-                 | H: context[_ mod _] |- _ => rewrite Z.mod_small in H; [|blia]
+                 | H: context[_ mod _] |- _ => rewrite Z.mod_small in H; [|lia]
                  end.
-          blia.
+          lia.
       + eapply fib_correct_body with (nl := nl) (ns := ns); eauto.
       + intros.
         eval_fib_var_names.
         destruct_hyp.
         eapply weaken_exec.
         * eapply IHiter with (nl := nl) (ns := ns); try (reflexivity || eassumption).
-          -- blia.
+          -- lia.
           -- etransitivity; [eassumption|].
-             f_equal. f_equal. f_equal. blia.
+             f_equal. f_equal. f_equal. lia.
           -- etransitivity; [eassumption|].
-             f_equal. replace (S i) with (n - iter)%nat by blia. rewrite H1.
-             assert (n - iter > 0)%nat by blia.
+             f_equal. replace (S i) with (n - iter)%nat by lia. rewrite H1.
+             assert (n - iter > 0)%nat by lia.
              pose proof fib_invert as Hfib.
              specialize Hfib with (n := (n - S iter)%nat).
              apply word_add_of_Z; try apply fib_pos.
              ++ change Semantics.width with 32.
                 apply fib_width_limit.
-                blia.
-             ++ replace (S (n - S iter))%nat with (n - iter)%nat in Hfib; [|blia].
+                lia.
+             ++ replace (S (n - S iter))%nat with (n - iter)%nat in Hfib; [|lia].
                 symmetry. apply Hfib.
           -- etransitivity; [eassumption|].
              f_equal. rewrite H1.
              simpl. f_equal.
-             rewrite Z.mod_small; [|blia].
-             rewrite Z.mod_small; [|blia].
-             blia.
+             rewrite Z.mod_small; [|lia].
+             rewrite Z.mod_small; [|lia].
+             lia.
         * cbv beta. intros. destruct_hyp.
           repeat split.
           -- propogate_eq.
           -- assumption.
-          -- unfold_MetricLog. simpl in *. blia.
+          -- unfold_MetricLog. simpl in *. lia.
           -- assumption.
   Qed.
 
@@ -383,17 +384,17 @@ Section FibCompiled.
     - eval_var_solve.
     - simpl.
       destruct_one_match; [discriminate|].
-      repeat rewrite Z.mod_small in * by blia.
-      exfalso. blia.
+      repeat rewrite Z.mod_small in * by lia.
+      exfalso. lia.
     - eapply weaken_exec.
       + destruct_hyp.
         eapply fib_correct_while with (iter := n) (i := 0%nat) (nl := nl) (ns := ns); try eassumption.
-        * blia.
+        * lia.
         * apply le_n.
         * rewrite Nat.sub_diag. reflexivity.
       + intros. cbv beta in *. destruct_hyp.
         repeat split; try assumption.
-        unfold_MetricLog. simpl in *. blia.
+        unfold_MetricLog. simpl in *. lia.
   Qed.
 
   Lemma fib_if_false_correct: forall (n: nat) t m (l: locals) mc (R: mem -> Prop) nl ns,
@@ -415,8 +416,8 @@ Section FibCompiled.
     + eval_var_solve.
     + simpl.
       destruct_one_match; [|reflexivity].
-      repeat rewrite Z.mod_small in * by blia.
-      exfalso. blia.
+      repeat rewrite Z.mod_small in * by lia.
+      exfalso. lia.
     + exec_set_solve.
   Qed.
 
@@ -497,7 +498,7 @@ Section FibCompiled.
           cbv beta. intros. destruct_hyp.
           repeat split; try assumption.
           -- propogate_eq.
-          -- blia.
+          -- lia.
         * intros. destruct_hyp.
           eapply @exec.store.
           -- reflexivity.
@@ -519,7 +520,7 @@ Section FibCompiled.
              end.
              discriminate.
           -- repeat split.
-             ++ unfold_MetricLog. simpl in *. blia.
+             ++ unfold_MetricLog. simpl in *. lia.
              ++ apply sep_comm in H23.
                 pose proof unchecked_store_bytes_of_sep as HStore.
                 specialize HStore with (1 := H23).
@@ -541,7 +542,7 @@ Section FibCompiled.
           cbv beta. intros. destruct_hyp.
           repeat split; try assumption.
           -- propogate_eq.
-          -- blia.
+          -- lia.
         * intros. destruct_hyp.
           eapply @exec.store.
           -- reflexivity.
@@ -563,7 +564,7 @@ Section FibCompiled.
              end.
              discriminate.
           -- repeat split.
-             ++ unfold_MetricLog. simpl in *. blia.
+             ++ unfold_MetricLog. simpl in *. lia.
              ++ apply sep_comm in H23.
                 pose proof unchecked_store_bytes_of_sep as HStore.
                 specialize HStore with (1 := H23).
@@ -610,7 +611,7 @@ Section FibCompiled.
                          (mcH := bedrock2.MetricLogging.EmptyMetricLog).
       eapply Hp.
       + clear. intros. exact H.
-      + simpl. blia.
+      + simpl. lia.
       + cbv. intuition congruence.
       + reflexivity.
       + assumption.
@@ -640,7 +641,7 @@ Section FibCompiled.
         destruct_hyp.
         eapply Z.le_trans.
         * eassumption.
-        * blia.
+        * lia.
   Qed.
   (*
   Print Assumptions fib_compiled.

@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import bedrock2.NotationsCustomEntry bedrock2.wsize.
 
 Import Syntax BinInt String.

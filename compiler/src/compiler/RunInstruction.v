@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.Lia.
@@ -323,7 +324,7 @@ Section Run.
       intros.
       apply Zmod.unsigned_inj.
       rewrite bits.unsigned_and, bits.unsigned_xor, !bits.unsigned_of_Z.
-      assert (0 <= width) by (destruct width_cases as [E | E]; rewrite E; blia).
+      assert (0 <= width) by (destruct width_cases as [E | E]; rewrite E; lia).
       replace (2 ^ width - 1) with (Z.ones width); cycle 1. {
         rewrite Z.ones_equiv. reflexivity.
       }

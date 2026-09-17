@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 (*
 This file provides a tactic `ZnWords`, intended to solve goals containing a mix of
 `word` and `Z` arithmetic.
@@ -107,7 +108,7 @@ Ltac dewordify_step :=
          pose proof (bits.unsigned_range x
                        ltac:(first [ exact (proj1 (Z.leb_le 0 w) eq_refl)
                                    | exact width_nonneg
-                                   | blia ])
+                                   | lia ])
                      : 0 <= @Zmod.unsigned (2 ^ w) x < 2 ^ w);
          let a := fresh "w0" in forget (@Zmod.unsigned (2 ^ w) x) as a
        end.

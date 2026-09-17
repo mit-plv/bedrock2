@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 From coqutil Require Import sanity.
 Local Unset Universe Minimization ToSet.
 Require Import Coq.Strings.String.
@@ -139,7 +140,7 @@ Module Z.
   Lemma land_nonzero a b : Z.land a b <> 0 -> a <> 0 /\ b <> 0.
   Proof.
     destruct (Z.eq_dec a 0), (Z.eq_dec b 0); subst;
-      repeat rewrite ?Z.land_0_r, ?Z.land_0_l; blia.
+      repeat rewrite ?Z.land_0_r, ?Z.land_0_l; lia.
   Qed.
 End Z.
 
@@ -166,7 +167,7 @@ Ltac t :=
            | |- _ < Zmod.unsigned ?x => pose proof (bits.unsigned_range x width_nonneg);
                                           repeat rewrite ?Zmod.unsigned_sub, ?bits.unsigned_of_Z;
                                           repeat rewrite ?Z.mod_small;
-                                            (blia || clear; cbv; split; congruence)
+                                            (lia || clear; cbv; split; congruence)
            end]
   | _ => solve [trivial]
   end.

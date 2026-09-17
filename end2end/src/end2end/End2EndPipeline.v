@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 From Stdlib Require Import Zmod.
 Require Import String.
 Require Import Coq.ZArith.ZArith.
@@ -88,7 +89,7 @@ Section Connect.
   Hypotheses (instrMemSizeLg_bounds: 3 <= instrMemSizeLg <= 30)
              (Hkmem: 2 + instrMemSizeLg < memSizeLg <= 16).
 
-  Lemma memSizeLg_width_trivial: memSizeLg <= 32. Proof. blia. Qed.
+  Lemma memSizeLg_width_trivial: memSizeLg <= 32. Proof. lia. Qed.
 
   Definition p4mm: Kami.Syntax.Modules :=
     KamiRiscv.p4mm instrMemSizeLg memSizeLg (proj1 instrMemSizeLg_bounds)
@@ -138,32 +139,32 @@ Section Connect.
       1: exact (ToplevelLoop.mod_2width_mod_bytes_per_word (2 ^ memSizeLg - stack_size_in_bytes)).
       change bytes_per_word with 4.
       apply mod4_0.mod4_0_sub.
-      + replace memSizeLg with (memSizeLg - 2 + 2) by blia.
-        rewrite Z.pow_add_r by blia.
+      + replace memSizeLg with (memSizeLg - 2 + 2) by lia.
+        rewrite Z.pow_add_r by lia.
         apply mod4_0.mod4_mul4_r.
       + exact stack_size_div.
     - rewrite Zmod.unsigned_of_Z.
       etransitivity.
       1: exact (ToplevelLoop.mod_2width_mod_bytes_per_word (2 ^ memSizeLg)).
-      replace memSizeLg with (memSizeLg - 2 + 2) by blia.
-      rewrite Z.pow_add_r by blia.
+      replace memSizeLg with (memSizeLg - 2 + 2) by lia.
+      rewrite Z.pow_add_r by lia.
       apply mod4_0.mod4_mul4_r.
     - rewrite Zmod.unsigned_of_Z. change (0 mod 2 ^ 32) with 0.
-      eapply proj1. eapply bits.unsigned_range. blia.
+      eapply proj1. eapply bits.unsigned_range. lia.
     - reflexivity.
     - rewrite ?Zmod.unsigned_of_Z.
       pose proof (Z.pow_nonneg 2 (2 + instrMemSizeLg)).
       assert (2 ^ memSizeLg < 2 ^ 32). {
-        apply Z.pow_lt_mono_r; blia.
+        apply Z.pow_lt_mono_r; lia.
       }
-      rewrite ?Z.mod_small; try split; try apply Z.pow_nonneg; try blia.
+      rewrite ?Z.mod_small; try split; try apply Z.pow_nonneg; try lia.
     - reflexivity.
     - rewrite ?Zmod.unsigned_of_Z.
       pose proof (Z.pow_nonneg 2 (2 + instrMemSizeLg)).
       assert (2 ^ memSizeLg < 2 ^ 32). {
-        apply Z.pow_lt_mono_r; blia.
+        apply Z.pow_lt_mono_r; lia.
       }
-      rewrite ?Z.mod_small; try split; try apply Z.pow_nonneg; try blia.
+      rewrite ?Z.mod_small; try split; try apply Z.pow_nonneg; try lia.
   Qed.
 
   Hypothesis funimplsList_NoDup: NoDup (List.map fst funimplsList).
@@ -213,9 +214,9 @@ Section Connect.
       do 2 eexists.
       ssplit; cycle 1.
       + specialize (IHlen (S from)).
-        replace (Z.of_nat (S from)) with (Z.of_nat from + 1) in IHlen by blia.
+        replace (Z.of_nat (S from)) with (Z.of_nat from + 1) in IHlen by lia.
         rewrite Zmod.of_Z_add in IHlen.
-        apply IHlen. blia.
+        apply IHlen. lia.
       + unfold ptsto. reflexivity.
       + unfold map.split, map.disjoint. split; [reflexivity|].
         intros.
@@ -237,17 +238,17 @@ Section Connect.
           do 2 rewrite Zmod.unsigned_of_Z in E.
           change width with 32 in *.
           rewrite (Z.mod_small (Z.of_nat from)) in E. 2: {
-            split; [blia|].
-            eapply Z.le_lt_trans with (m := 2 ^ memSizeLg). 1: blia.
-            eapply Z.pow_lt_mono_r; blia.
+            split; [lia|].
+            eapply Z.le_lt_trans with (m := 2 ^ memSizeLg). 1: lia.
+            eapply Z.pow_lt_mono_r; lia.
           }
           apply in_seq in C.
           rewrite (Z.mod_small (Z.of_nat from')) in E. 2: {
-            split; [blia|].
-            eapply Z.le_lt_trans with (m := 2 ^ memSizeLg). 1: blia.
-            eapply Z.pow_lt_mono_r; blia.
+            split; [lia|].
+            eapply Z.le_lt_trans with (m := 2 ^ memSizeLg). 1: lia.
+            eapply Z.pow_lt_mono_r; lia.
           }
-          blia.
+          lia.
   Qed.
 
   Lemma riscvMemInit_to_seplog:
@@ -261,9 +262,9 @@ Section Connect.
     (* TODO could adapt riscvMemInit definition to make this not needed *)
     replace (2 ^ BinIntDef.Z.to_nat memSizeLg)%nat with (Z.to_nat (2 ^ memSizeLg)).
     1: eapply P.
-    - rewrite Z2Nat.id. 1: blia.
-      apply Z.pow_nonneg. blia.
-    - rewrite N_Z_nat_conversions.Z2Nat.inj_pow; try blia. reflexivity.
+    - rewrite Z2Nat.id. 1: lia.
+      apply Z.pow_nonneg. lia.
+    - rewrite N_Z_nat_conversions.Z2Nat.inj_pow; try lia. reflexivity.
   Qed.
 
   #[export]
@@ -366,26 +367,26 @@ Section Connect.
       + pose proof Zmod.eqb_spec.
         cbv [imem LowerPipeline.mem_available].
         unfold code_start, code_pastend, heap_start, heap_pastend, stack_start, stack_pastend, ml in *.
-        assert (Bounds_instrs: 0 <= Z.of_nat (Datatypes.length (instrencode instrs))) by blia.
+        assert (Bounds_instrs: 0 <= Z.of_nat (Datatypes.length (instrencode instrs))) by lia.
         assert (Bounds_unused_imem: Z.of_nat (Datatypes.length (instrencode instrs)) <= instrMemSizeBytes). {
           move L at bottom.
           rewrite ?Zmod.unsigned_of_Z in L.
           change (0 mod 2 ^ 32) with 0 in L.
-          rewrite (Z.mod_small instrMemSizeBytes) in L. 1: blia.
+          rewrite (Z.mod_small instrMemSizeBytes) in L. 1: lia.
           split.
-          - apply Z.pow_nonneg. blia.
-          - change width with 32. apply Z.pow_lt_mono_r; blia.
+          - apply Z.pow_nonneg. lia.
+          - change width with 32. apply Z.pow_lt_mono_r; lia.
         }
-        assert (Bounds_heap: instrMemSizeBytes <= 2 ^ memSizeLg - stack_size_in_bytes) by blia.
-        assert (Bounds_stack: 2 ^ memSizeLg - stack_size_in_bytes <= 2 ^ memSizeLg) by blia.
+        assert (Bounds_heap: instrMemSizeBytes <= 2 ^ memSizeLg - stack_size_in_bytes) by lia.
+        assert (Bounds_stack: 2 ^ memSizeLg - stack_size_in_bytes <= 2 ^ memSizeLg) by lia.
         assert (Bounds_unmapped: 2 ^ memSizeLg < 2 ^ width). {
           change width with 32.
-          apply Z.pow_lt_mono_r; try blia.
+          apply Z.pow_lt_mono_r; try lia.
         }
         assert (Datatypes.length riscvMemInit_all_values = Z.to_nat (2 ^ memSizeLg)). {
           unfold riscvMemInit_all_values.
           rewrite map_length. rewrite seq_length.
-          blia.
+          lia.
         }
         clear P2establish P2preserve P2use.
         eapply Proper_iff1_iff1; [|reflexivity..|].
@@ -436,7 +437,7 @@ Section Connect.
             unfold riscvMemInit_all_values.
             rewrite List.firstn_map.
             rewrite List.firstn_seq.
-            rewrite Nat.min_l by blia.
+            rewrite Nat.min_l by lia.
             symmetry.
             exact M.
           }
@@ -461,7 +462,7 @@ Section Connect.
             simpl_word_exprs.
             f_equal.
             rewrite HL.
-            clear -Bounds_unused_imem Bounds_heap stack_size_bounds; blia.
+            clear -Bounds_unused_imem Bounds_heap stack_size_bounds; lia.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
             f_equal.
@@ -470,7 +471,7 @@ Section Connect.
             simpl_word_exprs.
             f_equal.
             rewrite HL.
-            clear -Bounds_instrs Bounds_unused_imem Bounds_heap stack_size_bounds; blia.
+            clear -Bounds_instrs Bounds_unused_imem Bounds_heap stack_size_bounds; lia.
           }
           cbn [seps]. reflexivity.
         }
@@ -485,15 +486,15 @@ Section Connect.
                  | H : ?x -> _, H' : ?x -> _ |- _  =>
                    pose proof (fun u : x => conj (H u) (H' u)); clear H H'
                  end;
-          blia).
+          lia).
       + change (Zmod.unsigned (code_start ml)) with 0.
         assert (Hend: code_pastend ml = bits.of_Z 32 instrMemSizeBytes) by reflexivity.
         setoid_rewrite Hend.
         rewrite Zmod.unsigned_of_Z.
         rewrite Z.mod_small. 2: {
           split.
-          - apply Z.pow_nonneg; blia.
-          - apply Z.pow_lt_mono_r; blia.
+          - apply Z.pow_nonneg; lia.
+          - apply Z.pow_lt_mono_r; lia.
         }
         assumption.
       + reflexivity.
@@ -511,7 +512,7 @@ Section Connect.
         * apply @riscv_init_memory_undef_on_MMIO with (instrMemSizeLg:= instrMemSizeLg).
           { apply instrMemSizeLg_bounds. }
           { apply Hkmem. }
-          { cbv [KamiProc.width]; blia. }
+          { cbv [KamiProc.width]; lia. }
           { apply Hkmem. }
           { assumption. }
         * assumption.

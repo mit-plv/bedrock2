@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.MetricLogging.
@@ -50,7 +51,7 @@ Module Z.
   Qed.
 
   Lemma mod2_nonzero x : x mod 2 <> 0 -> x mod 2 = 1.
-  Proof. Z.div_mod_to_equations. blia. Qed.
+  Proof. Z.div_mod_to_equations. lia. Qed.
 
   Lemma land_1_r x : Z.land x 1 = x mod 2.
   Proof.
@@ -78,8 +79,8 @@ Proof.
   intro.
   case (z / 2) eqn:Hdiv.
   - enough (H1 : z = 1) by (rewrite H1; easy).
-    enough (z = z mod 2) by (Z.div_mod_to_equations; blia).
-    rewrite (Z.div_mod z 2) by blia.
+    enough (z = z mod 2) by (Z.div_mod_to_equations; lia).
+    rewrite (Z.div_mod z 2) by lia.
     rewrite Hdiv.
     cbn.
     rewrite Zmod_mod.
@@ -94,11 +95,11 @@ Proof.
     rewrite Z.add_simpl_r;
     [rewrite Pos2Z.inj_add |]; rewrite Pos2Z.inj_mul;
     [rewrite Z.log2_succ_double | rewrite Z.log2_double];
-    blia.
+    lia.
   - pose proof (Zlt_neg_0 p) as Hneg.
     rewrite <- Hdiv in Hneg.
     Z.div_mod_to_equations.
-    blia.
+    lia.
 Qed.
 
 Ltac s := unfold initCost, iterCost, endCost in *;
@@ -140,8 +141,8 @@ Proof.
       {
         repeat (straightline || (split; trivial; [])). 2: split. all:t.
         { (* measure decreases *)
-          set (Zmod.unsigned x) in *. (* WHY does blia need this? *)
-          Z.div_mod_to_equations. blia. }
+          set (Zmod.unsigned x) in *. (* WHY does lia need this? *)
+          Z.div_mod_to_equations. lia. }
         { (* invariant preserved *)
           rewrite H3; clear H3. rename H0 into Hbit.
           change (1+1) with 2 in *.
@@ -152,12 +153,12 @@ Proof.
           rewrite !Zmod.unsigned_mul.
           rewrite ?Z.mul_mod_idemp_l by discriminate.
           rewrite <-(Z.mul_mod_idemp_r _ (_^_)), Z.pow_mod by discriminate.
-          rewrite ?Z.pow_add_r by (pose proof (bits.unsigned_range x width_nonneg); Z.div_mod_to_equations; blia).
+          rewrite ?Z.pow_add_r by (pose proof (bits.unsigned_range x width_nonneg); Z.div_mod_to_equations; lia).
           rewrite ?Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. }
         { (* metrics correct *)
-          rewrite msb_shift in H4 by blia.
+          rewrite msb_shift in H4 by lia.
           rewrite MetricArith.mul_sub_distr_r in H4.
           rewrite <- MetricArith.add_sub_swap in H4.
           rewrite <- MetricArith.le_add_le_sub_r in H4.
@@ -168,8 +169,8 @@ Proof.
       {
         repeat (straightline || (split; trivial; [])). 2: split. all: t.
         { (* measure decreases *)
-          set (Zmod.unsigned x) in *. (* WHY does blia need this? *)
-          Z.div_mod_to_equations; blia. }
+          set (Zmod.unsigned x) in *. (* WHY does lia need this? *)
+          Z.div_mod_to_equations; lia. }
         { (* invariant preserved *)
           rewrite H3; clear H3. rename H0 into Hbit.
           change (1+1) with 2 in *.
@@ -182,7 +183,7 @@ Proof.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. }
         { (* metrics correct *)
-          rewrite msb_shift in H4 by blia.
+          rewrite msb_shift in H4 by lia.
           s.
         }
       }

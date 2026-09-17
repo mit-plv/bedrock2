@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import coqutil.Datatypes.List.
 
@@ -72,7 +73,7 @@ Proof.
   intros *. intro E. destr (reg_class.get a); try discriminate E.
   unfold reg_class.get in E0. simp.
   destruct_one_match_hyp.
-  + blia.
+  + lia.
   + destruct_one_match_hyp. 1: discriminate.
     destruct_one_match_hyp.
     * auto.
@@ -88,7 +89,7 @@ Proof.
   pose proof arg_range_Forall as P.
   eapply List.Forall_firstn in P.
   eapply List.Forall_forall in P. 2: exact C.
-  unfold a0, a7 in *. blia.
+  unfold a0, a7 in *. lia.
 Qed.
 
 Lemma sp_not_in_arg_regs: forall n,
@@ -98,7 +99,7 @@ Proof.
   pose proof arg_range_Forall as P.
   eapply List.Forall_firstn in P.
   eapply List.Forall_forall in P. 2: exact C.
-  unfold RegisterNames.sp in P. blia.
+  unfold RegisterNames.sp in P. lia.
 Qed.
 
 Lemma ra_not_in_arg_regs: forall n,
@@ -108,7 +109,7 @@ Proof.
   pose proof arg_range_Forall as P.
   eapply List.Forall_firstn in P.
   eapply List.Forall_forall in P. 2: exact C.
-  unfold RegisterNames.ra in P. blia.
+  unfold RegisterNames.ra in P. lia.
 Qed.
 
 Lemma all_arg_regs_alt:

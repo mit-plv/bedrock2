@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Export Coq.Lists.List. Export ListNotations.
 Require Export Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Export coqutil.Word.Bitwidth coqutil.Word.Properties.
@@ -30,7 +31,7 @@ Ltac wclause_unify :=
     ) else (
       lazymatch T with
       | Zmod _ => solve [solve_word_eq]
-      | Z => solve [blia]
+      | Z => solve [lia]
       | _ =>
           lazymatch x with
           | ?x1 ?x2 => lazymatch y with

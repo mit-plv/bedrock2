@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.Strings.Ascii.
 Require Import Coq.Strings.String.
 Require Import Coq.Lists.List.
@@ -85,7 +86,7 @@ Proof.
         rewrite N.pow_add_r.
         change (2 ^ N.of_nat 1) with 2.
         change (N.pos p~1) with (1 + 2 * N.pos p).
-        specialize (IHs (N.pos p) eq_refl). blia.
+        specialize (IHs (N.pos p) eq_refl). lia.
       * simpl in Heqs. inversion Heqs. subst.
         change (String.length (String "0" (rev_binary_pos p))) with
             (1 + (String.length (rev_binary_pos p)))%nat.
@@ -93,7 +94,7 @@ Proof.
         rewrite N.pow_add_r.
         change (2 ^ N.of_nat 1) with 2.
         change (N.pos p~1) with (1 + 2 * N.pos p).
-        specialize (IHs (N.pos p) eq_refl). blia.
+        specialize (IHs (N.pos p) eq_refl). lia.
       * simpl in Heqs. inversion Heqs. subst.
         cbv. reflexivity.
 Qed.
@@ -117,9 +118,9 @@ Proof.
   - eexists. split; reflexivity.
   - intro C. destruct C as [s' [E H]].
     inversion E. clear E.
-    apply rev_binary_inj in H1. blia.
+    apply rev_binary_inj in H1. lia.
   - intros. destruct H as [s' [E H]]. subst x.
-    eexists. split; [reflexivity|]. blia.
+    eexists. split; [reflexivity|]. lia.
 Qed.
 
 Lemma start_state_spec: forall (l : list string) (v : string),
@@ -133,17 +134,17 @@ Proof.
     + subst. simpl in *.
       assert (2 ^ (N.of_nat (S (String.length (rev_binary state)))) <= state) as A. {
         eapply N.le_trans. 2: eassumption.
-        apply N.pow_le_mono_r; blia.
+        apply N.pow_le_mono_r; lia.
       }
       replace (N.of_nat (S (String.length (rev_binary state)))) with
-          (1 + N.of_nat (String.length (rev_binary state))) in A by blia.
+          (1 + N.of_nat (String.length (rev_binary state))) in A by lia.
       rewrite N.pow_add_r in A.
       change (2 ^ 1) with 2 in A.
       pose proof (two_to_number_of_digits_lower_bound state).
-      blia.
+      lia.
     + eapply IHl. 1: eassumption.
       eapply N.le_trans. 2: eassumption.
-      apply N.pow_le_mono_r; blia.
+      apply N.pow_le_mono_r; lia.
 Qed.
 
 #[global] Instance StringNameGen: NameGen string N := {|

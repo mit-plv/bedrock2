@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import bedrock2.NotationsCustomEntry.
 
 Import Syntax Syntax.Coercions BinInt String List List.ListNotations.
