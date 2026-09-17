@@ -16,7 +16,7 @@ Require Import Coq.micromega.Lia.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
-Require Import coqutil.Datatypes.HList coqutil.Byte.
+Require Import coqutil.Byte coqutil.Word.LittleEndianList.
 Require Import coqutil.Z.BitOps.
 Require coqutil.Map.SortedListZ.
 Require Import coqutil.Datatypes.ZList.
@@ -227,7 +227,7 @@ Section WithMem.
     (sz: nat) (* number of bytes to read *)
     (t: trace) (* trace of events that happened so far *)
     (addr: word) (* address to be read *)
-    (post: tuple byte sz -> mem -> Prop): (* postcondition on returned value and memory *)
+    (post: list byte -> mem -> Prop): (* postcondition on returned value and memory *)
     Prop :=
     sz = 4%nat /\
     exists s mNIC rxq txq,
@@ -246,8 +246,8 @@ Section WithMem.
           (* snd (new buffer) can be any bytes *)
           circular_buffer_slice (rxq_elem s.(rx_buf_size))
             s.(rx_queue_cap) s.(rx_queue_head) done s.(rx_queue_base_addr) mRcv ->
-          post (LittleEndian.split sz ((s.(rx_queue_head) + len done)
-                                        mod s.(rx_queue_cap))) mRcv)
+          post (le_split sz ((s.(rx_queue_head) + len done)
+                             mod s.(rx_queue_cap))) mRcv)
        \/
       (addr = register_address E1000_TDH /\
       (* Hardware gives back transmitted buffers to software:
@@ -259,14 +259,14 @@ Section WithMem.
           0 <= nDone <= len txq ->
           circular_buffer_slice txq_elem
             s.(tx_queue_cap) s.(tx_queue_head) txq[:nDone] s.(tx_queue_base_addr) mRcv ->
-          post (LittleEndian.split sz ((s.(tx_queue_head) + nDone)
-                                        mod s.(tx_queue_cap))) mRcv)).
+          post (le_split sz ((s.(tx_queue_head) + nDone)
+                             mod s.(tx_queue_cap))) mRcv)).
 
   Definition e1000_write_step
     (sz: nat) (* number of bytes to write *)
     (t: trace) (* trace of events that happened so far *)
     (addr: word) (* address to be written *)
-    (val: tuple byte sz) (* value to be written *)
+    (val: list byte) (* value to be written *)
     (mGive: mem): (* memory whose ownership is passed to the external world *)
     Prop :=
     sz = 4%nat /\
@@ -282,7 +282,7 @@ Section WithMem.
           by them, thus providing more space for hardware to store received packets *)
         exists (fresh: list (rx_desc_t * buf)),
           len rxq + len fresh < s.(rx_queue_cap) /\
-          LittleEndian.combine sz val = (s.(rx_queue_head) + len rxq + len fresh)
+          le_combine val = (s.(rx_queue_head) + len rxq + len fresh)
                                          mod s.(rx_queue_cap) /\
           circular_buffer_slice (rxq_elem s.(rx_buf_size)) s.(rx_queue_cap)
                                    ((s.(rx_queue_head) + len rxq) mod s.(rx_queue_cap))
@@ -296,7 +296,7 @@ Section WithMem.
           the descriptor chunks and the buffers pointed to by them to hardware *)
         exists (toSend: list (tx_desc_t * buf)),
           len txq + len toSend < s.(tx_queue_cap) /\
-          LittleEndian.combine sz val = (s.(tx_queue_head) + len txq + len toSend)
+          le_combine val = (s.(tx_queue_head) + len txq + len toSend)
                                          mod s.(tx_queue_cap) /\
           circular_buffer_slice txq_elem s.(tx_queue_cap)
               ((s.(tx_queue_head) + len txq) mod s.(tx_queue_cap))
@@ -335,7 +335,7 @@ Section WithMem.
   Proof.
     constructor;
     unfold read_step, write_step, mmio_addrs, e1000_MemoryMappedExtCalls,
-      e1000_read_step, e1000_write_step; intros; fwd; subst n.
+      e1000_read_step, e1000_write_step; intros; fwd; try subst n.
     - (* weaken_read_step *)
       destruct_or; fwd; eauto 15.
     - (* intersect_read_step *)
@@ -443,7 +443,7 @@ Section WithMem.
       left.
       split; [reflexivity | ].
       intros mRcv done B F M.
-      rewrite LittleEndian.combine_split. cbn [map.putmany_of_list_zip].
+      rewrite le_combine_split. cbn [map.putmany_of_list_zip].
       change (Z.of_nat 4 * 8) with 32.
       eexists.
       split; [reflexivity | ].

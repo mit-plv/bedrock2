@@ -201,9 +201,7 @@ Section MMIO1.
   Ltac contrad := contradiction || discriminate || congruence.
 
   (* TODO: why are these here? *)
-  Arguments LittleEndian.combine: simpl never. (* TODO can we put this next to its definition? *)
   Arguments mcomp_sat: simpl never.
-  Arguments LittleEndian.split: simpl never.
   Local Arguments String.eqb: simpl never.
 
   Ltac fwd :=
@@ -342,7 +340,7 @@ Section MMIO1.
       progress change (@Bind _ _) with (@free.bind MetricMaterializeRiscvProgram.action result) in *.
       unfold free.bind at 1.
 
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, LittleEndianList.le_combine_split, LittleEndianList.length_le_split.
+      rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), !LittleEndianList.le_combine_split.
       rewrite Zmod_mod, Z.mod_small by eapply EncodeBound.encode_range.
       rewrite DecodeEncode.decode_encode; cycle 1. {
         epose proof Registers.arg_range_Forall as HH.
@@ -375,7 +373,7 @@ Section MMIO1.
       simpl_word_exprs .
       unfold mmioStoreEvent, signedByteTupleToReg in *.
       unfold regToInt32.
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, LittleEndianList.length_le_split.
+      rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), LittleEndianList.le_combine_split.
       rewrite sextend_width_nop by reflexivity.
       rewrite Z.mod_small by apply (bits.unsigned_range _ width_nonneg).
       rewrite Zmod.of_Z_unsigned.
@@ -490,7 +488,7 @@ Section MMIO1.
       change (@Bind _ _) with (@free.bind MetricMaterializeRiscvProgram.action result) in *.
       unfold free.bind at 1.
 
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, LittleEndianList.le_combine_split, LittleEndianList.length_le_split.
+      rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), !LittleEndianList.le_combine_split.
       rewrite Zmod_mod, Z.mod_small by eapply EncodeBound.encode_range.
       rewrite DecodeEncode.decode_encode; cycle 1. {
         epose proof Registers.arg_range_Forall as HH.
@@ -516,7 +514,7 @@ Section MMIO1.
       split; [trivial|].
       split; [red; auto|].
       split; [ cbv [MMIOReadOK];
-               exists (LittleEndian.split 4 0); trivial |].
+               exists (HList.tuple.of_list (LittleEndianList.le_split 4 0)); trivial |].
       intros.
 
       repeat fwd.

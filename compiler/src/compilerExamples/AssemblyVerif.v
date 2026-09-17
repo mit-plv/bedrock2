@@ -130,10 +130,8 @@ Section Verif.
   Opaque asm_prog_1.
 
   Definition gallina_prog_2(v1 v2: w32): word :=
-    gallina_prog_1 (bits.of_Z width (BitOps.signExtend 32 (LittleEndian.combine 4 v1)))
-                   (bits.of_Z width (BitOps.signExtend 32 (LittleEndian.combine 4 v2))).
-
-  Arguments LittleEndian.combine: simpl never.
+    gallina_prog_1 (bits.of_Z width (BitOps.signExtend 32 (LittleEndianList.le_combine (HList.tuple.to_list v1))))
+                   (bits.of_Z width (BitOps.signExtend 32 (LittleEndianList.le_combine (HList.tuple.to_list v2)))).
 
   Axiom fix_updated_mem_TODO: False.
   Axiom fix_footpr_TODO: False.

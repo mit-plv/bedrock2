@@ -6,7 +6,7 @@ Require Import Coq.Lists.List. Import ListNotations.
 Require Import Kami.Lib.Word.
 Require Import Kami.Ex.IsaRv32 riscv.Spec.Decode.
 Require Import riscv.Utility.Encode.
-Require coqutil.Word.LittleEndian.
+Require coqutil.Word.LittleEndianList.
 Require Import coqutil.Word.Properties.
 Require Import coqutil.Word.SimplWordExpr.
 Require Export coqutil.Word.Bitwidth32.
@@ -351,10 +351,11 @@ Section WordZ.
 
   Lemma signExtend_combine_split_signed:
     forall (w: Word.word 32),
-      signExtend 32 (LittleEndian.combine 4 (LittleEndian.split 4 (Zmod.signed w))) = Zmod.signed w.
+      signExtend 32 (LittleEndianList.le_combine (HList.tuple.to_list (HList.tuple.of_list
+        (LittleEndianList.le_split 4 (Zmod.signed w))))) = Zmod.signed w.
   Proof.
     intros.
-    rewrite LittleEndian.combine_split.
+    rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), LittleEndianList.le_combine_split.
     unfold signExtend. change (Z.of_nat 4 * 8) with 32. rewrite Z.smod_mod.
     etransitivity. 2: eapply Zmod.smod_signed.
     reflexivity.
@@ -362,10 +363,11 @@ Section WordZ.
 
   Lemma signExtend_combine_split_unsigned:
     forall (w: Word.word 32),
-      signExtend 32 (LittleEndian.combine 4 (LittleEndian.split 4 (Z.of_N (wordToN w)))) = Zmod.signed w.
+      signExtend 32 (LittleEndianList.le_combine (HList.tuple.to_list (HList.tuple.of_list
+        (LittleEndianList.le_split 4 (Z.of_N (wordToN w)))))) = Zmod.signed w.
   Proof.
     intros.
-    rewrite LittleEndian.combine_split.
+    rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), LittleEndianList.le_combine_split.
     rewrite Z_of_N_wordToN.
     unfold signExtend. change (Z.of_nat 4 * 8) with 32. rewrite Z.smod_mod.
     etransitivity. 2: eapply Zmod.smod_unsigned.
@@ -472,7 +474,7 @@ Section Equiv.
   (** * Relations between Kami and riscv-coq *)
 
   Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
-    bits.of_Z _ (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
+    bits.of_Z _ (BitOps.signExtend (8 * Z.of_nat n) (LittleEndianList.le_combine (HList.tuple.to_list v))).
 
   Definition mmioLoadEvent(m: mem)(addr: word)(n: nat)(v: HList.tuple byte n): LogItem :=
     ((m, "MMIOREAD"%string, [addr]), (m, [signedByteTupleToReg v])).
@@ -551,7 +553,7 @@ Section Equiv.
   Lemma events_related_mmioLoadEvent:
     forall addr1 v1 addr2 (v2: HList.tuple byte 4),
       addr1 = addr2 ->
-      signExtend 32 (LittleEndian.combine _ v2) = Zmod.signed v1 ->
+      signExtend 32 (LittleEndianList.le_combine (HList.tuple.to_list v2)) = Zmod.signed v1 ->
       events_related ("ld"%string, addr1, v1) (MinimalMMIO.mmioLoadEvent addr2 v2).
   Proof.
     intros; subst.
@@ -565,7 +567,7 @@ Section Equiv.
   Lemma events_related_mmioStoreEvent:
     forall addr1 v1 addr2 (v2: HList.tuple byte 4),
       addr1 = addr2 ->
-      signExtend 32 (LittleEndian.combine _ v2) = Zmod.signed v1 ->
+      signExtend 32 (LittleEndianList.le_combine (HList.tuple.to_list v2)) = Zmod.signed v1 ->
       events_related ("st"%string, addr1, v1) (MinimalMMIO.mmioStoreEvent addr2 v2).
   Proof.
     intros; subst.
@@ -1584,8 +1586,8 @@ Section Equiv.
       destruct Memory.load_Z eqn:? in *; Option.inversion_option; subst z.
       rt.
       subst inst'. rewrite H11 in *.
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
-      { rewrite LittleEndianList.length_le_split; simpl Z.mul.
+      rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), LittleEndianList.le_combine_split, Z.mod_small in *; cycle 1.
+      { simpl Z.mul.
         clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
         rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
         change nwidth with 32%nat. Lia.lia. }
@@ -1689,7 +1691,10 @@ Section Equiv.
       all : repeat destruct_one_match_hyp; repeat Option.inversion_option; subst.
       all: cbv [int8ToReg int16ToReg uInt8ToReg uInt16ToReg int32ToReg] in *;
            cbn beta match delta [MachineWidth_XLEN] in *.
-      all : rewrite <-?LittleEndian.split_eq, ?LittleEndian.to_list_split, ?LittleEndianList.le_combine_split, ?Z.mod_small in * by admit.
+      all : rewrite ?(HList.tuple.to_list_of_list (LittleEndianList.le_split 1 _)),
+                    ?(HList.tuple.to_list_of_list (LittleEndianList.le_split 2 _)),
+                    ?(HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)),
+                    ?LittleEndianList.le_combine_split, ?Z.mod_small in * by admit.
 
       all: unfold evalExpr in Heqic; fold evalExpr in Heqic.
       all: try match goal with
@@ -1713,7 +1718,10 @@ Section Equiv.
              let Hpost := fresh "Hpost" in
              destruct H as [? [? [[? ?] Hpost]]];
                cbv [MMIOReadOK FE310_mmio] in Hpost;
-               epose proof (Hpost (LittleEndian.split _ (Zmod.signed _)) ltac:(trivial)); clear Hpost
+               lazymatch type of Hpost with
+               | forall v: HList.tuple byte ?n, _ =>
+                 epose proof (Hpost (HList.tuple.of_list (LittleEndianList.le_split n (Zmod.signed _))) ltac:(trivial))
+               end; clear Hpost
            end.
       all: match goal with H: isMMIOAligned _ _ |- _ =>
            try (exfalso; clear -H; destruct H as [? ?]; discriminate) end.
@@ -1771,8 +1779,8 @@ Section Equiv.
       rt.
       subst inst'.
       rewrite H11 in *.
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
-      { rewrite LittleEndianList.length_le_split; simpl Z.mul.
+      rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), LittleEndianList.le_combine_split, Z.mod_small in *; cycle 1.
+      { simpl Z.mul.
         clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
         rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
         change nwidth with 32%nat. Lia.lia. }
@@ -1873,7 +1881,10 @@ Section Equiv.
       all : repeat destruct_one_match_hyp; repeat Option.inversion_option; subst.
       all: cbv [int8ToReg int16ToReg uInt8ToReg uInt16ToReg int32ToReg] in *;
            cbn beta match delta [MachineWidth_XLEN] in *.
-      all : rewrite <-?LittleEndian.split_eq, ?LittleEndian.to_list_split, ?LittleEndianList.le_combine_split, ?Z.mod_small in * by admit.
+      all : rewrite ?(HList.tuple.to_list_of_list (LittleEndianList.le_split 1 _)),
+                    ?(HList.tuple.to_list_of_list (LittleEndianList.le_split 2 _)),
+                    ?(HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)),
+                    ?LittleEndianList.le_combine_split, ?Z.mod_small in * by admit.
 
       all: unfold evalExpr in Heqic; fold evalExpr in Heqic.
       all: try match goal with
@@ -2039,8 +2050,8 @@ Section Equiv.
       rt.
       subst inst'.
       rewrite H11 in *.
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
-      { rewrite LittleEndianList.length_le_split; simpl Z.mul.
+      rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), LittleEndianList.le_combine_split, Z.mod_small in *; cycle 1.
+      { simpl Z.mul.
         clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
         rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
         change nwidth with 32%nat. Lia.lia. }
@@ -2139,7 +2150,10 @@ Section Equiv.
       all : repeat destruct_one_match_hyp; repeat Option.inversion_option; subst.
       all: cbv [int8ToReg int16ToReg uInt8ToReg uInt16ToReg int32ToReg] in *;
            cbn beta match delta [MachineWidth_XLEN] in *.
-      all : rewrite <-?LittleEndian.split_eq, ?LittleEndian.to_list_split, ?LittleEndianList.le_combine_split, ?Z.mod_small in * by admit.
+      all : rewrite ?(HList.tuple.to_list_of_list (LittleEndianList.le_split 1 _)),
+                    ?(HList.tuple.to_list_of_list (LittleEndianList.le_split 2 _)),
+                    ?(HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)),
+                    ?LittleEndianList.le_combine_split, ?Z.mod_small in * by admit.
 
       all: unfold evalExpr in Heqic; fold evalExpr in Heqic.
       all: try match goal with
@@ -2163,7 +2177,10 @@ Section Equiv.
              let Hpost := fresh "Hpost" in
              destruct H as [? [? [[? ?] Hpost]]];
                cbv [MMIOReadOK FE310_mmio] in Hpost;
-               epose proof (Hpost (LittleEndian.split _ (Zmod.signed _)) ltac:(trivial)); clear Hpost
+               lazymatch type of Hpost with
+               | forall v: HList.tuple byte ?n, _ =>
+                 epose proof (Hpost (HList.tuple.of_list (LittleEndianList.le_split n (Zmod.signed _))) ltac:(trivial))
+               end; clear Hpost
            end.
       all: match goal with H: isMMIOAligned _ _ |- _ =>
            try (exfalso; clear -H; destruct H as [? ?]; discriminate) end.
@@ -2213,8 +2230,8 @@ Section Equiv.
       rt.
       subst inst'.
       rewrite H11 in *.
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
-      { rewrite LittleEndianList.length_le_split; simpl Z.mul.
+      rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), LittleEndianList.le_combine_split, Z.mod_small in *; cycle 1.
+      { simpl Z.mul.
         clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
         rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
         change nwidth with 32%nat. Lia.lia. }
@@ -2387,8 +2404,8 @@ Section Equiv.
       rt.
       subst inst'.
       rewrite H11 in *.
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
-      { rewrite LittleEndianList.length_le_split; simpl Z.mul.
+      rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), LittleEndianList.le_combine_split, Z.mod_small in *; cycle 1.
+      { simpl Z.mul.
         clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
         rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
         change nwidth with 32%nat. Lia.lia. }
@@ -2494,7 +2511,10 @@ Section Equiv.
       all : repeat destruct_one_match_hyp; repeat Option.inversion_option; subst.
       all: cbv [int8ToReg int16ToReg uInt8ToReg uInt16ToReg int32ToReg] in *;
            cbn beta match delta [MachineWidth_XLEN] in *.
-      all : rewrite <-?LittleEndian.split_eq, ?LittleEndian.to_list_split, ?LittleEndianList.le_combine_split, ?Z.mod_small in * by admit.
+      all : rewrite ?(HList.tuple.to_list_of_list (LittleEndianList.le_split 1 _)),
+                    ?(HList.tuple.to_list_of_list (LittleEndianList.le_split 2 _)),
+                    ?(HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)),
+                    ?LittleEndianList.le_combine_split, ?Z.mod_small in * by admit.
 
       all: unfold evalExpr in Heqic; fold evalExpr in Heqic.
       all: try match goal with
@@ -2567,8 +2587,8 @@ Section Equiv.
       rt.
       subst inst'.
       rewrite H11 in *.
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
-      { rewrite LittleEndianList.length_le_split; simpl Z.mul.
+      rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), LittleEndianList.le_combine_split, Z.mod_small in *; cycle 1.
+      { simpl Z.mul.
         clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
         rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
         change nwidth with 32%nat. Lia.lia. }
@@ -2807,8 +2827,8 @@ Section Equiv.
     rt.
     subst inst'.
     rewrite H11 in *.
-    rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
-    { rewrite LittleEndianList.length_le_split; simpl Z.mul.
+    rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), LittleEndianList.le_combine_split, Z.mod_small in *; cycle 1.
+    { simpl Z.mul.
       clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
       rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
       change nwidth with 32%nat. Lia.lia. }
@@ -3171,8 +3191,8 @@ Section Equiv.
     rt.
     subst inst'.
     rewrite H11 in *.
-    rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, Z.mod_small in *; cycle 1.
-    { rewrite LittleEndianList.length_le_split; simpl Z.mul.
+    rewrite (HList.tuple.to_list_of_list (LittleEndianList.le_split 4 _)), LittleEndianList.le_combine_split, Z.mod_small in *; cycle 1.
+    { simpl Z.mul.
       clear; match goal with |- context [Zmod.unsigned ?x] => pose proof wordToN_bound x; set x in * end; 
       rewrite <-Z_of_N_wordToN. simpl Nat.mul in *; simpl NatLib.Npow2 in *.
       change nwidth with 32%nat. Lia.lia. }

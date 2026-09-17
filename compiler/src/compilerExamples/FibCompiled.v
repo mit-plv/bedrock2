@@ -139,7 +139,7 @@ Section FibCompiled.
       end
     end.
     simpl. f_equal.
-    rewrite LittleEndian.combine_split.
+    rewrite LittleEndianList.le_combine_split.
     change (BinInt.Z.of_nat (Pos.to_nat 4) * 8) with width.
     change width with 32.
     rewrite (Naive._unsigned_in_range v).
@@ -526,7 +526,7 @@ Section FibCompiled.
                 match goal with
                 | |- context[?x] =>
                   match x with
-                  | LittleEndian.split _ _ => specialize HStore with (bs := x)
+                  | LittleEndianList.le_split _ _ => specialize HStore with (bs := x)
                   end
                 end.
                 wcancel_assumption.
@@ -570,7 +570,7 @@ Section FibCompiled.
                 match goal with
                 | |- context[?x] =>
                   match x with
-                  | LittleEndian.split _ _ => specialize HStore with (bs := x)
+                  | LittleEndianList.le_split _ _ => specialize HStore with (bs := x)
                   end
                 end.
                 wcancel_assumption.

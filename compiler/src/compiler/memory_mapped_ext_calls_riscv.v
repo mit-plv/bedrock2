@@ -97,10 +97,11 @@ Section Riscv.
                         (post: HList.tuple byte n -> RiscvMachine -> Prop) :=
     let action := "memory_mapped_extcall_read" ++ String.of_nat (n * 8) in
     read_step n (getLog mach) addr (fun v mRcv =>
+      exists t: HList.tuple byte n, HList.tuple.to_list t = v /\
       forall m', map.split m' (getMem mach) mRcv ->
-      post v
+      post t
            (withLogItem ((map.empty, action, [addr]),
-                         (mRcv, [bits.of_Z width (LittleEndian.combine n v)]))
+                         (mRcv, [bits.of_Z width (LittleEndianList.le_combine v)]))
            (withMem m' mach))).
 
   Notation load n := (fun (ctxid: SourceType) a mach post =>
@@ -114,10 +115,10 @@ Section Riscv.
                          (mach: RiscvMachine)(post: RiscvMachine -> Prop) :=
     let action := "memory_mapped_extcall_write" ++ String.of_nat (n * 8) in
     exists mKeep mGive, map.split (getMem mach) mKeep mGive /\
-    write_step n (getLog mach) addr v mGive /\
+    write_step n (getLog mach) addr (HList.tuple.to_list v) mGive /\
     let invalidated := list_union Zmod.eqb (footprint_list addr n) (map.keys mGive) in
     post (withXAddrs (list_diff Zmod.eqb mach.(getXAddrs) invalidated)
-         (withLogItem ((mGive, action, [addr; bits.of_Z width (LittleEndian.combine n v)]),
+         (withLogItem ((mGive, action, [addr; bits.of_Z width (LittleEndianList.le_combine (HList.tuple.to_list v))]),
                        (map.empty, []))
          (withMem mKeep mach))).
 
@@ -195,7 +196,10 @@ Section Riscv.
     forall s, interpret_action a s postF1 postA1 -> interpret_action a s postF2 postA2.
   Proof.
     destruct a; cbn; intros; try solve [intuition eauto using store_weaken_post].
-    all : cbv [nonmem_load] in *; destruct Memory.load_Z; intuition eauto using weaken_read_step.
+    all : cbv [nonmem_load] in *; destruct Memory.load_Z; cbv beta match in *;
+      destruct H1 as (HF & HI); refine (conj HF _); try solve [eauto].
+    all : eapply (weaken_read_step _ _ _ _ _ HI); cbv beta; intros ? ? (t & ? & Hp);
+      exists t; split; try assumption; intros; eauto.
   Qed.
 
   Definition interp_action(a: (MetricLog -> MetricLog) * riscv_primitive)
@@ -216,7 +220,6 @@ Section Riscv.
   Qed.
 
   Arguments Memory.store_bytes: simpl never.
-  Arguments LittleEndian.combine: simpl never.
 
   Global Instance primitivesParams:
     PrimitivesParams (free action result) MetricRiscvMachine :=
@@ -259,7 +262,7 @@ Section Riscv.
     unfold nonmem_load in HI.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
     pose proof (read_step_nonempty _ _ _ _ HI) as P.
-    destruct P as (v & mRcv & (N1 & N2)).
+    destruct P as (v & mRcv & ((t & Ht & N1) & N2)).
     destruct N2 as (mExt' & Sp).
     destruct mach.
     eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _ _) _).
@@ -282,7 +285,7 @@ Section Riscv.
     unfold nonmem_load in HI.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
     pose proof (read_step_nonempty _ _ _ _ HI) as P.
-    destruct P as (v & mRcv & (N1 & N2)).
+    destruct P as (v & mRcv & ((t & Ht & N1) & N2)).
     destruct N2 as (mExt' & Sp).
     destruct mach.
     eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _ _) _).
@@ -305,7 +308,7 @@ Section Riscv.
     unfold nonmem_load in HI.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
     pose proof (read_step_nonempty _ _ _ _ HI) as P.
-    destruct P as (v & mRcv & (N1 & N2)).
+    destruct P as (v & mRcv & ((t & Ht & N1) & N2)).
     destruct N2 as (mExt' & Sp).
     destruct mach.
     eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _ _) _).
@@ -328,7 +331,7 @@ Section Riscv.
     unfold nonmem_load in HI.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
     pose proof (read_step_nonempty _ _ _ _ HI) as P.
-    destruct P as (v & mRcv & (N1 & N2)).
+    destruct P as (v & mRcv & ((t & Ht & N1) & N2)).
     destruct N2 as (mExt' & Sp).
     destruct mach.
     eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _ _) _).
@@ -380,9 +383,10 @@ Section Riscv.
     unfold nonmem_load in *.
     cbn -[HList.tuple String.append] in *.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
-    eapply weaken_read_step. 1: exact HI. clear HI. cbv beta. intros. fwd.
-    rename mExt' into mExtNew.
-    split. 1: solve [eauto].
+    eapply weaken_read_step. 1: exact HI. clear HI. cbv beta.
+    intros v mRcv ((t & Ht & Hp0) & (mExtNew & Hp1)).
+    exists t. split. 1: exact Ht.
+    intros m' H0. split. 1: solve [eauto].
     clear Hp0. unfold map.split in H0. destruct H0 as (? & D). subst m'.
     rewrite map.domain_putmany.
     split.
@@ -424,9 +428,10 @@ Section Riscv.
     unfold nonmem_load in *.
     cbn -[HList.tuple String.append] in *.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
-    eapply weaken_read_step. 1: exact HI. clear HI. cbv beta. intros. fwd.
-    rename mExt' into mExtNew.
-    split. 1: solve [eauto].
+    eapply weaken_read_step. 1: exact HI. clear HI. cbv beta.
+    intros v mRcv ((t & Ht & Hp0) & (mExtNew & Hp1)).
+    exists t. split. 1: exact Ht.
+    intros m' H0. split. 1: solve [eauto].
     clear Hp0. unfold map.split in H0. destruct H0 as (? & D). subst m'.
     rewrite map.domain_putmany.
     split.
@@ -468,9 +473,10 @@ Section Riscv.
     unfold nonmem_load in *.
     cbn -[HList.tuple String.append] in *.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
-    eapply weaken_read_step. 1: exact HI. clear HI. cbv beta. intros. fwd.
-    rename mExt' into mExtNew.
-    split. 1: solve [eauto].
+    eapply weaken_read_step. 1: exact HI. clear HI. cbv beta.
+    intros v mRcv ((t & Ht & Hp0) & (mExtNew & Hp1)).
+    exists t. split. 1: exact Ht.
+    intros m' H0. split. 1: solve [eauto].
     clear Hp0. unfold map.split in H0. destruct H0 as (? & D). subst m'.
     rewrite map.domain_putmany.
     split.
@@ -512,9 +518,10 @@ Section Riscv.
     unfold nonmem_load in *.
     cbn -[HList.tuple String.append] in *.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
-    eapply weaken_read_step. 1: exact HI. clear HI. cbv beta. intros. fwd.
-    rename mExt' into mExtNew.
-    split. 1: solve [eauto].
+    eapply weaken_read_step. 1: exact HI. clear HI. cbv beta.
+    intros v mRcv ((t & Ht & Hp0) & (mExtNew & Hp1)).
+    exists t. split. 1: exact Ht.
+    intros m' H0. split. 1: solve [eauto].
     clear Hp0. unfold map.split in H0. destruct H0 as (? & D). subst m'.
     rewrite map.domain_putmany.
     split.
@@ -623,7 +630,10 @@ Section Riscv.
       cbn -[footprint_list HList.tuple] in *;
       repeat destruct_one_match;
       fwd;
-      intuition eauto 10 using weaken_read_step, List.endswith_refl, List.endswith_cons_l.
+      intuition eauto 10 using weaken_read_step, List.endswith_refl, List.endswith_cons_l;
+      try (eapply weaken_read_step; [eassumption | cbv beta; intros ? ? (t & ? & Hp);
+                                     exists t; split; try assumption; intros;
+                                     eauto 10 using List.endswith_refl, List.endswith_cons_l]).
   Qed.
 
   Global Instance primitivesSane: MetricPrimitivesSane primitivesParams.
@@ -651,8 +661,7 @@ Section Riscv.
     | _ => progress subst
     | _ => progress fwd_step
     | _ => progress cbn -[Platform.Memory.store_bytes
-                          HList.tuple invalidateWrittenXAddrs footprint_list
-                          LittleEndian.split_deprecated] in *
+                          HList.tuple invalidateWrittenXAddrs footprint_list] in *
     | _ => progress cbv
              [id valid_register is_initial_register_value store
                 Platform.Memory.loadByte Platform.Memory.loadHalf

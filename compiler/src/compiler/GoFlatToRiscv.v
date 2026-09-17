@@ -426,7 +426,7 @@ Section Go.
       { destruct width_cases as [E | E]; rewrite E; blia. }
       rewrite LittleEndianList.le_combine_split, Z.mod_small by apply encode_range; trivial.
     - change 4%nat with (length (LittleEndianList.le_split 4 (encode inst))).
-      rewrite LittleEndian.combine_eq, HList.tuple.to_list_of_list, LittleEndianList.le_combine_split.
+      rewrite HList.tuple.to_list_of_list, LittleEndianList.le_combine_split.
       assert (0 <= encode inst < 2 ^ width) as F. {
         pose proof (encode_range inst) as P.
         destruct width_cases as [E | E]; rewrite E; split. all: blia.

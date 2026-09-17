@@ -709,8 +709,6 @@ Section FlatToRiscv1.
   Proof using BW  mem_ok.
     clear - BW  mem_ok.
     intros. unfold compile4bytes, ptsto_instr, truncated_scalar.
-    change 4%nat with (length [nth 0 l Byte.x00; nth 1 l Byte.x00; nth 2 l Byte.x00; nth 3 l Byte.x00]).
-    rewrite LittleEndian.combine_of_list.
     cbn.
     unfold Encode.encode_Invalid.
     rewrite bitSlice_all_nonneg. 2: cbv; discriminate. 2: apply LittleEndianList.le_combine_bound.

@@ -6,7 +6,6 @@ Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Utility.Utility.
-Require Import coqutil.Word.LittleEndian.
 Require Import coqutil.Word.Properties.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
