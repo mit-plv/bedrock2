@@ -1,6 +1,5 @@
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
-Require Import coqutil.Z.BitOps.
 Require Import coqutil.Z.bitblast.
 Require Znumtheory.
 
@@ -99,7 +98,7 @@ Proof.
   do 2 rewrite <- div_mul_same by (apply Z.pow_nonzero; blia).
   rewrite <-! Z.land_ones by blia.
   rewrite <-! Z.shiftl_mul_pow2 by blia.
-  rewrite <- or_to_plus; Z.bitblast.
+  rewrite <- Z.or_to_plus; Z.bitblast.
 Qed.
 
 Ltac simpl_pow2_products :=
