@@ -160,7 +160,7 @@ Section ptstos.
       simpl.
       destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
     }
-    2: rewrite List.length_firstn_inbounds; Lia.nia.
+    2: rewrite List.firstn_length_le; Lia.nia.
     Morphisms.f_equiv.
     setoid_rewrite bits.unsigned_of_Z.
     setoid_rewrite Z.mod_small.
@@ -170,7 +170,7 @@ Section ptstos.
       rewrite List.firstn_length, Nat2Z.inj_min, H1.
       etransitivity; [eapply Z.le_min_l|].
       clear -BW; case BW as [ [ -> | -> ] ]; cbv; discriminate. }
-    { rewrite List.length_firstn_inbounds; try Lia.nia.
+    { rewrite List.firstn_length_le; try Lia.nia.
         clear -BW; case BW as [ [ -> | -> ] ]; cbv; trivial. }
     intros.
     pose proof (LittleEndianList.le_combine_bound (List.firstn (Z.to_nat bytes_per_word) bytes)).
@@ -178,7 +178,7 @@ Section ptstos.
     destruct H0.
     eapply Z.lt_le_trans. 1: eassumption.
     eapply Z.pow_le_mono_r. 1: reflexivity.
-    rewrite List.length_firstn_inbounds; try Lia.nia.
+    rewrite List.firstn_length_le; try Lia.nia.
     unfold bytes_per_word;
     destruct width_cases as [E | E]; rewrite E; cbv; inversion 1.
   Qed.

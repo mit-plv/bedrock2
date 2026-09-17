@@ -447,10 +447,10 @@ Section WithParameters.
           SeparationLogic.seprewrite_in (symmetry! @bytearray_index_merge) H10 end.
         { instantiate (1:= bits.of_Z 32 4).
           rewrite bits.unsigned_of_Z.
-          rewrite List.length_firstn_inbounds; [exact eq_refl|]. Z.div_mod_to_equations. blia. }
+          rewrite List.firstn_length_le; [exact eq_refl|]. Z.div_mod_to_equations. blia. }
         do 2 straightline.
         match goal with H12:_|-_ => seprewrite_in @scalar32_of_bytes H12 end.
-        { eapply List.length_firstn_inbounds; Z.div_mod_to_equations; blia. }
+        { eapply List.firstn_length_le; Z.div_mod_to_equations; blia. }
         straightline.
         (* after store *)
         do 3 straightline.
@@ -541,7 +541,7 @@ Section WithParameters.
           transitivity (Zmod.unsigned num_bytes); [ZnWords|exact eq_refl]. } }
         { pose proof (bits.unsigned_range num_bytes width_nonneg).
           rewrite List.length_skipn. blia. }
-        rewrite H11, List.length_firstn_inbounds, ?Znat.Z2Nat.id; cbn [List.skipn].
+        rewrite H11, List.firstn_length_le, ?Znat.Z2Nat.id; cbn [List.skipn].
         all: try ZnWords.
         }
       { repeat match goal with H : _ |- _ => rewrite H; intro HX; solve[inversion HX] end. }

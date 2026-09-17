@@ -932,7 +932,7 @@ Module List.
       replace (Z.to_nat n) with (Z.to_nat i + Z.to_nat (n - i))%nat by lia.
       rewrite List.repeat_app. rewrite List.skipn_app.
       rewrite List.repeat_length. rewrite Nat.sub_diag. rewrite List.skipn_O.
-      rewrite List.skipn_all. 1: reflexivity.
+      rewrite List.skipn_all2. 1: reflexivity.
       rewrite List.repeat_length. reflexivity.
     Qed.
 
@@ -1272,7 +1272,7 @@ Section PushDownGet.
       l[:i][n] = r.
   Proof.
     unfold List.get, List.upto. intros.
-    rewrite List.nth_firstn by lia. assumption.
+    rewrite Lists.List.nth_firstn, (proj2 (Nat.ltb_lt _ _)) by lia. assumption.
   Qed.
 
   Lemma push_down_get_head: forall a (l: list A) n,
@@ -1332,7 +1332,7 @@ Section PushDownGet.
     assert (n < i \/ i < n) as C by lia.
     destruct C as [C | C].
     - rewrite List.app_nth1.
-      + apply List.nth_firstn. lia.
+      + rewrite Lists.List.nth_firstn, (proj2 (Nat.ltb_lt _ _)) by lia. reflexivity.
       + rewrite List.firstn_length. lia.
     - rewrite List.app_assoc. rewrite List.app_nth2.
       + unfold List.from. rewrite List.nth_skipn. f_equal.
@@ -1344,7 +1344,7 @@ Section PushDownGet.
       0 <= n < c ->
       (List.repeatz x c)[n] = x.
   Proof.
-    intros. unfold List.repeatz, List.get. rewrite List.nth_repeat by lia.
+    intros. unfold List.repeatz, List.get. rewrite List.nth_repeat_lt by lia.
     destruct_one_match. 1: exfalso; lia. reflexivity.
   Qed.
 End PushDownGet.
