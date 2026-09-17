@@ -67,7 +67,7 @@ Section Pipeline1.
 
   Lemma instrencode_cons: forall instr instrs,
       instrencode (instr :: instrs) =
-      HList.tuple.to_list (LittleEndian.split 4 (encode instr)) ++ instrencode instrs.
+      LittleEndianList.le_split 4 (encode instr) ++ instrencode instrs.
   Proof. intros. reflexivity. Qed.
 
   Lemma instrencode_app: forall instrs1 instrs2,
@@ -97,7 +97,7 @@ Section Pipeline1.
     - reflexivity.
     - simp. unfold program in *. rewrite array_cons.
       rewrite <- IHinstrs; [|DivisibleBy4.solve_divisibleBy4|assumption].
-      cbn [instrencode flat_map]; fold (instrencode instrs); rewrite !LittleEndian.to_list_split.
+      cbn [instrencode flat_map]; fold (instrencode instrs).
       cbv [ptsto_bytes]. rewrite array_append'. Morphisms.f_equiv; cycle 1.
       { rewrite Zmod.mul_1_l, LittleEndianList.length_le_split; Morphisms.f_equiv. }
       cbv [ptsto_instr truncated_scalar].

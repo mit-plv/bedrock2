@@ -393,12 +393,12 @@ Section FlatToRiscv1.
     end.
 
   Definition compile4bytes(l: list byte): Instruction :=
-    InvalidInstruction (LittleEndian.combine 4 (HList.tuple.of_list [
+    InvalidInstruction (LittleEndianList.le_combine [
       nth 0 l Byte.x00;
       nth 1 l Byte.x00;
       nth 2 l Byte.x00;
       nth 3 l Byte.x00
-    ])).
+    ]).
 
   Fixpoint compile_byte_list(l: list byte): list Instruction :=
     match l with

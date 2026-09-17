@@ -2,8 +2,7 @@ Require Import Coq.Strings.String. Local Open Scope string_scope.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
 Require Import Coq.Lists.List. Import ListNotations. Local Open Scope list_scope.
-Require Import coqutil.Datatypes.HList.
-Require coqutil.Word.LittleEndian.
+Require Import coqutil.Word.LittleEndianList.
 Require Import coqutil.Byte.
 Require Import coqutil.Tactics.fwd coqutil.Tactics.autoforward.
 Require coqutil.Datatypes.String.
@@ -30,12 +29,12 @@ Class MemoryMappedExtCalls{width: Z}{BW: Bitwidth width}
   read_step: forall (sz: nat),
     trace -> (* trace of events that happened so far *)
     bits width -> (* address to be read *)
-    (tuple byte sz -> mem -> Prop) -> (* postcondition on returned value and memory *)
+    (list byte -> mem -> Prop) -> (* postcondition on returned value and memory *)
     Prop;
   write_step: forall (sz: nat),
     trace -> (* trace of events that happened so far *)
     bits width -> (* address to be written *)
-    tuple byte sz -> (* value to be written *)
+    list byte -> (* value to be written *)
     mem -> (* memory whose ownership is passed to the external world *)
     Prop;
   mmio_addrs: bits width -> Prop;
@@ -56,9 +55,9 @@ Section WithMem.
       ((action = "memory_mapped_extcall_read" ++ String.of_nat (n * 8) /\
         exists addr, args = [addr] /\ mGive = map.empty /\
                      read_step n t addr (fun v mRcv =>
-                         post mRcv [bits.of_Z width (LittleEndian.combine n v)] [addr])) \/
+                         post mRcv [bits.of_Z width (le_combine v)] [addr])) \/
        (action = "memory_mapped_extcall_write" ++ String.of_nat (n * 8) /\
-        exists addr v, args = [addr; bits.of_Z width (LittleEndian.combine n v)] /\
+        exists addr v, length v = n /\ args = [addr; bits.of_Z width (le_combine v)] /\
                        write_step n t addr v mGive /\
                     post map.empty nil [addr])).
   
@@ -107,7 +106,7 @@ Section WithMem.
       leakage_ext_spec t mGive a args post1 ->
       leakage_ext_spec t mGive a args post2.
   Proof.
-    unfold leakage_ext_spec; intros; fwd; destruct H0p1; fwd; eauto 10 using weaken_read_step.
+    unfold leakage_ext_spec; intros; fwd; destruct H0p1; fwd; eauto 12 using weaken_read_step.
   Qed.
 
   Instance leakage_ext_spec_ok(mmio_ext_calls: MemoryMappedExtCalls)
@@ -116,19 +115,21 @@ Section WithMem.
     constructor.
     - (* mGive unique *)
       unfold leakage_ext_spec. intros. fwd. destruct H1p1; destruct H2p1; fwd; try congruence.
-      inversion H1p1. fwd. subst n0.
+      inversion H1p1. fwd.
+      assert (length v = length v0) as Hl by congruence.
       eapply (f_equal Zmod.unsigned) in H2.
-      pose proof (LittleEndian.combine_bound v).
-      pose proof (LittleEndian.combine_bound v0).
-      assert (2 ^ (8 * Z.of_nat n) <= 2 ^ width). {
+      pose proof (le_combine_bound v) as Bv. rewrite Hl in Bv.
+      pose proof (le_combine_bound v0) as Bv0.
+      assert (2 ^ (8 * Z.of_nat (length v0)) <= 2 ^ width). {
         destruct width_cases as [W | W]; rewrite W;
-        match goal with
-        | H: _ |- _ => destruct H as [? | [? | [? | [? ?] ] ] ]; subst n
+        lazymatch goal with
+        | H: length v0 = _ \/ _ |- _ => destruct H as [E | [E | [E | [E ?] ] ] ]; rewrite E
         end;
         cbv; congruence.
       }
       rewrite 2bits.unsigned_of_Z_small in H2 by lia.
-      apply LittleEndian.combine_inj in H2. subst v0.
+      apply le_combine_inj in H2. 2: exact Hl.
+      subst v0.
       eauto using write_step_unique_mGive.
     - (* weaken *)
       unfold Morphisms.Proper, Morphisms.respectful, Morphisms.pointwise_relation,
@@ -138,7 +139,7 @@ Section WithMem.
         match goal with
         | H: _ ++ _ = _ ++ _ |- _ => inversion H; clear H
         end;
-        fwd; eauto 10 using intersect_read_step.
+        fwd; eauto 12 using intersect_read_step.
   Qed.
 
   Definition ext_spec_ok(mmio_ext_calls: MemoryMappedExtCalls)

@@ -451,13 +451,9 @@ Section FlatToRiscv1.
       try change (Z.to_nat ((32 + 7) / 8)) with 4%nat in *;
       try change (Z.to_nat ((64 + 7) / 8)) with 8%nat in *;
       rewrite ?E; trivial;
-      try setoid_rewrite (tuple.to_list_of_list (le_split 1 z));
-      try setoid_rewrite (tuple.to_list_of_list (le_split 2 z));
-      try setoid_rewrite (tuple.to_list_of_list (le_split 4 z));
-      try setoid_rewrite (tuple.to_list_of_list (le_split 8 z));
-      rewrite ?LittleEndianList.le_combine_split; simpl_word_exprs;
+      rewrite ?Zmod.of_Z_signed; simpl_word_exprs;
       destruct initialL; eqapply Hpost; f_equal; f_equal.
-      all: rewrite Z.mod_small; trivial; eapply load_Z_bound in E; blia.
+      all: rewrite ?bits.unsigned_of_Z, Z.mod_small; trivial; eapply load_Z_bound in E; blia.
   Qed.
 
   Lemma go_leak_load: forall sz (x a ofs: Z) (addr: word) (initialL: RiscvMachineL) post (f : option LeakageEvent -> M unit),
@@ -480,8 +476,6 @@ Section FlatToRiscv1.
 
   Arguments invalidateWrittenXAddrs: simpl never.
 
-  Local Arguments HList.tuple.to_list : simpl never.
-  Local Arguments HList.tuple.of_list : simpl never.
   Local Arguments LittleEndianList.le_split : simpl never.
   Lemma go_store: forall sz (x a ofs: Z) (addr v: word) (initialL: RiscvMachineL) m' post f,
       valid_register x ->
@@ -499,14 +493,10 @@ Section FlatToRiscv1.
     cbv [compile_store Memory.bytes_per Memory.bytes_per_word bedrock2.Memory.store store_Z]; intros *.
     destruct coqutil.Map.Memory.store_bytes eqn:E; inversion 5; subst m'; intros Hpost.
     rewrite bitwidth_matches; destruct sz, width_cases as [-> | -> ]; intros; simulate'';
-      cbv [MachineWidth_XLEN storeByte storeHalf storeWord storeDouble store_bytes];
+      cbv [MachineWidth_XLEN storeByte storeHalf storeWord storeDouble store_bytes store_Z];
       try change (Z.to_nat ((32 + 7) / 8)) with 4%nat in *;
-      try change (Z.to_nat ((64 + 7) / 8)) with 8%nat in *; first
-      [ setoid_rewrite (tuple.to_list_of_list (le_split 1 (Zmod.unsigned v)))
-      | setoid_rewrite (tuple.to_list_of_list (le_split 2 (Zmod.unsigned v)))
-      | setoid_rewrite (tuple.to_list_of_list (le_split 4 (Zmod.unsigned v)))
-      | setoid_rewrite (tuple.to_list_of_list (le_split 8 (Zmod.unsigned v))) | idtac ];
-      rewrite ?E; trivial.
+      try change (Z.to_nat ((64 + 7) / 8)) with 8%nat in *;
+      rewrite ?riscv.Platform.Memory.le_split_unsigned_of_Z, ?E; trivial.
   Qed.
 
   Lemma go_leak_store: forall sz (x a ofs: Z) (addr: word) (initialL: RiscvMachineL) post f,
@@ -590,19 +580,17 @@ Section FlatToRiscv1.
     { eapply mcomp_sat_weaken; cycle 1.
       1: eapply run_Lw_unsigned; cycle -3. { etransitivity. 1:eassumption. ecancel. }
       all : eassumption||trivial.
-      1:erewrite (tuple.to_list_of_list (le_split 4 _)); ecancel_assumption.
       cbv beta. intros. simp. repeat split; try assumption.
       + etransitivity. 1: eassumption. unfold id.
-        erewrite (tuple.to_list_of_list (le_split 4 _)), le_combine_split, bits.mod_to_Z, Zmod.of_Z_unsigned; trivial.
+        rewrite Zmod.of_Z_unsigned; trivial.
       + etransitivity. 1: eassumption. cbv [final_trace concrete_leakage_of_instr compile_load leak_load].
         rewrite bitwidth_matches; simpl. rewrite Z.eqb_refl. reflexivity. }
     { eapply mcomp_sat_weaken; cycle 1.
       1: eapply run_Ld_unsigned; cycle -3. { etransitivity. 1:eassumption. ecancel. }
       all : eassumption||trivial.
-      1:erewrite (tuple.to_list_of_list (le_split 8 _)); ecancel_assumption.
       cbv beta. intros. simp. repeat split; try assumption.
       + etransitivity. 1: eassumption. unfold id.
-        erewrite (tuple.to_list_of_list (le_split 8 _)), le_combine_split, bits.mod_to_Z, Zmod.of_Z_unsigned; trivial.
+        rewrite Zmod.of_Z_unsigned; trivial.
       + etransitivity. 1: eassumption. cbv [final_trace concrete_leakage_of_instr compile_load leak_load].
         rewrite bitwidth_matches; simpl. rewrite Z.eqb_refl. reflexivity. }
   Qed.
@@ -642,7 +630,6 @@ Section FlatToRiscv1.
     { eapply mcomp_sat_weaken; cycle 1.
       1: eapply run_Sw; cycle -3. { etransitivity. 1:eassumption. ecancel. }
       all : eassumption||trivial.
-      1:erewrite (tuple.to_list_of_list (le_split 4 _)); ecancel_assumption.
       cbv beta. intros. simp. repeat split; try assumption.
       etransitivity. 1: eassumption.
       cbv [final_trace concrete_leakage_of_instr compile_load leak_store].
@@ -650,7 +637,6 @@ Section FlatToRiscv1.
     { eapply mcomp_sat_weaken; cycle 1.
       1: eapply run_Sd; cycle -3. { etransitivity. 1:eassumption. ecancel. }
       all : eassumption||trivial.
-      1:erewrite (tuple.to_list_of_list (le_split 8 _)); ecancel_assumption.
       cbv beta. intros. simp. repeat split; try assumption.
       etransitivity. 1: eassumption.
       cbv [final_trace concrete_leakage_of_instr compile_load leak_store].
@@ -708,8 +694,6 @@ Section FlatToRiscv1.
   Proof using BW  mem_ok.
     clear - BW  mem_ok.
     intros. unfold compile4bytes, ptsto_instr, truncated_scalar.
-    change 4%nat with (length [nth 0 l Byte.x00; nth 1 l Byte.x00; nth 2 l Byte.x00; nth 3 l Byte.x00]).
-    rewrite LittleEndian.combine_of_list.
     cbn.
     unfold Encode.encode_Invalid.
     rewrite bitSlice_all_nonneg. 2: cbv; discriminate. 2: apply LittleEndianList.le_combine_bound.

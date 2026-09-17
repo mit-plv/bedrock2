@@ -194,16 +194,15 @@ Section MMIO1.
       isMMIOAddr addr ->
       Memory.storeWord m addr v = None.
   Proof.
-    unfold Memory.storeWord. intros. unfold Memory.store_bytes, store_bytes.
+    unfold Memory.storeWord. intros. unfold Memory.store_bytes, store_Z, store_bytes.
+    rewrite LittleEndianList.length_le_split.
     erewrite load4bytes_in_MMIO_is_None; trivial.
   Qed.
 
   Ltac contrad := contradiction || discriminate || congruence.
 
   (* TODO: why are these here? *)
-  Arguments LittleEndian.combine: simpl never. (* TODO can we put this next to its definition? *)
   Arguments mcomp_sat: simpl never.
-  Arguments LittleEndian.split: simpl never.
   Local Arguments String.eqb: simpl never.
 
   Ltac fwd :=
@@ -342,7 +341,7 @@ Section MMIO1.
       progress change (@Bind _ _) with (@free.bind MetricMaterializeRiscvProgram.action result) in *.
       unfold free.bind at 1.
 
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, LittleEndianList.le_combine_split, LittleEndianList.length_le_split.
+      rewrite !LittleEndianList.le_combine_split, bits.unsigned_of_Z.
       rewrite Zmod_mod, Z.mod_small by eapply EncodeBound.encode_range.
       rewrite DecodeEncode.decode_encode; cycle 1. {
         epose proof Registers.arg_range_Forall as HH.
@@ -373,12 +372,9 @@ Section MMIO1.
       eapply runsToNonDet.runsToDone.
       simpl_MetricRiscvMachine_get_set.
       simpl_word_exprs .
-      unfold mmioStoreEvent, signedByteTupleToReg in *.
+      unfold mmioStoreEvent, signExtendToReg in *.
       unfold regToInt32.
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, LittleEndianList.length_le_split.
-      rewrite sextend_width_nop by reflexivity.
-      rewrite Z.mod_small by apply (bits.unsigned_range _ width_nonneg).
-      rewrite Zmod.of_Z_unsigned.
+      rewrite Zmod.of_Z_signed, Zmod.of_Z_unsigned.
       apply eqb_eq in E. subst action.
       cbn -[invalidateWrittenXAddrs] in *.
       specialize (HPp1 mKeep). rewrite map.split_empty_r in HPp1. specialize (HPp1 eq_refl).
@@ -490,7 +486,7 @@ Section MMIO1.
       change (@Bind _ _) with (@free.bind MetricMaterializeRiscvProgram.action result) in *.
       unfold free.bind at 1.
 
-      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split, LittleEndianList.le_combine_split, LittleEndianList.length_le_split.
+      rewrite !LittleEndianList.le_combine_split, bits.unsigned_of_Z.
       rewrite Zmod_mod, Z.mod_small by eapply EncodeBound.encode_range.
       rewrite DecodeEncode.decode_encode; cycle 1. {
         epose proof Registers.arg_range_Forall as HH.
@@ -516,7 +512,7 @@ Section MMIO1.
       split; [trivial|].
       split; [red; auto|].
       split; [ cbv [MMIOReadOK];
-               exists (LittleEndian.split 4 0); trivial |].
+               exists (bits.of_Z _ 0); trivial |].
       intros.
 
       repeat fwd.
@@ -525,7 +521,7 @@ Section MMIO1.
       simpl_MetricRiscvMachine_get_set.
       simpl_word_exprs. simpl.
 
-      unfold mmioLoadEvent, signedByteTupleToReg.
+      unfold mmioLoadEvent, signExtendToReg.
       match goal with
       | A: forall _ _, outcome _ _ _ -> _, OC: forall _, outcome _ _ _ |- _ =>
          epose proof (A (cons _ nil) (cons _ nil) (OC _)) as P; clear A
