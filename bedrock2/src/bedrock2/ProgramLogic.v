@@ -193,19 +193,22 @@ Ltac straightline_stackalloc_map :=
   let m := match goal with H : map.split ?mCobined ?m mStack |- _ => m end in
   let mCombined := match goal with H : map.split ?mCobined ?m mStack |- _ => mCobined end in
   let Hsplit := match goal with H : map.split ?mCobined ?m mStack |- _ => H end in
-  let Hm := multimatch goal with H : _ m |- _ => H end in
-  let Hm' := fresh Hm in
+  let __ := multimatch goal with H : _ m |- _ => H end in (* a fact about the memory to merge into *)
   let Htmp := fresh in
-  let Pm := match type of Hm with ?P m => P end in
-  assert_fails (assert (Separation.sep Pm (map.of_list_word_at a _) mCombined) as _ by ecancel_assumption);
-  rename Hm into Hm';
   let stack := fresh "stack" in
   let stack_length := fresh "length_" stack in (* MUST remain in context for deallocation *)
   let stack_bound := fresh "bound_" stack in (* likewise *)
   destruct Hanybytes as (stack&Htmp&stack_length&stack_bound);
   subst mStack;
-  epose proof (ex_intro _ m (ex_intro _ (map.of_list_word_at a stack) (conj Hsplit (conj Hm' eq_refl)))
-  : Separation.sep _ (map.of_list_word_at a stack) mCombined) as Hm;
+  (* one stack variable, merged into every fact about the memory *)
+  repeat match goal with
+         | Hm : ?Pm m |- _ =>
+             assert_fails (assert (Separation.sep Pm (map.of_list_word_at a stack) mCombined) as _ by ecancel_assumption);
+             let Hm' := fresh Hm in
+             rename Hm into Hm';
+             epose proof (ex_intro _ m (ex_intro _ (map.of_list_word_at a stack) (conj Hsplit (conj Hm' eq_refl)))
+             : Separation.sep _ (map.of_list_word_at a stack) mCombined) as Hm
+         end;
   try (let m' := fresh m in rename m into m'); rename mCombined into m
   end.
 
@@ -236,13 +239,16 @@ Ltac straightline_stackdealloc_bytes :=
   end.
 
 Ltac straightline_stackdealloc_side_condition :=
-  rewrite ?LittleEndianList.length_le_split; cbv [Memory.bytes_per];
+  rewrite ?LittleEndianList.length_le_split; cbv [Memory.bytes_per Memory.bytes_per_word]; cbn;
   first [ eassumption | Lia.lia ].
 
 Ltac straightline_stackdealloc_map :=
   lazymatch goal with |- exists _ _, Memory.anybytes ?a ?n _ /\ map.split ?m _ _ /\ _ =>
   let Hm := multimatch goal with Hm : _ m |- _ => Hm end in
   cbv [Scalars.scalar Scalars.scalar32 Scalars.scalar16 Scalars.truncated_word Scalars.truncated_scalar] in Hm;
+  (* the goal may spell the address differently from the hypothesis (a let-bound name) *)
+  repeat match type of Hm with context [map.of_list_word_at ?a' _] =>
+    assert_fails (constr_eq a' a); change a' with a in Hm end;
   let stack := match type of Hm with context [map.of_list_word_at a ?stack] => stack end in
   let Hm' := fresh Hm in
   pose proof Hm as Hm';
