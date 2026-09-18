@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 From Coq Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
@@ -57,9 +58,9 @@ Lemma alignedXAddrsRange_zero_bound_in:
   forall n a,
     (wordToN a < N.of_nat n)%N -> In a (alignedXAddrsRange 0 n).
 Proof.
-  induction n; [blia|].
+  induction n; [lia|].
   intros.
-  assert (wordToN a = N.of_nat n \/ wordToN a < N.of_nat n)%N by blia.
+  assert (wordToN a = N.of_nat n \/ wordToN a < N.of_nat n)%N by lia.
   clear H; destruct H0.
   - unfold alignedXAddrsRange; fold alignedXAddrsRange.
     left; apply wordToN_inj.
@@ -290,7 +291,7 @@ Section Equiv.
             wordToN w = 20 \/ wordToN w = 21 \/ wordToN w = 22 \/ wordToN w = 23 \/
             wordToN w = 24 \/ wordToN w = 25 \/ wordToN w = 26 \/ wordToN w = 27 \/
             wordToN w = 28 \/ wordToN w = 29 \/ wordToN w = 30 \/ wordToN w = 31)%N
-      by abstract blia.
+      by abstract lia.
     clear H.
     repeat match goal with
            | H: _ \/ _ |- _ => destruct H
@@ -319,7 +320,7 @@ Section Equiv.
             reg = 20 \/ reg = 21 \/ reg = 22 \/ reg = 23 \/
             reg = 24 \/ reg = 25 \/ reg = 26 \/ reg = 27 \/
             reg = 28 \/ reg = 29 \/ reg = 30 \/ reg = 31)
-      by abstract blia.
+      by abstract lia.
     clear H.
     repeat match goal with
            | H: _ \/ _ |- _ => destruct H
@@ -355,7 +356,7 @@ Section Equiv.
 
     apply Nat2Z.inj_lt in H0.
     rewrite N_Z_nat_conversions.Nat2Z.inj_pow in H0.
-    rewrite Z2Nat.id in H0 by blia.
+    rewrite Z2Nat.id in H0 by lia.
     cbn in H0.
 
     match type of H with
@@ -363,10 +364,10 @@ Section Equiv.
     end.
     rewrite Zmod.unsigned_of_Z in H1.
     rewrite Z.mod_small in H1
-      by (split; [blia|];
+      by (split; [lia|];
           eapply Z.lt_le_trans; [eassumption|];
-          apply Z.pow_le_mono_r; change (Z.of_nat nwidth) with width; blia).
-    blia.
+          apply Z.pow_le_mono_r; change (Z.of_nat nwidth) with width; lia).
+    lia.
   Qed.
 
   Lemma mem_related_riscvMemInit : mem_related _ (evalConstT kamiMemInit) riscvMemInit.
@@ -379,7 +380,7 @@ Section Equiv.
     { rewrite <-wordToN_to_nat.
       apply Nat2Z.inj_lt.
       rewrite N_nat_Z, N_Z_nat_conversions.Nat2Z.inj_pow.
-      rewrite Z2Nat.id by blia.
+      rewrite Z2Nat.id by lia.
       apply Z.ltb_lt; rewrite Z_of_N_wordToN; assumption.
     }
     erewrite Properties.map.get_of_list_In_NoDup; trivial.
@@ -404,20 +405,20 @@ Section Equiv.
                                   | None => 0%Z
                                   end)) in HX.
         cbv beta iota in HX.
-        pose proof Z.pow_le_mono_r 2 memSizeLg 31 eq_refl ltac:(blia);
-        pose proof N_Z_nat_conversions.Z2Nat.inj_pow 2 memSizeLg ltac:(blia) ltac:(blia);
+        pose proof Z.pow_le_mono_r 2 memSizeLg 31 eq_refl ltac:(lia);
+        pose proof N_Z_nat_conversions.Z2Nat.inj_pow 2 memSizeLg ltac:(lia) ltac:(lia);
         change (Z.to_nat 2) with 2%nat in *.
-        assert (Hwpos: (0 < nwidth)%nat) by (cbv [width]; blia).
+        assert (Hwpos: (0 < nwidth)%nat) by (cbv [width]; lia).
         assert (Hwz: Z.of_nat nwidth = 32) by reflexivity.
-        rewrite 2wordToZ_ZToWord'' in HX by (rewrite ?Hwz; blia).
-        blia. }
+        rewrite 2wordToZ_ZToWord'' in HX by (rewrite ?Hwz; lia).
+        lia. }
       { rewrite (proj2 (nth_error_None _ _)); try congruence.
-        rewrite map_length, seq_length; blia. } }
+        rewrite map_length, seq_length; lia. } }
     { replace (evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) addr)
         with (natToWord (Z.to_nat memSizeLg) (wordToNat addr)).
       2: {
         cbv [evalZeroExtendTrunc].
-        destruct (lt_dec _ _); [exfalso; apply Z2Nat.inj_lt in l; blia|].
+        destruct (lt_dec _ _); [exfalso; apply Z2Nat.inj_lt in l; lia|].
         apply wordToNat_inj.
         rewrite wordToNat_natToWord_eqn.
         rewrite wordToNat_split1.
@@ -510,9 +511,9 @@ Section Equiv.
       apply N2Z.inj_lt in Hx.
       rewrite NatLib.Z_of_N_Npow2 in Hx.
       assert (2 ^ BinInt.Z.of_nat (2 + Z.to_nat instrMemSizeLg) < 2 ^ memSizeLg)
-        by (apply Z.pow_lt_mono_r; blia).
+        by (apply Z.pow_lt_mono_r; lia).
       rewrite <-Z_of_N_wordToN in *.
-      blia.
+      lia.
   Qed.
 
   Lemma riscv_to_kamiImplProcessor:
@@ -565,7 +566,7 @@ Section Equiv.
         rewrite nat_N_Z.
         cbv [instrMemSize].
         rewrite N_Z_nat_conversions.Nat2Z.inj_pow.
-        rewrite Nat2Z.inj_add, Z2Nat.id by blia.
+        rewrite Nat2Z.inj_add, Z2Nat.id by lia.
         rewrite Z_of_N_wordToN.
         apply H0.
       + apply mmio_init_xaddrs_disjoint.

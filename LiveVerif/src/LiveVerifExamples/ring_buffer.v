@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
 

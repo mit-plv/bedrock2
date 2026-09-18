@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Properties.
 Require Import compiler.util.Common.
 Require compiler.ExprImp.
@@ -68,7 +69,7 @@ Section FlattenExpr1.
              | IH: _, H: _ |- _ => specialize IH with (1 := H)
              | |- context [?x / 4] => unique pose proof (Z.div_pos x 4)
              end;
-      try blia.
+      try lia.
   Qed.
 
   Lemma flattenExprAsBoolExpr_size: forall e s bcond ngs ngs',
@@ -80,24 +81,24 @@ Section FlattenExpr1.
       repeat match goal with
       | H : _ |- _ => apply flattenExpr_size in H
       | |- context [?x / 4] => unique pose proof (Z.div_pos x 4)
-      end; try blia.
+      end; try lia.
   Qed.
 
   Lemma flattenExprs_size: forall es s resVars ngs ngs',
     flattenExprs ngs es = (s, resVars, ngs') ->
     0 <= FlatImp.stmt_size s <= ExprImp.exprs_size es.
   Proof.
-    induction es; intros; simpl in *; simp; simpl; try blia.
+    induction es; intros; simpl in *; simp; simpl; try lia.
     specialize IHes with (1 := E0).
     apply flattenExpr_size in E.
-    blia.
+    lia.
   Qed.
 
   Lemma flattenExprs_resVarsLength: forall es s resVars ngs ngs',
     flattenExprs ngs es = (s, resVars, ngs') ->
     List.length resVars = List.length es.
   Proof.
-    induction es; intros; simpl in *; simp; simpl; try blia.
+    induction es; intros; simpl in *; simp; simpl; try lia.
     specialize IHes with (1 := E0).
     f_equal.
     assumption.
@@ -114,7 +115,7 @@ Section FlattenExpr1.
     pose proof E as E'.
     apply flattenExprs_size in E.
     apply flattenExprs_resVarsLength in E'.
-    blia.
+    lia.
   Qed.
 
   Lemma flattenInteract_size: forall f args binds ngs ngs' s,
@@ -126,7 +127,7 @@ Section FlattenExpr1.
     destruct_one_match_hyp.
     simp. simpl.
     apply flattenExprs_size in E.
-    blia.
+    lia.
   Qed.
 
   Lemma flattenStmt_size: forall s s' ngs ngs',
@@ -144,7 +145,7 @@ Section FlattenExpr1.
     | H: flattenInteract _ _ _ _ = _ |- _ => apply flattenInteract_size in H
     end;
     simpl in *;
-    try blia.
+    try lia.
   Qed.
 
   Lemma flattenExpr_freshVarUsage: forall e ngs ngs' oResVar s v,
@@ -590,7 +591,7 @@ Section FlattenExpr1.
   Proof.
     intro b. destruct b; cbn [negb].
     - rewrite word.eqb_ne. 1: reflexivity.
-      rewrite Zmod.of_Z_0. apply bits.one_neq_zero. pose proof width_pos. blia.
+      rewrite Zmod.of_Z_0. apply bits.one_neq_zero. pose proof width_pos. lia.
     - rewrite (proj2 (Zmod.eqb_eq _ _)) by reflexivity. reflexivity.
   Qed.
 

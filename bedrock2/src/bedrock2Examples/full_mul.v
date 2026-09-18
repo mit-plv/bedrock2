@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 (* Implementation of mulhuu by Andres Erbsen. *)
 
 Require Import bedrock2.NotationsCustomEntry.

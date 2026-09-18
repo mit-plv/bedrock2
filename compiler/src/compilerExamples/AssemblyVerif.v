@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.Lists.List.
 Require Import coqutil.Z.Lia.
 Import ListNotations.
@@ -113,8 +114,8 @@ Section Verif.
                 map.get final.(getRegs) x2 = Some (gallina_prog_1 v1 v2)).
   Proof.
     intros.
-    assert (valid_register x1). { unfold valid_register, x1. blia. }
-    assert (valid_register x2). { unfold valid_register, x2. blia. }
+    assert (valid_register x1). { unfold valid_register, x1. lia. }
+    assert (valid_register x2). { unfold valid_register, x2. lia. }
     destruct_RiscvMachine initial.
     unfold asm_prog_1 in *.
     simpl in *. simp.
@@ -159,8 +160,8 @@ Section Verif.
                 map.get final.(getRegs) x2 = Some (gallina_prog_2 v1 v2)).
   Proof.
     intros.
-    assert (valid_register x1). { unfold valid_register, x1. blia. }
-    assert (valid_register x2). { unfold valid_register, x2. blia. }
+    assert (valid_register x1). { unfold valid_register, x1. lia. }
+    assert (valid_register x2). { unfold valid_register, x2. lia. }
     destruct_RiscvMachine initial.
     unfold asm_prog_2 in *.
     simpl in *.
@@ -204,7 +205,7 @@ Ltac sidecondition ::=
 
     eapply runsTo_trans. {
       eapply asm_prog_1_correct; simpl; try sidecondition.
-      rewrite map.get_put_diff by (unfold x1, x2; blia).
+      rewrite map.get_put_diff by (unfold x1, x2; lia).
       apply map.get_put_same.
     }
     simpl.

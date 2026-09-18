@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Macros.unique.
@@ -60,7 +61,7 @@ Qed.
 
 Lemma compile_interact_length': forall binds f args,
     Z.of_nat (List.length (compile_interact binds f args)) <= 7.
-Proof. intros. rewrite compile_interact_length. blia. Qed.
+Proof. intros. rewrite compile_interact_length. lia. Qed.
 
 Lemma compile_interact_emits_valid: forall iset binds a args,
     Forall valid_FlatImp_var binds ->
@@ -79,7 +80,7 @@ Proof.
     split; [|cbv;auto].
     unfold Encode.respects_bounds. simpl.
     unfold Encode.verify_S, valid_FlatImp_var, opcode_STORE, funct3_SW in *.
-    repeat split; (blia || assumption).
+    repeat split; (lia || assumption).
   - rewrite <- H1.
     simp_step.
     simp_step.
@@ -89,7 +90,7 @@ Proof.
     split; [|cbv;auto].
     unfold Encode.respects_bounds. simpl.
     unfold Encode.verify_I, valid_FlatImp_var, opcode_LOAD, funct3_LW in *.
-    repeat split; (blia || assumption).
+    repeat split; (lia || assumption).
 Qed.
 
 Local Arguments Z.mul: simpl never.
@@ -256,7 +257,7 @@ Section MMIO1.
              | [ H : ?x -> _, H' : ?x -> _ |- _ ] =>
                pose proof (fun u : x => conj (H u) (H' u)); clear H H'
              end.
-    all: time blia.
+    all: time lia.
   Time Qed.
 
   Lemma compile_ext_call_correct: forall resvars extcall argvars,
@@ -354,8 +355,8 @@ Section MMIO1.
       unfold RiscvMachine.withLeakageEvent, getRegs, getReg.
       lazymatch goal with
       | E: Registers.reg_class.all Registers.reg_class.arg = ?z1 :: ?z2 :: _ |- _ =>
-          destr ((0 <? z1) && (z1 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia];
-          destr ((0 <? z2) && (z2 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia];
+          destr ((0 <? z1) && (z1 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; lia];
+          destr ((0 <? z2) && (z2 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; lia];
           replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto);
           replace (map.get initialL_regs z2) with (Some x0) by (symmetry; unfold map.extends in *; eauto)
       end.
@@ -500,7 +501,7 @@ Section MMIO1.
       unfold getReg, getRegs, RiscvMachine.withLeakageEvent.
       lazymatch goal with
       | E: Registers.reg_class.all Registers.reg_class.arg = ?z1 :: _ |- _ =>
-          destr ((0 <? z1) && (z1 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia];
+          destr ((0 <? z1) && (z1 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; lia];
           replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto)
       end.
 
@@ -534,7 +535,7 @@ Section MMIO1.
       unfold setReg.
       lazymatch goal with
       | E: Registers.reg_class.all Registers.reg_class.arg = ?z1 :: _ |- _ =>
-          destr ((0 <? z1) && (z1 <? 32))%bool; [|exfalso;blia]
+          destr ((0 <? z1) && (z1 <? 32))%bool; [|exfalso;lia]
       end.
       do 5 eexists.
       split; eauto.
@@ -560,10 +561,10 @@ Section MMIO1.
         | H : context [map.get _ ?x] |- _ <= ?x < _ =>
           rewrite map.get_put_dec in H
         end.
-        destruct_one_match_hyp. 1: blia. eauto.
+        destruct_one_match_hyp. 1: lia. eauto.
       }
       split. {
-        rewrite map.get_put_diff; eauto. unfold RegisterNames.sp. blia.
+        rewrite map.get_put_diff; eauto. unfold RegisterNames.sp. lia.
       }
       split. {
         eapply @regs_initialized.preserve_regs_initialized_after_put.

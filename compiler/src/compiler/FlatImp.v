@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Relations.Relation_Operators.
 Require Import Coq.Wellfounded.Transitive_Closure.
@@ -86,9 +87,9 @@ Section Syntax.
 
   Lemma stmt_size_nonneg: forall s, 0 <= stmt_size s.
   Proof.
-    induction s; simpl; try blia;
+    induction s; simpl; try lia;
     assert (0 <= (Z.of_nat (Datatypes.length t) + 3) / 4);
-      try apply Z.div_pos; blia.
+      try apply Z.div_pos; lia.
   Qed.
 
   Inductive subexpression : stmt -> stmt -> Prop :=
@@ -702,7 +703,7 @@ Module exec.
     Local Ltac solve_picksps_equal :=
       intros; cbv beta; f_equal;
       repeat (rewrite rev_app_distr || cbn [rev app]); rewrite List.skipn_app_r;
-      [|repeat (rewrite app_length || rewrite rev_length || simpl); blia];
+      [|repeat (rewrite app_length || rewrite rev_length || simpl); lia];
       repeat rewrite <- app_assoc; rewrite List.skipn_app_r;
       [|rewrite rev_length; reflexivity];
       repeat (rewrite rev_app_distr || cbn [rev app] || rewrite rev_involutive);

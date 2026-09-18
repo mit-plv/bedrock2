@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Export coqutil.Map.OfListWord coqutil.Map.Memory.
 
 From Coq Require Import ZArith Lia.

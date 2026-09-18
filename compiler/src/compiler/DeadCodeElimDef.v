@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.Init.Wf Wellfounded.
 Require Import compiler.FixEq.
 Require Import bedrock2.LeakageSemantics.
@@ -657,15 +658,15 @@ Section WithArguments1.
              | t := List.skipn ?n ?k |- _ =>
                       let H := fresh "H" in
                       assert (H := List.skipn_length n k); subst t end.
-      all: try (left; simpl; blia).
+      all: try (left; simpl; lia).
       all: try (right; constructor; constructor).
     - assert (H' := skipn_length (length skip1) kH).
-      rewrite e3 in *. simpl in *. left. blia.
+      rewrite e3 in *. simpl in *. left. lia.
     - assert (H' := skipn_length (length skip1) kH).
-      rewrite e3 in *. simpl in *. left. blia.
+      rewrite e3 in *. simpl in *. left. lia.
     - destruct (length (List.skipn (length skip1) kH) =? length kH)%nat eqn:E.
       + apply Nat.eqb_eq in E. rewrite E. right. constructor. constructor.
-      + apply Nat.eqb_neq in E. left. blia.
+      + apply Nat.eqb_neq in E. left. lia.
     Defined.
 
     Definition stmt_leakage e :=

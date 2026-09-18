@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import coqutil.sanity coqutil.Byte.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Map.Properties.

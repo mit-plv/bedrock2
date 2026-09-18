@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry Coq.Strings.String.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Word.Bitwidth.
@@ -312,11 +313,11 @@ Section WithParameters.
               cbv [byte.wrap];
               rewrite ?byte.unsigned_of_Z, ?bits.unsigned_of_Z, ?bits.unsigned_and,
                       ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small
-                by blia;
+                by lia;
               change (Z.ones 8 mod 2 ^ 32) with (Z.ones 8)).
           symmetry; eapply Z.mod_small.
           pose proof Z.mod_pos_bound (Zmod.unsigned v0) (2^8) eq_refl.
-          clear. Z.div_mod_to_equations. blia. }
+          clear. Z.div_mod_to_equations. lia. }
         { (* copy-paste from above, trace manipulation *)
           eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
           eexists. split.
@@ -338,11 +339,11 @@ Section WithParameters.
               cbv [byte.wrap];
               rewrite ?byte.unsigned_of_Z, ?bits.unsigned_of_Z, ?bits.unsigned_and,
                       ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small
-                by blia;
+                by lia;
               change (Z.ones 8 mod 2 ^ 32) with (Z.ones 8)).
           symmetry; eapply Z.mod_small.
           pose proof Z.mod_pos_bound (Zmod.unsigned v0) (2^8) eq_refl.
-          clear. Z.div_mod_to_equations. blia. }
+          clear. Z.div_mod_to_equations. lia. }
         (* tag:symex *)
         { right; split.
           { subst_words. rewrite bits.unsigned_xor, Z.lxor_nilpotent; exact eq_refl. }
@@ -361,7 +362,7 @@ Section WithParameters.
               cbv [byte.wrap];
               rewrite ?byte.unsigned_of_Z, ?bits.unsigned_of_Z, ?bits.unsigned_and,
                       ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small
-                by blia;
+                by lia;
               change (Z.ones 8 mod 2 ^ 32) with (Z.ones 8)).
           trivial. } } }
   Qed.
@@ -402,9 +403,9 @@ Section WithParameters.
       eapply Zmod.unsigned_inj;
       repeat (
       cbv [byte.wrap];
-      rewrite ?byte.unsigned_of_Z, ?bits.unsigned_of_Z, ?bits.unsigned_and, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by blia;
+      rewrite ?byte.unsigned_of_Z, ?bits.unsigned_of_Z, ?bits.unsigned_and, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by lia;
       change (Z.ones 8 mod 2 ^ 32) with (Z.ones 8));
-      rewrite ?Z.mod_small; rewrite ?Z.mod_small; trivial; blia. }
+      rewrite ?Z.mod_small; rewrite ?Z.mod_small; trivial; lia. }
       left; split; eauto.
       eexists nil, x0; repeat split; cbv [any choice lightbulb_spec.spi_timeout]; eauto.
       rewrite app_nil_r; trivial. }

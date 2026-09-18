@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 
 (*https://github.com/pq-crystals/kyber/commit/dda29cc63af721981ee2c831cf00822e69be3220*)
 (*
@@ -184,11 +185,11 @@ Section WithWord.
           assert (nsmall: (0 <= Z.to_nat (Zmod.unsigned x1) < Datatypes.length x)%nat) by ZnWords.
           assert (Ex1: x1 = bits.of_Z width (Zmod.unsigned (bits.of_Z width 1) * Z.of_nat (Z.to_nat (Zmod.unsigned x1)))).
           { rewrite Z2Nat.id.
-            2: { assert (Hnonneg := bits.unsigned_range x1 width_nonneg). blia. }
+            2: { assert (Hnonneg := bits.unsigned_range x1 width_nonneg). lia. }
             apply Zmod.unsigned_inj.
-            rewrite bits.unsigned_of_Z, bits.unsigned_1 by (pose proof width_pos; blia).
+            rewrite bits.unsigned_of_Z, bits.unsigned_1 by (pose proof width_pos; lia).
             assert (Hx1 := bits.unsigned_range x1 width_nonneg).
-            rewrite Z.mod_small; blia. }
+            rewrite Z.mod_small; lia. }
           eapply Scalars.store_one_of_sep.
           { seprewrite_in (@array_index_nat_inbounds _ _ _ _ _ ptsto (bits.of_Z width 1) Byte.x00 x x3 (Z.to_nat (Zmod.unsigned x1))) H3.
             { ZnWords. }            
@@ -236,13 +237,13 @@ Section WithWord.
             remember (Z.to_nat (Zmod.unsigned x1)) as n eqn:En.            
             rewrite Ex1 in H5.
             replace (Z.of_nat n) with (Z.of_nat (List.length (List.firstn n x))) in H5.
-            2: { rewrite List.firstn_length. blia. }
+            2: { rewrite List.firstn_length. lia. }
             seprewrite_in (symmetry! @array_append) H5. subst.
             split; [|split; [|split; [|split] ] ].
             4: ecancel_assumption.
             { assumption. }
             { repeat rewrite List.app_length. cbn [List.length].
-              rewrite List.firstn_length. rewrite List.skipn_length. blia. }
+              rewrite List.firstn_length. rewrite List.skipn_length. lia. }
             { reflexivity. }
             { reflexivity. } }
           { repeat straightline. cbn in localsmap.
@@ -271,42 +272,42 @@ Section WithWord.
                      { f_equal. f_equal. subst v1 n.
                        rewrite Z2Nat.id.
                        2: { assert (Hnonneg:= bits.unsigned_range (Zmod.add (Zmod.mul v2 x1) x6) width_nonneg).
-                            blia. }
+                            lia. }
                        ZnWords. }
                      ecancel_done. }
                 subst. subst v1. subst v0. subst v2.
                 assert (Hnonneg := bits.unsigned_range (Zmod.add (Zmod.mul 8 x1) x6) width_nonneg).
                 enough ((Zmod.unsigned (Zmod.add (Zmod.mul 8 x1) x6)) < KYBER_N).
-                { subst KYBER_N. blia. }
+                { subst KYBER_N. lia. }
                 assert (0 < Zmod.unsigned (m := 2 ^ width) (bits.of_Z width 8)).
                 { rewrite bits.unsigned_of_Z.
-                  rewrite Z.mod_small; try split; try blia.
-                  assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(blia) ltac:(blia)).
-                  blia. }
+                  rewrite Z.mod_small; try split; try lia.
+                  assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(lia) ltac:(lia)).
+                  lia. }
                 assert (0 < 2 ^ width).
-                { apply Z.pow_pos_nonneg; blia. }
-                rewrite Zmod.unsigned_add, Zmod.unsigned_mul, Zmod.unsigned_udiv in * by blia.
+                { apply Z.pow_pos_nonneg; lia. }
+                rewrite Zmod.unsigned_add, Zmod.unsigned_mul, Zmod.unsigned_udiv in * by lia.
                 rewrite bits.unsigned_of_Z in E.
                 
-                rewrite Z.add_mod_idemp_l by blia. rewrite bits.unsigned_of_Z in *.
+                rewrite Z.add_mod_idemp_l by lia. rewrite bits.unsigned_of_Z in *.
                 assert (Zmod.unsigned x1 < KYBER_N mod 2 ^ width / (8 mod 2 ^ width)).
                 { eapply Z.lt_le_trans. 1: eassumption.
-                  apply Z.mod_le; try blia.
-                  apply Z_div_nonneg_nonneg; try blia.
-                  apply Z_mod_nonneg_nonneg; blia. }
+                  apply Z.mod_le; try lia.
+                  apply Z_div_nonneg_nonneg; try lia.
+                  apply Z_mod_nonneg_nonneg; lia. }
                 enough (((8 mod 2 ^ width) * Zmod.unsigned x1 + Zmod.unsigned x6) < KYBER_N).
-                { eapply Z.le_lt_trans. 2: eassumption. apply Z.mod_le; try blia.
+                { eapply Z.le_lt_trans. 2: eassumption. apply Z.mod_le; try lia.
                   assert (Hx6 := bits.unsigned_range x6 width_nonneg). assert (Hx1 := bits.unsigned_range x1 width_nonneg).
-                  blia. }
+                  lia. }
                 assert (Zmod.unsigned x1 < KYBER_N / (8 mod 2 ^ width)).
                 { eapply Z.lt_le_trans. 1: eassumption.
-                  apply Z.div_le_mono; try blia. apply Z.mod_le; blia. }
+                  apply Z.div_le_mono; try lia. apply Z.mod_le; lia. }
                 enough ((8 mod 2 ^ width) * (Zmod.unsigned x1 + 1) <= KYBER_N).
-                { blia. }
-                assert (Zmod.unsigned x1 + 1 <= KYBER_N / (8 mod 2 ^ width)) by blia.
-                apply Zmult_le_compat_l with (p := (8 mod 2 ^ width)) in H16; try blia.
+                { lia. }
+                assert (Zmod.unsigned x1 + 1 <= KYBER_N / (8 mod 2 ^ width)) by lia.
+                apply Zmult_le_compat_l with (p := (8 mod 2 ^ width)) in H16; try lia.
                 eapply Z.le_trans. 1: eassumption.
-                apply Z.mul_div_le. blia. }
+                apply Z.mul_div_le. lia. }
               repeat straightline. eapply dexpr_expr. repeat straightline. letexists; split.
               { cbv [l]. rewrite ?Properties.map.get_put_dec; exact eq_refl. }
               repeat straightline. eapply dexpr_expr. repeat straightline. letexists; split.
@@ -354,25 +355,25 @@ Section WithWord.
               remember (Z.to_nat (Zmod.unsigned x1)) as n eqn:En.              
               rewrite Ex1 in H12.
               replace (Z.of_nat n) with (Z.of_nat (List.length (List.firstn n x4))) in H12.
-              2: { rewrite List.firstn_length. blia. }
+              2: { rewrite List.firstn_length. lia. }
               seprewrite_in (symmetry! @array_append) H12. subst.
               assert (8 < 2 ^ width).
-              { assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(blia) ltac:(blia)).
-                blia. }
+              { assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(lia) ltac:(lia)).
+                lia. }
               rewrite bits.unsigned_of_Z in Ex6.
-              rewrite Z.mod_small in * by blia.
+              rewrite Z.mod_small in * by lia.
 
               eexists. eexists. eexists. split.
               { ssplit. 4: ecancel_assumption.
                 all: intuition eauto.
                 repeat rewrite List.app_length. cbn [List.length].
-                rewrite List.firstn_length. rewrite List.skipn_length. blia. }
+                rewrite List.firstn_length. rewrite List.skipn_length. lia. }
               split.
               { clear H12. subst v15. subst v.
                 rewrite Zmod.unsigned_add. rewrite bits.unsigned_of_Z.
-                rewrite (Z.mod_small 8) by blia. rewrite (Z.mod_small 1) by blia.
-                pose proof (bits.unsigned_range x6 width_nonneg). rewrite Z.mod_small by blia.
-                blia. }
+                rewrite (Z.mod_small 8) by lia. rewrite (Z.mod_small 1) by lia.
+                pose proof (bits.unsigned_range x6 width_nonneg). rewrite Z.mod_small by lia.
+                lia. }
               (*postcondition*)
               intros. intuition.
               destruct H18 as [MSG_VALS [A_COEFFS_VALS [H18 [H19 [H20 [H21 H22] ] ] ] ] ].
@@ -392,10 +393,10 @@ Section WithWord.
                   { instantiate (1 := fun _ _ => _). simpl. reflexivity. } }
                 instantiate (1 := fun _ _ => _). simpl. align_trace. }
               clear H22. rewrite Zmod.unsigned_add. clear H12.
-              rewrite bits.unsigned_1 by (pose proof width_pos; blia).
-              rewrite (Z.mod_small 8) by blia. rewrite Z.mod_small.
-              { blia. }
-              pose proof (bits.unsigned_range x6 width_nonneg). blia. }
+              rewrite bits.unsigned_1 by (pose proof width_pos; lia).
+              rewrite (Z.mod_small 8) by lia. rewrite Z.mod_small.
+              { lia. }
+              pose proof (bits.unsigned_range x6 width_nonneg). lia. }
             intros. intuition. eexists. eexists. split; [|split; [|split; [|split] ] ].
             4: ecancel_assumption.
             all: auto.
@@ -406,9 +407,9 @@ Section WithWord.
             apply Z.ltb_nlt in Ex6.
             rewrite bits.unsigned_of_Z in Ex6.
             assert (8 < 2 ^ width).
-            { assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(blia) ltac:(blia)).
-              blia. }
-            rewrite (Z.mod_small 8) in * by blia. blia. }
+            { assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(lia) ltac:(lia)).
+              lia. }
+            rewrite (Z.mod_small 8) in * by lia. lia. }
           { cbn in l. repeat straightline.
             eapply dexpr_expr. repeat straightline. letexists; split.
             { cbn. rewrite ?Properties.map.get_put_dec; exact eq_refl. }
@@ -428,17 +429,17 @@ Section WithWord.
             (*the following block, 'block X', is copied and pasted down below*)
             { subst v v1.
               assert (8 < 2 ^ width).
-              { assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(blia) ltac:(blia)).
-                blia. }
+              { assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(lia) ltac:(lia)).
+                lia. }
               assert (0 < Zmod.unsigned (m := 2 ^ width) (bits.of_Z width 8)).
               { rewrite bits.unsigned_of_Z.
-                rewrite Z.mod_small by blia. blia. }
+                rewrite Z.mod_small by lia. lia. }
               remember (Zmod.udiv _ _) as cow.
-              rewrite Zmod.unsigned_add. rewrite bits.unsigned_1 by (pose proof width_pos; blia).
+              rewrite Zmod.unsigned_add. rewrite bits.unsigned_1 by (pose proof width_pos; lia).
               rewrite (Z.mod_small (Zmod.unsigned x1 + 1)).
-              { blia. }
-              pose proof (bits.unsigned_range x1 width_nonneg). split; try blia.
-              pose proof (bits.unsigned_range cow width_nonneg). blia. }
+              { lia. }
+              pose proof (bits.unsigned_range x1 width_nonneg). split; try lia.
+              pose proof (bits.unsigned_range cow width_nonneg). lia. }
             repeat straightline. eexists. eexists. ssplit.
             3: ecancel_assumption.
             1,2: assumption.
@@ -459,26 +460,26 @@ Section WithWord.
             (*block X again*)
             { subst v v1.
               assert (8 < 2 ^ width).
-              { assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(blia) ltac:(blia)).
-                blia. }
+              { assert (X := Z.pow_le_mono_r 2 4 width). specialize (X ltac:(lia) ltac:(lia)).
+                lia. }
               assert (0 < Zmod.unsigned (m := 2 ^ width) (bits.of_Z width 8)).
               { rewrite bits.unsigned_of_Z.
-                rewrite Z.mod_small by blia. blia. }
+                rewrite Z.mod_small by lia. lia. }
               remember (Zmod.udiv _ _) as cow.
-              rewrite Zmod.unsigned_add. rewrite bits.unsigned_1 by (pose proof width_pos; blia).
+              rewrite Zmod.unsigned_add. rewrite bits.unsigned_1 by (pose proof width_pos; lia).
               rewrite (Z.mod_small (Zmod.unsigned x1 + 1)).
-              { blia. }
-              pose proof (bits.unsigned_range x1 width_nonneg). split; try blia.
-              pose proof (bits.unsigned_range cow width_nonneg). blia. } } }
+              { lia. }
+              pose proof (bits.unsigned_range x1 width_nonneg). split; try lia.
+              pose proof (bits.unsigned_range cow width_nonneg). lia. } } }
         intros. intuition. eexists. eexists. ssplit.
         3: ecancel_assumption.
         1,2: assumption.
         simpl. replace (Z.to_nat v) with 0%nat.
         { cbn [get_outer_leakage]. instantiate (1 := (_ :: _ :: _ :: nil)%list). reflexivity. }
         destruct (Z.ltb (Zmod.unsigned x1) _) eqn:E.
-        { rewrite bits.unsigned_1 in H4 by (pose proof width_pos; blia). congruence. }
+        { rewrite bits.unsigned_1 in H4 by (pose proof width_pos; lia). congruence. }
         apply Z.ltb_nlt in E.
-        blia. }
+        lia. }
       repeat straightline.
       subst k0.
       assert (app_one_cons : forall A (a : A) l, (a :: l = (cons a nil) ++ l)%list).

@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.Logic.PropExtensionality Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Lists.List. Import ListNotations. Open Scope list_scope.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.

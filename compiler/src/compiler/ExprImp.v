@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.Program.Tactics.
@@ -102,9 +103,9 @@ Section ExprImp1.
 
     Lemma expr_size_pos: forall exp, expr_size exp > 0.
     Proof.
-      induction exp; simpl; try blia;
+      induction exp; simpl; try lia;
       assert (0 <= (Z.of_nat (Datatypes.length table) + 3) / 4);
-        try apply Z.div_pos; blia.
+        try apply Z.div_pos; lia.
     Qed.
 
     Definition exprs_size(es: list expr): Z := fold_right (fun e res => res + expr_size e) 0 es.
@@ -127,7 +128,7 @@ Section ExprImp1.
 
     Lemma exprs_size_nonneg: forall es, 0 <= exprs_size es.
     Proof.
-      induction es; simpl in *; try blia. pose proof (expr_size_pos a). blia.
+      induction es; simpl in *; try lia. pose proof (expr_size_pos a). lia.
     Qed.
 
     Lemma cmd_size_nonneg: forall s, 0 <= cmd_size s.
@@ -137,7 +138,7 @@ Section ExprImp1.
       | e: expr |- _ => unique pose proof (expr_size_pos e)
       | es: list expr |- _ => unique pose proof (exprs_size_nonneg es)
       end;
-      try blia.
+      try lia.
     Qed.
 
     Local Ltac inversion_lemma :=

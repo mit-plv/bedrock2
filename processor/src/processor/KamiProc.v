@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -207,7 +208,7 @@ Section Parametrized.
     pose proof (wordToNat_bound iaddr).
     pose proof (NatLib.pow2_zero iaddrSize).
     assert (#iaddr = NatLib.pow2 iaddrSize - 1 \/
-            #iaddr < NatLib.pow2 iaddrSize - 1)%nat by blia.
+            #iaddr < NatLib.pow2 iaddrSize - 1)%nat by lia.
     destruct H1; [|assumption].
     assert (natToWord iaddrSize (#iaddr) =
             natToWord iaddrSize (NatLib.pow2 iaddrSize - 1)) by congruence.
@@ -237,10 +238,10 @@ Section PerInstAddr.
     nwidth = (2 + ninstrMemSizeLg + (nwidth - (2 + ninstrMemSizeLg)))%nat.
   Proof.
     change 2%nat with (Z.to_nat 2).
-    rewrite <-Z2Nat.inj_add by blia.
-    rewrite <-Z2Nat.inj_sub by blia.
-    rewrite <-Z2Nat.inj_add by (unfold width; blia).
-    f_equal; blia.
+    rewrite <-Z2Nat.inj_add by lia.
+    rewrite <-Z2Nat.inj_sub by lia.
+    rewrite <-Z2Nat.inj_add by (unfold width; lia).
+    f_equal; lia.
   Qed.
 
   Local Definition pcInitVal: ConstT (Pc nwidth) :=

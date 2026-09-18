@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.bitblast.
@@ -15,13 +16,13 @@ Lemma mod0_divisible_modulo: forall a m n,
 Proof.
   intros.
   unfold Z.divide in H1. destruct H1 as [z H1].
-  assert (z < 0 \/ z = 0 \/ 0 < z) as C by blia. destruct C as [C | [ C | C] ].
+  assert (z < 0 \/ z = 0 \/ 0 < z) as C by lia. destruct C as [C | [ C | C] ].
   - exfalso. Lia.nia.
   - exfalso. Lia.nia.
   - rewrite Z.mul_comm in H1. subst m.
-    rewrite Z.rem_mul_r in H2 by blia.
-    assert (a mod n < 0 \/ a mod n = 0 \/ 0 < a mod n) as D by blia. destruct D as [D | [D | D ] ].
-    + exfalso. pose proof (Z.mod_pos_bound a n H). blia.
+    rewrite Z.rem_mul_r in H2 by lia.
+    assert (a mod n < 0 \/ a mod n = 0 \/ 0 < a mod n) as D by lia. destruct D as [D | [D | D ] ].
+    + exfalso. pose proof (Z.mod_pos_bound a n H). lia.
     + assumption.
     + pose proof (Z.mod_pos_bound (a / n) z C). exfalso. Lia.nia.
 Qed.
@@ -32,7 +33,7 @@ Lemma mod_mod_remove_outer: forall a m n,
     (a mod m) mod n = a mod m.
 Proof.
   intros *. intros [A B] C. apply Z.mod_small.
-  pose proof (Z.mod_pos_bound a m A). blia.
+  pose proof (Z.mod_pos_bound a m A). lia.
 Qed.
 
 Lemma mod_mod_remove_inner: forall a m n,
@@ -40,11 +41,11 @@ Lemma mod_mod_remove_inner: forall a m n,
     m mod n = 0 ->
     (a mod m) mod n = a mod n.
 Proof.
-  intros. rewrite <- Znumtheory.Zmod_div_mod; try blia.
+  intros. rewrite <- Znumtheory.Zmod_div_mod; try lia.
   unfold Z.divide.
-  apply Zmod_divides in H0; [|blia].
+  apply Zmod_divides in H0; [|lia].
   destruct H0. subst m.
-  exists x. blia.
+  exists x. lia.
 Qed.
 
 Lemma div_mul_same: forall a b,
@@ -53,7 +54,7 @@ Lemma div_mul_same: forall a b,
 Proof.
   intros.
   pose proof (Zmod_eq_full a b H).
-  blia.
+  lia.
 Qed.
 
 Lemma sub_mod_exists_q: forall v m,
@@ -61,10 +62,10 @@ Lemma sub_mod_exists_q: forall v m,
     exists q, v - v mod m = m * q.
 Proof.
   intros.
-  apply (Zmod_divides (v - v mod m) m); [blia|].
+  apply (Zmod_divides (v - v mod m) m); [lia|].
   rewrite <- Zminus_mod_idemp_l.
   rewrite Z.sub_diag.
-  rewrite Z.mod_0_l; blia.
+  rewrite Z.mod_0_l; lia.
 Qed.
 
 Lemma shiftr_spec'': forall a n m : Z,
@@ -95,9 +96,9 @@ Lemma mask_app_plus: forall v i j k,
     mask v i j + mask v j k = mask v i k.
 Proof.
   intros. unfold mask.
-  do 2 rewrite <- div_mul_same by (apply Z.pow_nonzero; blia).
-  rewrite <-! Z.land_ones by blia.
-  rewrite <-! Z.shiftl_mul_pow2 by blia.
+  do 2 rewrite <- div_mul_same by (apply Z.pow_nonzero; lia).
+  rewrite <-! Z.land_ones by lia.
+  rewrite <-! Z.shiftl_mul_pow2 by lia.
   rewrite <- Z.or_to_plus; Z.bitblast.
 Qed.
 

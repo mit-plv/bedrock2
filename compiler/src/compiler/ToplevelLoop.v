@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Export Coq.Lists.List.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Strings.String. Local Open Scope string_scope.
@@ -425,15 +426,15 @@ Section Pipeline1.
       rewrite Zmod.unsigned_add in D.
       rewrite bits.unsigned_of_Z in D.
       rewrite (Z.mod_small 4) in D; cycle 1. {
-        simpl. pose proof four_fits. blia.
+        simpl. pose proof four_fits. lia.
       }
       rewrite Z.mod_eq in D by apply pow2width_nonzero.
       let ww := lazymatch type of D with context [(2 ^ ?ww)] => ww end in set (w := ww) in *.
-      progress replace w with (w - 2 + 2) in D at 3 by blia.
-      rewrite Z.pow_add_r in D by (subst w; destruct width_cases as [E | E]; simpl in *; blia).
+      progress replace w with (w - 2 + 2) in D at 3 by lia.
+      rewrite Z.pow_add_r in D by (subst w; destruct width_cases as [E | E]; simpl in *; lia).
       change (2 ^ 2) with 4 in D.
       match type of D with
-      | ?x = ?x + 4 - ?A * 4 * ?B => assert (A * B = 1) as C by blia
+      | ?x = ?x + 4 - ?A * 4 * ?B => assert (A * B = 1) as C by lia
       end.
       apply Z.eq_mul_1 in C.
       destruct C as [C | C];

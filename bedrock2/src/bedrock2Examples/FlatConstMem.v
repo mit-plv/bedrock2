@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry.
 Require Import bedrock2.FE310CSemantics.
 
@@ -138,7 +139,7 @@ Section WithParameters.
   Proof.
     pose proof eq_sym (firstn_skipn (Z.to_nat i) xsys).
     split; trivial.
-    rewrite firstn_length_le, length_skipn; blia.
+    rewrite firstn_length_le, length_skipn; lia.
   Qed.
 
   Ltac lift_head_let_in H :=
@@ -171,12 +172,12 @@ Section WithParameters.
   Proof.
     pose proof eq_sym (firstn_skipn (Z.to_nat i) xsys).
     split; trivial.
-    rewrite firstn_length_le, length_skipn; blia.
+    rewrite firstn_length_le, length_skipn; lia.
   Qed.
 
   Ltac List__splitZ bs n :=
       match goal with H: Z.of_nat (length bs) = _ |- _ =>
-          pose proof List__splitZ_spec_n bs n _ H ltac:(blia);
+          pose proof List__splitZ_spec_n bs n _ H ltac:(lia);
           clear H; flatten_hyps; simplify_ZcstExpr;
           let Hrw := lazymatch goal with H : bs = _ ++ _ |- _ => H end in
           let eqn := type of Hrw in
@@ -271,11 +272,11 @@ Section WithParameters.
       2: eapply Proper_sep_iff1.
       3: eapply IHbs.
       2: reflexivity.
-      2: cbn [length] in H; blia.
+      2: cbn [length] in H; lia.
       change (a::bs) with ([a]++bs).
       rewrite (of_list_word_at_app width_pos).
       etransitivity.
-      1: eapply sep_eq_putmany, (adjacent_arrays_disjoint width_pos); cbn [length] in *; blia.
+      1: eapply sep_eq_putmany, (adjacent_arrays_disjoint width_pos); cbn [length] in *; lia.
       etransitivity.
       2:eapply sep_comm.
       f_equiv.
@@ -302,7 +303,7 @@ Section WithParameters.
       let i := match type of Hidx with _ = ?r => r end in
       let Happ := fresh "Happ" in
       match goal with H: Z.of_nat (length bs) = _ |- _ =>
-          pose proof List__splitZ_spec_n bs i _ H ltac:(blia) as Happ;
+          pose proof List__splitZ_spec_n bs i _ H ltac:(lia) as Happ;
           clear H
       end;
       repeat lift_head_let_in Happ; case Happ as (Happ&?H1l&?H2l);
@@ -313,7 +314,7 @@ Section WithParameters.
                           | _ => constr:(Happ) end) in *;
       repeat match goal with Hsep : _ |- _ =>
         seprewrite_in_by sep_eq_of_list_word_at_app Hsep ltac:(
-          try eassumption; try blia)
+          try eassumption; try lia)
       end.
 
   Section __.
@@ -327,7 +328,7 @@ Section WithParameters.
         rewrite (get_of_list_word_at width_pos) in H1; eapply nth_error_None in H1.
         revert H1.
         rewrite word.word_sub_add_l_same_l, bits.unsigned_of_Z.
-        rewrite Z.mod_small, Nat2Z.id; eauto; blia. }
+        rewrite Z.mod_small, Nat2Z.id; eauto; lia. }
       transitivity (Some l); try congruence; f_equal; subst n.
       symmetry; eapply nth_error_ext_samelength.
       { symmetry; eauto using length_load_bytes. }
@@ -337,7 +338,7 @@ Section WithParameters.
       erewrite Properties.map.get_putmany_right in HH; cycle 1.
       { rewrite (get_of_list_word_at width_pos).
         rewrite word.word_sub_add_l_same_l, bits.unsigned_of_Z.
-        rewrite Z.mod_small, Nat2Z.id; eauto; blia. }
+        rewrite Z.mod_small, Nat2Z.id; eauto; lia. }
       congruence.
     Qed.
 
@@ -472,17 +473,17 @@ Ltac simpl_lengths := repeat simpl_lengths_step.
 
     on_left eapply Z_uncurried_load_four_bytes_of_sep_at.
 
-    pose proof List__splitZ_spec_n bs 20 _ H ltac:(blia).
+    pose proof List__splitZ_spec_n bs 20 _ H ltac:(lia).
     flatten; simpl_lengths.
     set_evars; rewrite H1 in *; subst_evars.
     seprewrite_in_by sep_eq_of_list_word_at_app H0
-      ltac:(trivial || blia); simpl_lengths.
+      ltac:(trivial || lia); simpl_lengths.
 
-    pose proof List__splitZ_spec_n _ 16 _ H2 ltac:(blia);
+    pose proof List__splitZ_spec_n _ 16 _ H2 ltac:(lia);
     flatten; simpl_lengths.
     set_evars; rewrite H4 in *; subst_evars; simpl_lengths.
     seprewrite_in_by sep_eq_of_list_word_at_app H0
-      ltac:(trivial || blia); simpl_lengths.
+      ltac:(trivial || lia); simpl_lengths.
 
     on_left ecancel_assumption. (*  this inlines definition of ys0, makes length proof annoying *)
     match goal with |- context[?x] => change x with ys0 end.
@@ -497,9 +498,9 @@ Ltac simpl_lengths := repeat simpl_lengths_step.
 
     (* remerge *)
     seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
-      simpl_lengths; rewrite ?word.word_sub_add_l_same_l, ?bits.unsigned_of_Z; trivial; clear;blia).
+      simpl_lengths; rewrite ?word.word_sub_add_l_same_l, ?bits.unsigned_of_Z; trivial; clear;lia).
     repeat seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
-      rewrite ?app_length; wordcstexpr_tac; simpl_lengths; blia).
+      rewrite ?app_length; wordcstexpr_tac; simpl_lengths; lia).
 
     Tactics.rapply (fun addr oldvalue value R m post H => Scalars.store_four_of_sep addr oldvalue value R m post (proj1 H) (proj2 H)).
 

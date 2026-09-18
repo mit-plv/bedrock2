@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.NotationsCustomEntry.
 Import Syntax BinInt String List.ListNotations ZArith.
@@ -36,7 +37,7 @@ Module Z.
   Qed.
 
   Lemma mod2_nonzero x : x mod 2 <> 0 -> x mod 2 = 1.
-  Proof. Z.div_mod_to_equations. blia. Qed.
+  Proof. Z.div_mod_to_equations. lia. Qed.
 
   Lemma land_1_r x : Z.land x 1 = x mod 2.
   Proof.
@@ -92,8 +93,8 @@ Proof.
       {
         repeat (straightline || (split; trivial; [])). all:t.
         { (* measure decreases *)
-          set (Zmod.unsigned x'0) in *. (* WHY does blia need this? *)
-          Z.div_mod_to_equations; blia. }
+          set (Zmod.unsigned x'0) in *. (* WHY does lia need this? *)
+          Z.div_mod_to_equations; lia. }
         { (* invariant preserved *)
           rewrite H3; clear H3. rename H0 into Hbit.
           change (1+1) with 2 in *.
@@ -104,7 +105,7 @@ Proof.
           rewrite !Zmod.unsigned_mul.
           rewrite ?Z.mul_mod_idemp_l by discriminate.
           rewrite <-(Z.mul_mod_idemp_r _ (_^_)), Z.pow_mod by discriminate.
-          rewrite ?Z.pow_add_r by (pose proof (bits.unsigned_range x'0 width_nonneg); Z.div_mod_to_equations; blia).
+          rewrite ?Z.pow_add_r by (pose proof (bits.unsigned_range x'0 width_nonneg); Z.div_mod_to_equations; lia).
           rewrite ?Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. } }
@@ -112,8 +113,8 @@ Proof.
         repeat (straightline || (split; trivial; [])).
         all: t.
         { (* measure decreases *)
-          set (Zmod.unsigned x'0) in *. (* WHY does blia need this? *)
-          Z.div_mod_to_equations; blia. }
+          set (Zmod.unsigned x'0) in *. (* WHY does lia need this? *)
+          Z.div_mod_to_equations; lia. }
         { (* invariant preserved *)
           rewrite H3; clear H3. rename H0 into Hbit.
           change (1+1) with 2 in *.

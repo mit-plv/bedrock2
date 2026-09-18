@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.Strings.String Coq.ZArith.ZArith.
 From coqutil Require Import Word.Bitwidth Word.Properties.
 From coqutil Require Import Tactics.rdelta.
@@ -21,10 +22,10 @@ Lemma Z__range_mul_nonneg a0 a a1 (Ha: a0 <= a < a1) b0 b b1 (Hb : b0 <= b < b1)
       : a0*b0 <= a*b < (a1-1)*(b1-1) + 1.
 Proof. Lia.nia. Qed.
 Lemma boundscheck {x0 x x1} (H: x0 <= x < x1) {X0 X1} (Hcheck : andb (X0 <=? x0) (x1 <=? X1) = true) : X0 <= x < X1.
-Proof. eapply andb_prop in Hcheck; case Hcheck; intros H1 H2; eapply Z.leb_le in H1; eapply Z.leb_le in H2. blia. Qed.
+Proof. eapply andb_prop in Hcheck; case Hcheck; intros H1 H2; eapply Z.leb_le in H1; eapply Z.leb_le in H2. lia. Qed.
 Lemma boundscheck_lt {x0 x x1} (H: x0 <= x < x1) {X1} (Hcheck: Z.ltb x1 X1 = true) : x < X1.
-Proof. eapply Z.ltb_lt in Hcheck. blia. Qed.
-Lemma bounded_constant c : c <= c < c+1. Proof. blia. Qed.
+Proof. eapply Z.ltb_lt in Hcheck. lia. Qed.
+Lemma bounded_constant c : c <= c < c+1. Proof. lia. Qed.
 
 Ltac named_pose_proof pf :=
   let H := fresh in
@@ -171,7 +172,7 @@ Module unsigned.
       absint_lemma! (bits.unsigned_xor x y).
     Lemma absint_ndn (x y : word) ux (Hx : Zmod.unsigned x = ux) uy (Hy : Zmod.unsigned y = uy) :
       Zmod.unsigned (Zmod.ndn x y) =~> Z.ldiff ux uy.
-    Proof. subst. cbv [absint_eq]. apply Zmod.unsigned_ndn_small, Z.pow_nonneg. blia. Qed.
+    Proof. subst. cbv [absint_eq]. apply Zmod.unsigned_ndn_small, Z.pow_nonneg. lia. Qed.
     Lemma absint_sru (x : word) (n : Z) ux (Hx : Zmod.unsigned x = ux) un (Hn : n = un)
       (Hshift : 0 <= un) : Zmod.unsigned (Zmod.sru x n) =~> ux / 2 ^ un.
     Proof. subst. cbv [absint_eq]. rewrite Zmod.unsigned_sru, Z.shiftr_div_pow2 by assumption. reflexivity. Qed.
@@ -181,7 +182,7 @@ Module unsigned.
     Proof. subst. cbv [absint_eq]. rewrite Zmod.unsigned_slu, Z.shiftl_mul_pow2, Z.mod_small by assumption. reflexivity. Qed.
     Lemma absint_divu (x y : word) ux (Hx : Zmod.unsigned x = ux) uy (Hy : Zmod.unsigned y = uy)
       (Hnz : uy <> 0) : Zmod.unsigned (Zmod.udiv x y) =~> ux / uy.
-    Proof. subst. cbv [absint_eq]. apply Zmod.unsigned_udiv_nonneg; trivial. apply Z.pow_nonneg. blia. Qed.
+    Proof. subst. cbv [absint_eq]. apply Zmod.unsigned_udiv_nonneg; trivial. apply Z.pow_nonneg. lia. Qed.
     Lemma absint_modu (x y : word) ux (Hx : Zmod.unsigned x = ux) uy (Hy : Zmod.unsigned y = uy) :
       Zmod.unsigned (Zmod.umod x y) =~> ux mod uy.
     Proof. subst. cbv [absint_eq]. apply Zmod.unsigned_umod. Qed.
@@ -201,8 +202,8 @@ Module unsigned.
     Proof.
       etransitivity; [eapply absint_and; eauto|].
       rewrite Huy.
-      rewrite Z.land_ones, Z.ones_equiv; repeat (eapply f_equal2 || blia).
-      enough (Z.log2 0 <= Z.log2 uy) by (change (Z.log2 0) with 0 in *; blia).
+      rewrite Z.land_ones, Z.ones_equiv; repeat (eapply f_equal2 || lia).
+      enough (Z.log2 0 <= Z.log2 uy) by (change (Z.log2 0) with 0 in *; lia).
       eapply Z.log2_le_mono; subst uy; eapply (bits.unsigned_range _ width_nonneg).
     Qed.
     Lemma absint_mask_l y x uy (Hy : Zmod.unsigned y = uy) ux (Hx : Zmod.unsigned x = ux) (Huy : uy = Z.ones (Z.log2 uy+1)):
@@ -211,8 +212,8 @@ Module unsigned.
       etransitivity; [eapply absint_and; eauto|].
       rewrite Z.land_comm.
       rewrite Huy.
-      rewrite Z.land_ones, Z.ones_equiv; repeat (eapply f_equal2 || blia).
-      enough (Z.log2 0 <= Z.log2 uy) by (change (Z.log2 0) with 0 in *; blia).
+      rewrite Z.land_ones, Z.ones_equiv; repeat (eapply f_equal2 || lia).
+      enough (Z.log2 0 <= Z.log2 uy) by (change (Z.log2 0) with 0 in *; lia).
       eapply Z.log2_le_mono; subst uy; eapply (bits.unsigned_range _ width_nonneg).
     Qed.
   End WithWord.

@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 
 Require Import bedrock2.LeakageSemantics.
 Require Import Coq.Logic.FunctionalExtensionality.
@@ -603,7 +604,7 @@ Section LowerPipeline.
           eapply List.NoDup_filter.
           eapply List.NoDup_unfoldn_Z_seq.
       + rewrite Vp1. rewrite List.firstn_length.
-        change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat. clear. blia.
+        change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat. clear. lia.
       + eassumption.
       + eapply Hpost.
       + rewrite <- Vp0.
@@ -620,7 +621,7 @@ Section LowerPipeline.
         eapply extends_remove. eapply extends_refl.
       + eapply fits_stack_monotone.
         { eapply stack_usage_correct; eassumption. }
-        1: reflexivity. simpl_g_get. blia.
+        1: reflexivity. simpl_g_get. lia.
       + reflexivity.
       + unfold valid_FlatImp_fun. eauto.
       + assumption.
@@ -640,7 +641,7 @@ Section LowerPipeline.
           eapply List.Forall_firstn.
           eapply Forall_impl.
           2: eapply arg_range_Forall.
-          unfold valid_FlatImp_var. clear. blia. }
+          unfold valid_FlatImp_var. clear. lia. }
         { eassumption. }
         { assumption. }
         { assumption. }
@@ -757,7 +758,7 @@ Section LowerPipeline.
         rewrite !(iff1ToEq (sep_assoc _ _ _)).
         eapply (sep_emp_l _ _); split.
         { rewrite (coqutil.Datatypes.List.length_flat_map _ (Z.to_nat bytes_per_word)).
-          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia.
+          { rewrite Nat2Z.inj_mul, Z2Nat.id by lia.
             replace (Z.of_nat (Datatypes.length stack_trash))
               with (Zmod.unsigned (Zmod.sub stack_pastend stack_start) / bytes_per_word)
               by (symmetry;assumption).

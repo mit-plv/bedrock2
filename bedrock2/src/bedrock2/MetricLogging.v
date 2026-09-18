@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.BinInt.
 Require Import coqutil.Z.Lia.
 
@@ -128,13 +129,13 @@ Ltac solve_MetricLog :=
   flatten_MetricLog;
   repeat unfold_MetricLog;
   repeat simpl_MetricLog;
-  blia.
+  lia.
 
 Ltac solve_MetricLog_piecewise :=
   flatten_MetricLog;
   repeat unfold_MetricLog;
   repeat simpl_MetricLog;
-  f_equal; blia.
+  f_equal; lia.
 
 Module MetricArith.
 

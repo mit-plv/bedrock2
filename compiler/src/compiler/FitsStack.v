@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import compiler.util.Common.
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvCommon.
@@ -71,7 +72,7 @@ Section FitsStack.
   Lemma fits_stack_monotone: forall e y1 z1 s,
       fits_stack y1 z1 e s -> forall y2 z2, y1 <= y2 -> z1 <= z2 -> fits_stack y2 z2 e s.
   Proof.
-    induction 1; intros; econstructor; eauto; try blia; eapply IHfits_stack; blia.
+    induction 1; intros; econstructor; eauto; try lia; eapply IHfits_stack; lia.
   Qed.
 
   Context {env_ok: map.ok env}.
@@ -79,7 +80,7 @@ Section FitsStack.
   Lemma fits_stack_monotone_env: forall e1 y z s,
       fits_stack y z e1 s -> forall e2, map.extends e2 e1 -> fits_stack y z e2 s.
   Proof.
-    induction 1; intros; econstructor; eauto; try blia.
+    induction 1; intros; econstructor; eauto; try lia.
     eapply IHfits_stack. (* TODO make map solver work: Solver.map_solver env_ok. *)
     unfold map.extends in *.
     intros.
@@ -99,7 +100,7 @@ Section FitsStack.
       try specialize IHs with (1 := eq_refl);
       try specialize IHs1 with (1 := eq_refl);
       try specialize IHs2 with (1 := eq_refl);
-      try blia.
+      try lia.
     subst.
     assert (0 < Memory.bytes_per_word (Decode.bitwidth iset)). {
       unfold Memory.bytes_per_word.
@@ -110,15 +111,15 @@ Section FitsStack.
     }
     remember (FlatToRiscvDef.stackalloc_words iset s) as sw.
     remember (Memory.bytes_per_word (Decode.bitwidth iset)) as bw.
-    (* TODO why does "Z.div_mod_to_equations. blia." not work? *)
-    replace (BinIntDef.Z.max 0 nbytes) with nbytes by blia.
-    apply Zmod_divides in E0. 2: blia.
+    (* TODO why does "Z.div_mod_to_equations. lia." not work? *)
+    replace (BinIntDef.Z.max 0 nbytes) with nbytes by lia.
+    apply Zmod_divides in E0. 2: lia.
     clear Heqbw. fwd.
-    replace (bw * c + bw - 1) with (c * bw + (bw - 1)) by blia.
-    rewrite Z.div_add_l by blia.
-    rewrite (Z.div_small (bw - 1) bw) by blia.
+    replace (bw * c + bw - 1) with (c * bw + (bw - 1)) by lia.
+    rewrite Z.div_add_l by lia.
+    rewrite (Z.div_small (bw - 1) bw) by lia.
     rewrite Z.mul_comm.
-    rewrite Z.div_mul; blia.
+    rewrite Z.div_mul; lia.
   Qed.
 
   Lemma stack_usage_rec_correct: forall n e s y z,
@@ -130,7 +131,7 @@ Section FitsStack.
     - simpl in H.
       revert y z H.
       induction s; intros; simpl in H; fwd.
-      all: try (constructor; eauto using fits_stack_monotone, Z.le_max_l, Z.le_max_r; blia).
+      all: try (constructor; eauto using fits_stack_monotone, Z.le_max_l, Z.le_max_r; lia).
       + specialize (IHs _ _ eq_refl).
         pose proof fits_stack_nonneg as P. specialize P with (1 := IHs).
         econstructor.
@@ -138,7 +139,7 @@ Section FitsStack.
             apply Z.div_pos. 1: assumption. unfold Memory.bytes_per_word.
             clear. destruct iset; reflexivity.
           }
-          blia.
+          lia.
         * assumption.
         * assumption.
         * rewrite Z.add_simpl_r. assumption.
@@ -152,7 +153,7 @@ Section FitsStack.
         end.
         1: assumption.
         unfold framelength.
-        blia.
+        lia.
   Qed.
 
   (* The art of figuring out the right induction hypothesis... *)
@@ -196,13 +197,13 @@ Section FitsStack.
         eapply stack_usage_rec_correct in E1.
         eapply fits_stack_monotone. 1: eassumption.
         all: unfold framelength.
-        all: blia.
+        all: lia.
       }
       specialize H0 with (1 := eq_refl).
       eapply fits_stack_monotone.
       + eauto.
-      + blia.
-      + unfold framelength. blia.
+      + lia.
+      + unfold framelength. lia.
   Qed.
 
   Lemma stack_usage_correct: forall e z f argnames retnames fbody,

@@ -102,13 +102,13 @@ Section Scalars.
     rewrite <-bits.mod_to_Z at 2.
     eapply Z.bits_inj'; intros i Hi.
     rewrite W32 at 4.
-    repeat ((rewrite ?Z.testbit_mod_pow2, ?Z.testbit_ones, ?Z.lor_spec, ?Z.shiftl_spec, ?Z.shiftr_spec, ?Z.land_spec by blia)).
+    repeat ((rewrite ?Z.testbit_mod_pow2, ?Z.testbit_ones, ?Z.lor_spec, ?Z.shiftl_spec, ?Z.shiftr_spec, ?Z.land_spec by lia)).
     rewrite W32 at 1.
     destruct (Z.ltb_spec0 i 32); cbn [andb]; trivial; [].
     destruct (Z.testbit (Zmod.unsigned value) i); cbn [andb]; trivial; [].
     cbn.
-    destruct (Z.leb_spec0 0 i); try blia; cbn [andb];
-    eapply Z.ltb_lt; blia.
+    destruct (Z.leb_spec0 0 i); try lia; cbn [andb];
+    eapply Z.ltb_lt; lia.
   Qed.
 
   Lemma load_four_of_sep_32bit(W32: width = 32) addr value R m
@@ -130,10 +130,10 @@ Section Scalars.
     rewrite <-bits.mod_to_Z at 2.
     eapply Z.bits_inj'; intros i Hi.
     pose proof width_pos (width:=width).
-    repeat ((rewrite ?Z.testbit_mod_pow2, ?Z.testbit_ones, ?Z.lor_spec, ?Z.shiftl_spec, ?Z.shiftr_spec, ?Z.land_spec by blia)).
+    repeat ((rewrite ?Z.testbit_mod_pow2, ?Z.testbit_ones, ?Z.lor_spec, ?Z.shiftl_spec, ?Z.shiftr_spec, ?Z.land_spec by lia)).
     destruct (Z.ltb_spec0 i width); cbn [andb]; trivial; [].
     destruct (Z.testbit (Zmod.unsigned value) i); cbn [andb]; trivial; [].
-    destruct (Z.leb_spec0 0 i); try blia; cbn [andb];
+    destruct (Z.leb_spec0 0 i); try lia; cbn [andb];
     eapply Z.ltb_lt;
     rewrite Z2Nat.id; Z.div_mod_to_equations; Lia.nia.
   Qed.
@@ -162,7 +162,7 @@ Section Scalars.
       0 <= x < b1 ->
       b1 <= b2 ->
       0 <= x < b2.
-  Proof. blia. Qed.
+  Proof. lia. Qed.
 
   Lemma store_two_of_sep addr (oldvalue : word) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar16 addr oldvalue) R m)
@@ -197,7 +197,7 @@ Section Scalars.
     { epose proof length_bytearray_le _ _ _  ltac:(eassumption).
       apply array1_iff_eq_of_list_word_at; trivial. }
     { apply array1_iff_eq_of_list_word_at; eauto.
-      case BW as [ [ -> | -> ] ]; blia. }
+      case BW as [ [ -> | -> ] ]; lia. }
   Qed.
 
   (*essentially duplicates of the previous lemma...*)
@@ -213,7 +213,7 @@ Section Scalars.
     { epose proof length_bytearray_le _ _ _  ltac:(eassumption).
       apply array1_iff_eq_of_list_word_at; trivial. }
     { apply array1_iff_eq_of_list_word_at; eauto.
-      case BW as [ [ -> | -> ] ]; blia. }
+      case BW as [ [ -> | -> ] ]; lia. }
   Qed.
 
   Lemma scalar_of_bytes a l (H : width = 8 * Z.of_nat (length l)) :
@@ -223,7 +223,7 @@ Section Scalars.
     cbv [scalar truncated_word truncated_scalar].
     replace (bytes_per Syntax.access_size.word) with (length l). 2: {
       unfold bytes_per, bytes_per_word. subst width. clear.
-      Z.div_mod_to_equations. blia.
+      Z.div_mod_to_equations. lia.
     }
     rewrite bits.unsigned_of_Z. rewrite Z.mod_small.
     2: subst width; apply LittleEndianList.le_combine_bound.
@@ -232,7 +232,7 @@ Section Scalars.
     { epose proof length_bytearray_le _ _ _  ltac:(eassumption).
       apply array1_iff_eq_of_list_word_at; trivial. }
     { apply array1_iff_eq_of_list_word_at; eauto.
-      case BW as [ [ -> | -> ] ]; blia. }
+      case BW as [ [ -> | -> ] ]; lia. }
   Qed.
 
   Local Infix "$+" := map.putmany (at level 70).
@@ -243,17 +243,17 @@ Section Scalars.
   Proof.
     seprewrite_in (symmetry! (array1_iff_eq_of_list_word_at(map:=mem))) Hsep.
     { rewrite Hl. etransitivity. 2:eapply Z.pow_le_mono_r; try eassumption.
-      all: try eapply width_at_least_32. all: blia. }
+      all: try eapply width_at_least_32. all: lia. }
     unshelve seprewrite_in open_constr:(Scalars.scalar32_of_bytes _ _ _) Hsep; shelve_unifiable; trivial.
     erewrite @Scalars.load_four_of_sep; shelve_unifiable; try exact _; eauto.
     f_equal.
     unfold truncate_word, truncate_Z.
     f_equal.
     rewrite bits.unsigned_of_Z.
-    rewrite Z.land_ones by blia. simpl (Z.of_nat _ * _)%Z.
+    rewrite Z.land_ones by lia. simpl (Z.of_nat _ * _)%Z.
     epose proof le_combine_bound bs as Hll; rewrite Hl in Hll; cbn -[Z.pow] in Hll.
     repeat rewrite Z.mod_small; eauto.
-    1,2: eapply shrink_upper_bound, Z.pow_le_mono_r; eauto using width_at_least_32; try blia.
+    1,2: eapply shrink_upper_bound, Z.pow_le_mono_r; eauto using width_at_least_32; try lia.
   Qed.
 
   Lemma uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
@@ -264,7 +264,7 @@ Section Scalars.
   Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: m =* (bs$@a)*R /\ Z.of_nat (length bs) = 4) :
     load access_size.four m a = Some (bits.of_Z width (LittleEndianList.le_combine bs)).
-  Proof. eapply load_four_bytes_of_sep_at; try eapply H; blia. Qed.
+  Proof. eapply load_four_bytes_of_sep_at; try eapply H; lia. Qed.
 
   (*
   Lemma store_four_of_sep addr (oldvalue : word32) (value : word) R m (post:_->Prop)
@@ -296,7 +296,7 @@ Section Scalars.
     intros.
     apply Hpost.
     unfold List.upd, List.upds.
-    rewrite (firstn_all2 (n := length oldvalues - n)) by (simpl; blia).
+    rewrite (firstn_all2 (n := length oldvalues - n)) by (simpl; lia).
     do 2 seprewrite (array_append (truncated_word sz) size).
     seprewrite (array_cons (truncated_word sz) size).
     seprewrite (array_nil (truncated_word sz) size).
@@ -316,8 +316,8 @@ Section Scalars.
     destruct H0.
     destruct H1.
     eapply array_store_of_sep; eauto.
-    rewrite Z2Nat.id by (apply Z.div_pos; [apply (bits.unsigned_range _ width_nonneg) | blia]).
-    rewrite <- Z_div_exact_2; [| blia| auto].
+    rewrite Z2Nat.id by (apply Z.div_pos; [apply (bits.unsigned_range _ width_nonneg) | lia]).
+    rewrite <- Z_div_exact_2; [| lia| auto].
     rewrite Zmod.of_Z_unsigned.
     ring.
   Qed.
@@ -333,7 +333,7 @@ Section Scalars.
     do 2 seprewrite_in (array_append (truncated_word sz) size) Hsep.
     seprewrite_in (array_cons (truncated_word sz) size) Hsep.
     seprewrite_in (array_nil (truncated_word sz) size) Hsep.
-    rewrite firstn_length, min_l, <-H in Hsep by blia.
+    rewrite firstn_length, min_l, <-H in Hsep by lia.
     eapply load_of_sep.
     ecancel_assumption.
   Qed.
@@ -350,8 +350,8 @@ Section Scalars.
     intros.
     eapply array_load_of_sep; eauto.
     subst offset n.
-    rewrite Z2Nat.id by (apply Z.div_pos; [apply (bits.unsigned_range _ width_nonneg) | blia]).
-    rewrite <- Z_div_exact_2; [| blia| auto].
+    rewrite Z2Nat.id by (apply Z.div_pos; [apply (bits.unsigned_range _ width_nonneg) | lia]).
+    rewrite <- Z_div_exact_2; [| lia| auto].
     rewrite Zmod.of_Z_unsigned.
     ring.
   Qed.

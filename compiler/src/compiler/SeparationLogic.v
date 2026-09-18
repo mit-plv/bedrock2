@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Export Coq.Lists.List. Export ListNotations.
 Require Export Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Export coqutil.Word.Bitwidth coqutil.Word.Properties.
@@ -106,7 +107,7 @@ Section ptstos.
     Morphisms.f_equiv.
     simpl.
     rewrite LittleEndianList.length_le_split.
-    rewrite Z2Nat.id; blia.
+    rewrite Z2Nat.id; lia.
   Qed.
 
   Lemma byte_list_to_word_list_array: forall bytes,
@@ -127,7 +128,7 @@ Section ptstos.
     intros.
     Z.div_mod_to_equations.
     subst r.
-    specialize (H0 ltac:(blia)); clear H1.
+    specialize (H0 ltac:(lia)); clear H1.
     ring_simplify in H0.
     assert (0 <= q) by Lia.nia.
     generalize dependent bytes.
@@ -141,7 +142,7 @@ Section ptstos.
     specialize (H0 ltac:(Lia.nia)).
     case H0 as [words' [Hlen Hsep] ].
     eexists (cons _ words').
-    split; [cbn; blia|].
+    split; [cbn; lia|].
     intros p0; specialize (Hsep (Zmod.add p0 (bits.of_Z width bytes_per_word))).
     rewrite array_cons.
     etransitivity.
@@ -174,7 +175,7 @@ Section ptstos.
         clear -BW; case BW as [ [ -> | -> ] ]; cbv; trivial. }
     intros.
     pose proof (LittleEndianList.le_combine_bound (List.firstn (Z.to_nat bytes_per_word) bytes)).
-    split; [blia|].
+    split; [lia|].
     destruct H0.
     eapply Z.lt_le_trans. 1: eassumption.
     eapply Z.pow_le_mono_r. 1: reflexivity.
@@ -227,7 +228,7 @@ Section ptstos.
     use_sep_assumption.
     cancel.
     cancel_seps_at_indices 0%nat 0%nat. {
-      f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: blia.
+      f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: lia.
       apply bits.unsigned_of_Z_small.
       unfold bytes_per_word.
       destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
@@ -248,7 +249,7 @@ Section ptstos.
     unfold word_array.
     intros.
     destruct (List.nth_error oldwords (Z.to_nat i)) eqn: E. 2: {
-      exfalso. eapply nth_error_Some. 2: eassumption. blia.
+      exfalso. eapply nth_error_Some. 2: eassumption. lia.
     }
     eapply nth_error_split in E. simp.
     seprewrite_in @array_append H.
@@ -256,7 +257,7 @@ Section ptstos.
     eexists (l1 ++ v :: l2).
     eapply store_word_of_sep. {
       use_sep_assumption. cancel. cancel_seps_at_indices 0%nat 0%nat. {
-        f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: blia.
+        f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: lia.
         apply bits.unsigned_of_Z_small.
         unfold bytes_per_word.
         destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
@@ -269,17 +270,17 @@ Section ptstos.
       use_sep_assumption.
       cancel.
       cancel_seps_at_indices 0%nat 0%nat. {
-        f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 2: blia.
+        f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 2: lia.
         symmetry. apply bits.unsigned_of_Z_small.
         unfold bytes_per_word.
         destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
       }
       ecancel_done.
-    - rewrite nth_error_app2 by blia. replace (Z.to_nat i - length l1)%nat with O by blia. reflexivity.
-    - intros. assert (j < Z.to_nat i \/ Z.to_nat i < j)%nat as C by blia. destruct C as [C | C].
-      + rewrite nth_error_app1 by blia. rewrite nth_error_app1 in H1 by blia. assumption.
-      + rewrite nth_error_app2 by blia. rewrite nth_error_app2 in H1 by blia.
-        replace (j - length l1)%nat with (S (j - length l1 - 1)) in * by blia.
+    - rewrite nth_error_app2 by lia. replace (Z.to_nat i - length l1)%nat with O by lia. reflexivity.
+    - intros. assert (j < Z.to_nat i \/ Z.to_nat i < j)%nat as C by lia. destruct C as [C | C].
+      + rewrite nth_error_app1 by lia. rewrite nth_error_app1 in H1 by lia. assumption.
+      + rewrite nth_error_app2 by lia. rewrite nth_error_app2 in H1 by lia.
+        replace (j - length l1)%nat with (S (j - length l1 - 1)) in * by lia.
         assumption.
     - rewrite ?List.app_length. reflexivity.
   Qed.
