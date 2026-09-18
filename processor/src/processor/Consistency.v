@@ -231,7 +231,7 @@ Section FetchOk.
       blia.
     }
 
-    cbv [Memory.footprint HList.tuple.unfoldn].
+    cbv [Memory.footprint].
     - pose proof (H rpc); rewrite Hrpc0 in H1.
       pose proof (H (Zmod.add rpc 1)); rewrite Hrpc1 in H2.
       pose proof (H (Zmod.add rpc 2)); rewrite Hrpc2 in H3.

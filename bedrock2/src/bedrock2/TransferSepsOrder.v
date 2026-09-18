@@ -3,7 +3,6 @@
 Require Export Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Import coqutil.Z.Lia.
 Require Export coqutil.Byte.
-Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Datatypes.PropSet.
 Require Export coqutil.Datatypes.Inhabited.
 Require Import coqutil.Tactics.rewr coqutil.Tactics.rdelta.

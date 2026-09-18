@@ -109,7 +109,6 @@ Require Import Coq.Init.Byte.
 Require Import coqutil.Decidable.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
-Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.Simp.
 Require Import coqutil.Word.LittleEndianList.

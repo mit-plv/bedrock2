@@ -204,29 +204,6 @@ Section WithMem.
     eapply H. eapply F. assumption.
   Qed.
 
-  Section WithT.
-    Context [T: Type] {inh: Inhabited.inhabited T}.
-
-    Fixpoint fixed_size_tuple_of_list(n: nat)(l: list T): HList.tuple T n.
-      refine (match n with
-              | O => tt
-              | S m => _
-              end).
-      constructor.
-      1: exact (List.hd Inhabited.default l).
-      eapply fixed_size_tuple_of_list. exact (List.tl l).
-    Defined.
-
-    Lemma fixed_size_tuple_of_list_to_list: forall n l,
-        List.length l = n ->
-        HList.tuple.to_list (fixed_size_tuple_of_list n l) = l.
-    Proof.
-      induction n; simpl; intros; destruct l; try discriminate.
-      - reflexivity.
-      - simpl. f_equal. eapply IHn. simpl in H. eapply Nat.succ_inj. exact H.
-    Qed.
-  End WithT.
-
   Lemma truncated_scalar_fillable sz:
     fillable (fun (v: Z) (a: word) => Scalars.truncated_scalar sz a v)
       (Z.of_nat (Memory.bytes_per (width := width) sz)).

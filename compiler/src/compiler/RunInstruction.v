@@ -32,7 +32,7 @@ Require Import compiler.DivisibleBy4.
 Require Import compiler.ZLemmas.
 Require Import riscv.Spec.LeakageOfInstr.
 Require Import coqutil.Datatypes.Option.
-From coqutil Require Import HList Memory SeparationMemory LittleEndianList.
+From coqutil Require Import Memory SeparationMemory LittleEndianList.
 Import Utility.
 
 Local Arguments LittleEndianList.le_split : simpl never.

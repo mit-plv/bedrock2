@@ -1,4 +1,4 @@
-From coqutil Require Import HList Memory SeparationMemory LittleEndianList.
+From coqutil Require Import Memory SeparationMemory LittleEndianList.
 Require Import riscv.Utility.Monads. Require Import riscv.Utility.MonadNotations.
 Require Import coqutil.Macros.unique.
 Require Import bedrock2.LeakageSemantics.
