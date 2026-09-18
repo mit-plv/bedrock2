@@ -1,3 +1,9 @@
+(* Rocq >= 9.3 (rocq-prover/rocq#21514): unfold the dependent constant first
+   when converting two constants at the same oracle level.  Measured on Rocq
+   master: this file compiles about 25% faster (150s -> 116s).  Older versions
+   have no such flag; the attribute silences their unknown-option warning. *)
+#[warnings="-unknown-option"] Set Kernel Conversion Dep Heuristic.
+
 Require Import Coq.micromega.Lia.
 Require Import bedrock2.LeakageSemantics.
 Require Import coqutil.Tactics.rdelta.
