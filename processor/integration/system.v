@@ -186,6 +186,19 @@ module system(
 
 `ifndef SYNTHESIS
   always #1 clk = !clk;
+  // Trace of the program's memory-mapped I/O, checked by `make bluespec-test`.
+  integer mmio_writes = 0;
+  integer spi_bytes = 0;
+  always @(posedge clk) begin
+    if (en_obtain_rq_get && rdy_obtain_rq_get && !rq_addr_is_bram && mem_rq_iswrite) begin
+      $display("MMIO write %08x <= %08x", mem_rq_addr, mem_rq_data);
+      mmio_writes = mmio_writes + 1;
+    end
+    if (spi_tx_rdy && spi_tx_en) begin
+      $display("SPI TX %02x", mem_rq_data[7:0]);
+      spi_bytes = spi_bytes + 1;
+    end
+  end
   initial begin
     $dumpfile("system.vcd");
     $dumpvars(1,
@@ -217,7 +230,9 @@ module system(
               mem_write_byte_enable, mem_rq_iswrite,
               ram_rs_en, ram_read, instant_rs_en, instant_rs, rdy_send_rs_put,
               spi_tx_buf, spi_rx_buf, spi_tx_rdy);
-    #90000 $finish();
+    #90000;
+    $display("SUMMARY %0d MMIO writes, %0d SPI bytes", mmio_writes, spi_bytes);
+    $finish();
   end
 `endif
 endmodule
