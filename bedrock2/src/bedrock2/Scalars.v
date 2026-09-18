@@ -9,7 +9,7 @@ Require Import coqutil.Z.Lia Coq.micromega.Lia.
 Require Import coqutil.Byte.
 Require Import coqutil.Map.OfListWord.
 Require Import coqutil.Macros.symmetry.
-Import HList List.
+Import List.
 
 Section Scalars.
   Context {width : Z} {BW: Bitwidth width}.

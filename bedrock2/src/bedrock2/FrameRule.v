@@ -1,6 +1,5 @@
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil.Byte.
-Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import coqutil.Decidable.
 Require Import coqutil.Tactics.fwd coqutil.Tactics.Tactics.
 Require Import bedrock2.Syntax.

@@ -16,7 +16,6 @@ Require Import compiler.UniqueSepLog.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Word.Bitwidth.
 Require Import compiler.FlatImp.
-Require Import coqutil.Datatypes.HList.
 
 
 Module exec.

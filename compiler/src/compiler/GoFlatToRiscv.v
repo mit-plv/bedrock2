@@ -29,7 +29,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Tactics.Simp.
 Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Datatypes.ListSet.
-From coqutil Require Import HList Memory SeparationMemory LittleEndianList.
+From coqutil Require Import Memory SeparationMemory LittleEndianList.
 Import Utility.
 
 Section Go.

@@ -1919,9 +1919,7 @@ Section Equiv.
       all: subst v' oimm12 rs1.
       all: regs_get_red Hlv.
       all: cbv [Utility.add ZToReg MachineWidth_XLEN] in Hlv;
-        cbv [map.getmany_of_tuple
-               Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2
-               HList.tuple.unfoldn HList.tuple.map HList.tuple.option_all] in Hlv.
+        cbv [Memory.footprint] in Hlv.
       all: match goal with
            | [Hmr': mem_related _ _ _ |- _] => clear -Hlv Hmr'; rename Hmr' into Hmr
            end.
@@ -2735,9 +2733,7 @@ Section Equiv.
         { assumption. }
         { clear -Hlv H12. (* mem_related *)
           cbv [Memory.load_bytes
-                 map.getmany_of_tuple
-                 HList.tuple.option_all HList.tuple.map HList.tuple.unfoldn
-                 Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2] in Hlv.
+                 Memory.footprint] in Hlv.
           repeat (destruct_one_match_hyp; [|discriminate]).
           erewrite H12 in E1.
           destruct_one_match_hyp; [|discriminate].
@@ -2758,9 +2754,7 @@ Section Equiv.
              | [Hmr: mem_related _ _ _ |- _] => clear -Hlv Hmr
              end.
         all: cbv [Memory.load_bytes
-                    map.getmany_of_tuple
-                    HList.tuple.option_all HList.tuple.map HList.tuple.unfoldn
-                    Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2] in Hlv.
+                    Memory.footprint] in Hlv.
         all: repeat (destruct_one_match_hyp; [|discriminate]).
         { erewrite H12 in E5.
           destruct_one_match_hyp; [assumption|discriminate].
