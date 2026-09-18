@@ -317,12 +317,6 @@ Section Go.
     rewrite (Z.mod_small z),  <-(Z.mod_add _ 1), Z.mod_small; blia.
   Qed.
 
-  Fixpoint in_tuple{T: Type}(a: T){n: nat}: HList.tuple T n -> Prop :=
-    match n with
-    | O => fun _ => False
-    | S n' => fun '(PrimitivePair.pair.mk t ts) => a = t \/ in_tuple a ts
-    end.
-
   Lemma mod_eq_to_diff: forall e1 e2 m,
       m <> 0 ->
       e1 mod m = e2 mod m ->
@@ -415,7 +409,7 @@ Section Go.
     end.
     do 2 (apply sep_emp_r in A; destruct A as [A ?]).
     apply go_leakEvent.
-    eapply go_loadWord_Fetch.
+    eapply go_loadWord_Fetch with (v := bits.of_Z 32 (encode inst)).
     - rewrite getXAddrs_withLeakageEvent. eapply ptsto_instr_subset_to_isXAddr4.
       eapply shrink_footpr_subset. 1: eassumption. simpl. ecancel.
     - rewrite getMem_withLeakageEvent. unfold Memory.loadWord.
@@ -425,13 +419,7 @@ Section Go.
       { apply LittleEndianList.length_le_split. }
       { destruct width_cases as [E | E]; rewrite E; blia. }
       rewrite LittleEndianList.le_combine_split, Z.mod_small by apply encode_range; trivial.
-    - change 4%nat with (length (LittleEndianList.le_split 4 (encode inst))).
-      rewrite LittleEndian.combine_eq, HList.tuple.to_list_of_list, LittleEndianList.le_combine_split.
-      assert (0 <= encode inst < 2 ^ width) as F. {
-        pose proof (encode_range inst) as P.
-        destruct width_cases as [E | E]; rewrite E; split. all: blia.
-      }
-      rewrite Z.mod_small; try assumption; try apply encode_range.
+    - rewrite bits.unsigned_of_Z_small by apply encode_range.
       destruct H1.
       + rewrite decode_encode; assumption.
       + exfalso. unfold not_InvalidInstruction, valid_InvalidInstruction in *. simp. contradiction.
@@ -443,15 +431,14 @@ Section Go.
   Lemma go_loadByte_sep:
     forall (initialL : RiscvMachineL) (addr : word) (v : w8)
            (f : w8 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
-      ((tuple.to_list v)$@addr * R)%sep initialL.(getMem) ->
+      ((le_split 1 (Zmod.unsigned v))$@addr * R)%sep initialL.(getMem) ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (loadByte Execute addr) f) initialL post.
   Proof.
     intros; eapply go_loadByte; [|eassumption]; cbv [Memory.loadByte].
-    erewrite (load_Z_of_sep width_pos); [ | exact _ | ecancel_assumption | reflexivity |
+    erewrite (load_Z_of_sep width_pos); [ | exact _ | ecancel_assumption | apply length_le_split |
         destruct width_cases as [E | E]; rewrite E; cbv; discriminate ].
-    apply f_equal, tuple.to_list_inj; rewrite tuple.to_list_of_list.
-    apply split_le_combine', tuple.length_to_list.
+    rewrite le_combine_split, bits.mod_to_Z, Zmod.of_Z_unsigned; trivial.
   Qed.
 
   Lemma preserve_subset_of_xAddrs: forall m Rexec (R: mem -> Prop) (xAddrs: list word) addr n bs,
@@ -490,19 +477,19 @@ Section Go.
     forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w8)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R Rexec: mem -> Prop),
       subset (footpr Rexec) (of_list initialL.(getXAddrs)) ->
-      ((tuple.to_list v_old)$@addr * R * Rexec)%sep initialL.(getMem) ->
+      ((le_split 1 (Zmod.unsigned v_old))$@addr * R * Rexec)%sep initialL.(getMem) ->
       (forall m': mem,
           subset (footpr Rexec) (of_list (invalidateWrittenXAddrs 1 addr initialL.(getXAddrs))) ->
-          ((tuple.to_list v_new)$@addr * R * Rexec)%sep m' ->
+          ((le_split 1 (Zmod.unsigned v_new))$@addr * R * Rexec)%sep m' ->
           mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 1 addr initialL.(getXAddrs))
                            (withMem m' (updateMetrics (addMetricStores 1) initialL))) post) ->
       mcomp_sat (Bind (storeByte Execute addr v_new) f) initialL post.
   Proof.
     intros.
-    edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (tuple.to_list v_old) (tuple.to_list v_new)) as (?&?&?).
-    { ssplit; [ecancel_assumption|apply tuple.length_to_list..|].
+    edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (le_split 1 (Zmod.unsigned v_old)) (le_split 1 (Zmod.unsigned v_new))) as (?&?&?).
+    { ssplit; [ecancel_assumption|apply length_le_split..|].
       destruct width_cases as [E | E]; rewrite E; blia. }
-    eapply go_storeByte; cbv [storeByte Memory.storeByte Platform.Memory.store_bytes].
+    eapply go_storeByte; cbv [storeByte Memory.storeByte Platform.Memory.store_bytes Map.Memory.store_Z].
     { eassumption. }
     eapply H1; [|ecancel_assumption].
     eapply preserve_subset_of_xAddrs; eauto.
@@ -512,34 +499,33 @@ Section Go.
   Lemma go_loadHalf_sep:
     forall (initialL : RiscvMachineL) (addr : word) (v : w16)
            (f : w16 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
-      ((tuple.to_list v)$@addr * R)%sep initialL.(getMem) ->
+      ((le_split 2 (Zmod.unsigned v))$@addr * R)%sep initialL.(getMem) ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (loadHalf Execute addr) f) initialL post.
   Proof.
     intros; eapply go_loadHalf; [|eassumption]; cbv [Memory.loadHalf].
-    erewrite (load_Z_of_sep width_pos); [ | exact _ | ecancel_assumption | reflexivity |
+    erewrite (load_Z_of_sep width_pos); [ | exact _ | ecancel_assumption | apply length_le_split |
         destruct width_cases as [E | E]; rewrite E; cbv; discriminate ].
-    apply f_equal, tuple.to_list_inj; rewrite tuple.to_list_of_list.
-    apply split_le_combine', tuple.length_to_list.
+    rewrite le_combine_split, bits.mod_to_Z, Zmod.of_Z_unsigned; trivial.
   Qed.
 
   Lemma go_storeHalf_sep:
     forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w16)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R Rexec: mem -> Prop),
       subset (footpr Rexec) (of_list initialL.(getXAddrs)) ->
-      ((tuple.to_list v_old)$@addr * R * Rexec)%sep initialL.(getMem) ->
+      ((le_split 2 (Zmod.unsigned v_old))$@addr * R * Rexec)%sep initialL.(getMem) ->
       (forall m': mem,
           subset (footpr Rexec) (of_list (invalidateWrittenXAddrs 2 addr initialL.(getXAddrs))) ->
-          ((tuple.to_list v_new)$@addr * R * Rexec)%sep m' ->
+          ((le_split 2 (Zmod.unsigned v_new))$@addr * R * Rexec)%sep m' ->
           mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 2 addr initialL.(getXAddrs))
                            (withMem m' (updateMetrics (addMetricStores 1) initialL))) post) ->
       mcomp_sat (Bind (storeHalf Execute addr v_new) f) initialL post.
   Proof.
     intros.
-    edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (tuple.to_list v_old) (tuple.to_list v_new)) as (?&?&?).
-    { ssplit; [ecancel_assumption|apply tuple.length_to_list..|].
+    edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (le_split 2 (Zmod.unsigned v_old)) (le_split 2 (Zmod.unsigned v_new))) as (?&?&?).
+    { ssplit; [ecancel_assumption|apply length_le_split..|].
       destruct width_cases as [E | E]; rewrite E; blia. }
-    eapply go_storeHalf; cbv [storeHalf Memory.storeHalf Platform.Memory.store_bytes].
+    eapply go_storeHalf; cbv [storeHalf Memory.storeHalf Platform.Memory.store_bytes Map.Memory.store_Z].
     { eassumption. }
     eapply H1; [|ecancel_assumption].
     eapply preserve_subset_of_xAddrs; eauto.
@@ -549,22 +535,21 @@ Section Go.
   Lemma go_loadWord_sep:
     forall (initialL : RiscvMachineL) (addr : word) (v : w32)
            (f : w32 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
-      ((tuple.to_list v)$@addr * R)%sep initialL.(getMem) ->
+      ((le_split 4 (Zmod.unsigned v))$@addr * R)%sep initialL.(getMem) ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (loadWord Execute addr) f) initialL post.
   Proof.
     intros; eapply go_loadWord; [|eassumption]; cbv [Memory.loadWord].
-    erewrite (load_Z_of_sep width_pos); [ | exact _ | ecancel_assumption | reflexivity |
+    erewrite (load_Z_of_sep width_pos); [ | exact _ | ecancel_assumption | apply length_le_split |
         destruct width_cases as [E | E]; rewrite E; cbv; discriminate ].
-    apply f_equal, tuple.to_list_inj; rewrite tuple.to_list_of_list.
-    apply split_le_combine', tuple.length_to_list.
+    rewrite le_combine_split, bits.mod_to_Z, Zmod.of_Z_unsigned; trivial.
   Qed.
 
   Lemma go_storeWord_sep:
     forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w32)
            (m': mem) (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
-      ((tuple.to_list v_old)$@addr * R)%sep initialL.(getMem) ->
-      ((tuple.to_list v_new)$@addr * R)%sep m' ->
+      ((le_split 4 (Zmod.unsigned v_old))$@addr * R)%sep initialL.(getMem) ->
+      ((le_split 4 (Zmod.unsigned v_new))$@addr * R)%sep m' ->
       mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 4 addr initialL.(getXAddrs))
                        (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
       mcomp_sat (Bind (storeWord Execute addr v_new) f) initialL post.
@@ -584,20 +569,20 @@ Section Go.
     forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w32)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R Rexec: mem -> Prop),
       subset (footpr Rexec) (of_list initialL.(getXAddrs)) ->
-      ((tuple.to_list v_old)$@addr * R * Rexec)%sep initialL.(getMem) ->
-      (let m' := Map.Memory.unchecked_store_bytes (getMem initialL) addr (tuple.to_list v_new) in
+      ((le_split 4 (Zmod.unsigned v_old))$@addr * R * Rexec)%sep initialL.(getMem) ->
+      (let m' := Map.Memory.unchecked_store_bytes (getMem initialL) addr (le_split 4 (Zmod.unsigned v_new)) in
        let xaddrs' := invalidateWrittenXAddrs 4 addr initialL.(getXAddrs) in
           subset (footpr Rexec) (of_list xaddrs') ->
-          ((tuple.to_list v_new)$@addr * R * Rexec)%sep m' ->
+          ((le_split 4 (Zmod.unsigned v_new))$@addr * R * Rexec)%sep m' ->
           mcomp_sat (f tt) (withXAddrs xaddrs'
                            (withMem m' (updateMetrics (addMetricStores 1) initialL))) post) ->
       mcomp_sat (Bind (storeWord Execute addr v_new) f) initialL post.
   Proof.
     intros.
-    edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (tuple.to_list v_old) (tuple.to_list v_new)) as (?&?&?).
-    { ssplit; [ecancel_assumption|apply tuple.length_to_list..|].
+    edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (le_split 4 (Zmod.unsigned v_old)) (le_split 4 (Zmod.unsigned v_new))) as (?&?&?).
+    { ssplit; [ecancel_assumption|apply length_le_split..|].
       destruct width_cases as [E | E]; rewrite E; blia. }
-    eapply go_storeWord; cbv [storeWord Memory.storeWord Platform.Memory.store_bytes].
+    eapply go_storeWord; cbv [storeWord Memory.storeWord Platform.Memory.store_bytes Map.Memory.store_Z].
     { eassumption. }
     cbv [store_bytes] in *; destruct load_bytes in *; Option.inversion_option; subst.
     eapply H1; [|ecancel_assumption].
@@ -608,9 +593,9 @@ Section Go.
   Lemma go_storeWord_sep_holds_but_results_in_evars_out_of_scope:
     forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w32)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
-      ((tuple.to_list v_old)$@addr * R)%sep initialL.(getMem) ->
+      ((le_split 4 (Zmod.unsigned v_old))$@addr * R)%sep initialL.(getMem) ->
       (forall m': mem,
-          ((tuple.to_list v_new)$@addr * R)%sep m' ->
+          ((le_split 4 (Zmod.unsigned v_new))$@addr * R)%sep m' ->
           mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 4 addr initialL.(getXAddrs))
                            (withMem m' (updateMetrics (addMetricStores 1) initialL))) post) ->
       mcomp_sat (Bind (storeWord Execute addr v_new) f) initialL post.
@@ -627,34 +612,33 @@ Section Go.
   Lemma go_loadDouble_sep:
     forall (initialL : RiscvMachineL) (addr : word) (v : w64)
            (f : w64 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
-      ((tuple.to_list v)$@addr * R)%sep initialL.(getMem) ->
+      ((le_split 8 (Zmod.unsigned v))$@addr * R)%sep initialL.(getMem) ->
       mcomp_sat (f v) (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (Bind (loadDouble Execute addr) f) initialL post.
   Proof.
     intros; eapply go_loadDouble; [|eassumption]; cbv [Memory.loadDouble].
-    erewrite (load_Z_of_sep width_pos); [ | exact _ | ecancel_assumption | reflexivity |
+    erewrite (load_Z_of_sep width_pos); [ | exact _ | ecancel_assumption | apply length_le_split |
         destruct width_cases as [E | E]; rewrite E; cbv; discriminate ].
-    apply f_equal, tuple.to_list_inj; rewrite tuple.to_list_of_list.
-    apply split_le_combine', tuple.length_to_list.
+    rewrite le_combine_split, bits.mod_to_Z, Zmod.of_Z_unsigned; trivial.
   Qed.
 
   Lemma go_storeDouble_sep:
     forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w64)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R Rexec: mem -> Prop),
       subset (footpr Rexec) (of_list initialL.(getXAddrs)) ->
-      ((tuple.to_list v_old)$@addr * R * Rexec)%sep initialL.(getMem) ->
+      ((le_split 8 (Zmod.unsigned v_old))$@addr * R * Rexec)%sep initialL.(getMem) ->
       (forall m': mem,
           subset (footpr Rexec) (of_list (invalidateWrittenXAddrs 8 addr initialL.(getXAddrs))) ->
-          ((tuple.to_list v_new)$@addr * R * Rexec)%sep m' ->
+          ((le_split 8 (Zmod.unsigned v_new))$@addr * R * Rexec)%sep m' ->
           mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 8 addr initialL.(getXAddrs))
                            (withMem m' (updateMetrics (addMetricStores 1) initialL))) post) ->
       mcomp_sat (Bind (storeDouble Execute addr v_new) f) initialL post.
   Proof.
     intros.
-    edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (tuple.to_list v_old) (tuple.to_list v_new)) as (?&?&?).
-    { ssplit; [ecancel_assumption|apply tuple.length_to_list..|].
+    edestruct (fun a b => uncurried_store_bytes_of_sep width_pos a b (le_split 8 (Zmod.unsigned v_old)) (le_split 8 (Zmod.unsigned v_new))) as (?&?&?).
+    { ssplit; [ecancel_assumption|apply length_le_split..|].
       destruct width_cases as [E | E]; rewrite E; blia. }
-    eapply go_storeDouble; cbv [storeDouble Memory.storeDouble Platform.Memory.store_bytes].
+    eapply go_storeDouble; cbv [storeDouble Memory.storeDouble Platform.Memory.store_bytes Map.Memory.store_Z].
     { eassumption. }
     eapply H1; [|ecancel_assumption].
     eapply preserve_subset_of_xAddrs; eauto.

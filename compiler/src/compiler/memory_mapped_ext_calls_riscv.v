@@ -94,13 +94,13 @@ Section Riscv.
   Local Open Scope string_scope. Local Open Scope Z_scope.
 
   Definition nonmem_load(n: nat)(kind: SourceType)(addr: word)(mach: RiscvMachine)
-                        (post: HList.tuple byte n -> RiscvMachine -> Prop) :=
+                        (post: bits (8 * Z.of_nat n) -> RiscvMachine -> Prop) :=
     let action := "memory_mapped_extcall_read" ++ String.of_nat (n * 8) in
     read_step n (getLog mach) addr (fun v mRcv =>
       forall m', map.split m' (getMem mach) mRcv ->
-      post v
+      post (bits.of_Z (8 * Z.of_nat n) (LittleEndianList.le_combine v))
            (withLogItem ((map.empty, action, [addr]),
-                         (mRcv, [bits.of_Z width (LittleEndian.combine n v)]))
+                         (mRcv, [bits.of_Z width (LittleEndianList.le_combine v)]))
            (withMem m' mach))).
 
   Notation load n := (fun (ctxid: SourceType) a mach post =>
@@ -110,14 +110,14 @@ Section Riscv.
     | None => nonmem_load n ctxid a mach post
     end) (only parsing).
 
-  Definition nonmem_store(n: nat)(ctxid: SourceType)(addr: word)(v: HList.tuple byte n)
+  Definition nonmem_store(n: nat)(ctxid: SourceType)(addr: word)(v: bits (8 * Z.of_nat n))
                          (mach: RiscvMachine)(post: RiscvMachine -> Prop) :=
     let action := "memory_mapped_extcall_write" ++ String.of_nat (n * 8) in
     exists mKeep mGive, map.split (getMem mach) mKeep mGive /\
-    write_step n (getLog mach) addr v mGive /\
+    write_step n (getLog mach) addr (LittleEndianList.le_split n (Zmod.unsigned v)) mGive /\
     let invalidated := list_union Zmod.eqb (footprint_list addr n) (map.keys mGive) in
     post (withXAddrs (list_diff Zmod.eqb mach.(getXAddrs) invalidated)
-         (withLogItem ((mGive, action, [addr; bits.of_Z width (LittleEndian.combine n v)]),
+         (withLogItem ((mGive, action, [addr; bits.of_Z width (Zmod.unsigned v)]),
                        (map.empty, []))
          (withMem mKeep mach))).
 
@@ -216,7 +216,6 @@ Section Riscv.
   Qed.
 
   Arguments Memory.store_bytes: simpl never.
-  Arguments LittleEndian.combine: simpl never.
 
   Global Instance primitivesParams:
     PrimitivesParams (free action result) MetricRiscvMachine :=
@@ -249,7 +248,7 @@ Section Riscv.
 
   Lemma load1_nonempty (n:=1%nat) k a (mach: RiscvMachine) post mc mc':
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
-    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+    load n k a mach (fun (v: bits (8 * Z.of_nat n)) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |}) ->
     exists v (mach': MetricRiscvMachine), post v mach'.
   Proof.
@@ -263,7 +262,7 @@ Section Riscv.
     destruct N2 as (mExt' & Sp).
     destruct mach.
     eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _ _) _).
-    cbn -[HList.tuple String.append] in *.
+    cbn -[Zmod.of_Z String.append] in *.
     eapply N1. clear N1 HI.
     unfold map.split. split. 1: reflexivity.
     unfold map.split in Sp. destruct Sp as (? & D). subst mExt.
@@ -272,7 +271,7 @@ Section Riscv.
 
   Lemma load2_nonempty (n:=2%nat) k a (mach: RiscvMachine) post mc mc':
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
-    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+    load n k a mach (fun (v: bits (8 * Z.of_nat n)) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |}) ->
     exists v (mach': MetricRiscvMachine), post v mach'.
   Proof.
@@ -286,7 +285,7 @@ Section Riscv.
     destruct N2 as (mExt' & Sp).
     destruct mach.
     eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _ _) _).
-    cbn -[HList.tuple String.append] in *.
+    cbn -[Zmod.of_Z String.append] in *.
     eapply N1. clear N1 HI.
     unfold map.split. split. 1: reflexivity.
     unfold map.split in Sp. destruct Sp as (? & D). subst mExt.
@@ -295,7 +294,7 @@ Section Riscv.
 
   Lemma load4_nonempty (n:=4%nat) k a (mach: RiscvMachine) post mc mc':
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
-    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+    load n k a mach (fun (v: bits (8 * Z.of_nat n)) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |}) ->
     exists v (mach': MetricRiscvMachine), post v mach'.
   Proof.
@@ -309,7 +308,7 @@ Section Riscv.
     destruct N2 as (mExt' & Sp).
     destruct mach.
     eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _ _) _).
-    cbn -[HList.tuple String.append] in *.
+    cbn -[Zmod.of_Z String.append] in *.
     eapply N1. clear N1 HI.
     unfold map.split. split. 1: reflexivity.
     unfold map.split in Sp. destruct Sp as (? & D). subst mExt.
@@ -318,7 +317,7 @@ Section Riscv.
 
   Lemma load8_nonempty (n:=8%nat) k a (mach: RiscvMachine) post mc mc':
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
-    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+    load n k a mach (fun (v: bits (8 * Z.of_nat n)) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |}) ->
     exists v (mach': MetricRiscvMachine), post v mach'.
   Proof.
@@ -332,7 +331,7 @@ Section Riscv.
     destruct N2 as (mExt' & Sp).
     destruct mach.
     eexists. eexists (mkMetricRiscvMachine (mkRiscvMachine _ _ _ _ _ _ _) _).
-    cbn -[HList.tuple String.append] in *.
+    cbn -[Zmod.of_Z String.append] in *.
     eapply N1. clear N1 HI.
     unfold map.split. split. 1: reflexivity.
     unfold map.split in Sp. destruct Sp as (? & D). subst mExt.
@@ -356,7 +355,7 @@ Section Riscv.
   Proof.
     unfold mcomp_nonempty, mcomp_sat. cbn -[valid_machine].
     intros. destruct a as (f & p). destruct st as (mach & mc).
-    destruct p; cbn -[valid_machine HList.tuple] in *;
+    destruct p; cbn -[valid_machine Zmod.of_Z] in *;
     repeat destruct_one_match;
     try solve [intuition eauto].
     1-4: (eapply load1_nonempty||eapply load2_nonempty||eapply load4_nonempty||eapply load8_nonempty); eassumption.
@@ -365,9 +364,9 @@ Section Riscv.
 
   Lemma load1_preserves_valid (n:=1%nat) k a (mach: RiscvMachine) post mc mc':
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
-    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+    load n k a mach (fun (v: bits (8 * Z.of_nat n)) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |}) ->
-    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+    load n k a mach (fun (v: bits (8 * Z.of_nat n)) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |} /\
           valid_machine {| getMachine := mach'; getMetrics := mc' |}).
   Proof.
@@ -375,10 +374,10 @@ Section Riscv.
     intros (HS & mExt & HO & mAll & HA & DM) HI.
     destruct HI as (HF & HI). split. 1: assumption.
     destruct mach.
-    cbn -[HList.tuple String.append] in *.
+    cbn -[Zmod.of_Z String.append] in *.
     destruct_one_match. 1: eauto 10.
     unfold nonmem_load in *.
-    cbn -[HList.tuple String.append] in *.
+    cbn -[Zmod.of_Z String.append] in *.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
     eapply weaken_read_step. 1: exact HI. clear HI. cbv beta. intros. fwd.
     rename mExt' into mExtNew.
@@ -409,9 +408,9 @@ Section Riscv.
 
   Lemma load2_preserves_valid (n:=2%nat) k a (mach: RiscvMachine) post mc mc':
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
-    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+    load n k a mach (fun (v: bits (8 * Z.of_nat n)) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |}) ->
-    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+    load n k a mach (fun (v: bits (8 * Z.of_nat n)) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |} /\
           valid_machine {| getMachine := mach'; getMetrics := mc' |}).
   Proof.
@@ -419,10 +418,10 @@ Section Riscv.
     intros (HS & mExt & HO & mAll & HA & DM) HI.
     destruct HI as (HF & HI). split. 1: assumption.
     destruct mach.
-    cbn -[HList.tuple String.append] in *.
+    cbn -[Zmod.of_Z String.append] in *.
     destruct_one_match. 1: eauto 10.
     unfold nonmem_load in *.
-    cbn -[HList.tuple String.append] in *.
+    cbn -[Zmod.of_Z String.append] in *.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
     eapply weaken_read_step. 1: exact HI. clear HI. cbv beta. intros. fwd.
     rename mExt' into mExtNew.
@@ -453,9 +452,9 @@ Section Riscv.
 
   Lemma load4_preserves_valid (n:=4%nat) k a (mach: RiscvMachine) post mc mc':
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
-    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+    load n k a mach (fun (v: bits (8 * Z.of_nat n)) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |}) ->
-    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+    load n k a mach (fun (v: bits (8 * Z.of_nat n)) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |} /\
           valid_machine {| getMachine := mach'; getMetrics := mc' |}).
   Proof.
@@ -463,10 +462,10 @@ Section Riscv.
     intros (HS & mExt & HO & mAll & HA & DM) HI.
     destruct HI as (HF & HI). split. 1: assumption.
     destruct mach.
-    cbn -[HList.tuple String.append] in *.
+    cbn -[Zmod.of_Z String.append] in *.
     destruct_one_match. 1: eauto 10.
     unfold nonmem_load in *.
-    cbn -[HList.tuple String.append] in *.
+    cbn -[Zmod.of_Z String.append] in *.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
     eapply weaken_read_step. 1: exact HI. clear HI. cbv beta. intros. fwd.
     rename mExt' into mExtNew.
@@ -497,9 +496,9 @@ Section Riscv.
 
   Lemma load8_preserves_valid (n:=8%nat) k a (mach: RiscvMachine) post mc mc':
     valid_machine {| getMachine := mach; getMetrics := mc |} ->
-    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+    load n k a mach (fun (v: bits (8 * Z.of_nat n)) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |}) ->
-    load n k a mach (fun (v: HList.tuple byte n) (mach': RiscvMachine) =>
+    load n k a mach (fun (v: bits (8 * Z.of_nat n)) (mach': RiscvMachine) =>
           post v {| getMachine := mach'; getMetrics := mc' |} /\
           valid_machine {| getMachine := mach'; getMetrics := mc' |}).
   Proof.
@@ -507,10 +506,10 @@ Section Riscv.
     intros (HS & mExt & HO & mAll & HA & DM) HI.
     destruct HI as (HF & HI). split. 1: assumption.
     destruct mach.
-    cbn -[HList.tuple String.append] in *.
+    cbn -[Zmod.of_Z String.append] in *.
     destruct_one_match. 1: eauto 10.
     unfold nonmem_load in *.
-    cbn -[HList.tuple String.append] in *.
+    cbn -[Zmod.of_Z String.append] in *.
     eapply read_step_returns_owned_mem in HI. 2: exact HO.
     eapply weaken_read_step. 1: exact HI. clear HI. cbv beta. intros. fwd.
     rename mExt' into mExtNew.
@@ -548,7 +547,7 @@ Section Riscv.
   Proof.
     unfold valid_machine, primitivesParams.
     intros (HS & mExt & HO & mAll & HA & DM) HI.
-    unfold store in *. destruct mach. cbn -[HList.tuple String.append] in *.
+    unfold store in *. destruct mach. cbn -[Zmod.of_Z String.append] in *.
     destruct_one_match.
     - split. 1: assumption.
       clear HI.
@@ -564,7 +563,7 @@ Section Riscv.
           rewrite <- E. exact HA.
         * unfold map.split in HA. apply proj1 in HA. subst mAll.
           rewrite map.domain_putmany in *. rewrite <- E. exact DM.
-    - cbv [nonmem_store] in *. cbn -[HList.tuple String.append] in *.
+    - cbv [nonmem_store] in *. cbn -[Zmod.of_Z String.append] in *.
       destruct HI as (mKeep & mGive & Sp & W & P).
       do 2 eexists. ssplit; try eassumption; clear P.
       + rewrite of_list_list_diff, of_list_list_union.
@@ -608,7 +607,7 @@ Section Riscv.
     unfold mcomp_preserves_valid, mcomp_sat. cbn -[valid_machine].
     intros. destruct a as (f & p). destruct st as [ [ ] ].
     destruct p; 
-    try solve [cbn -[valid_machine HList.tuple] in *;repeat destruct_one_match; intuition eauto].
+    try solve [cbn -[valid_machine Zmod.of_Z] in *;repeat destruct_one_match; intuition eauto].
     1-4: (eapply load1_preserves_valid||eapply load2_preserves_valid||eapply load4_preserves_valid||eapply load8_preserves_valid); eassumption.
     all: eapply store_preserves_valid; eassumption.
   Qed.
@@ -618,9 +617,9 @@ Section Riscv.
   Proof.
     destruct a as (f & p). unfold mcomp_append_only.
     intros [ [ ] ] post V M; destruct p;
-      cbn -[footprint_list HList.tuple] in *;
+      cbn -[footprint_list Zmod.of_Z] in *;
       cbv [store nonmem_load nonmem_store] in *;
-      cbn -[footprint_list HList.tuple] in *;
+      cbn -[footprint_list Zmod.of_Z] in *;
       repeat destruct_one_match;
       fwd;
       intuition eauto 10 using weaken_read_step, List.endswith_refl, List.endswith_cons_l.
@@ -651,8 +650,7 @@ Section Riscv.
     | _ => progress subst
     | _ => progress fwd_step
     | _ => progress cbn -[Platform.Memory.store_bytes
-                          HList.tuple invalidateWrittenXAddrs footprint_list
-                          LittleEndian.split_deprecated] in *
+                          Zmod.of_Z invalidateWrittenXAddrs footprint_list] in *
     | _ => progress cbv
              [id valid_register is_initial_register_value store
                 Platform.Memory.loadByte Platform.Memory.loadHalf

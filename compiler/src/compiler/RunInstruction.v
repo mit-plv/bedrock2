@@ -35,8 +35,6 @@ Require Import coqutil.Datatypes.Option.
 From coqutil Require Import HList Memory SeparationMemory LittleEndianList.
 Import Utility.
 
-Local Arguments HList.tuple.to_list : simpl never.
-Local Arguments HList.tuple.of_list : simpl never.
 Local Arguments LittleEndianList.le_split : simpl never.
 
 Notation Register0 := 0%Z (only parsing).
@@ -227,7 +225,7 @@ Section Run.
 
   Definition run_Load_spec(n: nat)(L: Z -> Z -> Z -> Instruction)
              (opt_sign_extender: Z -> Z): Prop :=
-    forall (base addr: word) (v: HList.tuple byte n) (rd rs: Z) (ofs: Z)
+    forall (base addr: word) (v: bits (8 * Z.of_nat n)) (rd rs: Z) (ofs: Z)
            (initialL: RiscvMachineL) (Exec R Rexec: mem -> Prop),
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
@@ -237,11 +235,11 @@ Section Run.
       addr = Zmod.add base (bits.of_Z width ofs) ->
       subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
       iff1 Exec (program iset initialL.(getPc) [[L rd rs ofs]] * Rexec)%sep ->
-      (Exec * (tuple.to_list v)$@addr * R)%sep initialL.(getMem) ->
+      (Exec * (le_split n (Zmod.unsigned v))$@addr * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd
-                  (bits.of_Z width (opt_sign_extender (le_combine (tuple.to_list v)))) /\
+                  (bits.of_Z width (opt_sign_extender (Zmod.unsigned v))) /\
         finalL.(getLog) = initialL.(getLog) /\
         finalL.(getMem) = initialL.(getMem) /\
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
@@ -252,7 +250,7 @@ Section Run.
         valid_machine finalL).
 
   Definition run_Store_spec(n: nat)(S: Z -> Z -> Z -> Instruction): Prop :=
-    forall (base addr v_new: word) (v_old: HList.tuple byte n) (rs1 rs2: Z)
+    forall (base addr v_new: word) (v_old: bits (8 * Z.of_nat n)) (rs1 rs2: Z)
            (ofs: Z) (initialL: RiscvMachineL) (Exec R Rexec: mem -> Prop),
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rs1 ->
@@ -263,7 +261,7 @@ Section Run.
       addr = Zmod.add base (bits.of_Z width ofs) ->
       subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
       iff1 Exec (program iset initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep ->
-      (Exec * (tuple.to_list v_old)$@addr * R)%sep initialL.(getMem) ->
+      (Exec * (le_split n (Zmod.unsigned v_old))$@addr * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
@@ -378,37 +376,39 @@ Section Run.
   Proof. t. Qed.
 
   Lemma run_Lb: run_Load_spec 1 Lb (signExtend 8).
-  Proof. t. 1:ecancel. Qed.
+  Proof. t. 1:ecancel. f_equal; f_equal; symmetry; apply Zmod.smod_unsigned. Qed.
 
   Lemma run_Lbu: run_Load_spec 1 Lbu id.
   Proof. t. 1:ecancel. f_equal. Qed.
 
   Lemma run_Lh: run_Load_spec 2 Lh (signExtend 16).
-  Proof. t. 1:ecancel. Qed.
+  Proof. t. 1:ecancel. f_equal; f_equal; symmetry; apply Zmod.smod_unsigned. Qed.
 
   Lemma run_Lhu: run_Load_spec 2 Lhu id.
   Proof. t. 1:ecancel. f_equal. Qed.
 
   Lemma run_Lw: run_Load_spec 4 Lw (signExtend 32).
-  Proof. t. 1:ecancel. Qed.
+  Proof. t. 1:ecancel. f_equal; f_equal; symmetry; apply Zmod.smod_unsigned. Qed.
 
   Lemma run_Lw_unsigned: width = 32 -> run_Load_spec 4 Lw id.
   Proof.
-    change width with (id width).
-    t. 1:ecancel. rewrite sextend_width_nop; [reflexivity|symmetry;assumption].
+    intro W. change width with (id width).
+    t. 1:ecancel. f_equal. cbv [id]. apply bits.of_Z_inj. rewrite W.
+    rewrite Zmod.mod_signed, bits.mod_to_Z. reflexivity.
   Qed.
 
   Lemma run_Lwu: run_Load_spec 4 Lwu id.
   Proof. t. 1:ecancel. f_equal. Qed.
 
   Lemma run_Ld: run_Load_spec 8 Ld (signExtend 64).
-  Proof. t. 1:ecancel. Qed.
+  Proof. t. 1:ecancel. f_equal; f_equal; symmetry; apply Zmod.smod_unsigned. Qed.
 
   (* Note: there's no Ldu instruction, because Ld does the same *)
   Lemma run_Ld_unsigned: width = 64 -> run_Load_spec 8 Ld id.
   Proof.
-    change width with (id width).
-    t. 1:ecancel. rewrite sextend_width_nop; [reflexivity|symmetry;assumption].
+    intro W. change width with (id width).
+    t. 1:ecancel. f_equal. cbv [id]. apply bits.of_Z_inj. rewrite W.
+    rewrite Zmod.mod_signed, bits.mod_to_Z. reflexivity.
   Qed.
 
   Lemma iff1_emp: forall P Q,
@@ -456,7 +456,7 @@ Section Run.
   Lemma run_Sb: run_Store_spec 1 Sb.
   Proof.
     t. 1:ecancel.
-    setoid_rewrite (tuple.to_list_of_list (le_split 1 (Zmod.unsigned v_new))) in H4.
+    setoid_rewrite Memory.le_split_unsigned_of_Z in H4.
     ecancel_assumption.
   Qed.
 
@@ -464,21 +464,21 @@ Section Run.
   Lemma run_Sh: run_Store_spec 2 Sh.
   Proof.
     t. 1:ecancel.
-    setoid_rewrite (tuple.to_list_of_list (le_split 2 (Zmod.unsigned v_new))) in H4.
+    setoid_rewrite Memory.le_split_unsigned_of_Z in H4.
     ecancel_assumption.
   Qed.
 
   Lemma run_Sw: run_Store_spec 4 Sw.
   Proof.
     t. 1:ecancel.
-    setoid_rewrite (tuple.to_list_of_list (le_split 4 (Zmod.unsigned v_new))) in H4.
+    setoid_rewrite Memory.le_split_unsigned_of_Z in H4. setoid_rewrite Memory.le_split_unsigned_of_Z.
     use_sep_assumption; cancel.
   Qed.
 
   Lemma run_Sd: run_Store_spec 8 Sd.
   Proof.
     t. 1:ecancel.
-    setoid_rewrite (tuple.to_list_of_list (le_split 8 (Zmod.unsigned v_new))) in H4.
+    setoid_rewrite Memory.le_split_unsigned_of_Z in H4.
     ecancel_assumption.
   Qed.
 End Run.

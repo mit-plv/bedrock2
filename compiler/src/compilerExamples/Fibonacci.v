@@ -139,7 +139,7 @@ Definition testInitialMem := Eval vm_compute in (initialRiscvMachine fib6_bits_a
 (* Print testInitialMem. *)
 
 Definition instructions_to_word8(insts: list Instruction): list Utility.byte :=
-  List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) insts.
+  List.flat_map (fun inst => LittleEndianList.le_split 4 (encode inst)) insts.
 
 Definition fib6_as_word8: list Utility.byte := instructions_to_word8 fib6_riscv.
 
