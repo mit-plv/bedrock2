@@ -241,8 +241,9 @@ Ltac straightline_stackdealloc_bytes :=
   end.
 
 Ltac straightline_stackdealloc_side_condition :=
-  rewrite ?LittleEndianList.length_le_split; cbv [Memory.bytes_per Memory.bytes_per_word]; cbn;
-  first [ eassumption | Lia.lia ].
+  first [ eassumption | Lia.lia
+        | rewrite ?LittleEndianList.length_le_split; cbv [Memory.bytes_per Memory.bytes_per_word]; cbn;
+          first [ eassumption | Lia.lia ] ].
 
 Ltac straightline_stackdealloc_map :=
   lazymatch goal with |- exists _ _, Memory.anybytes ?a ?n _ /\ map.split ?m _ _ /\ _ =>
@@ -252,6 +253,8 @@ Ltac straightline_stackdealloc_map :=
   repeat match type of Hm with context [map.of_list_word_at ?a' _] =>
     assert_fails (constr_eq a' a); change a' with a in Hm end;
   let stack := match type of Hm with context [map.of_list_word_at a ?stack] => stack end in
+  (* a frame whose contents are still an evar belongs to a callee's precondition *)
+  tryif has_evar stack then fail "stack frame contents not yet determined" else idtac;
   let Hm' := fresh Hm in
   pose proof Hm as Hm';
   let Psep := match type of Hm with ?P _ => P end in
