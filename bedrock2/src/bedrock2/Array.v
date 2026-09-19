@@ -163,6 +163,18 @@ Section WithWord.
     erewrite (map.of_list_word_at_app_n width_pos) by eauto; reflexivity.
   Qed.
 
+  Lemma sep_eq_of_list_word_at_cons (a : word) (v : value) (xs : list value)
+    (Htotal : S (length xs) <= 2^width)
+    : Lift1Prop.iff1 ((v :: xs)$@a) (sep (ptsto a v) (xs$@(Zmod.add a (bits.of_Z width 1)))).
+  Proof.
+    etransitivity.
+    { eapply (sep_eq_of_list_word_at_app a (cons v nil) xs 1); [reflexivity | cbn [length]; lia]. }
+    eapply Proper_sep_iff1; [|reflexivity].
+    intro m; cbv [sepclause_of_map ptsto].
+    rewrite map.of_list_word_singleton by first [exact width_pos | exact ok].
+    intuition congruence.
+  Qed.
+
   Lemma list_word_at_app_of_adjacent_eq (a b : word) (xs ys : list value)
     (Hl: Zmod.unsigned (Zmod.sub b a) = Z.of_nat (length xs))
     (Htotal : length xs + length ys <= 2^width)
