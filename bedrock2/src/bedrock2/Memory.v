@@ -38,6 +38,10 @@ Definition anybytes {width} {mem : map.map (bits width) byte}
   exists bs: list byte, map.of_list_word_at a bs = m /\
   Z.of_nat (length bs) = n /\ Z.of_nat (length bs) <= 2 ^ width.
 
+(* With an instance in scope, the program logic keeps a stack frame as the map
+   [bs $@ a] rather than as [array ptsto (bits.of_Z width 1) a bs]. *)
+Class stackalloc_as_map : Prop := {}.
+
 Lemma anybytes_unique_domain {width} {BW: Bitwidth width} {mem : map.map (bits width) byte}
   {mem_ok: map.ok mem} a n (m1 m2 : mem) :
   anybytes a n m1 -> anybytes a n m2 -> map.same_domain m1 m2.
