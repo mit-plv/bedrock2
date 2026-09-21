@@ -25,6 +25,7 @@ Section WithParameters.
   Local Notation word := (bits 32).
   Context {mem: map.map word Byte.byte}.
   Context {mem_ok: map.ok mem}.
+  #[local] Instance : Memory.stackalloc_as_map := {}.
 
   Definition f (a b : word) := Zmod.add (Zmod.add a b) b.
 
@@ -106,12 +107,11 @@ Section WithParameters.
 
     repeat match goal with
            | H : _ |- _ =>
-               seprewrite_in_by scalar_of_bytes H
-                 ltac:(Lia.lia);
+               seprewrite_in_by @scalar_of_list_word_at H
+                 ltac:(cbv [bytes_per bytes_per_word]; cbn; Lia.lia);
                  let x := fresh "x" in
                  set (bits.of_Z 32 _) as x in H; clearbody x; move x at top
            end.
-    clear dependent mStack.
 
     (*
 H1 : (scalar a0 x ⋆ (scalar out vout ⋆ R))%sep m2
@@ -146,12 +146,11 @@ H15 : (scalar a0 (Zmod.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
 
     repeat match goal with
            | H : _ |- _ =>
-               seprewrite_in_by scalar_of_bytes H
-                 ltac:(Lia.lia);
+               seprewrite_in_by @scalar_of_list_word_at H
+                 ltac:(cbv [bytes_per bytes_per_word]; cbn; Lia.lia);
                  let x := fresh "x" in
                  set (bits.of_Z 32 _) as x in H; clearbody x; move x at top
            end.
-    clear dependent mStack.
 
     cbv [id] in *.
     (*
@@ -186,20 +185,7 @@ H9 : (scalar a0 (Zmod.add va vb)
 
     straightline_call.
     { split; [>|split]; try ecancel_assumption. }
-    repeat straightline.
-
-    (* casting scalar to bytes for stack deallocation *)
-    cbv [scalar truncated_word truncated_scalar] in *.
-    set ((LittleEndianList.le_split (bytes_per access_size.word) (Zmod.unsigned (Zmod.add va vb)))) as stackbytes in *.
-    extract_ex1_and_emp_in_hyps.
-    assert (Datatypes.length stackbytes = 4%nat) by exact eq_refl.
-    Import symmetry.
-    Local Ltac t := rewrite ?LittleEndianList.length_le_split, ?bytes_per_width_bytes_per_word; cbv [bytes_per_word]; trivial; try discriminate.
-    seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at) H16 t.
-    seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at) H16 t.
     repeat straightline; eauto.
-    seprewrite_in_by (@Array.array1_iff_eq_of_list_word_at) H16 t.
-    extract_ex1_and_emp_in_goal; eauto.
   Qed.
 
   (* let's see how this would look like with an alternate spec of [indirect_add] *)
@@ -236,37 +222,36 @@ H9 : (scalar a0 (Zmod.add va vb)
 
     repeat match goal with
            | H : _ |- _ =>
-               seprewrite_in_by scalar_of_bytes H
-                 ltac:(Lia.lia);
+               seprewrite_in_by @scalar_of_list_word_at H
+                 ltac:(cbv [bytes_per bytes_per_word]; cbn; Lia.lia);
                  let x := fresh "x" in
                  set (bits.of_Z 32 _) as x in H; clearbody x; move x at top
            end.
-    clear dependent mStack.
 
     straightline_call.
     { split; [exact H1|split]; ecancel_assumption. }
     repeat straightline.
-    rename a2 into m.
+    rename a2 into m'.
     (*
 H15 : forall (va0 : word) (Ra : mem -> Prop),
-      (scalar a0 va0 ⋆ Ra)%sep m2 -> (scalar a0 (Zmod.add va vb) ⋆ Ra)%sep m
+      (scalar a0 va0 ⋆ Ra)%sep m -> (scalar a0 (Zmod.add va vb) ⋆ Ra)%sep m'
      *)
-    eapply H15 in H1.
-    eapply H15 in H2.
-    eapply H15 in H3.
-    eapply H15 in H4.
-    clear H15.
+    match goal with H15 : forall _ _, _ -> _ |- _ =>
+      eapply H15 in H1; eapply H15 in H2; eapply H15 in H3; eapply H15 in H4; clear H15
+    end.
 
     straightline_call.
     { split; [>|split]; try ecancel_assumption. }
     repeat straightline.
-    rename a3 into m'.
+    rename a3 into m''.
     (*
 H15 : forall (va0 : word) (Ra : mem -> Prop),
-      (scalar out va0 ⋆ Ra)%sep m ->
-      (scalar out (Zmod.add (Zmod.add va vb) vc) ⋆ Ra)%sep m'
+      (scalar out va0 ⋆ Ra)%sep m' ->
+      (scalar out (Zmod.add (Zmod.add va vb) vc) ⋆ Ra)%sep m''
      *)
-    specialize (H15 _ _ ltac:(ecancel_assumption)).
+    match goal with H15 : forall _ _, _ -> _ |- _ =>
+      specialize (H15 _ _ ltac:(ecancel_assumption))
+    end.
 
     (* unrelated: stack deallocation proof, would need scalar-to-bytes lemma *)
   Abort.
