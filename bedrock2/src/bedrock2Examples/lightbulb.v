@@ -10,8 +10,11 @@ Require Import bedrock2Examples.LAN9250.
 From coqutil Require Import Word.Bitwidth Map.Interface.
 From coqutil.Tactics Require Import letexists eabstract.
 From bedrock2 Require Import FE310CSemantics Semantics WeakestPrecondition ProgramLogic Array Scalars.
+From bedrock2 Require Import LeakageSemantics LeakageWeakestPrecondition.
 From bedrock2.Map Require Import Separation SeparationLogic.
 Require bedrock2.SepAutoArray bedrock2.SepCalls.
+Require coqutil.Word.LittleEndianList.
+Require bedrock2.LeakageProgramLogic bedrock2.LeakageLoops bedrock2.LeakageWeakestPreconditionProperties.
 Import ZArith.
 Local Open Scope Z_scope.
 
@@ -20,6 +23,7 @@ Section WithParameters.
   Local Notation word := (bits 32).
   Context {mem: map.map word Byte.byte}.
   Context {mem_ok: map.ok mem}.
+  Context {pick_sp: LeakageSemantics.PickSp}.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
   Definition lightbulb_loop := func! (p_addr) ~> err {
@@ -98,11 +102,158 @@ Section WithParameters.
   Import Word.Properties.
   Import lightbulb_spec.
 
-  Instance spec_of_recvEthernet : spec_of "recvEthernet" := fun functions =>
-    forall p_addr (buf:list byte) R m t,
+  (* recvEthernet's specification is a leakage specification (LeakageSemantics),
+     like those of the LAN9250 driver it calls; the other functions of this
+     file keep plain specifications and proofs.
+
+     Its I/O segment on a SPI timeout, precisely (the previous
+     [(any +++ spi_timeout) ioh] follows, see [recvEthernet_timeout_any]): the
+     read of RX_FIFO_INF, of RX_STATUS_FIFO_PORT, or of a packet word timed
+     out, after the previous reads succeeded. *)
+  Local Notation "$ z" := (bits.of_Z 32 z) (at level 9, format "$ z").
+  Definition recvEthernet_timeout (ioh : list OP) : Prop :=
+    lan9250_txn_timeout 8 ioh \/
+    (exists info, (lan9250_fastread4 $124 info +++ lan9250_txn_timeout 8) ioh /\
+       Zmod.unsigned (Zmod.and info $((2^8-1)*2^16)) <> 0) \/
+    (exists info status recv,
+       (lan9250_fastread4 $124 info +++ lan9250_fastread4 $64 status +++
+        lan9250_readpacket recv +++ lan9250_txn_timeout 8) ioh /\
+       Zmod.unsigned (Zmod.and info $((2^8-1)*2^16)) <> 0 /\
+       Zmod.unsigned (lan9250_decode_length status) < 1521).
+
+  Lemma recvEthernet_timeout_any ioh : recvEthernet_timeout ioh -> (any +++ spi_timeout) ioh.
+  Proof.
+    intros [H|[(?&H&_)|(?&?&?&H&_)]].
+    { eauto using lan9250_txn_timeout_any. }
+    all: repeat match goal with H : (_ +++ _) _ |- _ => destruct H as (?&?&?&?&?); subst end.
+    all: first [ solve [rewrite <-?app_assoc; eauto 6 using lan9250_txn_timeout_any, any_app_more]
+               | solve [rewrite ?app_assoc; eauto 6 using lan9250_txn_timeout_any, any_app_more] ].
+  Qed.
+
+  (* Leakage of recvEthernet, as a function of the buffer address and the
+     abstract I/O segment [ioh] (newest event first), given the leakage function
+     [fr] of lan9250_readword: the I/O segment of each read is recovered by
+     parsing the trace chronologically ([rev ioh]) with LAN9250's parsers, the
+     control flow is determined by the words read (in the trace), and a read
+     that times out is the last one and gets the rest of the trace.  Events are
+     accumulated newest first. *)
+
+  (* the word read by a lan9250_fastread4 transaction, from its received bytes *)
+  Definition lan9250_txn_word (rxs : list byte) : word :=
+    match rxs with
+    | [_; _; _; _; b0; b1; b2; b3] => $(LittleEndianList.le_combine [b0; b1; b2; b3])
+    | _ => $0
+    end.
+
+  (* the packet loop: [n] more words to read into [p]; per iteration the loop
+     test, the call, the branch on the error, and the store's address *)
+  Fixpoint recvEthernet_loop (fr : word -> list OP -> leakage) (n : nat) (p : word) (l : list OP) (acc : leakage) : leakage :=
+    match n with
+    | O => leak_bool false :: acc
+    | S n =>
+      let acc := leak_bool true :: acc in
+      match parse_lan9250_seg 8 l with
+      | None => leak_bool false :: leak_bool true :: fr $0 (List.rev l) ++ leak_unit :: acc
+      | Some (x, l) => recvEthernet_loop fr n (Zmod.add p $4) l (leak_word p :: leak_bool false :: fr $0 (List.rev x) ++ leak_unit :: acc)
+      end
+    end.
+
+  Definition recvEthernet_leak (fr : word -> list OP -> leakage) (p : word) (ioh : list OP) : leakage :=
+    let l := List.rev ioh in
+    match parse_lan9250_txn 8 l with
+    | None => leak_bool true :: fr $124 ioh ++ [leak_unit]
+    | Some (x1, _, rxs1, l) =>
+      let info := lan9250_txn_word rxs1 in
+      let acc := leak_bool false :: fr $124 (List.rev x1) ++ [leak_unit] in
+      if Zmod.eqb (Zmod.and info $((2^8-1)*2^16)) $0
+      then leak_bool false :: acc
+      else
+        let acc := leak_bool true :: acc in
+        match parse_lan9250_txn 8 l with
+        | None => leak_bool true :: fr $64 (List.rev l) ++ leak_unit :: acc
+        | Some (x2, _, rxs2, l) =>
+          let num_bytes := lan9250_decode_length (lan9250_txn_word rxs2) in
+          let acc := leak_word $2 :: leak_word $16 :: leak_bool false :: fr $64 (List.rev x2) ++ leak_unit :: acc in
+          if Z.ltb (Zmod.unsigned num_bytes) 1521
+          then recvEthernet_loop fr (Z.to_nat (Zmod.unsigned num_bytes / 4)) p l (leak_bool true :: acc)
+          else leak_bool false :: acc
+        end
+    end.
+
+  Lemma recvEthernet_loop_acc fr n : forall p (l : list OP) acc,
+    recvEthernet_loop fr n p l acc = recvEthernet_loop fr n p l [] ++ acc.
+  Proof.
+    induction n; intros; cbn [recvEthernet_loop].
+    { reflexivity. }
+    destruct (parse_lan9250_seg 8 l) as [[x l']|].
+    { rewrite IHn. rewrite (IHn _ l' (_ :: _ :: _ ++ _ :: _ :: nil)).
+      repeat progress (rewrite <-?List.app_assoc; cbn [List.app]). reflexivity. }
+    { repeat progress (rewrite <-?List.app_assoc; cbn [List.app]). reflexivity. }
+  Qed.
+
+
+  (* [recvEthernet_leak] on the I/O segments the specification describes *)
+  Lemma parse_fastread4_word a v (x r L : list OP) (HL : L = List.rev x ++ r) (H : lan9250_fastread4 a v x) :
+    exists txs rxs, parse_lan9250_txn 8 L = Some (List.rev x, txs, rxs, r) /\ lan9250_txn_word rxs = v.
+  Proof.
+    destruct (parse_lan9250_fastread4 a v x r L HL H) as (txs&r1&r2&r3&r4&b0&b1&b2&b3&Hp&Hv).
+    exists txs, [r1;r2;r3;r4;b0;b1;b2;b3]. split; [exact Hp|].
+    cbv [lan9250_txn_word]. rewrite <-Hv. apply Zmod.of_Z_unsigned.
+  Qed.
+
+  Lemma recvEthernet_leak_timeout1 fr p (ioh : list OP) (H : lan9250_txn_timeout 8 ioh) :
+    recvEthernet_leak fr p ioh = leak_bool true :: fr $124 ioh ++ [leak_unit].
+  Proof. cbv [recvEthernet_leak]. rewrite (parse_lan9250_txn_timeout 8 ioh H). reflexivity. Qed.
+
+  Lemma recvEthernet_leak_no_packet fr p info (x1 : list OP) (H1 : lan9250_fastread4 $124 info x1)
+    (Hz : Zmod.unsigned (Zmod.and info $((2^8-1)*2^16)) = 0) :
+    recvEthernet_leak fr p x1 = leak_bool false :: leak_bool false :: fr $124 x1 ++ [leak_unit].
+  Proof.
+    cbv [recvEthernet_leak].
+    destruct (parse_fastread4_word _ _ _ [] _ (eq_sym (List.app_nil_r _)) H1) as (?&?&Hp&Hw).
+    rewrite Hp, Hw. cbv zeta. rewrite List.rev_involutive.
+    destruct (Zmod.eqb_spec (Zmod.and info $((2^8-1)*2^16)) $0) as [_|Hne]; [reflexivity|].
+    exfalso; apply Hne; apply Zmod.unsigned_inj; rewrite Hz, bits.unsigned_of_Z; reflexivity.
+  Qed.
+
+  Lemma recvEthernet_leak_timeout2 fr p info (x1 x2 : list OP) (H1 : lan9250_fastread4 $124 info x1)
+    (Hnz : Zmod.unsigned (Zmod.and info $((2^8-1)*2^16)) <> 0) (H2 : lan9250_txn_timeout 8 x2) :
+    recvEthernet_leak fr p (x2 ++ x1) =
+      leak_bool true :: fr $64 x2 ++ leak_unit :: leak_bool true :: leak_bool false :: fr $124 x1 ++ [leak_unit].
+  Proof.
+    cbv [recvEthernet_leak]. rewrite List.rev_app_distr.
+    destruct (parse_fastread4_word _ _ _ (List.rev x2) _ eq_refl H1) as (?&?&Hp&Hw).
+    rewrite Hp, Hw. cbv zeta. rewrite !List.rev_involutive.
+    destruct (Zmod.eqb_spec (Zmod.and info $((2^8-1)*2^16)) $0) as [He|_].
+    { exfalso; apply Hnz; rewrite He, bits.unsigned_of_Z; reflexivity. }
+    rewrite (parse_lan9250_txn_timeout 8 x2 H2). reflexivity.
+  Qed.
+
+  Lemma recvEthernet_leak_status fr p info status (x1 x2 l : list OP) (H1 : lan9250_fastread4 $124 info x1)
+    (Hnz : Zmod.unsigned (Zmod.and info $((2^8-1)*2^16)) <> 0) (H2 : lan9250_fastread4 $64 status x2) :
+    recvEthernet_leak fr p (l ++ x2 ++ x1) =
+      let num_bytes := lan9250_decode_length status in
+      let acc := leak_word $2 :: leak_word $16 :: leak_bool false :: fr $64 x2 ++ leak_unit ::
+                 leak_bool true :: leak_bool false :: fr $124 x1 ++ [leak_unit] in
+      if Z.ltb (Zmod.unsigned num_bytes) 1521
+      then recvEthernet_loop fr (Z.to_nat (Zmod.unsigned num_bytes / 4)) p (List.rev l) [] ++ leak_bool true :: acc
+      else leak_bool false :: acc.
+  Proof.
+    cbv [recvEthernet_leak]. rewrite !List.rev_app_distr, <-!List.app_assoc.
+    destruct (parse_fastread4_word _ _ _ (List.rev x2 ++ List.rev l) _ eq_refl H1) as (?&?&Hp1&Hw1).
+    rewrite Hp1, Hw1. cbv zeta. rewrite !List.rev_involutive.
+    destruct (Zmod.eqb_spec (Zmod.and info $((2^8-1)*2^16)) $0) as [He|_].
+    { exfalso; apply Hnz; rewrite He, bits.unsigned_of_Z; reflexivity. }
+    destruct (parse_fastread4_word _ _ _ (List.rev l) _ eq_refl H2) as (?&?&Hp2&Hw2).
+    rewrite Hp2, Hw2. cbv zeta. rewrite !List.rev_involutive.
+    destruct (Z.ltb _ _); [rewrite recvEthernet_loop_acc|]; reflexivity.
+  Qed.
+
+  Instance spec_of_recvEthernet : spec_of "recvEthernet" := fun functions => exists f,
+    forall p_addr (buf:list byte) R k m t,
       (array scalar8 (bits.of_Z 32 1) p_addr buf * R) m ->
       length buf = 1520%nat ->
-      WeakestPrecondition.call functions "recvEthernet" t m [p_addr] (fun t' m' rets =>
+      LeakageWeakestPrecondition.call functions "recvEthernet" k t m [p_addr] (fun k' t' m' rets =>
         exists bytes_written err, rets = [bytes_written; err] /\
         exists iol, t' = iol ++ t /\
         exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
@@ -113,8 +264,9 @@ Section WithParameters.
           (Zmod.unsigned err <> 0 /\ exists buf, (array scalar8 (bits.of_Z 32 1) p_addr buf * R) m' /\ length buf = 1520%nat /\ (
              Zmod.unsigned err = 1 /\ lan9250_recv_no_packet ioh \/
              Zmod.unsigned err = 2 /\ lan9250_recv_packet_too_long ioh \/
-             Zmod.unsigned err = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout) ioh
-            ))
+             Zmod.unsigned err = 2^32-1 /\ recvEthernet_timeout ioh
+            )) /\
+        k' = f p_addr ioh ++ k
         ).
 
   Instance spec_of_lightbulb : spec_of "lightbulb_handle" := fun functions =>
@@ -249,7 +401,15 @@ Section WithParameters.
     cbv [choice]; intuition idtac.
   Qed.
 
-  Lemma lightbulb_loop_ok : program_logic_goal_for_function! lightbulb_loop.
+  (* [program_logic_goal_for_function! lightbulb_loop], with the function list
+     assumed free of stackalloc (recvEthernet's specification is a leakage
+     specification, used through ProgramLogic.straightline_call_from_leakage). *)
+  Lemma lightbulb_loop_ok : forall functions,
+    program_logic_goal_for lightbulb_loop
+      (forall (EnvContains : map.get functions "lightbulb_loop" = Some lightbulb_loop),
+       spec_of_recvEthernet functions -> spec_of_lightbulb functions ->
+       SemanticsRelations.stackalloc_free_env functions ->
+       spec_of_lightbulb_loop functions).
   Proof.
     repeat (match goal with H : or _ _ |- _ => destruct H; intuition idtac end
           || straightline || straightline_call || split_if || ecancel_assumption || eauto || lia).
@@ -259,15 +419,22 @@ Section WithParameters.
     all : eexists; split.
     all : try subst err; rewrite ?bits.unsigned_of_Z.
     all : repeat (eapply List.Forall2_cons || eapply List.Forall2_nil || eapply List.Forall2_app || eauto 15 using concat_app).
-    { subst v. rewrite bits.unsigned_xor, H10, bits.unsigned_of_Z in H4. case (H4 eq_refl). }
-    { subst v. rewrite bits.unsigned_xor, H9, bits.unsigned_of_Z in H4. inversion H4. }
-    { subst v. rewrite bits.unsigned_xor, H9, bits.unsigned_of_Z in H4. inversion H4. }
+    all: try subst v.
+    all: repeat match goal with
+         | H : Zmod.unsigned (Zmod.xor ?x _) <> 0, E : Zmod.unsigned ?x = _ |- _ =>
+             rewrite bits.unsigned_xor, E, bits.unsigned_of_Z in H; solve [case (H eq_refl)]
+         | H : Zmod.unsigned (Zmod.xor ?x _) = 0, E : Zmod.unsigned ?x = _ |- _ =>
+             rewrite bits.unsigned_xor, E, bits.unsigned_of_Z in H; solve [inversion H]
+         end.
+    (* SPI timeout: recvEthernet's precise timeout trace, weakened *)
+    all: try solve [ right; right; right; right; split;
+                     [ eapply recvEthernet_timeout_any; eassumption | assumption ] ].
 
     Unshelve.
-    all : eexists; split; [ eauto | ].
-    all : try seprewrite_in @bytearray_index_merge H6; eauto.
-    all : try rewrite List.app_length.
-    all : try lia.
+    all : try match goal with H : context [bytes (Zmod.add _ _) _] |- _ => seprewrite_in @bytearray_index_merge H end.
+    all : try (eexists; split; [ ecancel_assumption | ]).
+    all : try rewrite List.length_app.
+    all : lia.
   Qed.
 
   Local Ltac prove_ext_spec :=
@@ -386,85 +553,178 @@ Section WithParameters.
   Import bedrock2.ZnWords.
   Import bedrock2.SepAutoArray bedrock2.SepCalls.
 
-  (* [program_logic_goal_for_function! recvEthernet] (one premise per call
-     site, as generated), with lan9250_readword's plain specification. *)
+  (* recvEthernet is proved in the leakage program logic: its specification
+     and lan9250_readword's are leakage specifications. *)
+  Import bedrock2.LeakageProgramLogic.
+
+  Local Ltac split_if_leakage :=
+    lazymatch goal with
+      |- LeakageWeakestPrecondition.cmd _ ?c _ _ _ _ ?post =>
+      let c := eval hnf in c in
+          lazymatch c with
+          | cmd.cond _ _ _ => letexists; letexists; split; [solve[repeat straightline]|split]
+          end
+    end.
+
+  (* [straightline] on the loop's [enforce] goal, without its eabstract (slow) *)
+  Local Ltac loop_again :=
+    lazymatch goal with
+    | |- Markers.unique (Markers.left ?G) =>
+      change G;
+      unshelve (idtac; repeat match goal with
+                       | |- Markers.split (?P /\ Markers.right ?Q) =>
+                         split; [solve [repeat straightline] | change Q]
+                       | |- exists _, _ => letexists
+                       end); []
+    end.
+
+  (* the callee's timeout-or-success disjunction, against the branch taken *)
+  Local Ltac dispatch_call_result :=
+    repeat match goal with
+    | x := ?y |- _ => is_var y; subst x
+    | H :  _ /\ _ \/ ?Y /\ _, G : not ?X |- _ => constr_eq X Y; let Z := fresh in destruct H as [|[Z ?]]; [|case (G Z)]
+    | H :  not ?Y /\ _ \/ _ /\ _, G : ?X |- _ => constr_eq X Y; let Z := fresh in destruct H as [[Z ?]|]; [case (Z G)|]
+    | H : _ /\ _ |- _ => destruct H
+    end.
+
+  Local Ltac subst_leakage := repeat match goal with x := _ : leakage |- _ => subst x end.
+  Local Ltac leak_finish :=
+    subst_leakage; cbn [leak_binop];
+    rewrite ?List.rev_involutive, ?List.app_nil_r;
+    repeat progress (rewrite <-?List.app_assoc; cbn [List.app]);
+    reflexivity.
+
+  (* the packet loop: [i] words read so far, [n] bytes in total *)
+  Lemma to_nat_div4_S (n i : word) (Hlt : Zmod.unsigned i < Zmod.unsigned n)
+    (Hmod : Zmod.unsigned i mod 4 = Zmod.unsigned n mod 4) :
+    Z.to_nat (Zmod.unsigned (Zmod.sub n i) / 4) =
+    S (Z.to_nat (Zmod.unsigned (Zmod.sub n (Zmod.add i (bits.of_Z 32 4))) / 4)).
+  Proof.
+    pose proof (bits.unsigned_range n width_nonneg); pose proof (bits.unsigned_range i width_nonneg).
+    rewrite !Zmod.unsigned_sub, !Zmod.unsigned_add, !bits.unsigned_of_Z.
+    change (4 mod 2 ^ 32) with 4.
+    rewrite (Z.mod_small (Zmod.unsigned i + 4)) by (Z.div_mod_to_equations; lia).
+    rewrite !Z.mod_small by (Z.div_mod_to_equations; lia).
+    rewrite <-Znat.Z2Nat.inj_succ by (Z.div_mod_to_equations; lia).
+    f_equal. Z.div_mod_to_equations. lia.
+  Qed.
+
+  Lemma unsigned_add4 (n i : word) (Hlt : Zmod.unsigned i < Zmod.unsigned n)
+    (Hmod : Zmod.unsigned i mod 4 = Zmod.unsigned n mod 4) :
+    Zmod.unsigned (Zmod.add i (bits.of_Z 32 4)) = Zmod.unsigned i + 4.
+  Proof.
+    pose proof (bits.unsigned_range n width_nonneg); pose proof (bits.unsigned_range i width_nonneg).
+    rewrite Zmod.unsigned_add, bits.unsigned_of_Z. change (4 mod 2 ^ 32) with 4.
+    apply Z.mod_small. Z.div_mod_to_equations; lia.
+  Qed.
+
+  Lemma lan9250_readpacket_word (w : word) bs :
+    lan9250_readpacket (LittleEndianList.le_split 4 (Zmod.unsigned w) ++ bs) =
+    (lan9250_fastread4 $0 w +++ lan9250_readpacket bs).
+  Proof.
+    pose proof (LittleEndianList.length_le_split 4 (Zmod.unsigned w)) as Hl.
+    destruct (LittleEndianList.le_split 4 (Zmod.unsigned w)) as [|b0 [|b1 [|b2 [|b3 [|]]]]] eqn:E;
+      cbn [length] in Hl; try discriminate Hl.
+    cbn [List.app lan9250_readpacket]. rewrite <-E, LittleEndianList.le_combine_split.
+    change (Z.of_nat 4 * 8) with 32. rewrite bits.mod_to_Z, Zmod.of_Z_unsigned. reflexivity.
+  Qed.
+
+  (* one step of the packet loop, as rewrite rules: unfolding it with cbn in
+     the middle of recvEthernet_ok makes the kernel check of the proof take
+     hours *)
+  Lemma recvEthernet_loop_S fr n p l acc :
+    recvEthernet_loop fr (S n) p l acc =
+    match parse_lan9250_seg 8 l with
+    | None => leak_bool false :: leak_bool true :: fr $0 (List.rev l) ++ leak_unit :: leak_bool true :: acc
+    | Some (x, l) => recvEthernet_loop fr n (Zmod.add p $4) l (leak_word p :: leak_bool false :: fr $0 (List.rev x) ++ leak_unit :: leak_bool true :: acc)
+    end.
+  Proof. reflexivity. Qed.
+
+  Lemma recvEthernet_loop_O fr p l acc : recvEthernet_loop fr O p l acc = leak_bool false :: acc.
+  Proof. reflexivity. Qed.
+
+  Lemma recvEthernet_loop_timeout fr n p l acc (H : parse_lan9250_txn 8 l = None) :
+    recvEthernet_loop fr (S n) p l acc =
+    leak_bool false :: leak_bool true :: fr $0 (List.rev l) ++ leak_unit :: leak_bool true :: acc.
+  Proof. rewrite recvEthernet_loop_S. cbv [parse_lan9250_seg]. rewrite H. reflexivity. Qed.
+
+  Lemma recvEthernet_loop_word fr n p l acc x txs rxs l' (H : parse_lan9250_txn 8 l = Some (x, txs, rxs, l')) :
+    recvEthernet_loop fr (S n) p l acc =
+    recvEthernet_loop fr n (Zmod.add p $4) l' (leak_word p :: leak_bool false :: fr $0 (List.rev x) ++ leak_unit :: leak_bool true :: acc).
+  Proof. rewrite recvEthernet_loop_S. cbv [parse_lan9250_seg]. rewrite H. reflexivity. Qed.
+
+  (* [program_logic_goal_for_function! recvEthernet], in the leakage program logic. *)
   Lemma recvEthernet_ok : forall functions,
-    program_logic_goal_for recvEthernet
+    LeakageProgramLogic.program_logic_goal_for recvEthernet
       (forall (EnvContains : map.get functions "recvEthernet" = Some recvEthernet),
-       lan9250_readword_plain_spec functions -> lan9250_readword_plain_spec functions -> lan9250_readword_plain_spec functions ->
+       spec_of_lan9250_readword functions ->
        spec_of_recvEthernet functions).
   Proof.
     straightline. straightline.
-    rename H into Hcall; clear H0 H1. rename H2 into H. rename H3 into H0.
-    repeat (straightline || split_if || straightline_call || eauto 99 || prove_ext_spec || ZnWords).
-
+    instantiate (1 := recvEthernet_leak f).
+    repeat (straightline || split_if_leakage || LeakageProgramLogic.straightline_call || ZnWords).
     3: {
-
-    refine (Loops.tailrec_earlyout
+    refine (LeakageLoops.tailrec_earlyout
       (HList.polymorphic_list.cons (list byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
       ["buf";"num_bytes";"i";"read";"err"]
-      (fun v scratch R t m buf num_bytes_loop i read err => PrimitivePair.pair.mk (
+      (fun v scratch R k t m buf num_bytes_loop i read err => PrimitivePair.pair.mk (
         Zmod.unsigned err = 0 /\ Zmod.unsigned i <= Zmod.unsigned num_bytes /\
         v = Zmod.unsigned i /\ (bytes (Zmod.add buf i) scratch * R) m /\
         List.length scratch = Z.to_nat (Zmod.unsigned (Zmod.sub num_bytes i)) /\
         Zmod.unsigned i mod 4 = Zmod.unsigned num_bytes mod 4 /\
         num_bytes_loop = num_bytes)
-      (fun T M BUF NUM_BYTES I READ ERR =>
+      (fun K T M BUF NUM_BYTES I READ ERR =>
          NUM_BYTES = num_bytes_loop /\
          exists RECV, (bytes (Zmod.add buf i) RECV * R) M /\
          List.length RECV = List.length scratch /\
          exists iol, T = iol ++ t /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\
          (Zmod.unsigned ERR = 0 /\ lan9250_readpacket RECV ioh \/
-          Zmod.unsigned ERR = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout) ioh ) )
+          Zmod.unsigned ERR = 2^32-1 /\ exists recv, (lan9250_readpacket recv +++ lan9250_txn_timeout 8) ioh) /\
+         K = recvEthernet_loop f (Z.to_nat (Zmod.unsigned (Zmod.sub num_bytes i) / 4)) (Zmod.add buf i) (List.rev ioh) [] ++ k)
       )
-      _ _ _ _ _ _ _ _);
-    (* TODO wrap this into a tactic with the previous refine? *)
+      _ (Z.gt_wf (Zmod.unsigned num_bytes)) _ _ _ _ _ _);
     cbn [HList.hlist.foralls HList.tuple.foralls
          HList.hlist.existss HList.tuple.existss
          HList.hlist.apply  HList.tuple.apply
          HList.hlist
          List.repeat Datatypes.length
          HList.polymorphic_list.repeat HList.polymorphic_list.length
-         PrimitivePair.pair._1 PrimitivePair.pair._2] in *;
-      [ repeat (straightline || split_if || eapply interact_nomem || eauto 99) .. | ].
-    { exact (Z.gt_wf (Zmod.unsigned num_bytes)). }
-
-    {
+         PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
+    { repeat straightline. }
+    { (* Hpre *)
       repeat (split; [trivial||ZnWords|]).
       replace (Zmod.add p_addr i) with p_addr by (subst i; ring).
       progress trans_ltu.
-
       scancel_asm.
       Tactics.ssplit.
-      all : trivial; try listZnWords.
-    }
-
-      { straightline_call; repeat straightline.
-        { rewrite bits.unsigned_of_Z. cbv; clear. intuition congruence. }
-        split_if; do 6 straightline.
-
-        (* SPI timeout, break loop *)
-        { straightline.
-          straightline.
-          straightline.
-          straightline.
-          (* [repeat straightline] hangs *)
-          do 5 eexists; split; [repeat straightline|]; [].
+      all : trivial; try listZnWords. }
+    { (* Hbody *)
+      repeat (loop_again || straightline).
+      { LeakageProgramLogic.straightline_call; [ ZnWords | ].
+        repeat straightline.
+        split_if_leakage; [ intro | intro ].
+        all: dispatch_call_result.
+        (* SPI timeout: break *)
+        { repeat (loop_again || straightline).
           left.
-          repeat straightline.
+          repeat (loop_again || straightline).
           { subst br0. rewrite Z.ltb_irrefl. apply Zmod.unsigned_0. }
-          eexists; split; eauto.
-          split; eauto.
-          eexists; split.
-          { subst a; eauto. }
-          eexists; split; eauto.
-          right; split.
-          { subst err. rewrite bits.unsigned_of_Z. exact eq_refl. }
-          intuition eauto. }
-
+          eexists; split; [ eassumption | ].
+          split; [ reflexivity | ].
+          eexists; split; [ reflexivity | ].
+          eexists; split; [ eassumption | ].
+          split.
+          { right; split; [ subst err; rewrite bits.unsigned_of_Z; reflexivity | ].
+            exists nil, nil, x16; split; [ rewrite List.app_nil_r; reflexivity | split; [ reflexivity | eassumption ] ]. }
+          trans_ltu.
+          match goal with Hlt : Zmod.unsigned ?i < Zmod.unsigned ?n, Hmod : Zmod.unsigned ?i mod 4 = Zmod.unsigned ?n mod 4 |- _ =>
+            rewrite (to_nat_div4_S n i Hlt Hmod) end.
+          match goal with Ht : lan9250_txn_timeout 8 ?x |- _ =>
+            rewrite (recvEthernet_loop_timeout _ _ _ _ _ (parse_lan9250_txn_timeout 8 x Ht)) end.
+          leak_finish. }
         (* store *)
-        do 4 straightline.
-        trans_ltu.
+        repeat straightline.
+        try trans_ltu.
         match goal with
           | H: context[Zmod.unsigned (Zmod.sub ?a ?b)] |- _ =>
               pose proof (bits.unsigned_range a width_nonneg);
@@ -483,149 +743,202 @@ Section WithParameters.
         { eapply List.firstn_length_le; Z.div_mod_to_equations; lia. }
         straightline.
         (* after store *)
-        do 3 straightline.
-        (* TODO straightline hangs in Loops.enforce *)
-        do 5 letexists. split. { repeat straightline. }
-        right. do 3 letexists.
-        repeat split; repeat straightline; repeat split.
-        { intuition idtac. }
-        { subst i.
-          rewrite Zmod.unsigned_add; rewrite Z.mod_small;
-          replace (Zmod.unsigned (bits.of_Z 32 4)) with 4.
-          2,4: rewrite bits.unsigned_of_Z; exact eq_refl.
-          1,2: try (Z.div_mod_to_equations; lia). }
-        { replace (Zmod.add x9 i)
-            with (Zmod.add (Zmod.add x9 x11) (bits.of_Z 32 4)) by (subst i; ring).
-          ecancel_assumption. }
-        { match goal with x1 := _ |- _ => subst x1; rewrite List.length_skipn end.
-          ZnWords. }
-        { ZnWords. }
-        { ZnWords. }
-        { ZnWords. }
-
-        { letexists; repeat split.
-          { repeat match goal with x := _ |- _ => is_var x; subst x end; subst.
-            cbv [scalar32 truncated_word truncate_word truncate_Z truncated_scalar] in *; extract_ex1_and_emp_in_hyps.
-            seprewrite_in (symmetry! @array1_iff_eq_of_list_word_at) H25. { cbv; discriminate. }
-            progress replace (Zmod.add x9 (Zmod.add x11 4)) with
-                    (Zmod.add (Zmod.add x9 x11) (bits.of_Z 32 4)) in * by ring.
-            SeparationLogic.seprewrite_in (@bytearray_index_merge) H25.
-            { rewrite bits.unsigned_of_Z; exact eq_refl. } { ecancel_assumption. } }
-          { subst RECV. rewrite List.app_length, LittleEndianList.length_le_split.
-            rewrite H26. subst x22. rewrite List.length_skipn. simpl bytes_per.
-            enough ((4 <= length x7)%nat) by lia.
-            Z.div_mod_to_equations; lia. }
-          cbv [truncate_word truncate_Z] in *.
-          repeat match goal with x := _ |- _ => is_var x; subst x end; subst.
-          eexists; split.
-          { rewrite List.app_assoc; eauto. }
-          eexists; split.
-          { eapply List.Forall2_app; eauto.  }
-          destruct H29; [left|right]; repeat (straightline || split || eauto using TracePredicate.any_app_more).
-          eapply TracePredicate.concat_app; eauto.
-          unshelve erewrite (_ : LittleEndianList.le_combine _ = Zmod.unsigned x10); rewrite ?Zmod.of_Z_unsigned; try solve [intuition idtac].
-          {
-            etransitivity.
-            1: eapply (LittleEndianList.le_combine_split 4).
-            eapply bits.mod_to_Z. } } }
-
-      { eexists; split; eauto. split; eauto. exists nil; split; eauto.
-        eexists; split; [constructor|].
-        left. split; eauto.
-        enough (Hlen : length x7 = 0%nat) by (destruct x7; try solve[inversion Hlen]; exact eq_refl).
-        PreOmega.zify.
-        rewrite H13.
-        subst br.
-        destruct (Z.ltb (Zmod.unsigned x11) (Zmod.unsigned num_bytes)) eqn:HJ.
-        { rewrite bits.unsigned_1 in H11 by lia. inversion H11. }
-        eapply Z.ltb_nlt in HJ.
-        ZnWords. }
-      repeat straightline.
-
+        repeat (loop_again || straightline).
+        right.
+        lazymatch goal with |- Markers.unique (Markers.left ?G) => change G end.
+        do 2 letexists. exists (Zmod.unsigned i).
+        cbv [Markers.split Markers.right].
+        split; [ | split ].
+        { (* loop invariant for the next iteration *)
+          repeat (split; [ solve [ assumption | reflexivity | ZnWords ] | ]).
+          split.
+          { (* memory *)
+            match goal with |- (bytes (?b + ?i) _ * _) _ => replace (Zmod.add b i) with (Zmod.add (Zmod.add b x11) (bits.of_Z 32 4)) by (subst i; ring) end.
+            ecancel_assumption. }
+          split.
+          { match goal with |- length ?x = _ => subst x end.
+            rewrite List.length_skipn. ZnWords. }
+          split; [ subst i; rewrite (unsigned_add4 num_bytes) by assumption; Z.div_mod_to_equations; lia | reflexivity ]. }
+        { repeat match goal with x := _ : Z |- _ => subst x end.
+          subst i; rewrite (unsigned_add4 num_bytes) by assumption; Z.div_mod_to_equations; lia. }
+        { (* the postcondition of the rest of the loop gives this iteration's *)
+          intros K T M ? ? ? ? ? (HNB & RECV & HM & HL & iol & HT & ioh & Hrel & Hcase & HK).
+          split; [ exact HNB | ].
+          exists (LittleEndianList.le_split 4 (Zmod.unsigned x10) ++ RECV).
+          split.
+          { match goal with x := sep _ _ |- _ => subst x end.
+            cbv [scalar32 truncated_word truncate_word truncate_Z truncated_scalar] in HM; extract_ex1_and_emp_in_hyps.
+            seprewrite_in (symmetry! @array1_iff_eq_of_list_word_at) HM.
+            { rewrite LittleEndianList.length_le_split. cbv; discriminate. }
+            replace (Zmod.add x9 i) with (Zmod.add (Zmod.add x9 x11) (bits.of_Z 32 4)) in HM by (subst i; ring).
+            change (bytes_per access_size.four) with 4%nat in HM.
+            subst a.
+            SeparationLogic.seprewrite_in (@bytearray_index_merge) HM.
+            { rewrite bits.unsigned_of_Z, LittleEndianList.length_le_split. exact eq_refl. }
+            ecancel_assumption. }
+          split.
+          { rewrite List.length_app, LittleEndianList.length_le_split, HL.
+            match goal with x := List.skipn _ _ |- _ => subst x end.
+            rewrite List.length_skipn. ZnWords. }
+          exists (iol ++ x15); split.
+          { subst T a0. rewrite List.app_assoc. reflexivity. }
+          exists (ioh ++ x16); split.
+          { eapply List.Forall2_app; eassumption. }
+          split.
+          { destruct Hcase as [[? ?]|[? [recv (l1 & l2 & -> & Hp & Ht)]]]; [left|right]; split; try assumption.
+            { rewrite lan9250_readpacket_word. eapply concat_app; eassumption. }
+            { exists (LittleEndianList.le_split 4 (Zmod.unsigned x10) ++ recv), (l1 ++ x16), l2.
+              split; [ rewrite List.app_assoc; reflexivity | ].
+              split; [ | assumption ].
+              rewrite lan9250_readpacket_word. eapply concat_app; eassumption. } }
+          { subst K i a.
+            match goal with Hlt : Zmod.unsigned x11 < Zmod.unsigned num_bytes, Hmod : Zmod.unsigned x11 mod 4 = Zmod.unsigned num_bytes mod 4 |- _ =>
+              rewrite (to_nat_div4_S num_bytes x11 Hlt Hmod) end.
+            rewrite List.rev_app_distr.
+            destruct (parse_fastread4_word _ _ _ (List.rev ioh) _ eq_refl H18) as (?&?&Hp&_).
+            rewrite (recvEthernet_loop_word _ _ _ _ _ _ _ _ _ Hp).
+            rewrite (recvEthernet_loop_acc _ _ _ _ (_ :: _)).
+            replace (Zmod.add x9 (Zmod.add x11 (bits.of_Z 32 4))) with (Zmod.add (Zmod.add x9 x11) (bits.of_Z 32 4)) by ring.
+            leak_finish. } } }
+      (* loop exit *)
+      { repeat trans_ltu.
+        eexists; split; [ eassumption | ].
+        split; [ reflexivity | ].
+        exists nil; split; [ reflexivity | ].
+        exists nil; split; [ constructor | ].
+        match goal with H : length ?x = Z.to_nat _ |- _ =>
+          assert (x = nil) as -> by (destruct x; [ reflexivity | exfalso; cbn [length] in H; ZnWords ]) end.
+        split.
+        { left; split; [ assumption | reflexivity ]. }
+        match goal with |- context [recvEthernet_loop _ ?n] => replace n with O by (ZnWords) end.
+        rewrite recvEthernet_loop_O. leak_finish. }
+    }
+    (* after the loop *)
+    { repeat straightline.
+      dispatch_call_result.
       subst i.
+      subst_leakage.
       progress replace (Z.to_nat (Zmod.unsigned (Zmod.sub p_addr p_addr) / 1)) with O in * by ZnWords.
+      change (bits.of_Z 32 0) with (@Zmod.zero (2^32)) in *.
       rewrite ?Zmod.add_0_r, ?Zmod.sub_0_r, ?Z.mul_1_l, ?Nat.add_0_l, ?Z2Nat.id, ?Zmod.of_Z_unsigned in * by apply (bits.unsigned_range _ width_nonneg).
+      cbn [List.firstn List.skipn seps array] in *.
+      repeat trans_ltu.
+      change (Zmod.unsigned (bits.of_Z 32 1521)) with 1521 in *.
+      match goal with H : lan9250_fastread4 _ ?s x6 |- _ =>
+        assert (Hnb : num_bytes = lan9250_decode_length s)
+          by (repeat match goal with x := _ : word |- _ => subst x end; reflexivity) end.
+      repeat match goal with x := Zmod.and _ _ |- _ => subst x end.
+      repeat match goal with x := _ ++ _ |- _ => subst x end.
+      exists (x13 ++ x5 ++ x1); split; [ rewrite <-!List.app_assoc; reflexivity | ].
+      exists (x14 ++ x6 ++ x2); split; [ repeat eapply List.Forall2_app; eassumption | ].
+      split.
+      { match goal with H : _ /\ _ \/ _ /\ _ |- _ => destruct H as [[Herr Hpkt]|[Herr [recv Hto]]] end; [left|right].
+        { (* success *)
+          split; [ assumption | ].
+          eexists _, _; split; [ ecancel_assumption | ].
+          split.
+          { eexists _, _; split; [ repeat eapply concat_app; eassumption | ].
+            split.
+            { match goal with H : Zmod.unsigned (Zmod.and _ _) <> 0 |- _ => revert H end.
+              rewrite bits.unsigned_and, bits.unsigned_of_Z. exact id. }
+            rewrite <-Hnb.
+            match goal with H : length x12 = _ |- _ => rewrite H end.
+            rewrite List.length_firstn. ZnWords. }
+          split.
+          { rewrite List.length_skipn. ZnWords. }
+          match goal with H : length x12 = _ |- _ => rewrite H end.
+          rewrite List.length_firstn. ZnWords. }
+        { (* SPI timeout while reading the packet *)
+          split; [ rewrite Herr; cbv; discriminate | ].
+          match goal with H : (bytes p_addr x12 * _) m0 |- _ =>
+            SeparationLogic.seprewrite_in @bytearray_index_merge H;
+            [ match goal with H : length x12 = _ |- _ => rewrite H end; rewrite List.length_firstn; ZnWords | ] end.
+          eexists; split; [ ecancel_assumption | ].
+          split.
+          { rewrite List.length_app, List.length_skipn.
+            match goal with H : length x12 = _ |- _ => rewrite H end.
+            rewrite List.length_firstn. ZnWords. }
+          right; right; split; [ exact Herr | ].
+          right; right.
+          destruct Hto as (l1 & l2 & -> & Hr & Ht).
+          eexists _, _, recv; split; [ | split ].
+          { rewrite <-List.app_assoc. eapply concat_app; [ | exact Ht ].
+            eapply concat_app; [ | exact Hr ].
+            eapply concat_app; eassumption. }
+          { match goal with H : Zmod.unsigned (Zmod.and _ _) <> 0 |- _ => exact H end. }
+          { rewrite <-Hnb. assumption. } } }
+      { (* leakage *)
+        erewrite recvEthernet_leak_status by eassumption.
+        cbv zeta. rewrite <-Hnb, Zmod.add_0_r, Zmod.sub_0_r.
+        match goal with H : Zmod.unsigned num_bytes < 1521 |- _ => rewrite (proj2 (Z.ltb_lt _ _) H) end.
+        leak_finish. } }
+    }
+    (* the early returns *)
+    all: dispatch_call_result.
+    all: subst_leakage.
+    all: repeat match goal with x := _ ++ _ |- _ => subst x end.
+    all: repeat match goal with x := Zmod.and _ _ |- _ => subst x end.
+    { (* the read of RX_FIFO_INF timed out *)
+      exists x1; split; [ reflexivity | ].
+      exists x2; split; [ assumption | ].
+      split.
+      { right. split; [ subst err; rewrite bits.unsigned_of_Z; cbv; discriminate | ].
+        exists buf; split; [ assumption | ]; split; [ assumption | ].
+        right; right; split; [ subst err; rewrite bits.unsigned_of_Z; reflexivity | ].
+        left; assumption. }
+      { erewrite recvEthernet_leak_timeout1 by eassumption. leak_finish. } }
+    { (* the read of RX_STATUS_FIFO_PORT timed out *)
+      exists (x5 ++ x1); split; [ rewrite <-List.app_assoc; reflexivity | ].
+      exists (x6 ++ x2); split; [ eapply List.Forall2_app; eassumption | ].
+      split.
+      { right. split; [ subst err; rewrite bits.unsigned_of_Z; cbv; discriminate | ].
+        exists buf; split; [ assumption | ]; split; [ assumption | ].
+        right; right; split; [ subst err; rewrite bits.unsigned_of_Z; reflexivity | ].
+        right; left. eexists; split; [ eapply concat_app; eassumption | ].
+        match goal with H : Zmod.unsigned (Zmod.and _ _) <> 0 |- _ => exact H end. }
+      { erewrite recvEthernet_leak_timeout2 by eassumption. leak_finish. } }
+    { (* packet too long *)
+      exists (x5 ++ x1); split; [ rewrite <-List.app_assoc; reflexivity | ].
+      exists (x6 ++ x2); split; [ eapply List.Forall2_app; eassumption | ].
+      repeat trans_ltu.
+      change (Zmod.unsigned (bits.of_Z 32 1521)) with 1521 in *.
+      match goal with H : lan9250_fastread4 _ ?s x6 |- _ =>
+        assert (Hnb : num_bytes = lan9250_decode_length s)
+          by (repeat match goal with x := _ : word |- _ => subst x end; reflexivity) end.
+      split.
+      { right. split; [ subst err; rewrite bits.unsigned_of_Z; cbv; discriminate | ].
+        exists buf; split; [ assumption | ]; split; [ assumption | ].
+        right; left; split; [ subst err; rewrite bits.unsigned_of_Z; reflexivity | ].
+        eexists _, _; split; [ eapply concat_app; eassumption | ].
+        split.
+        { match goal with H : Zmod.unsigned (Zmod.and _ _) <> 0 |- _ => revert H end.
+          rewrite bits.unsigned_and, bits.unsigned_of_Z. exact id. }
+        { rewrite <-Hnb. lia. } }
+      { change (x6 ++ x2) with ([] ++ x6 ++ x2).
+        erewrite recvEthernet_leak_status by eassumption.
+        cbv zeta. rewrite <-Hnb.
+        match goal with H : ~ (Zmod.unsigned num_bytes < 1521) |- _ => rewrite (proj2 (Z.ltb_nlt _ _) H) end.
+        leak_finish. } }
+    { (* no packet *)
+      exists x1; split; [ reflexivity | ].
+      exists x2; split; [ assumption | ].
+      split.
+      { right. split; [ subst err; rewrite bits.unsigned_of_Z; cbv; discriminate | ].
+        exists buf; split; [ assumption | ]; split; [ assumption | ].
+        left; split; [ subst err; rewrite bits.unsigned_of_Z; reflexivity | ].
+        eexists; split; [ eassumption | ]. assumption. }
+      { erewrite recvEthernet_leak_no_packet by eassumption. leak_finish. } }
+  Qed.
 
-      eexists; split.
-      1: { repeat match goal with |- context [?x] => match type of x with list _ => subst x end end.
-        repeat rewrite List.app_assoc. f_equal. }
-      eexists; split.
-      1:repeat eapply List.Forall2_app; eauto.
-      destruct H14; [left|right]; repeat straightline; repeat split; eauto.
-      { progress trans_ltu.
-        cbn [List.firstn array] in *.
-        replace (Zmod.unsigned (bits.of_Z 32 1521)) with 1521 in *
-          by (rewrite bits.unsigned_of_Z; exact eq_refl).
-        eexists _, _; repeat split.
-        { cbn [seps] in *. SeparationLogic.ecancel_assumption. }
-        { generalize dependent x2. generalize dependent x6. intros.
-          destruct H5; repeat straightline; try contradiction.
-          destruct H9; repeat straightline; try contradiction.
-          eexists _, _; split.
-          { rewrite <-!List.app_assoc. eauto using TracePredicate.concat_app. }
-          split; [zify_unsigned; eauto|].
-        { cbv beta delta [lan9250_decode_length].
-          rewrite H11. rewrite List.firstn_length, Znat.Nat2Z.inj_min.
-          replace (Zmod.sub num_bytes (bits.of_Z 32 0)) with num_bytes by ring; cbn [List.skipn].
-          rewrite ?Znat.Z2Nat.id by eapply (bits.unsigned_range _ width_nonneg).
-          transitivity (Zmod.unsigned num_bytes); [ZnWords|exact eq_refl]. } }
-        { pose proof (bits.unsigned_range num_bytes width_nonneg).
-          rewrite List.length_skipn. lia. }
-        rewrite H11, List.firstn_length_le, ?Znat.Z2Nat.id; cbn [List.skipn].
-        all: try ZnWords.
-        }
-      { repeat match goal with H : _ |- _ => rewrite H; intro HX; solve[inversion HX] end. }
-      { progress trans_ltu;
-        progress replace (Zmod.unsigned (bits.of_Z 32 1521)) with 1521 in * by
-          (rewrite bits.unsigned_of_Z; exact eq_refl).
-        all : cbn [seps array List.firstn List.skipn] in *.
-        eexists _; split; eauto; repeat split; try lia.
-        { SeparationLogic.seprewrite_in @bytearray_index_merge H10.
-          { rewrite H11, List.firstn_length. ZnWords. }
-          eassumption. }
-        { 1:rewrite List.app_length, List.length_skipn, H11, List.firstn_length.
-          replace (Zmod.sub num_bytes (bits.of_Z 32 0)) with num_bytes by ring.
-          enough (Z.to_nat (Zmod.unsigned num_bytes) <= length buf)%nat by ZnWords.
-          rewrite ?Znat.Z2Nat.id by eapply (bits.unsigned_range _ width_nonneg); lia. }
-        right. right. split; eauto using TracePredicate.any_app_more. } }
 
-    all: eexists; split;
-      [repeat match goal with |- context [?x] => match type of x with list _ => subst x end end;
-      rewrite ?List.app_assoc; eauto|].
-    all: eexists; split;
-      [repeat eapply List.Forall2_app; eauto|].
-    all:
-      right; subst err;
-      split; [intro HX; rewrite bits.unsigned_of_Z in HX; inversion HX|].
-    all : repeat ((eexists; split; [solve[eauto]|]) || (split; [solve[eauto]|])).
-    all : rewrite !bits.unsigned_of_Z.
+End WithParameters.
 
-    (* two cases of SPI timeout *)
-    { left; split; [exact eq_refl|] || right.
-      left; split; [exact eq_refl|] || right.
-            split; [exact eq_refl|].
-        intuition eauto using TracePredicate.any_app_more. }
-    { left; split; [exact eq_refl|] || right.
-      left; split; [exact eq_refl|] || right.
-            split; [exact eq_refl|].
-        intuition eauto using TracePredicate.any_app_more. }
-    { left; split; [exact eq_refl|] || right.
-      left; split; [exact eq_refl|].
-      eexists _, _; split.
-      1:eapply TracePredicate.concat_app; try intuition eassumption.
-      subst v0.
-
-      destruct (Z.ltb (Zmod.unsigned num_bytes) (Zmod.unsigned (bits.of_Z 32 1521))) eqn:?.
-      all : rewrite bits.unsigned_of_Z in Heqb; rewrite ?bits.unsigned_1, ?Zmod.unsigned_0 in H6 by lia; try inversion H6.
-      eapply Z.ltb_nlt in Heqb; revert Heqb.
-      repeat match goal with |- context [?x] => match type of x with _ => subst x end end.
-      cbv [lan9250_decode_length]. split. 2: rewrite !shamt_of_Z_small in Heqb by lia; cbn in *; lia.
-      subst v. rewrite bits.unsigned_and, bits.unsigned_of_Z in H2. eapply H2. }
-    { left.
-      split; [exact eq_refl|].
-      eexists; split; intuition eauto. }
-  Defined.
-
+Section Link.
+  Import Syntax BinInt String List.ListNotations ZArith.
+  Local Notation word := (bits 32).
+  Context {mem: map.map word Byte.byte}.
+  Context {mem_ok: map.ok mem}.
+  Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
   Import SPI.
 
   Definition function_impls := map.of_list
@@ -650,7 +963,6 @@ Section WithParameters.
     repeat first
       [ exact function_impls_stackalloc_free
       | eapply lan9250_init_plain_spec_of_leakage
-      | eapply lan9250_readword_plain_spec_of_leakage
       | specapply lightbulb_loop_ok | specapply lightbulb_init_ok
       | specapply recvEthernet_ok | specapply lightbulb_handle_ok
       | specapply lan9250_init_ok | specapply lan9250_wait_for_boot_ok | specapply lan9250_mac_write_ok
@@ -662,11 +974,10 @@ Section WithParameters.
     repeat first
       [ exact function_impls_stackalloc_free
       | eapply lan9250_init_plain_spec_of_leakage
-      | eapply lan9250_readword_plain_spec_of_leakage
       | specapply lightbulb_loop_ok | specapply lightbulb_init_ok
       | specapply recvEthernet_ok | specapply lightbulb_handle_ok
       | specapply lan9250_init_ok | specapply lan9250_wait_for_boot_ok | specapply lan9250_mac_write_ok
       | specapply lan9250_readword_ok | specapply lan9250_writeword_ok
       | specapply spi_xchg_ok | specapply spi_write_ok | specapply spi_read_ok ].
   Qed.
-End WithParameters.
+End Link.
