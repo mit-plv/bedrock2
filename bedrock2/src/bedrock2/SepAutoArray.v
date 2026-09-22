@@ -135,73 +135,10 @@ Section SepLog.
 End SepLog.
 
 
-Ltac destruct_bool_vars :=
-  repeat match goal with
-         | H: context[if ?b then _ else _] |- _ =>
-             is_var b; let t := type of b in constr_eq t bool; destruct b
-         end.
-
-Ltac concrete_list_length l :=
-  lazymatch l with
-  | cons ?h ?t => let r := concrete_list_length t in constr:(S r)
-  | nil => constr:(O)
-  | List.app ?l1 ?l2 =>
-      let r1 := concrete_list_length l1 in
-      let r2 := concrete_list_length l2 in
-      let r := eval cbv in (r1 + r2)%nat in constr:(r)
-  | List.map _ ?l' => concrete_list_length l'
-  | List.unfoldn _ ?n _ =>
-      let n' := groundcbv n in
-      lazymatch isnatcst n' with
-      | true => constr:(n')
-      end
-  | _ => let l' := eval unfold l in l in concrete_list_length l'
-  end.
-
-Ltac rewr_with_eq e :=
-  lazymatch type of e with
-  | ?LHS = _ => progress (pattern LHS; eapply rew_zoom_bw; [exact e|])
-  end.
-
-Ltac list_length_simpl_step_in_goal :=
-  match goal with
-  | |- context[@List.length ?T ?l] =>
-      let n := concrete_list_length l in change (@List.length T l) with n
-  | |- context[List.length (List.skipn ?n ?l)] => rewr_with_eq (List.length_skipn n l)
-  | |- context[List.length (List.firstn ?n ?l)] => rewr_with_eq (List.firstn_length n l)
-  | |- context[List.length (?l1 ++ ?l2)] => rewr_with_eq (List.app_length l1 l2)
-  | |- context[List.length (?h :: ?t)] => rewr_with_eq (Lists.List.length_cons t h)
-  | |- context[List.length (List.map ?f ?l)] => rewr_with_eq (List.map_length f l)
-  | |- context[List.length (List.unfoldn ?step ?n ?start)] =>
-      rewr_with_eq (List.length_unfoldn step n start)
-  | |- context[List.length (List.repeat ?v ?n)] => rewr_with_eq (List.repeat_length v n)
-  end.
-
-Goal forall (l1 l2: list Z) (a: Z),
-    a + Z.of_nat (List.length (l1 ++ l2)) =
-    Z.of_nat (List.length l1) + Z.of_nat (List.length l2) + a.
-Proof.
-  intros. list_length_simpl_step_in_goal.
-Abort.
-
-(* Only rewrites below the line, because rewriting above the line should already
-   have been done (or will be done later), but the goal below the line might be the
-   sidecondition of another rewrite lemma that's being tried and thus did not yet
-   appear anywhere in the context before.
-   For example, trying to rewrite with List.firstn_all2 creates a sidecondition
-   containing a (List.length l) that did not yet have any chance to get
-   simplified.
-   For efficiency, we only use rewrite lemmas here that don't have sideconditions
-   themselves, and use the simplest possible homemade rewr_with_eq to avoid any
-   unexpected performance pitfalls of Coq's existing rewrite tactics. *)
-Ltac list_length_rewrites_without_sideconds_in_goal :=
-  repeat list_length_simpl_step_in_goal.
-
-Ltac listZnWords :=
-  destruct_bool_vars;
-  unfold List.upd, List.upds;
-  list_length_rewrites_without_sideconds_in_goal;
-  ZnWords.
+(* Deprecated alias: the list-length preprocessing moved into bedrock2.ZnWords.ZnWords
+   (destruct_bool_vars, concrete_list_length, list_length_rewrites_without_sideconds_in_goal
+   also live there now). Kept so that SepAutoArray.listZnWords keeps working downstream. *)
+Ltac listZnWords := ZnWords.
 
 Section WithA.
   Context {A: Type}.

@@ -7,6 +7,10 @@ the modulo operations using Euclidean equations (`Z.div_mod_to_equations`), and 
 calling `lia`.
 The `width` has to be concrete, because otherwise the Euclidean equations become non-linear
 and thus are not understood by `lia`.
+It also simplifies `List.length` expressions (concrete lists, app, cons, skipn, firstn, map,
+repeat, unfoldn, upd) when the goal or a hypothesis mentions a list length, and case-splits
+boolean variables appearing in `if`s, so that the former `ZnWordsL` and `listZnWords` are
+just aliases of `ZnWords`.
 *)
 Require Import Coq.Program.Tactics.
 Require Import Coq.ZArith.ZArith.
@@ -17,6 +21,7 @@ Require Import coqutil.Z.Lia.
 Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import bedrock2.groundcbv.
 Require Import bedrock2.WordPushDownLemmas.
+Require coqutil.Datatypes.List.
 Local Open Scope Z_scope.
 
 Lemma computable_bounds{lo v hi: Z}(H: andb (Z.leb lo v) (Z.ltb v hi) = true): lo <= v < hi.
@@ -44,6 +49,88 @@ Ltac cleanup_for_ZModArith :=
    @ needed because of COQBUG https://github.com/coq/coq/issues/3051 *)
 Ltac simpl_list_length_exprs :=
   repeat ( rewrite ?@List.length_skipn, ?@List.firstn_length, ?@List.app_length, ?@List.length_cons, ?@List.length_nil in * ).
+
+(* The following list-length preprocessing used to live in SepAutoArray.v (listZnWords). *)
+
+Ltac destruct_bool_vars :=
+  repeat match goal with
+         | H: context[if ?b then _ else _] |- _ =>
+             is_var b; let t := type of b in constr_eq t bool; destruct b
+         | |- context[if ?b then _ else _] =>
+             is_var b; let t := type of b in constr_eq t bool; destruct b
+         end.
+
+Ltac concrete_list_length l :=
+  lazymatch l with
+  | cons ?h ?t => let r := concrete_list_length t in constr:(S r)
+  | nil => constr:(O)
+  | List.app ?l1 ?l2 =>
+      let r1 := concrete_list_length l1 in
+      let r2 := concrete_list_length l2 in
+      let r := eval cbv in (r1 + r2)%nat in constr:(r)
+  | List.map _ ?l' => concrete_list_length l'
+  | List.unfoldn _ ?n _ =>
+      let n' := groundcbv n in
+      lazymatch isnatcst n' with
+      | true => constr:(n')
+      end
+  | _ => let l' := eval unfold l in l in concrete_list_length l'
+  end.
+
+Ltac rewr_with_eq e :=
+  lazymatch type of e with
+  | ?LHS = _ => progress (pattern LHS; eapply rew_zoom_bw; [exact e|])
+  end.
+
+Ltac list_length_simpl_step_in_goal :=
+  match goal with
+  | |- context[@List.length ?T ?l] =>
+      let n := concrete_list_length l in change (@List.length T l) with n
+  | |- context[List.length (List.skipn ?n ?l)] => rewr_with_eq (List.length_skipn n l)
+  | |- context[List.length (List.firstn ?n ?l)] => rewr_with_eq (List.firstn_length n l)
+  | |- context[List.length (?l1 ++ ?l2)] => rewr_with_eq (List.app_length l1 l2)
+  | |- context[List.length (?h :: ?t)] => rewr_with_eq (List.length_cons t h)
+  | |- context[List.length (List.map ?f ?l)] => rewr_with_eq (List.map_length f l)
+  | |- context[List.length (List.unfoldn ?step ?n ?start)] =>
+      rewr_with_eq (List.length_unfoldn step n start)
+  | |- context[List.length (List.repeat ?v ?n)] => rewr_with_eq (List.repeat_length v n)
+  end.
+
+Goal forall (l1 l2: list Z) (a: Z),
+    a + Z.of_nat (List.length (l1 ++ l2)) =
+    Z.of_nat (List.length l1) + Z.of_nat (List.length l2) + a.
+Proof.
+  intros. list_length_simpl_step_in_goal.
+Abort.
+
+(* Only rewrites below the line, because rewriting above the line should already
+   have been done (or will be done later), but the goal below the line might be the
+   sidecondition of another rewrite lemma that's being tried and thus did not yet
+   appear anywhere in the context before.
+   For example, trying to rewrite with List.firstn_all2 creates a sidecondition
+   containing a (List.length l) that did not yet have any chance to get
+   simplified.
+   For efficiency, we only use rewrite lemmas here that don't have sideconditions
+   themselves, and use the simplest possible homemade rewr_with_eq to avoid any
+   unexpected performance pitfalls of Coq's existing rewrite tactics. *)
+Ltac list_length_rewrites_without_sideconds_in_goal :=
+  repeat list_length_simpl_step_in_goal.
+
+(* Cheap syntactic check so that goals without list lengths pay nothing for the
+   list preprocessing. Meant to be run after cleanup_for_ZModArith, when only
+   arithmetic hypotheses are left. *)
+Ltac has_list_length :=
+  match goal with
+  | |- context[@List.length _ _] => idtac
+  | _: context[@List.length _ _] |- _ => idtac
+  end.
+
+Ltac ZnWords_list_pre :=
+  tryif has_list_length then (
+    try (progress unfold List.upd, List.upds in * );
+    list_length_rewrites_without_sideconds_in_goal;
+    simpl_list_length_exprs
+  ) else idtac.
 
 Ltac wordOps_to_ZModArith_getEq t :=
   match t with
@@ -159,8 +246,10 @@ Ltac ZnWords_pre :=
              tryif has_evar G then exfalso else idtac
 
   end;
+  destruct_bool_vars;
   word_eqs_to_Z_eqs;
   cleanup_for_ZModArith;
+  ZnWords_list_pre;
   repeat wordOps_to_ZModArith_step;
   dewordify;
   clear_unused_nonProps;
@@ -185,11 +274,6 @@ Ltac better_lia :=
 (* Ltac ZnWords := time "ZnWords" (ZnWords_pre; better_lia). *)
 Ltac ZnWords := ZnWords_pre; better_lia.
 
-(* A ZnWords that does also some list rewriting, which is often too expensive,
-   and can be done more efficiently if it's only done occasionally rather
-   than before each ZnWords invocation *)
-Ltac ZnWordsL :=
-  (* will subst vars bound by :=, which enables rewrites in their bodies *)
-  cleanup_for_ZModArith;
-  simpl_list_length_exprs;
-  ZnWords.
+(* Deprecated alias: ZnWords now does the list-length rewriting itself
+   (only when a list length occurs, so plain word goals do not pay for it). *)
+Ltac ZnWordsL := ZnWords.
