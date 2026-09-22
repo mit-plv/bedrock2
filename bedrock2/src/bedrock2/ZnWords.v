@@ -22,6 +22,8 @@ Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import bedrock2.groundcbv.
 Require Import bedrock2.WordPushDownLemmas.
 Require coqutil.Datatypes.List.
+Require Import coqutil.Tactics.foreach_hyp.
+Require Import bedrock2.unzify.
 Local Open Scope Z_scope.
 
 Lemma computable_bounds{lo v hi: Z}(H: andb (Z.leb lo v) (Z.ltb v hi) = true): lo <= v < hi.
@@ -277,3 +279,114 @@ Ltac ZnWords := ZnWords_pre; better_lia.
 (* Deprecated alias: ZnWords now does the list-length rewriting itself
    (only when a list length occurs, so plain word goals do not pay for it). *)
 Ltac ZnWordsL := ZnWords.
+
+(* zlia: the unzify preprocessing (proof-term zification of let-bound vars, hyps and
+   goal, see unzify.v) as a closing tactic, finished by `Z.div_mod_to_equations; lia`
+   like ZnWords. Differences to ZnWords: the word arithmetic is not rewritten but
+   derived as proof terms, so an abstract width works (a Bitwidth instance is needed),
+   and a hypothesis that cannot be zified is skipped instead of aborting.
+   Before calling lia, the zified equations `unsigned (op ..) = ..` are rewritten back
+   into the terms they describe and `a - m * (a / m)` is folded into `a mod m`;
+   without this, lia was 10-50x slower than after the ZnWords preprocessing, because
+   the proof-term engine leaves word terms under Z.to_nat/Nat.sub untouched (it only
+   poses disjunctive case facts about them) and its inlined expansions grow
+   exponentially with the nesting depth of the word operations. *)
+
+Require Import coqutil.Tactics.ident_ops.
+
+Lemma mod_eq_all: forall a b, a mod b = a - b * (a / b).
+Proof.
+  intros. destruct (Z.eq_dec b 0).
+  - subst. rewrite Z.mod_0_r, Z.div_0_r. lia.
+  - apply Z.mod_eq. assumption.
+Qed.
+
+(* For a let-bound list, connect (length x) to (length body), so that the list-length
+   facts zify_len poses about the body reach the occurrences of x. (Not done by
+   zify_letbound_var itself: it would make LiveVerif's `steps` prove more goals than
+   the existing proof scripts expect.) *)
+Ltac zlia_letbound_var bw x body tp :=
+  try (lazymatch tp with
+       | list _ =>
+           let pf := zify_len bw body in
+           let n := fresh "__Zdef_" x in
+           let __ := unique_pose_proof_name n (pf : Z.of_nat (List.length x) = _) in
+           idtac
+       | _ => zify_letbound_var bw x body tp
+       end).
+Ltac zlia_hyp bw h tp := try (zify_hyp bw h tp).
+
+(* Like apply_range_bounding_lemma_in_hyp, but keeps the equation, because zlia
+   rewrites with it afterwards. *)
+Ltac zlia_pose_range_bound bw h tp :=
+  tryif ident_starts_with __Zrange_ h then
+    lazymatch tp with
+    | Zmod.unsigned _ = _ =>
+        let r := fresh "__Zbound_0" in
+        pose proof (@word.unsigned_range_eq _ bw _ _ h) as r
+    | Zmod.signed _ = _ =>
+        let r := fresh "__Zbound_0" in
+        pose proof (@word.signed_range_eq_for_lia _ bw _ _ h) as r
+    | Z.of_nat _ = _ =>
+        let r := fresh "__Zbound_0" in
+        pose proof (Z_of_nat_range_eq h) as r
+    | _ => idtac
+    end
+  else idtac.
+
+Ltac zlia_zify :=
+  fold_pow2_moduli;
+  let bw := get_bitwidth_or_dummy in
+  foreach_var (zlia_letbound_var bw);
+  foreach_hyp (zlia_hyp bw);
+  try (let g := lazymatch goal with |- ?g => g end in
+       let pf := zify_prop bw g in
+       eapply (iff_to_bw_impl _ _ pf));
+  foreach_hyp_upwards (zlia_pose_range_bound bw).
+
+Ltac zlia_fold_mods := repeat rewrite <- mod_eq_all in *.
+
+(* Rewrite with each zified equation whose lhs is `unsigned t`, `signed t` or
+   `Z.of_nat t` for a compound t (for a variable t, the equation is a definition
+   that lia can use as is), then drop the equation: after the rewrite, its lhs
+   occurs nowhere else. *)
+Ltac zlia_rewrite_defs :=
+  repeat match goal with
+         | H: @eq Z ?a ?b |- _ =>
+             tryif constr_eq a b then clear H
+             else (lazymatch a with
+                   | Zmod.unsigned ?t => assert_fails (is_var t)
+                   | Zmod.signed ?t => assert_fails (is_var t)
+                   | Z.of_nat ?t => assert_fails (is_var t)
+                   end;
+                   try rewrite H in *;
+                   clear H)
+         end.
+
+(* lia's own zify handles Z.to_nat and Nat.sub, and the case facts that
+   zify_of_nat poses for them only make lia case-split more. *)
+Ltac zlia_clear_native_cases :=
+  repeat match goal with
+         | H: _ /\ Z.of_nat (Z.to_nat _) = _ \/ _ |- _ => clear H
+         | H: _ /\ Z.of_nat (Nat.sub _ _) = _ \/ _ |- _ => clear H
+         end.
+
+Ltac zlia_pre :=
+  fold_pow2_moduli;
+  try eapply Zmod.unsigned_inj;
+  lazymatch goal with
+  | |- ?G => is_lia G; tryif has_evar G then exfalso else idtac
+  end;
+  subst;
+  destruct_bool_vars;
+  zlia_zify;
+  repeat match goal with
+         | H: ?T |- _ => tryif is_lia T then fail else clear H
+         end;
+  clear_unused_nonProps;
+  ZnWords_list_pre;
+  zlia_fold_mods;
+  zlia_rewrite_defs;
+  zlia_clear_native_cases.
+
+Ltac zlia := zlia_pre; Z.div_mod_to_equations; lia.
