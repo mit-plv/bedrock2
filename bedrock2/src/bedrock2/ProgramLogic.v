@@ -7,6 +7,7 @@ Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.Loops.
 Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
+Require bedrock2.LeakageSemantics bedrock2.SemanticsRelations.
 
 Definition spec_of (procname:String.string) := Semantics.env -> Prop.
 Existing Class spec_of.
@@ -356,7 +357,8 @@ Ltac straightline :=
   end.
 
 (* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
-Ltac straightline_call :=
+(* for use when the spec of the callee is a plain (non-leakage) spec *)
+Ltac straightline_call_plain :=
   lazymatch goal with
   | |- WeakestPrecondition.call ?functions ?callee _ _ _ _ =>
     let callee_spec := lazymatch constr:(_:spec_of callee) with ?s => s end in
@@ -365,6 +367,40 @@ Ltac straightline_call :=
       [ eapply Hcall | try eabstract (solve [Morphisms.solve_proper]) .. ];
       [ .. | intros ? ? ? ?]
   end.
+
+(* for use when the spec of the callee was written using LeakageSemantics
+   (LeakageWeakestPrecondition's [fnspec!], possibly in its [fnspec! exists f, ...] form):
+   the leakage in the callee's postcondition is forgotten.
+   This needs the callee (and everything it calls) to be free of [cmd.stackalloc],
+   see SemanticsRelations.plain_of_leakage_call; the side condition
+   [SemanticsRelations.stackalloc_free_env functions] is left as the first goal
+   unless it is an assumption. *)
+Ltac straightline_call_from_leakage :=
+  lazymatch goal with
+  | |- WeakestPrecondition.call ?functions ?callee _ _ _ _ =>
+    (* [fnspec! exists f, ...] specs: expose the leakage function first *)
+    repeat match goal with
+      | H: ?s functions |- _ =>
+          let T' := eval hnf in (s functions) in
+          lazymatch T' with
+          | exists _, _ =>
+              lazymatch T' with
+              | context [LeakageSemantics.call functions callee _ _ _ _ _] =>
+                  destruct H as [?f H]
+              end
+          end
+      end;
+    let Hcall := multimatch goal with
+                 | H: context [LeakageSemantics.call functions callee _ _ _ _ _] |- _ => H
+                 end in
+    eapply WeakestPreconditionProperties.Proper_call; cycle -1;
+      [ eapply SemanticsRelations.plain_of_leakage_call_env with (k := nil);
+        [ try eassumption | eapply Hcall ]
+      | try eabstract (solve [Morphisms.solve_proper]) .. ];
+      [ .. | intros ? ? ? ?]
+  end.
+
+Ltac straightline_call := straightline_call_plain || straightline_call_from_leakage.
 
 Ltac current_trace_mem_locals :=
   lazymatch goal with

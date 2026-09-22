@@ -246,6 +246,19 @@ Section WithParameters.
 
   Local Ltac slv := solve [ trivial | eauto 2 using TracePredicate.any_app_more | assumption | lia | trace_alignment | mmio_trace_abstraction ].
 
+  (* The specification of spi_xchg (SPI.v) is a leakage specification; the
+     proofs below use its plain consequence [spi_xchg_plain_spec] (the previous
+     specification), taken as a hypothesis by lan9250_readword_ok and
+     lan9250_writeword_ok, which is what ProgramLogic.straightline_call would
+     do with a plain spec_of instance. *)
+  Local Ltac straightline_call :=
+    lazymatch goal with
+    | |- WeakestPrecondition.call ?functions "spi_xchg" _ _ _ _ =>
+      let Hcall := lazymatch goal with H: spi_xchg_plain_spec functions |- _ => H end in
+      eapply Semantics.weaken_call; [ eapply Hcall | intros ? ? ? ? ]
+    | _ => ProgramLogic.straightline_call
+    end.
+
   Ltac t :=
     match goal with
     | _ => slv
@@ -294,7 +307,13 @@ Section WithParameters.
 
   Local Hint Mode map.map - - : typeclass_instances. (* COQBUG https://github.com/coq/coq/issues/14707 *)
 
-  Lemma lan9250_writeword_ok : program_logic_goal_for_function! lan9250_writeword.
+  (* [program_logic_goal_for_function! lan9250_writeword] (one premise per call
+     site, as generated), with spi_xchg's plain specification. *)
+  Lemma lan9250_writeword_ok : forall functions,
+    program_logic_goal_for lan9250_writeword
+      (forall (EnvContains : map.get functions "lan9250_writeword" = Some lan9250_writeword),
+       spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions ->
+       spec_of_lan9250_writeword functions).
   Proof.
     repeat t.
     letexists; split; [exact eq_refl|]; split; [split; trivial|].
@@ -606,7 +625,13 @@ Section WithParameters.
         exact eq_refl. } }
   Qed.
 
-  Lemma lan9250_readword_ok : program_logic_goal_for_function! lan9250_readword.
+  (* [program_logic_goal_for_function! lan9250_readword] (one premise per call
+     site, as generated), with spi_xchg's plain specification. *)
+  Lemma lan9250_readword_ok : forall functions,
+    program_logic_goal_for lan9250_readword
+      (forall (EnvContains : map.get functions "lan9250_readword" = Some lan9250_readword),
+       spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions -> spi_xchg_plain_spec functions ->
+       spec_of_lan9250_readword functions).
   Proof.
     Time repeat straightline.
 
