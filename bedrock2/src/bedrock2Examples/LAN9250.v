@@ -118,6 +118,7 @@ Definition lan9250_tx := func! (p, l) ~> err {
     if err { l = $0 } else { p = p + $4; l = l - $4 } } }.
 
 Require Import bedrock2.LeakageProgramLogic bedrock2.LeakageWeakestPrecondition bedrock2.LeakageSemantics.
+Require bedrock2.WeakestPrecondition bedrock2.SemanticsRelations.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Word.Bitwidth.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -715,7 +716,7 @@ Section WithParameters.
   Proof.
     fix IH 1. intros bs x H.
     destruct bs as [|b0 [|b1 [|b2 [|b3 bs]]]]; cbn [lan9250_writepacket_timeout] in H; try contradiction.
-    cbv [choice] in H. destruct H as [H|H]; dstr; eauto using lan9250_txn_timeout_any, any_app_more, (IH bs).
+    cbv [choice] in H. destruct H as [H|H]; dstr; eauto using lan9250_txn_timeout_any, any_app_more, IH.
   Qed.
   Lemma lan9250_send_timeout_any bs (x : list OP) :
     lan9250_send_timeout bs x -> (any +++ spi_timeout) x.
@@ -1570,6 +1571,67 @@ Section WithParameters.
     instantiate (1 := lan9250_init_leak f f0 f3 f2).
     repeat t.
     all : repeat match goal with H : _ /\ _ \/ _ /\ _ |- _ => destruct H as [H|H]; destruct H end; repeat t.
+  Qed.
+
+
+  (* The previous, plain specifications of the functions lightbulb.v calls, for
+     its plain proofs: they follow from the leakage specifications by forgetting
+     the leakage, which needs the function list to be free of stackalloc
+     (SemanticsRelations.plain_of_leakage_call), a side condition on the concrete
+     function list.  These are not instances of [spec_of]; those names are the
+     leakage specifications. *)
+  Definition lan9250_readword_plain_spec : spec_of "lan9250_readword" := fun functions => forall t m a,
+    (0x0 <= Zmod.unsigned a < 0x400) ->
+    WeakestPrecondition.call functions "lan9250_readword" t m [a] (fun T M RETS =>
+      M = m /\
+      exists ret err, RETS = [ret; err] /\
+      exists iol, T = iol ++ t /\
+      exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
+        (Zmod.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout) ioh)
+        (Zmod.unsigned err = 0 /\ lightbulb_spec.lan9250_fastread4 a ret ioh)).
+
+  Lemma lan9250_readword_plain_spec_of_leakage functions
+    (Hsf : SemanticsRelations.stackalloc_free_env functions)
+    (H : spec_of_lan9250_readword functions) : lan9250_readword_plain_spec functions.
+  Proof.
+    destruct H as [f H]. intros t m a Ha.
+    eapply Semantics.weaken_call.
+    { eapply SemanticsRelations.plain_of_leakage_call_env with (k := nil);
+        [ exact Hsf | eapply H; exact Ha ]. }
+    intros ? ? ? (k' & ret & err & Hrets & HM & iol & HT & ioh & Hrel & Hor & _).
+    split; [exact HM|]. exists ret, err; split; [exact Hrets|].
+    exists iol; split; [exact HT|]. exists ioh; split; [exact Hrel|].
+    destruct Hor as [[Herr Hto] | Hok];
+      [left; split; [exact Herr | exact (lan9250_txn_timeout_any _ _ Hto)] | right; exact Hok].
+  Qed.
+
+  Definition lan9250_init_plain_spec : spec_of "lan9250_init" := fun functions =>
+    forall t m,
+    (((WeakestPrecondition.call functions "lan9250_init"))) t m []
+      (fun T M RETS =>
+      M = m /\
+      exists err, RETS = [err] /\
+      exists iol, T = iol ++ t /\
+      exists ioh, mmio_trace_abstraction_relation ioh iol /\ Logic.or
+        (Zmod.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout) ioh \/
+        (Zmod.unsigned err <> 0 /\ lan9250_boot_timeout ioh))
+        (Zmod.unsigned err = 0 /\ lan9250_init_trace ioh)).
+
+  Lemma lan9250_init_plain_spec_of_leakage functions
+    (Hsf : SemanticsRelations.stackalloc_free_env functions)
+    (H : spec_of_lan9250_init functions) : lan9250_init_plain_spec functions.
+  Proof.
+    destruct H as [f H]. intros t m.
+    eapply Semantics.weaken_call.
+    { eapply SemanticsRelations.plain_of_leakage_call_env with (k := nil);
+        [ exact Hsf | eapply H; exact I ]. }
+    intros ? ? ? (k' & err & Hrets & HM & iol & HT & ioh & Hrel & Hor & _).
+    split; [exact HM|]. exists err; split; [exact Hrets|].
+    exists iol; split; [exact HT|]. exists ioh; split; [exact Hrel|].
+    destruct Hor as [[[Herr Hto] | [Herr Hbt]] | Hok];
+      [ left; left; split; [exact Herr | exact (lan9250_init_timeout_any _ Hto)]
+      | left; right; split; [exact Herr | exact Hbt]
+      | right; exact Hok ].
   Qed.
 
   Import LeakageWeakestPrecondition SeparationLogic Array Scalars LeakageProgramLogic.Coercions.
