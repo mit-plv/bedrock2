@@ -606,19 +606,31 @@ Section WithParameters.
 
   Local Ltac specapply s := eapply s; [reflexivity|..].
 
+  (* The specifications of spi_* (SPI.v) are leakage specifications; the
+     lan9250_* proofs use the plain consequence [spi_xchg_plain_spec], which
+     needs the function list to be free of stackalloc and some stack-pointer
+     oracle (any one: the plain specifications do not mention it). *)
+  Local Instance lightbulb_pick_sp : LeakageSemantics.PickSp := fun _ => bits.of_Z 32 0.
+
+  Lemma function_impls_stackalloc_free : SemanticsRelations.stackalloc_free_env function_impls.
+  Proof. eapply SemanticsRelations.stackalloc_free_env_of_list. exact eq_refl. Qed.
+
   Lemma link_lightbulb_loop : spec_of_lightbulb_loop function_impls.
   Proof.
     specapply lightbulb_loop_ok;
     (specapply recvEthernet_ok || specapply lightbulb_handle_ok);
-        specapply lan9250_readword_ok; specapply spi_xchg_ok;
-        (specapply spi_write_ok || specapply spi_read_ok).
+        specapply lan9250_readword_ok;
+        (eapply spi_xchg_plain_spec_of_leakage;
+         [ exact function_impls_stackalloc_free
+         | specapply spi_xchg_ok; (specapply spi_write_ok || specapply spi_read_ok) ]).
   Qed.
   Lemma link_lightbulb_init : spec_of_lightbulb_init function_impls.
   Proof.
     specapply lightbulb_init_ok; specapply lan9250_init_ok;
     try (specapply lan9250_wait_for_boot_ok || specapply lan9250_mac_write_ok);
     (specapply lan9250_readword_ok || specapply lan9250_writeword_ok);
-        specapply spi_xchg_ok;
-        (specapply spi_write_ok || specapply spi_read_ok).
+        (eapply spi_xchg_plain_spec_of_leakage;
+         [ exact function_impls_stackalloc_free
+         | specapply spi_xchg_ok; (specapply spi_write_ok || specapply spi_read_ok) ]).
   Qed.
 End WithParameters.
