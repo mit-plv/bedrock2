@@ -430,7 +430,7 @@ Section ScalarsLemmas.
         (bits.of_Z width (addr + 1)).
       2: {
         eapply Zmod.unsigned_inj.
-        destruct width_cases as [E | E]; rewrite E in *; ZnWords.
+        destruct width_cases as [E | E]; rewrite E in *; zlia.
       }
       eapply IHbs; try lia. exact Hm2.
   Qed.

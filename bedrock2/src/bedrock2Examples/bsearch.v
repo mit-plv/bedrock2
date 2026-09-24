@@ -76,20 +76,20 @@ Proof.
     rename H2 into length_rep. subst br.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
-    { ZnWords. }
-    { ZnWords. }
+    { zlia. }
+    { zlia. }
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split; [repeat straightline|].
       1:split.
       2:split.
       { SeparationLogic.ecancel_assumption. }
-      { ZnWordsL. }
+      { zlia. }
       { cleanup_for_ZModArith. reflexivity. }
       split; repeat straightline.
       2: SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
-      { ZnWordsL. }
-      { ZnWords. }
-      { ZnWords. }
+      { zlia. }
+      { zlia. }
+      { zlia. }
       { trivial. }
       { SeparationLogic.ecancel_assumption. } }
     (* second branch of the if, very similar goals... *)
@@ -97,15 +97,15 @@ Proof.
       1:split.
       2:split.
       { SeparationLogic.ecancel_assumption. }
-      { ZnWordsL. }
+      { zlia. }
       { cleanup_for_ZModArith. reflexivity. }
       split.
-      { ZnWordsL. }
+      { zlia. }
       repeat straightline.
       subst x5. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
-      { ZnWords. }
-      { ZnWords. }
-      { ZnWords. }
+      { zlia. }
+      { zlia. }
+      { zlia. }
       { SeparationLogic.ecancel_assumption. } } }
   repeat straightline.
   repeat apply conj; auto; []. (* postcondition *)

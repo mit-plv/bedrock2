@@ -320,7 +320,7 @@ Ltac zlia_hyp bw h tp := try (zify_hyp bw h tp).
    rewrites with it afterwards. *)
 Ltac zlia_pose_range_bound bw h tp :=
   tryif ident_starts_with __Zrange_ h then
-    lazymatch tp with
+    try lazymatch tp with
     | Zmod.unsigned _ = _ =>
         let r := fresh "__Zbound_0" in
         pose proof (@word.unsigned_range_eq _ bw _ _ h) as r
@@ -390,3 +390,55 @@ Ltac zlia_pre :=
   zlia_clear_native_cases.
 
 Ltac zlia := zlia_pre; Z.div_mod_to_equations; lia.
+
+(* Tests of zlia on the shapes that needed the unzify fixes of this file's PR. *)
+Require Import coqutil.Word.Bitwidth32 coqutil.Word.Bitwidth64.
+Section zliaTests.
+  Local Notation word := (bits 32).
+
+  (* shift amounts written as word literals, nested shifts, Z.to_nat, nat subtraction *)
+  Goal forall (x : list word) (x1 x2 : word),
+    Zmod.unsigned (Zmod.sub x2 x1) = 8 * Z.of_nat (Datatypes.length x) ->
+    Zmod.unsigned (Zmod.sub x2 x1) <> 0 ->
+    Zmod.unsigned
+      (Zmod.sub x2
+         (Zmod.add
+            (Zmod.add x1 (Zmod.slu (Zmod.sru (Zmod.sub x2 x1)
+                                      (Zmod.unsigned (Zmod.of_Z (2 ^ 32) 4) mod 2 ^ Z.log2 32))
+                                   (Zmod.unsigned (Zmod.of_Z (2 ^ 32) 3) mod 2 ^ Z.log2 32)))
+            (bits.of_Z 32 8))) =
+    8 *
+    Z.of_nat
+      (Datatypes.length x -
+       S (Z.to_nat (Zmod.unsigned (Zmod.sub (Zmod.add x1 (Zmod.slu (Zmod.sru (Zmod.sub x2 x1)
+           (Zmod.unsigned (Zmod.of_Z (2 ^ 32) 4) mod 2 ^ Z.log2 32))
+           (Zmod.unsigned (Zmod.of_Z (2 ^ 32) 3) mod 2 ^ Z.log2 32))) x1)
+           / Zmod.unsigned (bits.of_Z 32 8)))).
+  Proof. intros. zlia. Qed.
+
+  (* nat comparison with a word inside *)
+  Goal forall (bs ds0: list Byte.byte) (i0: word),
+    Zmod.unsigned i0 < Z.of_nat (List.length bs) ->
+    Zmod.unsigned i0 + Z.of_nat (List.length ds0) = Z.of_nat (List.length bs) ->
+    let v := i0 in
+    (List.length bs <= Z.to_nat (Zmod.unsigned (Zmod.add v (Zmod.of_Z _ 0))))%nat -> False.
+  Proof. intros. zlia. Qed.
+
+  (* Z.shiftr by a constant *)
+  Goal forall (val: word),
+    let v0 := Zmod.sru val (Zmod.unsigned (Zmod.of_Z (2 ^ 32) 31) mod 2 ^ Z.log2 32) in
+    Zmod.unsigned v0 <> 0 -> Z.shiftr (Zmod.unsigned val) 31 <> 0.
+  Proof. intros. zlia. Qed.
+
+  (* length of a let-bound skipn *)
+  Goal forall (x: list word) (x1 x2: word),
+    Zmod.unsigned (Zmod.sub x2 x1) = 8 * Z.of_nat (Datatypes.length x) ->
+    Zmod.unsigned (Zmod.sub x2 x1) <> 0 ->
+    let mid := Zmod.add x1 (Zmod.slu (Zmod.sru (Zmod.sub x2 x1)
+                                        (Zmod.unsigned (Zmod.of_Z (2 ^ 32) 4) mod 2 ^ Z.log2 32))
+                                     (Zmod.unsigned (Zmod.of_Z (2 ^ 32) 3) mod 2 ^ Z.log2 32)) in
+    let x4 := List.skipn (S (Z.to_nat (Zmod.unsigned (Zmod.sub mid x1) /
+                                       Zmod.unsigned (Zmod.of_Z (2 ^ 32) 8)))) x in
+    Zmod.unsigned (Zmod.sub x2 (Zmod.add mid (Zmod.of_Z _ 8))) = 8 * Z.of_nat (Datatypes.length x4).
+  Proof. intros. zlia. Qed.
+End zliaTests.

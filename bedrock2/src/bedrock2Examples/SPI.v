@@ -81,7 +81,7 @@ Section WithParameters.
 
   Lemma nonzero_because_high_bit_set (x : word) (H : Zmod.unsigned (Zmod.sru x 31) <> 0)
     : Zmod.unsigned x <> 0.
-  Proof. ZnWords. Qed.
+  Proof. zlia. Qed.
 
   Import coqutil.Tactics.letexists.
   Import Loops.
@@ -109,7 +109,7 @@ Section WithParameters.
     { repeat straightline. }
     { eapply (Z.lt_wf 0). }
     { eexists; split; repeat straightline.
-      exfalso. ZnWords. }
+      exfalso. zlia. }
     { repeat (split; trivial; []).
       subst i. rewrite bits.unsigned_of_Z.
       split.
@@ -127,7 +127,7 @@ Section WithParameters.
     letexists; split; [exact eq_refl|]; split; [split; trivial|].
     {
       cbv [isMMIOAddr addr].
-      ZnWords. }
+      zlia. }
     repeat straightline.
     (* The hnf inside this letexists used to substitute
 
@@ -160,9 +160,9 @@ Section WithParameters.
         { eapply kleene_app; eauto.
           refine (kleene_step _ _ nil _ (kleene_empty _)).
           repeat econstructor.
-          ZnWords. }
-        { ZnWordsL. } }
-        { ZnWords. } }
+          zlia. }
+        { zlia. } }
+        { zlia. } }
     { (* SUBCASE loop condition was false (exit loop because of timeout *)
       letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
       subst t0.
@@ -178,8 +178,8 @@ Section WithParameters.
           eapply kleene_app; eauto.
           refine (kleene_step _ _ nil _ (kleene_empty _)).
           repeat econstructor.
-          ZnWords. }
-        { ZnWordsL. } } }
+          zlia. }
+        { zlia. } } }
     }
     (* CASE if-condition was false (Zmod.unsigned v0 = 0), i.e. we'll set i=i^i and exit loop *)
     repeat straightline.
@@ -190,7 +190,7 @@ Section WithParameters.
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
-    { cbv [isMMIOAddr]. ZnWords. }
+    { cbv [isMMIOAddr]. zlia. }
     repeat straightline.
     subst t0.
     eexists (_ ;++ cons _ (cons _ nil)). split.
@@ -210,11 +210,11 @@ Section WithParameters.
     eexists _, _; split; eauto; []; split; eauto.
     eexists (cons _ nil), (cons _ nil); split; cbn [app]; eauto.
     split; repeat econstructor.
-    { ZnWords. }
+    { zlia. }
     { cbv [lightbulb_spec.spi_write_enqueue one].
       repeat f_equal.
       eapply Zmod.unsigned_inj.
-      rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small; ZnWords. }
+      rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small; zlia. }
   Qed.
 
   Local Ltac split_if :=
@@ -246,7 +246,7 @@ Section WithParameters.
            HList.polymorphic_list.repeat HList.polymorphic_list.length
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *; repeat straightline.
     { exact (Z.lt_wf 0). }
-    { exfalso. ZnWords. }
+    { exfalso. zlia. }
     { subst i. rewrite bits.unsigned_of_Z.
       split; [inversion 1|].
       split; trivial.
@@ -258,7 +258,7 @@ Section WithParameters.
       eexists nil; split; try split; solve [constructor]. }
     { eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
       letexists; split; [exact eq_refl|]; split; [split; trivial|].
-    { cbv [isMMIOAddr]. ZnWords. }
+    { cbv [isMMIOAddr]. zlia. }
       repeat ((split; trivial; []) || straightline || split_if).
       {
         letexists. split; split.
@@ -275,10 +275,10 @@ Section WithParameters.
             refine (kleene_step _ (cons _ nil) nil _ (kleene_empty _)).
             eexists; split.
             { exact eq_refl. }
-            { ZnWords. } }
-          { ZnWordsL. } }
-          { ZnWords. }
-          { ZnWords. } }
+            { zlia. } }
+          { zlia. } }
+          { zlia. }
+          { zlia. } }
       { eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
         eexists. split.
         { econstructor; try eassumption; right; eauto. }
@@ -289,8 +289,8 @@ Section WithParameters.
           refine (kleene_step _ (cons _ nil) nil _ (kleene_empty _)).
           eexists; split.
           { exact eq_refl. }
-          { ZnWords. } }
-        { ZnWordsL. } }
+          { zlia. } }
+        { zlia. } }
       { repeat straightline.
         repeat letexists; split.
         1: split.
@@ -300,7 +300,7 @@ Section WithParameters.
           subst v.
           subst i.
           rewrite bits.unsigned_xor, Z.lxor_nilpotent.
-          ZnWords. }
+          zlia. }
         repeat straightline.
         repeat (split; trivial; []).
         split.
@@ -352,7 +352,7 @@ Section WithParameters.
           eexists; split; cbv [one]; trivial.
           split.
           (* tag:bitwise *)
-          { ZnWords. }
+          { zlia. }
           subst b.
           (* automatable: multi-word bitwise *)
           change (255) with (Z.ones 8).

@@ -124,7 +124,7 @@ Section WithParams.
     destruct width_cases as [E|E]; subst width;
       try change (2 ^ _) with (2 ^ 32);
       try change (2 ^ _) with (2 ^ 64);
-      ZnWords.
+      zlia.
   Qed.
 
   (* Note: no conversion needed between v in sepclause and v returned,
@@ -146,7 +146,7 @@ Section WithParams.
       destruct sz; destruct width_cases as [E|E]; subst width;
         try change (2 ^ _) with (2 ^ 32);
         try change (2 ^ _) with (2 ^ 64);
-        ZnWords.
+        zlia.
     - unfold Scalars.truncated_word, Scalars.truncated_scalar, bytes_per.
       destruct sz; cbn in M;
         (rewrite bits.unsigned_of_Z_small;

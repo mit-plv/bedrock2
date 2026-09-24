@@ -73,10 +73,10 @@ Proof.
   specialize (bits.unsigned_range a width_nonneg).
   specialize (bits.unsigned_range b width_nonneg).
   rewrite Zmod.unsigned_mul.
-  rewrite wrap_mul32_is_mul32 by ZnWords.
+  rewrite wrap_mul32_is_mul32 by zlia.
   specialize (Zmult_le_compat_r (Zmod.unsigned a) (2^32 - 1) (Zmod.unsigned b)).
   specialize (Zmult_le_compat_l (Zmod.unsigned b) (2^32 - 1) (2^32 - 1)).
-  ZnWords.
+  zlia.
 Qed.
 
 Local Lemma mul_half_words :
@@ -87,7 +87,7 @@ Local Lemma mul_half_words :
 Proof.
   intros.
   rewrite Zmod.unsigned_mul.
-  rewrite wrap_mul32_is_mul32; ZnWords.
+  rewrite wrap_mul32_is_mul32; zlia.
 Qed.
 
 Lemma full_mul_ok : program_logic_goal_for_function! br_full_mul.

@@ -31,7 +31,7 @@ Section SepLog.
     cancel.
     cancel_seps_at_indices 0%nat 0%nat. {
       f_equal. f_equal.
-      destruct width_cases; ZnWords.
+      destruct width_cases; zlia.
     }
     reflexivity.
   Qed.
@@ -60,10 +60,10 @@ Section SepLog.
     cancel.
     cancel_seps_at_indices 0%nat 0%nat. {
       f_equal. rewrite H1p1.
-      destruct width_cases; ZnWords.
+      destruct width_cases; zlia.
     }
     cancel_seps_at_indices 0%nat 0%nat. {
-      f_equal. destruct width_cases; ZnWords.
+      f_equal. destruct width_cases; zlia.
     }
     reflexivity.
   Qed.
@@ -89,10 +89,10 @@ Section SepLog.
     cancel.
     cancel_seps_at_indices 0%nat 0%nat. {
       f_equal. rewrite H1p1.
-      destruct width_cases; ZnWords.
+      destruct width_cases; zlia.
     }
     cancel_seps_at_indices 0%nat 0%nat. {
-      f_equal. destruct width_cases; ZnWords.
+      f_equal. destruct width_cases; zlia.
     }
     reflexivity.
   Qed.
@@ -113,7 +113,7 @@ Section SepLog.
     | |- iff1 (?x :-> _ : _) _ => replace x with a'
     end.
     1: reflexivity.
-    destruct width_cases; ZnWords.
+    destruct width_cases; zlia.
   Qed.
 
   Lemma access_tail: forall a a' E (elem: sep_predicate mem E) sz,
@@ -130,14 +130,14 @@ Section SepLog.
     | |- iff1 (Array.array _ _ ?x _) _ => replace x with a'
     end.
     1: reflexivity.
-    destruct width_cases; ZnWords.
+    destruct width_cases; zlia.
   Qed.
 End SepLog.
 
 
 (* Deprecated alias: the list-length preprocessing moved into bedrock2.ZnWords.ZnWords
    (destruct_bool_vars, concrete_list_length, list_length_rewrites_without_sideconds_in_goal
-   also live there now). Kept so that SepAutoArray.listZnWords keeps working downstream. *)
+   also live there now). Kept so that zlia keeps working downstream. *)
 Ltac listZnWords := ZnWords.
 
 Section WithA.
@@ -186,7 +186,7 @@ Ltac concrete_sz_bounds :=
 #[export] Hint Extern 1
   (split_sepclause (?a :-> ?vsAll : array ?elem (Zmod.of_Z _ ?sz)) (?a' :-> _ : ?elem) _ _) =>
   unshelve (epose proof (access_elem_in_array a a' _ elem sz (List.length vsAll) _ _));
-  [ concrete_sz_bounds | listZnWords | shelve ]
+  [ concrete_sz_bounds | zlia | shelve ]
 : split_sepclause_goal.
 
 #[export] Hint Extern 1
@@ -201,32 +201,32 @@ Ltac concrete_sz_bounds :=
            | _ => concrete_list_length vsPart
            end in
   unshelve (epose proof (access_subarray a a' _ elem sz n (List.length vsAll) _ _));
-  [ concrete_sz_bounds | listZnWords | shelve ]
+  [ concrete_sz_bounds | zlia | shelve ]
 : split_sepclause_goal.
 
 #[export] Hint Extern 1 (split_sepclause (?a  :-> ?vs1 ++ ?vs2 : array ?elem (Zmod.of_Z _ ?sz))
                                          (?a' :-> ?vs2 : array ?elem (Zmod.of_Z _ ?sz)) _ _) =>
   unshelve (epose proof (access_suffix a a' _ elem sz (List.length vs1) _ _));
-  [ concrete_sz_bounds | listZnWords | shelve ]
+  [ concrete_sz_bounds | zlia | shelve ]
 : split_sepclause_goal.
 
 #[export] Hint Extern 1
   (split_sepclause (?a  :-> (_ :: ?vsTail) : array ?elem (Zmod.of_Z _ ?sz))
                    (?a' :-> ?vsTail : array ?elem (Zmod.of_Z _ ?sz)) _ _) =>
   unshelve (epose proof (access_tail a a' _ elem sz _ _));
-  [ concrete_sz_bounds | listZnWords | shelve ]
+  [ concrete_sz_bounds | zlia | shelve ]
 : split_sepclause_goal.
 
 
 (* split_sepclause_sidecond: *)
 
 #[export] Hint Extern 1 (_ = ?l ++ [_] ++ _ /\ List.length ?l = _) =>
-  eapply list_expose_nth; listZnWords
+  eapply list_expose_nth; zlia
 : split_sepclause_sidecond.
 
 #[export] Hint Extern 1
  (_ = ?l1 ++ ?l2 ++ ?l3 /\ List.length ?l1 = _ /\ List.length ?l2 = _) =>
-  eapply list_expose_subarray; listZnWords
+  eapply list_expose_subarray; zlia
 : split_sepclause_sidecond.
 
 
@@ -235,20 +235,20 @@ Ltac concrete_sz_bounds :=
 #[export] Hint Extern 1 (@eq (list _) ?listL ?listR /\ @eq nat ?lenL ?lenR) =>
   assert_fails (has_evar lenL);
   assert_fails (has_evar lenR);
-  is_evar listL; split; [ reflexivity | listZnWords ]
+  is_evar listL; split; [ reflexivity | zlia ]
 : merge_sepclause_sidecond.
 
 (* TODO make more generic *)
 #[export] Hint Extern 1 (?listL = ?listR1 ++ ?listR2 /\ ?lenR1 = _ /\ ?lenR2 = _) =>
   apply_in_hyps @map.getmany_of_list_length; rewrite List.length_unfoldn in *;
-  is_evar listL; split; [ reflexivity | split; listZnWords ]
+  is_evar listL; split; [ reflexivity | split; zlia ]
 : merge_sepclause_sidecond.
 
 (* TODO make more generic *)
 #[export] Hint Extern 1
   (?listL = ?listR1 ++ ?listR2 ++ ?listR3 /\ ?lenR1 = ?i /\ ?lenR2 = ?n) =>
   apply_in_hyps @map.getmany_of_list_length; rewrite ?List.length_unfoldn in *;
-  is_evar listL; split; [ reflexivity | split; listZnWords ]
+  is_evar listL; split; [ reflexivity | split; zlia ]
 : merge_sepclause_sidecond.
 
 
@@ -263,5 +263,5 @@ Ltac concrete_sz_bounds :=
   Nat.min_r
 using (unfold List.upd, List.upds;
        list_length_rewrites_without_sideconds_in_goal;
-       ZnWords)
+       zlia)
 : fwd_rewrites.
