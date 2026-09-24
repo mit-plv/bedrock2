@@ -53,7 +53,7 @@ Section SepLog.
     eapply sep_assoc in H1.
     eapply sep_emp_r in H1. apply proj1 in H1.
     eqapply H1. f_equal.
-    destruct width_cases; subst width; ZnWords.
+    destruct width_cases; subst width; zlia.
   Qed.
 
   (* Different kinds of splitting/merging back:
@@ -90,11 +90,11 @@ Section SepLog.
     {
       unfold array in *.
       do 3 heapletwise_step.
-      rewrite List.len_upto by ZnWords.
-      rewrite List.len_from by ZnWords.
+      rewrite List.len_upto by zlia.
+      rewrite List.len_from by zlia.
 
       assert (vs = vs[:i] ++ [|vs[i]|] ++ vs[i+1:]) as Hexposed by
-        (apply (List.expose_nth vs i); ZnWords).
+        (apply (List.expose_nth vs i); zlia).
       rewrite Hexposed in H3.
 
       apply Array.array_append in H3.
@@ -107,9 +107,9 @@ Section SepLog.
         (bits.of_Z width (Zmod.unsigned (m := 2 ^ width)
           (bits.of_Z width elemSize) * len vs[:i])))) as Ha' by
         (rewrite List.len_upto;
-          destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+          destruct width_cases as [Ew | Ew]; rewrite Ew in *; zlia).
       rewrite <- Ha' in *; clear Ha'.
-      repeat heapletwise_step; ZnWords.
+      repeat heapletwise_step; zlia.
     }
     {
       unfold array in *.
@@ -122,12 +122,12 @@ Section SepLog.
       assert (a' = (Zmod.add a
         (bits.of_Z width (Zmod.unsigned (m := 2 ^ width)
           (bits.of_Z width elemSize) * len vs1)))) as Ha' by
-        (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+        (destruct width_cases as [Ew | Ew]; rewrite Ew in *; zlia).
       rewrite <- Ha' in *; clear Ha'.
 
       repeat heapletwise_step.
       rewrite List.app_length; simpl.
-      destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
+      destruct width_cases as [Ew | Ew]; rewrite Ew in *; zlia.
     }
   Qed.
 
@@ -173,35 +173,35 @@ Section SepLog.
       unfold array in *.
       repeat heapletwise_step; unfold with_mem in *.
 
-      rewrite List.len_upto by ZnWords.
-      rewrite List.len_sized_slice by ZnWords.
-      rewrite List.from_upto_comm by ZnWords.
+      rewrite List.len_upto by zlia.
+      rewrite List.len_sized_slice by zlia.
+      rewrite List.from_upto_comm by zlia.
       rewrite List.from_canon with (i := i+size).
-      rewrite List.len_indexed_slice with (i := i+size) (j := len vs) by ZnWords.
+      rewrite List.len_indexed_slice with (i := i+size) (j := len vs) by zlia.
 
       assert (vs = vs[:i] ++ vs[i:i+size] ++ vs[i+size:len vs]) as Hsplit.
       {
         rewrite List.merge_adjacent_slices.
         - rewrite <- List.from_canon.
           apply List.split_at_index.
-        - ZnWords.
+        - zlia.
       }
       rewrite Hsplit in H4; clear Hsplit.
       apply Array.array_append in H4.
       heapletwise_step.
       apply Array.array_append in H5.
       heapletwise_step.
-      rewrite List.len_add_sized_slice in * by ZnWords.
+      rewrite List.len_add_sized_slice in * by zlia.
 
       replace (Zmod.add a
                (bits.of_Z width (Zmod.unsigned (m := 2 ^ width)
                  (bits.of_Z width elemSize) * len vs[:i]))) with a' in * by
-        (rewrite List.len_upto by ZnWords;
-          destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+        (rewrite List.len_upto by zlia;
+          destruct width_cases as [Ew | Ew]; rewrite Ew in *; zlia).
       replace (bits.of_Z width (Zmod.unsigned (bits.of_Z width elemSize) * size))
         with (bits.of_Z width (elemSize * size)) in * by
-          (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
-      repeat heapletwise_step; ZnWords.
+          (destruct width_cases as [Ew | Ew]; rewrite Ew in *; zlia).
+      repeat heapletwise_step; zlia.
     }
     {
       unfold array in *.
@@ -219,14 +219,14 @@ Section SepLog.
       replace (Zmod.add a
                (bits.of_Z width (Zmod.unsigned (m := 2 ^ width)
                  (bits.of_Z width elemSize) * len vsl))) with a' in * by
-        (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+        (destruct width_cases as [Ew | Ew]; rewrite Ew in *; zlia).
       replace (bits.of_Z width (Zmod.unsigned (bits.of_Z width elemSize) * len vsm))
         with (bits.of_Z width (elemSize * len vsm)) in * by
-          (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+          (destruct width_cases as [Ew | Ew]; rewrite Ew in *; zlia).
 
       collect_heaplets_into_one_sepclause. cbn [seps] in D.
       repeat heapletwise_step.
-      rewrite 2 List.app_length; ZnWords.
+      rewrite 2 List.app_length; zlia.
     }
   Qed.
 

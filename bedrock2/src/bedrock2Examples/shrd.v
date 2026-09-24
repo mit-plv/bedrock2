@@ -35,7 +35,7 @@ Definition spec_of_shrd : spec_of "shrd" :=
 
 Require Import bedrock2.ZnWords Coq.ZArith.ZArith Lia.
 
-Local Ltac mlia := case BW as [ [ -> | -> ] ]; ZnWords.
+Local Ltac mlia := case BW as [ [ -> | -> ] ]; zlia.
 
 Lemma shrd_ok :
   let '_ := spec_of_shrd in

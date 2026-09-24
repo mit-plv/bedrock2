@@ -73,7 +73,7 @@ Section WithParameters.
     (c : word := if Zmod.unsigned s <? Zmod.unsigned a then Zmod.one else Zmod.zero)
     : Zmod.unsigned c = (a + b) /  2 ^ 32.
   Proof.
-    subst s c. destr (Zmod.add a b <? a); ZnWords.
+    subst s c. destr (Zmod.add a b <? a); zlia.
   Qed.
 
   Lemma uint128_add_ok : program_logic_goal_for_function! uint128_add.
@@ -101,6 +101,6 @@ Section WithParameters.
     end.
     clear dependent ps; clear dependent mem.
 
-    unfold eval, List.fold_right; ZnWords.
+    unfold eval, List.fold_right; zlia.
   Qed.
 End WithParameters.

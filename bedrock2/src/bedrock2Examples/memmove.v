@@ -58,7 +58,7 @@ Section WithParameters.
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
   Import coqutil.Word.Properties coqutil.Map.Properties.
 
-  Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.
+  Local Ltac ZnWords := destruct width_cases; zlia.
   Lemma memmove_ok : program_logic_goal_for_function! memmove.
   Proof.
     repeat straightline.

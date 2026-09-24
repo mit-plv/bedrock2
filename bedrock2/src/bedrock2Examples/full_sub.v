@@ -57,7 +57,7 @@ Lemma ltu_as_borrow :
 Proof.
   intros.
   destr (Zmod.unsigned a <? Zmod.unsigned b);
-    ZnWords.
+    zlia.
 Qed.
 
 Lemma full_sub_ok : program_logic_goal_for_function! br_full_sub.
@@ -72,5 +72,5 @@ Proof.
      | X := _ |- _  => subst X end).
   destruct (Zmod.unsigned x <? Zmod.unsigned y);
     destruct (Zmod.unsigned (Zmod.sub x y) <? Zmod.unsigned borrow);
-    ZnWords.
+    zlia.
 Qed.

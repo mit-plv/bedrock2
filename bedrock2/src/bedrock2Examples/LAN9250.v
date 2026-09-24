@@ -772,9 +772,9 @@ Section WithParameters.
   Lemma lan9250_tx_ok : program_logic_goal_for_function! lan9250_tx.
   Proof.
 
-    repeat (subst || straightline || straightline_call || ZnWords || intuition eauto || esplit).
+    repeat (subst || straightline || straightline_call || zlia || intuition eauto || esplit).
     repeat (straightline || esplit).
-    straightline_call; [ZnWords|]; repeat (intuition idtac; repeat straightline).
+    straightline_call; [zlia|]; repeat (intuition idtac; repeat straightline).
     { eexists; split; repeat (straightline; intuition idtac; eauto).
       subst a. rewrite app_assoc.
       eexists; Tactics.ssplit; eauto.
@@ -812,7 +812,7 @@ Section WithParameters.
       2: {
         eapply (word.if_zero _ width_pos) in H16.
         autoforward with typeclass_instances in H16.
-        destruct x5; cbn [List.length] in *; [|exfalso; ZnWords].
+        destruct x5; cbn [List.length] in *; [|exfalso; zlia].
         Tactics.ssplit; trivial. repeat t. }
       subst br.
       rename l into l0.
@@ -829,15 +829,15 @@ Section WithParameters.
       seprewrite_in @array_append H15.
       seprewrite_in @scalar32_of_bytes H15.
       { autoforward with typeclass_instances in E.
-        rewrite firstn_length. ZnWords. }
+        rewrite firstn_length. zlia. }
 
       eexists; split; repeat straightline.
       straightline_call; repeat straightline.
-      { ZnWords. }
+      { zlia. }
 
       seprewrite_in (symmetry! @scalar32_of_bytes) H15.
       { autoforward with typeclass_instances in E.
-        rewrite firstn_length. ZnWords. }
+        rewrite firstn_length. zlia. }
 
       rename x5 into err.
       eexists; split; repeat straightline; intuition idtac.
@@ -851,15 +851,15 @@ Section WithParameters.
       right; repeat straightline.
       subst l p.
       Set Printing Coercions.
-      rewrite bits.unsigned_1, Z.mul_1_l, firstn_length, min_l in H15 by ZnWords.
+      rewrite bits.unsigned_1, Z.mul_1_l, firstn_length, min_l in H15 by zlia.
       progress change (Z.of_nat 4) with 4%Z in H15.
       eexists _, _, _; split; intuition eauto.
       3: ecancel_assumption.
-      1: rewrite skipn_length; ZnWords.
-      1 : ZnWords.
-      split; repeat t; [ ZnWords .. |].
+      1: rewrite skipn_length; zlia.
+      1 : zlia.
+      split; repeat t; [ zlia .. |].
       intuition idtac; repeat t.
-      do 4 (destruct bs as [|?b bs]; cbn [List.length] in *; try (exfalso; ZnWords));
+      do 4 (destruct bs as [|?b bs]; cbn [List.length] in *; try (exfalso; zlia));
         cbn [List.skipn lan9250_writepacket] in *; rewrite app_nil_r.
       eauto using concat_app. }
 
@@ -867,7 +867,7 @@ Section WithParameters.
     rewrite app_nil_r. eapply concat_app; eauto. eapply concat_app; eauto.
     Import Tactics.eplace.
     all : match goal with |- ?f ?x _ => eplace x with _ ; try eassumption end.
-    all : f_equal; ZnWords.
+    all : f_equal; zlia.
 
     Unshelve.
     all : constructor.

@@ -141,6 +141,20 @@ Section ListLen.
     intros. subst. unfold List.repeatz. rewrite List.repeat_length. lia.
   Qed.
 
+  Lemma list_len_skipn_cases: forall [n: nat] [n': Z] [l: list A] [ll: Z],
+      Z.of_nat n = n' ->
+      Z.of_nat (length l) = ll ->
+      n' <= ll /\ Z.of_nat (length (List.skipn n l)) = ll - n' \/
+      ll < n'  /\ Z.of_nat (length (List.skipn n l)) = 0.
+  Proof. intros. subst. rewrite List.length_skipn. lia. Qed.
+
+  Lemma list_len_firstn_cases: forall [n: nat] [n': Z] [l: list A] [ll: Z],
+      Z.of_nat n = n' ->
+      Z.of_nat (length l) = ll ->
+      n' <= ll /\ Z.of_nat (length (List.firstn n l)) = n' \/
+      ll < n'  /\ Z.of_nat (length (List.firstn n l)) = ll.
+  Proof. intros. subst. rewrite List.length_firstn. lia. Qed.
+
   Lemma list_len_from_cases: forall [i i': Z] [l: list A] [ll: Z],
       i = i' ->
       Z.of_nat (length l) = ll ->
@@ -182,6 +196,24 @@ Section ZOps.
       crhs = true /\ (if c then a else b) = a' \/
       crhs = false /\ (if c then a else b) = b'.
   Proof. intros. subst a' b' crhs. destruct c; intuition. Qed.
+
+  Lemma Z_shiftr_eq_for_lia: forall (x n a x': Z),
+      (0 <=? a) = true ->
+      n = a ->
+      x = x' ->
+      Z.shiftr x n = x' / 2 ^ a.
+  Proof.
+    intros. subst. apply Z.shiftr_div_pow2. apply Z.leb_le. assumption.
+  Qed.
+
+  Lemma Z_shiftl_eq_for_lia: forall (x n a x': Z),
+      (0 <=? a) = true ->
+      n = a ->
+      x = x' ->
+      Z.shiftl x n = x' * 2 ^ a.
+  Proof.
+    intros. subst. apply Z.shiftl_mul_pow2. apply Z.leb_le. assumption.
+  Qed.
 
   Lemma Z_div_mod_comp: forall a b,
       match Z.compare b 0 with
@@ -272,6 +304,8 @@ Ltac zify_term bw e :=
           | Z.mul     => zify_app2 bw e f2 a1 a0
           | Z.div     => zify_div_mod_expr bw e f2 a1 a0
           | Z.modulo  => zify_div_mod_expr bw e f2 a1 a0
+          | Z.shiftr  => zify_Z_shift bw e Z_shiftr_eq_for_lia a1 a0
+          | Z.shiftl  => zify_Z_shift bw e Z_shiftl_eq_for_lia a1 a0
           | Z.min     => let pa0 := zify_term bw a0 in
                          let pa1 := zify_term bw a1 in
                          let n := fresh "__Zspecmin_0" in
@@ -303,6 +337,22 @@ Ltac zify_term bw e :=
   (*
   in let __ := match constr:(Set) with _ => idtac "} =" res end in res
   *)
+(* Z.shiftr/Z.shiftl by a constant (possibly a let-bound or defined name) *)
+with zify_Z_shift bw e lem x n :=
+  let a := rdelta n in
+  lazymatch isZcst a with
+  | true =>
+      lazymatch match constr:(Set) with
+                | _ => constr:(eq_refl: (0 <=? a) = true)
+                | _ => tt
+                end
+      with
+      | tt => zify_nop e
+      | ?pa => let px := zify_term bw x in
+               constr:(lem x n a _ pa eq_refl px)
+      end
+  | false => zify_nop e
+  end
 with zify_div_mod_expr bw e f x m :=
   let p := zify_app2 bw e f x m in
   lazymatch type of p with
@@ -423,10 +473,8 @@ with zify_unsigned bw e :=
                                (@word.unsigned_sub_eq_wrap_for_lia _ bw) a1 a0
           | @Zmod.mul _ => zify_unsigned_app2 bw
                                (@word.unsigned_mul_eq_wrap_for_lia _ bw) a1 a0
-          | @Zmod.slu _ => zify_unsigned_shift bw e
-                               (@word.unsigned_slu_shamtZ_eq_wrap_for_lia _ bw) a1 a0
-          | @Zmod.sru _ => zify_unsigned_shift bw e
-                               (@word.unsigned_sru_shamtZ_eq_wrap_for_lia _ bw) a1 a0
+          | @Zmod.slu _ => zify_unsigned_shift bw e f2 a1 a0
+          | @Zmod.sru _ => zify_unsigned_shift bw e f2 a1 a0
           | _ => zify_unsigned_nop e
           end
       | _ => zify_unsigned_nop e
@@ -456,13 +504,15 @@ with zify_unsigned_app2 bw lem x y :=
   let py := zify_unsigned bw y in
   let n := fresh "__Zrange_0" in
   unique_pose_proof_name n (lem _ _ _ _ px py)
-with zify_unsigned_shift bw e lem x y :=
+with zify_unsigned_shift bw e f x y :=
   (* the shift amount is a constant, or a constant masked by Semantics.interp_binop *)
   let py := lazymatch y with
-            | Zmod.unsigned (Zmod.of_Z _ ?a') mod 2 ^ Z.log2 _ =>
+            | Zmod.unsigned (Zmod.of_Z _ ?a') mod 2 ^ Z.log2 ?w =>
                 let a := rdelta a' in
                 lazymatch isZcst a with
-                | true => constr:(unsigned_of_Z_shamt a eq_refl eq_refl : y = a)
+                | true => (* w must be passed explicitly: the side conditions are
+                             elaborated before the cast would determine it *)
+                          constr:(@unsigned_of_Z_shamt w a eq_refl eq_refl : y = a)
                 | false => constr:(tt)
                 end
             | _ => let a := rdelta y in
@@ -485,7 +535,20 @@ with zify_unsigned_shift bw e lem x y :=
       | ?pa =>
           let px := zify_unsigned bw x in
           let n := fresh "__Zrange_0" in
-          unique_pose_proof_name n (lem _ _ a _ pa py px)
+          lazymatch f with
+          | @Zmod.slu _ =>
+              (* precompute width - a if width is concrete, so that lia sees 2 ^ 29
+                 rather than the opaque atom 2 ^ (32 - 3) *)
+              let wa := lazymatch isZcst width with
+                        | true => eval cbv in (width - a)
+                        | false => constr:(width - a)
+                        end in
+              unique_pose_proof_name n
+                (@word.unsigned_slu_shamtZ_eq_wrap_for_lia _ bw _ _ a _ wa pa py eq_refl px)
+          | @Zmod.sru _ =>
+              unique_pose_proof_name n
+                (@word.unsigned_sru_shamtZ_eq_wrap_for_lia _ bw _ _ a _ pa py px)
+          end
       end
   end
 (* TODO not all proofs posed in zify_of_nat need to be posed, because eg
@@ -549,6 +612,18 @@ with zify_len bw l :=
               let pa0 := zify_term bw a0 in
               let n := fresh "__Zcases_0" in
               let __ := unique_pose_proof_name n (list_len_repeatz_cases a1 pa0) in
+              zify_len_nop l
+          | @List.skipn _ =>
+              let pn := zify_of_nat bw a1 in
+              let pl := zify_len bw a0 in
+              let n := fresh "__Zcases_0" in
+              let __ := unique_pose_proof_name n (list_len_skipn_cases pn pl) in
+              zify_len_nop l
+          | @List.firstn _ =>
+              let pn := zify_of_nat bw a1 in
+              let pl := zify_len bw a0 in
+              let n := fresh "__Zcases_0" in
+              let __ := unique_pose_proof_name n (list_len_firstn_cases pn pl) in
               zify_len_nop l
           | @List.from _ =>
               let pi := zify_term bw a1 in
@@ -648,6 +723,30 @@ Lemma of_nat_eq_cong: forall (a b: nat) (az bz: Z),
     (a = b) <-> (az = bz).
 Proof. intros. subst. split; intros; subst; auto using Nat2Z.inj. Qed.
 
+Lemma of_nat_le_cong: forall (a b: nat) (az bz: Z),
+    Z.of_nat a = az ->
+    Z.of_nat b = bz ->
+    (a <= b)%nat <-> (az <= bz).
+Proof. intros. subst. lia. Qed.
+
+Lemma of_nat_lt_cong: forall (a b: nat) (az bz: Z),
+    Z.of_nat a = az ->
+    Z.of_nat b = bz ->
+    (a < b)%nat <-> (az < bz).
+Proof. intros. subst. lia. Qed.
+
+Lemma of_nat_ge_cong: forall (a b: nat) (az bz: Z),
+    Z.of_nat a = az ->
+    Z.of_nat b = bz ->
+    (a >= b)%nat <-> (az >= bz).
+Proof. intros. subst. lia. Qed.
+
+Lemma of_nat_gt_cong: forall (a b: nat) (az bz: Z),
+    Z.of_nat a = az ->
+    Z.of_nat b = bz ->
+    (a > b)%nat <-> (az > bz).
+Proof. intros. subst. lia. Qed.
+
 Lemma bool_eq_cong: forall (a b a' b': bool),
     a = a' ->
     b = b' ->
@@ -705,8 +804,16 @@ Ltac zify_prop bw e :=
   | Z.lt ?x ?y => zify_prop_app2_terms bw e Z.lt x y
   | Z.ge ?x ?y => zify_prop_app2_terms bw e Z.ge x y
   | Z.gt ?x ?y => zify_prop_app2_terms bw e Z.gt x y
+  | Peano.le ?x ?y => zify_prop_nat_cmp bw of_nat_le_cong x y
+  | Peano.lt ?x ?y => zify_prop_nat_cmp bw of_nat_lt_cong x y
+  | Peano.ge ?x ?y => zify_prop_nat_cmp bw of_nat_ge_cong x y
+  | Peano.gt ?x ?y => zify_prop_nat_cmp bw of_nat_gt_cong x y
   | _ => zify_prop_nop e
   end
+with zify_prop_nat_cmp bw lem x y :=
+  let px := zify_of_nat bw x in
+  let py := zify_of_nat bw y in
+  constr:(lem _ _ _ _ px py)
 with zify_prop_app2_terms bw e f x y :=
   let px := zify_term bw x in
   let py := zify_term bw y in

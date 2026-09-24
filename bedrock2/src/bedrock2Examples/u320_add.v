@@ -49,9 +49,9 @@ Local Existing Instance spec_of_full_add.
 Lemma u320_add_correct : program_logic_goal_for_function! u320_add.
 Proof.
     repeat straightline. lists_into_elements. unfold array in *.
-    repeat (straightline || straightline_call || ZnWords).
+    repeat (straightline || straightline_call || zlia).
     eexists [_ ; _ ; _ ; _ ; _]. intuition try ecancel_assumption.
-    unfold eval. ZnWords. 
+    unfold eval. zlia. 
 Qed.
 
 (** * Linking Proof *)
