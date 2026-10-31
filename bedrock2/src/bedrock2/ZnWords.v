@@ -193,3 +193,37 @@ Ltac ZnWordsL :=
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
   ZnWords.
+
+(* ===== zify-based variant (mit-plv/coqutil#56 prototype) =====
+   [coqutil.Word.ZifyBitsAll] registers zify instances for [bits 8/16/32/64] and
+   hooks them into every [lia]; [bits_lia] is its closing tactic.  [ZnWords_zify]
+   is the drop-in candidate for [ZnWords]: the same goal guard and context
+   pruning, then [bits_lia] instead of the rewrite table + dewordify. *)
+Require Import coqutil.Word.ZifyBitsAll.
+
+(* [is_lia] extended with what zify translates: word (dis)equalities, [Zmod.eqb]. *)
+Ltac is_lia_word P :=
+  lazymatch P with
+  | @eq (Zmod _) _ _ => idtac
+  | not (@eq (Zmod _) _ _) => idtac
+  | @eq bool (Zmod.eqb _ _) _ => idtac
+  | @eq bool _ (Zmod.eqb _ _) => idtac
+  | ?A /\ ?B => is_lia_word A; is_lia_word B
+  | ?A \/ ?B => is_lia_word A; is_lia_word B
+  | ?A -> ?B => is_lia_word A; is_lia_word B
+  | not ?A => is_lia_word A
+  | _ => is_lia P
+  end.
+
+Ltac ZnWords_zify_pre :=
+  lazymatch goal with
+  | |- ?G => is_lia_word G; tryif has_evar G then exfalso else idtac
+  end;
+  subst;
+  repeat match goal with
+         | a := _ |- _ => subst a
+         | H: ?T |- _ => tryif is_lia_word T then fail else clear H
+         end;
+  unfold_Z_nat_consts.
+
+Ltac ZnWords_zify := ZnWords_zify_pre; bits_lia.
