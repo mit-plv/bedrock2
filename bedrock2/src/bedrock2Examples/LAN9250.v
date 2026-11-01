@@ -870,7 +870,8 @@ Section WithParameters.
     all : f_equal; ZnWords.
 
     Unshelve.
-    all : constructor.
+    (* the zify instances change which existentials are left here; a word one needs a value *)
+    all : first [ constructor | exact Zmod.zero ].
   Qed.
 
   Require Import Utf8.
