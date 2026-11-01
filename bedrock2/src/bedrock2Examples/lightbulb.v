@@ -504,7 +504,9 @@ Section WithParameters.
         eexists; split; [constructor|].
         left. split; eauto.
         enough (Hlen : length x7 = 0%nat) by (destruct x7; try solve[inversion Hlen]; exact eq_refl).
-        PreOmega.zify.
+        (* [zify] would also translate the word hypotheses now that words are
+           registered with it (coqutil ZifyBits); only the goal needs it *)
+        apply Nat2Z.inj; cbn [Z.of_nat].
         rewrite H13.
         subst br.
         destruct (Z.ltb (Zmod.unsigned x11) (Zmod.unsigned num_bytes)) eqn:HJ.
