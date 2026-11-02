@@ -2878,7 +2878,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
     { apply pfx_lele_len_ord with (pfx_emb k'). apply pfx_mmeet_key_le.
       subst k'. steps. steps. steps. }
     { steps. } }
-  cbn [cbt_best_lookup] in *. cbn [cbt'] in *. steps. subst k'. steps.
+  cbn [cbt_best_lookup] in *. cbn [cbt'] in *. steps. subst k'.
   instantiate (1:=Node sk1 sk'). cbn [cbt']. clear Error. steps. .**/
     else {                                                                    /**. .**/
       p = load(p + sizeof(uintptr_t));                                        /**. .**/
@@ -2896,7 +2896,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
     { apply pfx_lele_len_ord with (pfx_emb k'). apply pfx_mmeet_key_le.
       subst k'. steps. steps. steps. }
     { steps. } }
-  cbn [cbt_best_lookup] in *. cbn [cbt'] in *. steps. subst k'. steps.
+  cbn [cbt_best_lookup] in *. cbn [cbt'] in *. steps. subst k'.
   instantiate (1:=Node sk' sk2). cbn [cbt']. clear Error. steps. .**/
   }                                                                          /**. .**/
   uintptr_t new_leaf = cbt_alloc_leaf(k, v);                                 /**. .**/

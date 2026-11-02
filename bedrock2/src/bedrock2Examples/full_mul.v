@@ -113,5 +113,8 @@ Proof.
     (mul32_ub (Zmod.sru a 32) (Zmod.and b M)).
   specialize
     (mul32_ub (Zmod.sru a 32) (Zmod.sru b 32)).
-  Time ZnWords_legacy. (* nonlinear 64-bit product *)
+  (* Nonlinear 64-bit product.  The rewrite-based tactic proves this goal (about 50 s);
+     the zify-based one does not, and neither do local variants that rewrite the shifts
+     to divisions, make the mask a literal, or generalize the word values first. *)
+  Time ZnWords_legacy.
 Qed.
