@@ -193,3 +193,230 @@ Ltac ZnWordsL :=
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
   ZnWords.
+
+(* ===== zify-based variant (mit-plv/coqutil#56 prototype) =====
+   [coqutil.Word.ZifyBitsAll] registers zify instances for [bits 8/16/32/64] and
+   hooks them into every [lia]; [bits_lia] is its closing tactic.  [ZnWords_zify]
+   is the drop-in candidate for [ZnWords]: the same goal guard and context
+   pruning, then [bits_lia] instead of the rewrite table + dewordify. *)
+Require Import coqutil.Word.ZifyBitsAll.
+
+(* [is_lia] extended with what zify translates: word (dis)equalities, [Zmod.eqb]. *)
+Ltac is_lia_word P :=
+  lazymatch P with
+  | @eq (Zmod _) _ _ => idtac
+  | not (@eq (Zmod _) _ _) => idtac
+  | @eq bool (Zmod.eqb _ _) _ => idtac
+  | @eq bool _ (Zmod.eqb _ _) => idtac
+  | ?A /\ ?B => is_lia_word A; is_lia_word B
+  | ?A \/ ?B => is_lia_word A; is_lia_word B
+  | ?A -> ?B => is_lia_word A; is_lia_word B
+  | not ?A => is_lia_word A
+  | _ => is_lia P
+  end.
+
+(* No goal-shape guard: zify handles the propositional structure of a goal
+   itself, and a goal without arithmetic can still be closed by a contradiction
+   in the hypotheses (second attempt), as unzify's zify_goal does.  A goal with
+   evars is taken only when it is arithmetic, and then by contradiction, as the
+   rewrite-based tactic did: proving a non-arithmetic evar goal by exfalso would
+   leave the evar for the caller (LiveVerif's canceling) to trip over. *)
+Ltac ZnWords_zify_pre :=
+  lazymatch goal with
+  | |- ?G => tryif has_evar G then (is_lia_word G; exfalso) else idtac
+  end;
+  subst*;
+  repeat match goal with
+         | a := _ |- _ => subst a
+         | H: ?T |- _ => tryif is_lia_word T then fail else clear H
+         end;
+  unfold_Z_nat_consts.
+
+(* Facts that unzify poses and zify cannot derive: lengths of ZList operations
+   (as case disjunctions, which lia splits) and word-valued [if]. *)
+Require Import coqutil.Datatypes.ZList.
+Section ZListFacts.
+  Context {A : Type}.
+  Lemma len_upto_eq (l : list A) i :
+    Z.of_nat (List.length (List.upto i l)) = Z.min (Z.max i 0) (Z.of_nat (List.length l)).
+  Proof. cbv [List.upto]. rewrite List.firstn_length. lia. Qed.
+  Lemma len_from_eq (l : list A) i :
+    Z.of_nat (List.length (List.from i l)) = Z.of_nat (List.length l) - Z.min (Z.max i 0) (Z.of_nat (List.length l)).
+  Proof. cbv [List.from]. rewrite List.length_skipn. lia. Qed.
+  Lemma len_repeatz_eq (x : A) n : Z.of_nat (List.length (List.repeatz x n)) = Z.max n 0.
+  Proof. cbv [List.repeatz]. rewrite List.repeat_length. lia. Qed.
+  Lemma len_set_cases (l : list A) i x :
+    (0 <= i < Z.of_nat (List.length l) /\ Z.of_nat (List.length (List.set l i x)) = Z.of_nat (List.length l)) \/ ~ (0 <= i < Z.of_nat (List.length l)).
+  Proof. destruct (Z_le_dec 0 i), (Z_lt_dec i (Z.of_nat (List.length l))); auto using List.len_set; tauto. Qed.
+End ZListFacts.
+
+Lemma if_cases {T} (c : bool) (a b : T) :
+  (c = true /\ (if c then a else b) = a) \/ (c = false /\ (if c then a else b) = b).
+Proof. destruct c; auto. Qed.
+
+Ltac ZnWords_zify_pose pf :=
+  let t := type of pf in
+  lazymatch goal with
+  | H : t |- _ => fail
+  | _ => pose proof pf
+  end.
+
+Ltac ZnWords_zify_if_cases c a b :=
+  lazymatch type of a with
+  | Z => ZnWords_zify_pose (if_cases c a b)
+  | Zmod _ => ZnWords_zify_pose (if_cases c a b)
+  end.
+
+Ltac ZnWords_zify_facts :=
+  repeat match goal with
+         | |- context [Z.of_nat (List.length (List.upto ?i ?l))] => ZnWords_zify_pose (len_upto_eq l i)
+         | H : context [Z.of_nat (List.length (List.upto ?i ?l))] |- _ => ZnWords_zify_pose (len_upto_eq l i)
+         | |- context [Z.of_nat (List.length (List.from ?i ?l))] => ZnWords_zify_pose (len_from_eq l i)
+         | H : context [Z.of_nat (List.length (List.from ?i ?l))] |- _ => ZnWords_zify_pose (len_from_eq l i)
+         | |- context [Z.of_nat (List.length (List.set ?l ?i ?x))] => ZnWords_zify_pose (len_set_cases l i x)
+         | H : context [Z.of_nat (List.length (List.set ?l ?i ?x))] |- _ => ZnWords_zify_pose (len_set_cases l i x)
+         | |- context [Z.of_nat (List.length (List.repeatz ?x ?n))] => ZnWords_zify_pose (len_repeatz_eq x n)
+         | H : context [Z.of_nat (List.length (List.repeatz ?x ?n))] |- _ => ZnWords_zify_pose (len_repeatz_eq x n)
+         | |- context [Z.of_nat (List.length (?l1 ++ ?l2))] => ZnWords_zify_pose (List.len_app l1 l2)
+         | H : context [Z.of_nat (List.length (?l1 ++ ?l2))] |- _ => ZnWords_zify_pose (List.len_app l1 l2)
+         | |- context [Z.of_nat (List.length (?a :: ?l))] => ZnWords_zify_pose (List.len_cons a l)
+         | H : context [Z.of_nat (List.length (?a :: ?l))] |- _ => ZnWords_zify_pose (List.len_cons a l)
+         | |- context [Z.of_nat (List.length (@nil ?A))] => ZnWords_zify_pose (@List.len_nil A)
+         | H : context [Z.of_nat (List.length (@nil ?A))] |- _ => ZnWords_zify_pose (@List.len_nil A)
+         | |- context [if ?c then ?a else ?b] => ZnWords_zify_if_cases c a b
+         | H : context [if ?c then ?a else ?b] |- _ => ZnWords_zify_if_cases c a b
+         end.
+
+Ltac ZnWords_zify :=
+  ZnWords_zify_pre; ZnWords_zify_facts; first [ bits_lia | exfalso; bits_lia ].
+
+(* The rewrite-based tactic stays available as [ZnWords_legacy] for the few
+   goals the zify path does not prove (nonlinear word products, an abstract
+   width without a Bitwidth instance): see the call sites that name it. *)
+Ltac ZnWords_legacy := ZnWords_pre; better_lia.
+Ltac ZnWords ::= ZnWords_zify.
+
+(* ===== Pruning before [lia] =====
+   With the instances registered, every [lia] translates every word hypothesis
+   in the context, and micromega then works on a problem with all their [mod]
+   equations.  The time is in micromega, not in zify (coqutil#56), so the lever
+   is to clear what the goal cannot need.  Two tactics, each only clears (mit-plv/coqutil#56):
+
+   - [clear_unrelated_words]: clears the hypotheses that mention a word and are
+     not connected to the goal.  Connected = shares a variable with the goal, or
+     with a connected hypothesis (closure over variables, as ZnWords's pruning
+     does implicitly by forgetting the words that remain).
+   - [clear_non_arith]: clears the hypotheses whose statement is not arithmetic
+     (separation logic, lists, ...), keeping (in)equalities over Z, nat, N, bool
+     and words and their propositional combinations.
+
+   [clear_for_lia] is both, unrelated words first.  Used where a plain [lia]
+   in a file that imports these instances has many unrelated word facts
+   (bedrock2Examples/lightbulb.v: 69 s to 1.4 s); it does not help goals that
+   need the words. *)
+
+Definition zify_bits_keep {T : Type} (x : T) : Prop := True.
+
+Ltac zify_bits_mentions_kept T :=
+  match goal with
+  | _ : zify_bits_keep ?x |- _ => lazymatch T with context [x] => idtac end
+  end.
+
+Ltac zify_bits_keep_vars_of T :=
+  repeat match goal with
+         | x : ?A |- _ =>
+             lazymatch type of A with
+             | Prop => fail
+             | _ => lazymatch goal with
+                    | _ : zify_bits_keep x |- _ => fail
+                    | _ => lazymatch T with context [x] => pose proof (I : zify_bits_keep x) end
+                    end
+             end
+         end.
+
+Ltac zify_bits_is_word_fact T :=
+  lazymatch T with
+  | context [Zmod.unsigned _] => idtac
+  | context [Zmod.signed _] => idtac
+  | context [@eq (Zmod _) _ _] => idtac
+  | context [Zmod.eqb _ _] => idtac
+  | context [Zmod _] => idtac
+  end.
+
+Ltac clear_unrelated_words :=
+  lazymatch goal with |- ?G => zify_bits_keep_vars_of G end;
+  (* closure: a hypothesis that mentions a kept variable keeps its variables *)
+  repeat match goal with
+         | H : ?T |- _ =>
+             lazymatch T with
+             | zify_bits_keep _ => fail
+             | _ => lazymatch type of T with
+                    | Prop => lazymatch goal with
+                              | _ : zify_bits_keep H |- _ => fail
+                              | _ => zify_bits_mentions_kept T;
+                                     pose proof (I : zify_bits_keep H);
+                                     zify_bits_keep_vars_of T
+                              end
+                    | _ => fail
+                    end
+             end
+         end;
+  repeat match goal with
+         | H : ?T |- _ =>
+             lazymatch T with
+             | zify_bits_keep _ => fail
+             | _ => lazymatch type of T with
+                    | Prop => lazymatch goal with
+                              | _ : zify_bits_keep H |- _ => fail
+                              | _ => zify_bits_is_word_fact T; clear H
+                              end
+                    | _ => fail
+                    end
+             end
+         end;
+  repeat match goal with K : zify_bits_keep _ |- _ => clear K end.
+
+Ltac zify_bits_is_arith_bool p :=
+  lazymatch p with
+  | Z.eqb _ _ => idtac | Z.ltb _ _ => idtac | Z.leb _ _ => idtac | Z.gtb _ _ => idtac | Z.geb _ _ => idtac
+  | Nat.eqb _ _ => idtac | Nat.ltb _ _ => idtac | Nat.leb _ _ => idtac
+  | N.eqb _ _ => idtac | N.ltb _ _ => idtac | N.leb _ _ => idtac
+  | Zmod.eqb _ _ => idtac
+  | andb ?a ?b => zify_bits_is_arith_bool a; zify_bits_is_arith_bool b
+  | orb ?a ?b => zify_bits_is_arith_bool a; zify_bits_is_arith_bool b
+  | negb ?a => zify_bits_is_arith_bool a
+  | true => idtac | false => idtac
+  end.
+
+Ltac zify_bits_is_arith P :=
+  lazymatch P with
+  | @eq Z _ _ => idtac | (_ < _)%Z => idtac | (_ <= _)%Z => idtac | (_ > _)%Z => idtac | (_ >= _)%Z => idtac
+  | @eq nat _ _ => idtac | (_ < _)%nat => idtac | (_ <= _)%nat => idtac | (_ > _)%nat => idtac | (_ >= _)%nat => idtac
+  | @eq N _ _ => idtac | (_ < _)%N => idtac | (_ <= _)%N => idtac | (_ > _)%N => idtac | (_ >= _)%N => idtac
+  | @eq (Zmod _) _ _ => idtac
+  | @eq bool ?a ?b => zify_bits_is_arith_bool a; zify_bits_is_arith_bool b
+  | ?A /\ ?B => zify_bits_is_arith A; zify_bits_is_arith B
+  | ?A \/ ?B => zify_bits_is_arith A; zify_bits_is_arith B
+  | ?A <-> ?B => zify_bits_is_arith A; zify_bits_is_arith B
+  | ?A -> ?B => zify_bits_is_arith A; zify_bits_is_arith B
+  | not ?A => zify_bits_is_arith A
+  | True => idtac | False => idtac
+  end.
+
+Ltac clear_non_arith :=
+  repeat match goal with
+         | H : ?T |- _ =>
+             lazymatch type of T with
+             | Prop => tryif zify_bits_is_arith T then fail else clear H
+             | _ => fail
+             end
+         end.
+
+Ltac clear_for_lia := clear_unrelated_words; clear_non_arith.
+
+(* A plain [lia] in a file with large word contexts (fiat-crypto's P256 and
+   X25519 proofs) pays for the translation of every word hypothesis at each
+   call.  Forget the words first, as the rewrite-based ZnWords does: the goal
+   itself, then by contradiction (the goal need not be arithmetic), then a plain
+   [lia] as the fallback. *)
+Ltac lia_forget_words := first [ ZnWords_legacy | exfalso; ZnWords_legacy | lia ].

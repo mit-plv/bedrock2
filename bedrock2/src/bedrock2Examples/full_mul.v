@@ -113,5 +113,5 @@ Proof.
     (mul32_ub (Zmod.sru a 32) (Zmod.and b M)).
   specialize
     (mul32_ub (Zmod.sru a 32) (Zmod.sru b 32)).
-  Time ZnWords.
+  Time ZnWords_legacy. (* nonlinear 64-bit product *)
 Qed.

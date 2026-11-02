@@ -9,8 +9,8 @@ Proof. intros. subst. reflexivity. Qed.
 Ltac syntactic_f_equal_step_with_ZnWords :=
   lazymatch goal with
   | |- ?x = ?x => reflexivity
-  | |- @eq (Zmod _) _ _ => ZnWords
-  | |- @eq Z _ _ => ZnWords
+  | |- @eq (Zmod _) _ _ => ZnWords_legacy (* LiveVerif canceling: the zify path changes the automation path in critbit.v *)
+  | |- @eq Z _ _ => ZnWords_legacy (* LiveVerif canceling: the zify path changes the automation path in critbit.v *)
   | |- ?f ?a = ?f ?b => eapply (@f_equal _ _ f a b)
   | |- ?f ?x = ?g ?x => eapply (f_equal_fun f g x)
   end.
