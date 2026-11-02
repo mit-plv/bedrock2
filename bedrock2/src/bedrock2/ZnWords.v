@@ -413,3 +413,10 @@ Ltac clear_non_arith :=
          end.
 
 Ltac clear_for_lia := clear_unrelated_words; clear_non_arith.
+
+(* A plain [lia] in a file with large word contexts (fiat-crypto's P256 and
+   X25519 proofs) pays for the translation of every word hypothesis at each
+   call.  Forget the words first, as the rewrite-based ZnWords does: the goal
+   itself, then by contradiction (the goal need not be arithmetic), then a plain
+   [lia] as the fallback. *)
+Ltac lia_forget_words := first [ ZnWords_legacy | exfalso; ZnWords_legacy | lia ].
