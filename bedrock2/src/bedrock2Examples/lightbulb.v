@@ -484,7 +484,7 @@ Section WithParameters.
             { rewrite bits.unsigned_of_Z; exact eq_refl. } { ecancel_assumption. } }
           { subst RECV. rewrite List.app_length, LittleEndianList.length_le_split.
             rewrite H26. subst x22. rewrite List.length_skipn. simpl bytes_per.
-            enough ((4 <= length x7)%nat) by lia.
+            enough ((4 <= length x7)%nat) by (clear_for_lia; lia).
             Z.div_mod_to_equations; lia. }
           cbv [truncate_word truncate_Z] in *.
           repeat match goal with x := _ |- _ => is_var x; subst x end; subst.
