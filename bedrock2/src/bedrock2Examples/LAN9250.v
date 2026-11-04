@@ -87,7 +87,7 @@ Definition lan9250_wait_for_boot := func! () ~> err {
           unpack! byteorder, err = lan9250_readword($0x64);
     if err { i = (i^i) }
     else if (byteorder == $0x87654321) { i = (i^i) }
-    else { err = ($-1) }
+    else { err = $(-1) }
   }
 }.
 

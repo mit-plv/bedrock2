@@ -159,7 +159,7 @@ Module SpiEth.
 
       (* TODO these only read a byte rather than a word *)
       IOMacros.read_word_code(x _: String.string) := bedrock_func_body:(
-        $x = $-1 ;
+        $x = $(-1) ;
         while ($x & coq:(Z.shiftl 1 31)) { io! $x = $MMInput($spi_rx) }
       );
       IOMacros.write_word_code(x tmp: String.string) := bedrock_func_body:(

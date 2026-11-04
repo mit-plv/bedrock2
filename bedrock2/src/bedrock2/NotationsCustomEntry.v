@@ -72,15 +72,15 @@ Notation "'while' e { c }" := (while e c%bedrock_nontail)
   (in custom bedrock_cmd at level 0, e custom bedrock_expr, format "'[v' 'while'  e  {  '/  ' c '/' } ']'").
 
 Notation "'if' e { c1 } 'else' c2"     := (cond e c1 c2)    (in custom bedrock_cmd at level 0,
-  e custom bedrock_expr at level 1, c2 at level 0,
+  e custom bedrock_expr, c2 at level 0,
   format "'[v' 'if'  e  {  '/  ' c1 '/' }  'else'  c2 ']'").
 Notation "'if' '!' e { c1 } 'else' c2" := (cond e c2 c1)    (in custom bedrock_cmd at level 0,
-  e custom bedrock_expr at level 1, c2 at level 0,
+  e custom bedrock_expr, c2 at level 0,
   format "'[v' 'if'  '!' e  {  '/  ' c1 '/' }  'else'  c2 ']'").
 Notation "'if' e { c1 }"               := (cond e c1 skip)  (in custom bedrock_cmd at level 0,
-  e custom bedrock_expr at level 1, format "'[v' 'if'  e  {  '/  ' c1 '/' } ']'").
+  e custom bedrock_expr, format "'[v' 'if'  e  {  '/  ' c1 '/' } ']'").
 Notation "'if' '!' e { c1 }"           := (cond e skip c1)  (in custom bedrock_cmd at level 0,
-  e custom bedrock_expr at level 1, format "'[v' 'if'  '!' e   {  '/  ' c1 '/' } ']'").
+  e custom bedrock_expr, format "'[v' 'if'  '!' e   {  '/  ' c1 '/' } ']'").
 
 (* DRAFT: *)
 Notation "'stackalloc' z 'as' x ; c" := (stackalloc (ident_to_string! x) z c)
