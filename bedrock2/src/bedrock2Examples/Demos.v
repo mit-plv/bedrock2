@@ -55,7 +55,7 @@ Definition fibonacciServer (n_load_addr n_store_addr: Z) := func! () ~> b {
       i = i + $1
     }
   } else {
-    b = $-1
+    b = $(-1)
   };
   store4(n_store_addr, b)
 }.

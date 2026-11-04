@@ -35,10 +35,10 @@ Section WithParameters.
   Definition recvEthernet := func! (buf) ~> (num_bytes, err) {
       num_bytes = $0;
       unpack! read, err = lan9250_readword(coq:(0x7C)); (* RX_FIFO_INF *)
-      require !err else { err = $-1 };
+      require !err else { err = $(-1) };
       require (read & coq:((2^8-1)*2^16)) else { err = $1 }; (* nonempty *)
       unpack! read, err = lan9250_readword($0x40); (* RX_STATUS_FIFO_PORT *)
-      require !err else { err = $-1 };
+      require !err else { err = $(-1) };
 
       num_bytes = read >> $16 & coq:(2^14-1);
       (* round up to next word *)
@@ -50,25 +50,25 @@ Section WithParameters.
 
       i = $0; while (i < num_bytes) {
         unpack! read, err = lan9250_readword($0);
-        if err { err = $-1; i = num_bytes }
+        if err { err = $(-1); i = num_bytes }
         else { store4(buf + i, read); i = i + $4 }
       }
     }.
 
   Definition lightbulb_handle := func! (packet, len) ~> r {
       r = $42;
-      require (r < len) else { r = $-1 };
+      require (r < len) else { r = $(-1) };
 
       Oxff = $0xff;
       ethertype = (((load1(packet + $12))&Oxff) << $8) | ((load1(packet + $13))&Oxff);
       r = coq:(1536 - 1);
-      require (r < ethertype) else { r = $-1 };
+      require (r < ethertype) else { r = $(-1) };
 
       r = $23;
       r = packet + r;
       protocol = (load1(r))&Oxff;
       r = $0x11;
-      require (protocol == r) else { r = $-1 };
+      require (protocol == r) else { r = $(-1) };
 
       r = $42;
       r = packet + r;
@@ -572,15 +572,15 @@ Section WithParameters.
     all : rewrite !bits.unsigned_of_Z.
 
     (* two cases of SPI timeout *)
-    { left; split; [exact eq_refl|] || right.
-      left; split; [exact eq_refl|] || right.
+    { (left; split; [exact eq_refl|]) || right.
+      (left; split; [exact eq_refl|]) || right.
             split; [exact eq_refl|].
         intuition eauto using TracePredicate.any_app_more. }
-    { left; split; [exact eq_refl|] || right.
-      left; split; [exact eq_refl|] || right.
+    { (left; split; [exact eq_refl|]) || right.
+      (left; split; [exact eq_refl|]) || right.
             split; [exact eq_refl|].
         intuition eauto using TracePredicate.any_app_more. }
-    { left; split; [exact eq_refl|] || right.
+    { (left; split; [exact eq_refl|]) || right.
       left; split; [exact eq_refl|].
       eexists _, _; split.
       1:eapply TracePredicate.concat_app; try intuition eassumption.
