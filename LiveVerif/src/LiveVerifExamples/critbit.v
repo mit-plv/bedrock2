@@ -2878,7 +2878,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
     { apply pfx_lele_len_ord with (pfx_emb k'). apply pfx_mmeet_key_le.
       subst k'. steps. steps. steps. }
     { steps. } }
-  cbn [cbt_best_lookup] in *. cbn [cbt'] in *. steps. subst k'. steps.
+  cbn [cbt_best_lookup] in *. cbn [cbt'] in *. steps. subst k'.
   instantiate (1:=Node sk1 sk'). cbn [cbt']. clear Error. steps. .**/
     else {                                                                    /**. .**/
       p = load(p + sizeof(uintptr_t));                                        /**. .**/
@@ -2896,7 +2896,7 @@ Derive cbt_insert_at SuchThat (fun_correct! cbt_insert_at) As cbt_insert_at_ok. 
     { apply pfx_lele_len_ord with (pfx_emb k'). apply pfx_mmeet_key_le.
       subst k'. steps. steps. steps. }
     { steps. } }
-  cbn [cbt_best_lookup] in *. cbn [cbt'] in *. steps. subst k'. steps.
+  cbn [cbt_best_lookup] in *. cbn [cbt'] in *. steps. subst k'.
   instantiate (1:=Node sk' sk2). cbn [cbt']. clear Error. steps. .**/
   }                                                                          /**. .**/
   uintptr_t new_leaf = cbt_alloc_leaf(k, v);                                 /**. .**/
@@ -3145,7 +3145,13 @@ Derive cbt_delete_from_nonleaf SuchThat
                       + uintptr (if brc then sib' else par)
                       + uintptr (if brc then par else sib') }> par'
                  * cbt' _ _ sib' }>).
-  unpurify. steps.
+  unpurify.
+  (* The zify-based ZnWords does not stop on the side goals of this step while the
+     bit test of the if condition is unfolded next to the goal's own: fold it, and
+     drop the Z facts that were derived from the unfolded form. *)
+  match goal with D : _ = Zmod.eqb (Zmod.and (_ ^>> _) _) _ |- _ => rewrite bit_at_eq in D end.
+  repeat match goal with H' : context [Zmod.and (_ ^>> _) _] |- _ => clear H' end.
+  steps.
   1-4:
   match goal with
   | |- context [ Zmod.eqb ?a ?b ] => replace (Zmod.eqb a b) with true; reflexivity
@@ -3195,7 +3201,13 @@ Derive cbt_delete_from_nonleaf SuchThat
                           + uintptr (if brc then sib' else par)
                           + uintptr (if brc then par else sib') }> par'
                      * cbt' _ _ sib' }>).
-  unpurify. steps.
+  unpurify.
+  (* The zify-based ZnWords does not stop on the side goals of this step while the
+     bit test of the if condition is unfolded next to the goal's own: fold it, and
+     drop the Z facts that were derived from the unfolded form. *)
+  match goal with D : _ = Zmod.eqb (Zmod.and (_ ^>> _) _) _ |- _ => rewrite bit_at_eq in D end.
+  repeat match goal with H' : context [Zmod.and (_ ^>> _) _] |- _ => clear H' end.
+  steps.
   1-4:
   match goal with
   | |- context [ Zmod.eqb ?a ?b ] => replace (Zmod.eqb a b) with false; reflexivity
