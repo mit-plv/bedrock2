@@ -215,15 +215,16 @@ Ltac is_lia_word P :=
   | _ => is_lia P
   end.
 
-(* No goal-shape guard: zify handles the propositional structure of a goal
-   itself, and a goal without arithmetic can still be closed by a contradiction
-   in the hypotheses (second attempt), as unzify's zify_goal does.  A goal with
-   evars is taken only when it is arithmetic, and then by contradiction, as the
-   rewrite-based tactic did: proving a non-arithmetic evar goal by exfalso would
-   leave the evar for the caller (LiveVerif's canceling) to trip over. *)
+(* The same goal guard as the rewrite-based tactic: a goal that is not
+   arithmetic fails at once.  Without the guard, a [try ZnWords] on a
+   separation-logic goal in a large word context made lia search for a
+   contradiction for minutes (fiat-crypto Coord32.v).  A goal with evars is
+   taken only by contradiction, as the rewrite-based tactic did: proving it
+   directly would instantiate the evars in ways the caller (LiveVerif's
+   canceling) does not expect. *)
 Ltac ZnWords_zify_pre :=
   lazymatch goal with
-  | |- ?G => tryif has_evar G then (is_lia_word G; exfalso) else idtac
+  | |- ?G => is_lia_word G; tryif has_evar G then exfalso else idtac
   end;
   subst*;
   repeat match goal with
