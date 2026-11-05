@@ -3145,7 +3145,13 @@ Derive cbt_delete_from_nonleaf SuchThat
                       + uintptr (if brc then sib' else par)
                       + uintptr (if brc then par else sib') }> par'
                  * cbt' _ _ sib' }>).
-  unpurify. steps.
+  unpurify.
+  (* The zify-based ZnWords does not stop on the side goals of this step while the
+     bit test of the if condition is unfolded next to the goal's own: fold it, and
+     drop the Z facts that were derived from the unfolded form. *)
+  match goal with D : _ = Zmod.eqb (Zmod.and (_ ^>> _) _) _ |- _ => rewrite bit_at_eq in D end.
+  repeat match goal with H' : context [Zmod.and (_ ^>> _) _] |- _ => clear H' end.
+  steps.
   1-4:
   match goal with
   | |- context [ Zmod.eqb ?a ?b ] => replace (Zmod.eqb a b) with true; reflexivity
@@ -3195,7 +3201,13 @@ Derive cbt_delete_from_nonleaf SuchThat
                           + uintptr (if brc then sib' else par)
                           + uintptr (if brc then par else sib') }> par'
                      * cbt' _ _ sib' }>).
-  unpurify. steps.
+  unpurify.
+  (* The zify-based ZnWords does not stop on the side goals of this step while the
+     bit test of the if condition is unfolded next to the goal's own: fold it, and
+     drop the Z facts that were derived from the unfolded form. *)
+  match goal with D : _ = Zmod.eqb (Zmod.and (_ ^>> _) _) _ |- _ => rewrite bit_at_eq in D end.
+  repeat match goal with H' : context [Zmod.and (_ ^>> _) _] |- _ => clear H' end.
+  steps.
   1-4:
   match goal with
   | |- context [ Zmod.eqb ?a ?b ] => replace (Zmod.eqb a b) with false; reflexivity
