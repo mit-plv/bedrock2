@@ -241,16 +241,16 @@ Definition echo_server: cmd :=
     output! $MMIOWRITE(coq:(uart0_base + 0x00c), one); (* rx enable *)
     output! $MMIOWRITE(coq:(gpio0_base + 0x038), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
 
-    running = $-1;
+    running = $(-1);
     while (running) {
       bit31 = coq:(2^31);
       rx = bit31;
-      polling = $-1;
+      polling = $(-1);
       while (polling & rx & bit31) { io! rx = $MMIOREAD(coq:(uart0_base + 0x004)); polling = polling-one };
       if (rx & bit31) { coq:(cmd.skip) } else {
         uart_tx = coq:(uart0_base + 0x000);
         tx = bit31;
-        polling = $-1;
+        polling = $(-1);
         while (polling & tx & bit31) { io! tx = $MMIOREAD(uart_tx); polling = polling-one };
         output! $MMIOWRITE(uart_tx, tx)
       };

@@ -247,7 +247,7 @@ Section SepLog.
         sep (array (uint 8) i ? a)
           (sep (array (uint 8) nReq ? a')
              (array (uint 8) (nAll-i-nReq) ? (Zmod.add a' (bits.of_Z width nReq)))) m  ->
-        array (uint 8) nAll ? a m).
+        (array (uint 8) nAll ? a) m).
   Proof.
     split; intros.
     - eapply split_anyval_array with (i := i) in H1. 2: lia.

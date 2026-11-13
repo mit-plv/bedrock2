@@ -11,7 +11,7 @@ Require bedrock2Examples.lightbulb_spec.
 Local Notation patience := lightbulb_spec.patience.
 
 Definition spi_write := func! (b) ~> busy {
-    busy = $-1;
+    busy = $(-1);
     i = $patience; while i { i = i - $1;
       io! busy = MMIOREAD($0x10024048);
       if !(busy >> $31) { i = i^i }
@@ -23,7 +23,7 @@ Definition spi_write := func! (b) ~> busy {
   }.
 
 Definition spi_read := func! () ~> (b, busy) {
-    busy = $-1;
+    busy = $(-1);
     b = $0x5a;
     i = $patience; while i { i = i - $1;
       io! busy = MMIOREAD($0x1002404c);
