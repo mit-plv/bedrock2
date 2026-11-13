@@ -1,6 +1,6 @@
 # Adapted from https://github.com/mit-plv/fiat-crypto/blob/master/.github/workflows/coq-docker.yml
 
-name: CI (Coq, docker, dev)
+name: CI (Coq, docker)
 
 on:
   push:
@@ -17,6 +17,8 @@ jobs:
       matrix:
         include:
         - env: { COQ_VERSION: "9.2", DOCKER_COQ_VERSION: "9.2" }
+          os: 'ubuntu-latest'
+        - env: { COQ_VERSION: "9.3", DOCKER_COQ_VERSION: "9.3" }
           os: 'ubuntu-latest'
         - env: { COQ_VERSION: "master", DOCKER_COQ_VERSION: "dev" }
           os: 'ubuntu-latest'
