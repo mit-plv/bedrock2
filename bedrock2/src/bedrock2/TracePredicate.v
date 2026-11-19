@@ -74,7 +74,7 @@ Section ListPred.
   Qed.
 
   Import Morphisms.
-  Local Infix "+++" := concat (at level 60).
+  Local Infix "+++" := concat (at level 61, left associativity).
 
   Section WithR.
     Context {state} (R : state -> list T -> state -> Prop).
@@ -166,10 +166,10 @@ Section ListPred.
 End ListPred.
 
 Module TracePredicateNotations.
-  Notation "P ^*" := (kleene P) (at level 50).
-  Notation "P ^+" := (concat P (kleene P)) (at level 50).
-  Infix "+++" := concat (at level 60).
-  Infix "|||" := choice (at level 70).
+  Notation "P ^*" := (kleene P) (at level 9).
+  Notation "P ^+" := (concat P (kleene P)) (at level 9).
+  Infix "+++" := concat (at level 61, left associativity).
+  Infix "|||" := choice (at level 71, left associativity).
   Notation "'EX' x .. y , p" := (existsl (fun x => .. (existsl (fun y => p)) ..))
     (at level 200, x binder, right associativity,
      format "'[' 'EX'  '/  ' x  ..  y ,  '/  ' p ']'").
