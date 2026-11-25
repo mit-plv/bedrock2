@@ -182,7 +182,7 @@ Notation "$" := tt (in custom comment at level 0, only parsing).
 Notation ":" := tt (in custom comment at level 0, only parsing).
 Notation "a b" := tt
   (in custom comment at level 2,
-   b custom comment at level 1,
+   b custom comment at level 2,
    only parsing).
 
 Goal True.

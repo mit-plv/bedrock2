@@ -3105,7 +3105,7 @@ Derive cbt_delete_from_nonleaf SuchThat
      as `if flag then mR else mL` and similarly for msib *)
   rewrite mmap.du_comm in D. rewrite <- mmap.du_assoc in D.
   rewrite <- mmap.du_assoc in D.
-  replace ((m2 ||| mL) ||| mR) with (m2 ||| mcur ||| msib) in D; cycle 1.
+  replace ((m2 ||| mL) ||| mR) with ((m2 ||| mcur) ||| msib) in D; cycle 1.
   do 2 rewrite mmap.du_assoc. f_equal. subst mcur. subst msib.
   destruct brc. apply mmap.du_comm. reflexivity.
   purge mL. purge mR.
