@@ -28,6 +28,16 @@ static_assert(~(br_signed_t)0 == -(br_signed_t)1, ""two's complement"");
   #error ""failed to confirm that target is little-endian""
 #endif
 
+// Word-align stackalloc buffers so they can be passed to external code that
+// takes word pointers. Define BR_STACKALLOC_ALIGN as empty for byte arrays.
+#ifndef BR_STACKALLOC_ALIGN
+  #if defined(__cplusplus) || (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L)
+    #define BR_STACKALLOC_ALIGN alignas(br_word_t)
+  #else
+    #define BR_STACKALLOC_ALIGN _Alignas(br_word_t)
+  #endif
+#endif
+
 // ""An object shall have its stored value accessed only ... a character type.""
 static inline br_word_t _br_load1(br_word_t a) {
   return *((uint8_t *)a);
@@ -224,7 +234,7 @@ Fixpoint c_cmd (indent : string) (c : cmd) : string :=
      * favoring readability over timely deallocation (which clang et al don't
      * do anyway. However, name collisions can cause compilation errors. *)
     let tmp := "_br_stackalloc_"++x in
-    indent ++ "uint8_t "++tmp++"["++c_lit n++"] = {0}; "++x++" = (br_word_t)&"++tmp++";"++LF++
+    indent ++ "BR_STACKALLOC_ALIGN uint8_t "++tmp++"["++c_lit n++"] = {0}; "++x++" = (br_word_t)&"++tmp++";"++LF++
     c_cmd indent body
   | cmd.set x (expr.inlinetable s t ei) =>
   indent ++ "{ " ++ c_inlinetable t ++ " " ++ x ++ " = " ++ c_loadtable s (c_expr ei) ++ "; }" ++ LF
