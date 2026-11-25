@@ -138,7 +138,7 @@ Derive sll_prepend SuchThat (fun_correct! sll_prepend) As sll_prepend_ok. .**/
   .**/ store(r+4, p); /**.
   .**/ return r; /**.
   (* TODO: all of this should probably be automated *)
-  replace ((m4 \*/ (m2 \*/ m3)) \*/ m) with (m \*/ m2 \*/ m3 \*/ m4) in D by admit.
+  replace ((m4 \*/ (m2 \*/ m3)) \*/ m) with (((m \*/ m2) \*/ m3) \*/ m4) in D by admit.
   assert (exists (mm2:mem), m \*/ m2 = mm2) as Hex by admit.
   destruct Hex as [mm2 Hex]. rewrite Hex in D. clear Hex.
   assert (mm2 |= sll (val :: L) r) by admit.
