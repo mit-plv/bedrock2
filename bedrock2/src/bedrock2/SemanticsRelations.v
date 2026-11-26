@@ -496,3 +496,159 @@ Section PlainToSomething.
     - simpl. intros. fwd. eauto.
   Qed.
 End PlainToSomething.
+
+(* The reverse direction of [LeakageToSomething]: a proof about the leakage
+   semantics gives a proof about the plain semantics whose postcondition
+   forgets the leakage trace.
+
+   This is only possible for code that does not use [cmd.stackalloc]:
+   the leakage semantics runs the body of a stackalloc for the single address
+   chosen by the [pick_sp] oracle, whereas the plain semantics requires the body
+   to run for every address. So the lemmas take a syntactic side condition
+   [stackalloc_free_wrt S c]: the command has no stackalloc and only calls
+   functions in [S], and [stackalloc_free_env_wrt S e] says that every function
+   in [S] has such a body. Plain callers whose environment is concrete (linking
+   lemmas) discharge the side condition by computation, see
+   [stackalloc_free_env_wrt_of_list]. See ProgramLogic.straightline_call_from_leakage
+   for the tactic side. *)
+Section StackallocFree.
+  Fixpoint stackalloc_free_wrt (S : String.string -> bool) (c : cmd) : bool :=
+    match c with
+    | cmd.stackalloc _ _ _ => false
+    | cmd.seq c1 c2 | cmd.cond _ c1 c2 => stackalloc_free_wrt S c1 && stackalloc_free_wrt S c2
+    | cmd.while _ c => stackalloc_free_wrt S c
+    | cmd.call _ f _ => S f
+    | _ => true
+    end.
+
+  Definition stackalloc_free_env_wrt (S : String.string -> bool) (e : env) : Prop :=
+    forall f args rets body, S f = true -> map.get e f = Some (args, rets, body) ->
+                             stackalloc_free_wrt S body = true.
+
+  Definition stackalloc_free_env : env -> Prop := stackalloc_free_env_wrt (fun _ => true).
+
+  Lemma stackalloc_free_env_wrt_of_list: forall S (l : list (String.string * Syntax.func)),
+      List.forallb (fun '(f, (_, _, body)) => negb (S f) || stackalloc_free_wrt S body)%bool l = true ->
+      stackalloc_free_env_wrt S (map.of_list l).
+  Proof.
+    unfold stackalloc_free_env_wrt. induction l as [|[f [ [args rets] body] ] l IH];
+      intros H f' args' rets' body' HS HG.
+    - change (map.of_list nil) with (@map.empty _ _ env) in HG.
+      rewrite map.get_empty in HG. discriminate.
+    - change (map.of_list ((f, (args, rets, body)) :: l))
+        with (@map.put _ _ env (map.of_list l) f (args, rets, body)) in HG.
+      cbn [List.forallb] in H.
+      eapply Bool.andb_true_iff in H. destruct H as [H1 H2]. specialize (IH H2).
+      destruct (String.eqb_spec f f') as [<-|Hne].
+      + rewrite map.get_put_same in HG. eapply Option.eq_of_eq_Some in HG. inversion HG; subst.
+        rewrite HS, Bool.orb_false_l in H1. exact H1.
+      + rewrite map.get_put_diff in HG by congruence. eauto.
+  Qed.
+
+  Lemma stackalloc_free_env_of_list: forall (l : list (String.string * Syntax.func)),
+      List.forallb (fun '(_, (_, _, body)) => stackalloc_free_wrt (fun _ => true) body) l = true ->
+      stackalloc_free_env (map.of_list l).
+  Proof.
+    intros l H. eapply stackalloc_free_env_wrt_of_list. cbn [negb orb]. exact H.
+  Qed.
+End StackallocFree.
+
+Section PlainOfLeakage.
+  Context {width: Z} {BW: Bitwidth width}.
+  Local Notation word := (bits width).
+  Context {mem: map.map word byte}.
+  Context {locals: map.map String.string word}.
+  Context {ext_spec: ExtSpec} {pick_sp: PickSp}.
+  Context {ext_spec_ok: ext_spec.ok ext_spec}.
+
+  Lemma plain_of_leakage_eval_expr: forall (m : mem) l e k v k',
+      LeakageSemantics.eval_expr m l e k = Some (v, k') ->
+      Semantics.eval_expr m l e = Some v.
+  Proof.
+    induction e; cbn; intros;
+      repeat match goal with
+        | H: Some _ = Some _ |- _ => eapply Option.eq_of_eq_Some in H; subst
+        | IH: forall _, Some _ = Some _ -> _ |- _ => specialize IH with (1 := eq_refl)
+        | IH: forall _ _ _, LeakageSemantics.eval_expr _ _ _ _ = Some _ -> _ |- _ =>
+            specialize (IH _ _ _ ltac:(eassumption))
+        | |- _ => progress fwd
+        | |- _ => Tactics.destruct_one_match
+        end;
+      eauto.
+  Qed.
+
+  Lemma plain_of_leakage_eval_call_args: forall (m : mem) l arges k args k',
+      LeakageSemantics.eval_call_args m l arges k = Some (args, k') ->
+      Semantics.eval_call_args m l arges = Some args.
+  Proof.
+    induction arges; cbn; intros.
+    - eapply Option.eq_of_eq_Some in H. inversion H. subst. eauto.
+    - fwd.
+      eapply plain_of_leakage_eval_expr in E. rewrite E.
+      apply IHarges in E0. rewrite E0. reflexivity.
+  Qed.
+
+  Context (e: env).
+  Existing Instance deleakaged_ext_spec.
+
+  Lemma plain_of_leakage_exec: forall S, stackalloc_free_env_wrt S e ->
+      forall c k t (m : mem) l post,
+      stackalloc_free_wrt S c = true ->
+      LeakageSemantics.exec e c k t m l post ->
+      Semantics.exec e c t m l (fun t' m' l' => exists k', post k' t' m' l').
+  Proof.
+    intros S HS c k t m l post Hc Hex. revert Hc. induction Hex; intros; cbn [stackalloc_free_wrt] in *;
+      repeat match reverse goal with
+        | H: LeakageSemantics.eval_expr _ _ _ _ = Some _ |- _ =>
+            eapply plain_of_leakage_eval_expr in H
+        | H: LeakageSemantics.eval_call_args _ _ _ _ = Some _ |- _ =>
+            eapply plain_of_leakage_eval_call_args in H
+        | H: (_ && _)%bool = true |- _ => eapply Bool.andb_true_iff in H; destruct H
+        end;
+      try solve [econstructor; eauto].
+    all: try solve [econstructor; eauto; simpl; intros; fwd; eauto].
+    all: lazymatch goal with
+      | |- Semantics.exec _ (cmd.stackalloc _ _ _) _ _ _ _ => discriminate
+      | |- Semantics.exec _ (cmd.while _ _) _ _ _ _ =>
+          eapply Semantics.exec.while_true; [eassumption|eassumption| |];
+          [ eapply IHHex; assumption
+          | simpl; intros; fwd; eauto ]
+      | |- Semantics.exec _ (cmd.call _ _ _) _ _ _ _ =>
+          eapply Semantics.exec.call; [eassumption|eassumption|eassumption| |];
+          [ eapply IHHex; eapply HS; eassumption
+          | simpl; intros; fwd;
+            match goal with
+            | HC: forall _ _ _ _, ?mid _ _ _ _ -> _, HM: ?mid _ _ _ _ |- _ => apply HC in HM
+            end; fwd; eauto 10 ]
+      | |- Semantics.exec _ (cmd.interact _ _ _) _ _ _ _ =>
+          eapply Semantics.exec.interact with
+            (mid := fun mReceive resvals => exists klist, mid mReceive resvals klist);
+          [eassumption|eassumption| |];
+          [ cbv [deleakaged_ext_spec]; eapply ext_spec.weaken; [|eassumption];
+            cbv [Morphisms.pointwise_relation Basics.impl]; eauto
+          | simpl; intros; fwd;
+            match goal with
+            | HC: forall _ _ _, ?mid _ _ _ -> _, HM: ?mid _ _ _ |- _ => apply HC in HM
+            end; fwd; eauto ]
+      end.
+  Qed.
+
+  Lemma plain_of_leakage_call: forall S, stackalloc_free_env_wrt S e ->
+      forall f, S f = true ->
+      forall k t m args post,
+      LeakageSemantics.call e f k t m args post ->
+      Semantics.call e f t m args (fun t' m' rets => exists k', post k' t' m' rets).
+  Proof.
+    unfold LeakageSemantics.call, Semantics.call. intros. fwd.
+    do 3 eexists. intuition eauto. eexists. intuition eauto.
+    eapply Semantics.exec.weaken.
+    - eapply plain_of_leakage_exec; eauto.
+    - simpl. intros. fwd. eauto.
+  Qed.
+
+  Lemma plain_of_leakage_call_env: stackalloc_free_env e ->
+      forall f k t m args post,
+      LeakageSemantics.call e f k t m args post ->
+      Semantics.call e f t m args (fun t' m' rets => exists k', post k' t' m' rets).
+  Proof. intros. eapply plain_of_leakage_call; eauto. Qed.
+End PlainOfLeakage.
