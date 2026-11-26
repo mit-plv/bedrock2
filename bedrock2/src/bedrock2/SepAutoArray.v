@@ -31,7 +31,7 @@ Section SepLog.
     cancel.
     cancel_seps_at_indices 0%nat 0%nat. {
       f_equal. f_equal.
-      destruct width_cases; ZnWords.
+      destruct width_cases; zlia.
     }
     reflexivity.
   Qed.
@@ -60,10 +60,10 @@ Section SepLog.
     cancel.
     cancel_seps_at_indices 0%nat 0%nat. {
       f_equal. rewrite H1p1.
-      destruct width_cases; ZnWords.
+      destruct width_cases; zlia.
     }
     cancel_seps_at_indices 0%nat 0%nat. {
-      f_equal. destruct width_cases; ZnWords.
+      f_equal. destruct width_cases; zlia.
     }
     reflexivity.
   Qed.
@@ -89,10 +89,10 @@ Section SepLog.
     cancel.
     cancel_seps_at_indices 0%nat 0%nat. {
       f_equal. rewrite H1p1.
-      destruct width_cases; ZnWords.
+      destruct width_cases; zlia.
     }
     cancel_seps_at_indices 0%nat 0%nat. {
-      f_equal. destruct width_cases; ZnWords.
+      f_equal. destruct width_cases; zlia.
     }
     reflexivity.
   Qed.
@@ -113,7 +113,7 @@ Section SepLog.
     | |- iff1 (?x :-> _ : _) _ => replace x with a'
     end.
     1: reflexivity.
-    destruct width_cases; ZnWords.
+    destruct width_cases; zlia.
   Qed.
 
   Lemma access_tail: forall a a' E (elem: sep_predicate mem E) sz,
@@ -130,78 +130,15 @@ Section SepLog.
     | |- iff1 (Array.array _ _ ?x _) _ => replace x with a'
     end.
     1: reflexivity.
-    destruct width_cases; ZnWords.
+    destruct width_cases; zlia.
   Qed.
 End SepLog.
 
 
-Ltac destruct_bool_vars :=
-  repeat match goal with
-         | H: context[if ?b then _ else _] |- _ =>
-             is_var b; let t := type of b in constr_eq t bool; destruct b
-         end.
-
-Ltac concrete_list_length l :=
-  lazymatch l with
-  | cons ?h ?t => let r := concrete_list_length t in constr:(S r)
-  | nil => constr:(O)
-  | List.app ?l1 ?l2 =>
-      let r1 := concrete_list_length l1 in
-      let r2 := concrete_list_length l2 in
-      let r := eval cbv in (r1 + r2)%nat in constr:(r)
-  | List.map _ ?l' => concrete_list_length l'
-  | List.unfoldn _ ?n _ =>
-      let n' := groundcbv n in
-      lazymatch isnatcst n' with
-      | true => constr:(n')
-      end
-  | _ => let l' := eval unfold l in l in concrete_list_length l'
-  end.
-
-Ltac rewr_with_eq e :=
-  lazymatch type of e with
-  | ?LHS = _ => progress (pattern LHS; eapply rew_zoom_bw; [exact e|])
-  end.
-
-Ltac list_length_simpl_step_in_goal :=
-  match goal with
-  | |- context[@List.length ?T ?l] =>
-      let n := concrete_list_length l in change (@List.length T l) with n
-  | |- context[List.length (List.skipn ?n ?l)] => rewr_with_eq (List.length_skipn n l)
-  | |- context[List.length (List.firstn ?n ?l)] => rewr_with_eq (List.firstn_length n l)
-  | |- context[List.length (?l1 ++ ?l2)] => rewr_with_eq (List.app_length l1 l2)
-  | |- context[List.length (?h :: ?t)] => rewr_with_eq (Lists.List.length_cons t h)
-  | |- context[List.length (List.map ?f ?l)] => rewr_with_eq (List.map_length f l)
-  | |- context[List.length (List.unfoldn ?step ?n ?start)] =>
-      rewr_with_eq (List.length_unfoldn step n start)
-  | |- context[List.length (List.repeat ?v ?n)] => rewr_with_eq (List.repeat_length v n)
-  end.
-
-Goal forall (l1 l2: list Z) (a: Z),
-    a + Z.of_nat (List.length (l1 ++ l2)) =
-    Z.of_nat (List.length l1) + Z.of_nat (List.length l2) + a.
-Proof.
-  intros. list_length_simpl_step_in_goal.
-Abort.
-
-(* Only rewrites below the line, because rewriting above the line should already
-   have been done (or will be done later), but the goal below the line might be the
-   sidecondition of another rewrite lemma that's being tried and thus did not yet
-   appear anywhere in the context before.
-   For example, trying to rewrite with List.firstn_all2 creates a sidecondition
-   containing a (List.length l) that did not yet have any chance to get
-   simplified.
-   For efficiency, we only use rewrite lemmas here that don't have sideconditions
-   themselves, and use the simplest possible homemade rewr_with_eq to avoid any
-   unexpected performance pitfalls of Coq's existing rewrite tactics. *)
-Ltac list_length_rewrites_without_sideconds_in_goal :=
-  repeat list_length_simpl_step_in_goal.
-
-Ltac listZnWords :=
-  destruct_bool_vars;
-  unfold List.upd, List.upds;
-  list_length_rewrites_without_sideconds_in_goal;
-  ZnWords.
+(* Deprecated alias: the list-length preprocessing moved into bedrock2.ZnWords.ZnWords
+   (destruct_bool_vars, concrete_list_length, list_length_rewrites_without_sideconds_in_goal
+   also live there now). Kept so that zlia keeps working downstream. *)
+Ltac listZnWords := ZnWords.
 
 Section WithA.
   Context {A: Type}.
@@ -249,7 +186,7 @@ Ltac concrete_sz_bounds :=
 #[export] Hint Extern 1
   (split_sepclause (?a :-> ?vsAll : array ?elem (Zmod.of_Z _ ?sz)) (?a' :-> _ : ?elem) _ _) =>
   unshelve (epose proof (access_elem_in_array a a' _ elem sz (List.length vsAll) _ _));
-  [ concrete_sz_bounds | listZnWords | shelve ]
+  [ concrete_sz_bounds | zlia | shelve ]
 : split_sepclause_goal.
 
 #[export] Hint Extern 1
@@ -264,32 +201,32 @@ Ltac concrete_sz_bounds :=
            | _ => concrete_list_length vsPart
            end in
   unshelve (epose proof (access_subarray a a' _ elem sz n (List.length vsAll) _ _));
-  [ concrete_sz_bounds | listZnWords | shelve ]
+  [ concrete_sz_bounds | zlia | shelve ]
 : split_sepclause_goal.
 
 #[export] Hint Extern 1 (split_sepclause (?a  :-> ?vs1 ++ ?vs2 : array ?elem (Zmod.of_Z _ ?sz))
                                          (?a' :-> ?vs2 : array ?elem (Zmod.of_Z _ ?sz)) _ _) =>
   unshelve (epose proof (access_suffix a a' _ elem sz (List.length vs1) _ _));
-  [ concrete_sz_bounds | listZnWords | shelve ]
+  [ concrete_sz_bounds | zlia | shelve ]
 : split_sepclause_goal.
 
 #[export] Hint Extern 1
   (split_sepclause (?a  :-> (_ :: ?vsTail) : array ?elem (Zmod.of_Z _ ?sz))
                    (?a' :-> ?vsTail : array ?elem (Zmod.of_Z _ ?sz)) _ _) =>
   unshelve (epose proof (access_tail a a' _ elem sz _ _));
-  [ concrete_sz_bounds | listZnWords | shelve ]
+  [ concrete_sz_bounds | zlia | shelve ]
 : split_sepclause_goal.
 
 
 (* split_sepclause_sidecond: *)
 
 #[export] Hint Extern 1 (_ = ?l ++ [_] ++ _ /\ List.length ?l = _) =>
-  eapply list_expose_nth; listZnWords
+  eapply list_expose_nth; zlia
 : split_sepclause_sidecond.
 
 #[export] Hint Extern 1
  (_ = ?l1 ++ ?l2 ++ ?l3 /\ List.length ?l1 = _ /\ List.length ?l2 = _) =>
-  eapply list_expose_subarray; listZnWords
+  eapply list_expose_subarray; zlia
 : split_sepclause_sidecond.
 
 
@@ -298,20 +235,20 @@ Ltac concrete_sz_bounds :=
 #[export] Hint Extern 1 (@eq (list _) ?listL ?listR /\ @eq nat ?lenL ?lenR) =>
   assert_fails (has_evar lenL);
   assert_fails (has_evar lenR);
-  is_evar listL; split; [ reflexivity | listZnWords ]
+  is_evar listL; split; [ reflexivity | zlia ]
 : merge_sepclause_sidecond.
 
 (* TODO make more generic *)
 #[export] Hint Extern 1 (?listL = ?listR1 ++ ?listR2 /\ ?lenR1 = _ /\ ?lenR2 = _) =>
   apply_in_hyps @map.getmany_of_list_length; rewrite List.length_unfoldn in *;
-  is_evar listL; split; [ reflexivity | split; listZnWords ]
+  is_evar listL; split; [ reflexivity | split; zlia ]
 : merge_sepclause_sidecond.
 
 (* TODO make more generic *)
 #[export] Hint Extern 1
   (?listL = ?listR1 ++ ?listR2 ++ ?listR3 /\ ?lenR1 = ?i /\ ?lenR2 = ?n) =>
   apply_in_hyps @map.getmany_of_list_length; rewrite ?List.length_unfoldn in *;
-  is_evar listL; split; [ reflexivity | split; listZnWords ]
+  is_evar listL; split; [ reflexivity | split; zlia ]
 : merge_sepclause_sidecond.
 
 
@@ -326,5 +263,5 @@ Ltac concrete_sz_bounds :=
   Nat.min_r
 using (unfold List.upd, List.upds;
        list_length_rewrites_without_sideconds_in_goal;
-       ZnWords)
+       zlia)
 : fwd_rewrites.

@@ -151,12 +151,16 @@ Module word.
     Qed.
 
     (* The shift amount n is the constant a, possibly masked by Semantics.interp_binop. *)
-    Lemma unsigned_slu_shamtZ_eq_wrap_for_lia: forall (x: word) (ux a n: Z),
+    (* wa is (width - a), passed separately so that the caller can pre-compute it
+       when width is concrete: lia treats 2 ^ (32 - 3) as an opaque atom, but
+       understands 2 ^ 29. *)
+    Lemma unsigned_slu_shamtZ_eq_wrap_for_lia: forall (x: word) (ux a n wa: Z),
         ((0 <=? a) && (a <? width))%bool = true ->
         n = a ->
+        width - a = wa ->
         Zmod.unsigned x = ux ->
         Zmod.unsigned (Zmod.slu x n) =
-          ux * 2 ^ a - 2 ^ width * (ux / 2 ^ (width - a)).
+          ux * 2 ^ a - 2 ^ width * (ux / 2 ^ wa).
     Proof.
       intros. subst. rewrite Zmod.unsigned_slu.
       rewrite Z.shiftl_mul_pow2 by lia.

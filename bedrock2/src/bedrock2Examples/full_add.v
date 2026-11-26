@@ -39,7 +39,7 @@ Lemma add_ltu_as_adder : forall a b : BasicC64Semantics.word,
 Proof.
   intros.
   destr (Zmod.unsigned (Zmod.add a b) <? Zmod.unsigned b);
-    ZnWords.
+    zlia.
 Qed.
 
 Require Import ZArith.
@@ -56,5 +56,5 @@ Proof.
      | X := _ |- _  => subst X end).
   destruct (Zmod.unsigned (Zmod.add x'0 carry) <? Zmod.unsigned carry);
     destruct (Zmod.unsigned (Zmod.add (Zmod.add x'0 carry) y) <? Zmod.unsigned y);
-    ZnWords.
+    zlia.
 Qed.

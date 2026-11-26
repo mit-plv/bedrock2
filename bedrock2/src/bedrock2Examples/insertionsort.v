@@ -171,21 +171,21 @@ Section WithParameters.
       as C by Lia.lia. destruct C as [C | C]; [exact C | exfalso].
     pose proof (List.firstn_skipn (Z.to_nat (2 ^ 32 / 4)) xs) as E.
     pose proof @List.firstn_length_le _ xs (Z.to_nat (2 ^ 32 / 4)) as A.
-    assert (Z.to_nat (2 ^ 32 / 4) <= Datatypes.length xs)%nat as B by ZnWords.
+    assert (Z.to_nat (2 ^ 32 / 4) <= Datatypes.length xs)%nat as B by zlia.
     specialize (A B). clear B.
     destruct (List.firstn (Z.to_nat (2 ^ 32 / 4)) xs) as [|h1 t1] eqn: E1. {
-      ZnWordsL.
+      zlia.
     }
     destruct (List.skipn (Z.to_nat (2 ^ 32 / 4)) xs) as [|h2 t2] eqn: E2. {
       pose proof @List.skipn_length _ (Z.to_nat (2 ^ 32 / 4)) xs as B.
-      rewrite E2 in B. cbn [List.length] in B. ZnWords.
+      rewrite E2 in B. cbn [List.length] in B. zlia.
     }
     rewrite <- E in H.
     SeparationLogic.seprewrite_in @array_append H.
     SeparationLogic.seprewrite_in @array_cons H.
     SeparationLogic.seprewrite_in @array_cons H.
     replace (Zmod.add addr (bits.of_Z 32 (Zmod.unsigned (bits.of_Z 32 4) * Z.of_nat (Datatypes.length (h1 :: t1)))))
-      with addr in H by ZnWords.
+      with addr in H by zlia.
     unfold scalar32 at 1 3 in H.
     unfold truncated_word, truncated_scalar in H.
     cbn in H.
@@ -236,7 +236,7 @@ Section WithParameters.
     { exact Wf_nat.lt_wf. }
     { (* current state satisfies loop precondition *)
       repeat straightline.
-      split. 1: ZnWords. split. 1: ZnWords. split. 1: reflexivity.
+      split. 1: zlia. split. 1: zlia. split. 1: reflexivity.
       unfold sorted_except. exists nil, xs. cbn [List.app]. eauto using perm_nil, Sorted_nil. }
     { repeat straightline. 2: {
         (* if break, post holds: *)
@@ -244,7 +244,7 @@ Section WithParameters.
         rename x0 into i, x1 into n.
         replace 0%nat with v. 1: auto. subst br.
         (* COQBUG https://github.com/coq/coq/issues/3051 *)
-                destruct_one_match_hyp; ZnWords.
+                destruct_one_match_hyp; zlia.
       }
       (* if again, execute loop body: *)
       clear i n.
@@ -252,14 +252,14 @@ Section WithParameters.
       subst br.
       match goal with
       | H: context[Z.ltb] |- _ =>
-        assert (Zmod.unsigned i < Zmod.unsigned n) by (destruct_one_match_hyp; ZnWords);
+        assert (Zmod.unsigned i < Zmod.unsigned n) by (destruct_one_match_hyp; zlia);
         clear H
       end.
       match goal with
       | H: sorted_except _ _ _ _ _ |- _ => destruct H as (sorted & unsorted & ? & ? & ? & ?)
       end.
       destruct unsorted as [|e unsorted].
-      { assert (0 = v)%nat by assumption. exfalso. ZnWords. }
+      { assert (0 = v)%nat by assumption. exfalso. zlia. }
       match goal with
       | H: (_ * _)%sep m0 |- _ => rename H into HM
       end.
@@ -272,7 +272,7 @@ Section WithParameters.
       rewrite List.app_length in PL.
       rewrite @List.length_cons in *.
       match type of HM with
-      | context[Zmod.add _ (Zmod.mul _ ?x)] => replace x with i in HM by ZnWords
+      | context[Zmod.add _ (Zmod.mul _ ?x)] => replace x with i in HM by zlia
       end.
       eexists. split. {
         repeat straightline.
@@ -312,12 +312,12 @@ Section WithParameters.
       { repeat straightline. }
       { exact Wf_nat.lt_wf. }
       { (* current state satisfies loop precondition *)
-        repeat straightline. ssplit. all: reflexivity || ZnWords || idtac.
+        repeat straightline. ssplit. all: reflexivity || zlia || idtac.
         { instantiate (1 := []). reflexivity. }
         { intros k C. inversion C. }
         subst j.
         match goal with
-        | |- context[array _ _ ?a] => replace a with addr by ZnWords
+        | |- context[array _ _ ?a] => replace a with addr by zlia
         end.
         ecancel_assumption. }
       { repeat straightline.
@@ -326,7 +326,7 @@ Section WithParameters.
         destruct remSorted as [|e' remSorted].
         { (* exiting loop because element e itself has been reached *)
           assert (0 = remSortedLen)%nat by assumption. subst remSortedLen.
-          assert (j = i) by ZnWords. subst j.
+          assert (j = i) by zlia. subst j.
           eexists. split. {
             repeat straightline.
           }
@@ -338,19 +338,19 @@ Section WithParameters.
           destruct_one_match_hyp. {
             rewrite bits.unsigned_1 in C by Lia.lia. discriminate C.
           }
-          ssplit. all: try reflexivity || ZnWords.
+          ssplit. all: try reflexivity || zlia.
           { unfold nth.
             rewrite List.app_nil_r.
-            rewrite List.app_nth2 by ZnWordsL.
+            rewrite List.app_nth2 by zlia.
             match goal with
-            | |- context[List.nth ?N _ _] => replace N with O by ZnWordsL
+            | |- context[List.nth ?N _ _] => replace N with O by zlia
             end.
             assumption. }
           { intros k Hk.
             match goal with
             | H: forall _: nat, _ -> _ |- _ => apply H
             end.
-            ZnWordsL. }
+            zlia. }
           match goal with
           | H: (_ * _) m1 |- _ => rename H into HM1
           end.
@@ -371,9 +371,9 @@ Section WithParameters.
           destruct_one_match_hyp. {
             rewrite bits.unsigned_1 in C by Lia.lia. discriminate C.
           }
-          ssplit. all: try reflexivity || ZnWords.
+          ssplit. all: try reflexivity || zlia.
           { unfold nth.
-            replace (Z.to_nat (Zmod.unsigned j)) with (List.length seenSorted) by ZnWordsL.
+            replace (Z.to_nat (Zmod.unsigned j)) with (List.length seenSorted) by zlia.
             rewrite <- List.app_assoc. rewrite <- List.app_comm_cons.
             rewrite List.nth_middle.
             assumption. }
@@ -381,15 +381,15 @@ Section WithParameters.
             match goal with
             | H: forall _: nat, _ -> _ |- _ => apply H
             end.
-            ZnWordsL. }
+            zlia. }
           SeparationLogic.seprewrite @array_cons.
           use_sep_assumption.
           cancel.
           cancel_seps_at_indices 0%nat 0%nat. {
-            f_equal. f_equal. ZnWords.
+            f_equal. f_equal. zlia.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
-            f_equal. f_equal. ZnWords.
+            f_equal. f_equal. zlia.
           }
           reflexivity.
         }
@@ -402,8 +402,8 @@ Section WithParameters.
         (* at end of first inner loop *)
         eexists (seenSorted ++ [e']), remSorted, _, _. split.
         { (* precondition of next loop iteration holds *)
-          ssplit. all: rewrite <-?List.app_assoc; try reflexivity || ZnWords.
-          { intros k Hk. assert (k < List.length seenSorted \/ k = List.length seenSorted)%nat as D by ZnWordsL.
+          ssplit. all: rewrite <-?List.app_assoc; try reflexivity || zlia.
+          { intros k Hk. assert (k < List.length seenSorted \/ k = List.length seenSorted)%nat as D by zlia.
             unfold nth in *.
             destruct D as [D | D].
             - auto.
@@ -411,25 +411,25 @@ Section WithParameters.
           subst j.
           use_sep_assumption. cancel.
           cancel_seps_at_indices 1%nat 0%nat. {
-            f_equal. ZnWords.
+            f_equal. zlia.
           }
           ecancel_done.
         }
         split.
-        { (* measure decreases *) ZnWords. }
+        { (* measure decreases *) zlia. }
         { (* postcondition of previous loop iteration implies postcondition of current loop iteration *)
           rename e into e''.
           intros T M A I J N e.
           repeat straightline.
-          ssplit. all: try reflexivity || assumption || ZnWords.
+          ssplit. all: try reflexivity || assumption || zlia.
           SeparationLogic.seprewrite @array_cons.
           use_sep_assumption.
           cancel.
           cancel_seps_at_indices 0%nat 1%nat. {
-            f_equal. ZnWords.
+            f_equal. zlia.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
-            f_equal. ZnWords.
+            f_equal. zlia.
           }
           ecancel_done.
         }
@@ -440,7 +440,7 @@ Section WithParameters.
       | H: (_ * _) m1 |- _ => rename H into HM1
       end.
       match type of HM1 with
-      | context[array scalar32 _ ?A sorted] => replace A with a in HM1 by ZnWords
+      | context[array scalar32 _ ?A sorted] => replace A with a in HM1 by zlia
       end.
 
       remember (List.firstn (Z.to_nat (Zmod.unsigned j)) sorted) as smaller.
@@ -449,10 +449,10 @@ Section WithParameters.
         subst smaller toShift. symmetry. apply List.firstn_skipn.
       }
       assert (Zmod.unsigned j = Z.of_nat (List.length smaller)) as Ej. {
-        subst smaller. ZnWordsL.
+        subst smaller. zlia.
       }
       rewrite Ej in *.
-      replace j with (bits.of_Z 32 (Z.of_nat (Datatypes.length smaller))) by ZnWords.
+      replace j with (bits.of_Z 32 (Z.of_nat (Datatypes.length smaller))) by zlia.
       clear j Ej Heqsmaller HeqtoShift.
       rewrite List.app_nil_l in *.
       subst sorted.
@@ -492,7 +492,7 @@ Section WithParameters.
       { repeat straightline. }
       { exact Wf_nat.lt_wf. }
       { (* current state satisfies loop precondition *)
-        repeat straightline. ssplit. all: reflexivity || ZnWordsL || idtac.
+        repeat straightline. ssplit. all: reflexivity || zlia || idtac.
         SeparationLogic.seprewrite @array_append.
         SeparationLogic.seprewrite_in @array_append HM1.
         SeparationLogic.seprewrite @array_cons.
@@ -500,10 +500,10 @@ Section WithParameters.
         use_sep_assumption.
         cancel.
         cancel_seps_at_indices 1%nat 1%nat. {
-          f_equal. ZnWords.
+          f_equal. zlia.
         }
         cancel_seps_at_indices 1%nat 0%nat. {
-          f_equal. ZnWordsL.
+          f_equal. zlia.
         }
         cbn [seps].
         cancel.
@@ -521,7 +521,7 @@ Section WithParameters.
           }
           clear HC.
           destruct StoShiftLen as [|toShiftLen]; repeat straightline_cleanup. 2: {
-            exfalso. ZnWords.
+            exfalso. zlia.
           }
           assumption.
         }
@@ -534,7 +534,7 @@ Section WithParameters.
         }
         clear HC.
         destruct StoShiftLen as [|toShiftLen]; repeat straightline_cleanup. {
-          exfalso. ZnWords.
+          exfalso. zlia.
         }
         assert (exists y ys, toShift ++ [e] = y :: ys) as Ey. {
           destruct toShift as [|w toShift].
@@ -555,11 +555,11 @@ Section WithParameters.
           rewrite <- List.app_comm_cons in Ey. injection Ey. clear Ey. intros. subst y ys.
           eexists _, _, (S (Datatypes.length toShift)). split.
           { (* precondition of next loop iteration holds *)
-            ssplit. all: try reflexivity || ZnWords.
+            ssplit. all: try reflexivity || zlia.
             use_sep_assumption.
             cancel.
             cancel_seps_at_indices 1%nat 0%nat. {
-              f_equal. ZnWords.
+              f_equal. zlia.
             }
             ecancel_done.
           }
@@ -572,10 +572,10 @@ Section WithParameters.
             use_sep_assumption.
             cancel.
             cancel_seps_at_indices 0%nat 1%nat. {
-              f_equal. ZnWords.
+              f_equal. zlia.
             }
             cancel_seps_at_indices 0%nat 0%nat. {
-              f_equal. ZnWords.
+              f_equal. zlia.
             }
             reflexivity. }
         - subst j. cbn [List.app] in Ey.
@@ -586,7 +586,7 @@ Section WithParameters.
           unfold array in HM3.
           eexists [], _, O. split.
           { (* precondition of next loop iteration holds *)
-            ssplit. all: try reflexivity || ZnWords. exact HM3. }
+            ssplit. all: try reflexivity || zlia. exact HM3. }
           split.
           { (* measure decreases *) constructor. }
           { (* postcondition of previous loop iteration implies postcondition of current loop iteration *)
@@ -597,7 +597,7 @@ Section WithParameters.
             use_sep_assumption.
             cancel.
             cancel_seps_at_indices 0%nat 0%nat. {
-              f_equal. ZnWords.
+              f_equal. zlia.
             }
             reflexivity. }
       }
@@ -607,7 +607,7 @@ Section WithParameters.
       (* at end of outer loop *)
       subst v. exists (List.length unsorted). split.
       { (* precondition of next loop iteration holds *)
-        ssplit. all: try ZnWords.
+        ssplit. all: try zlia.
         unfold sorted_except.
         exists (smaller ++ [e] ++ toShift), unsorted.
         ssplit. 1: reflexivity.
@@ -620,13 +620,13 @@ Section WithParameters.
           SeparationLogic.seprewrite @array_nil.
           use_sep_assumption. cancel.
           cancel_seps_at_indices 0%nat 0%nat. {
-            f_equal. ZnWordsL.
+            f_equal. zlia.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
-            f_equal. ZnWordsL.
+            f_equal. zlia.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
-            f_equal. ZnWordsL.
+            f_equal. zlia.
           }
           ecancel_done.
         }

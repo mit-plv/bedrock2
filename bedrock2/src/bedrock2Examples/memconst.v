@@ -41,7 +41,7 @@ Section WithParameters.
 
   Local Ltac normalize_body_of_function f ::= f.
 
-  Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.
+  Local Ltac ZnWords := destruct width_cases; zlia.
   Lemma memconst_ok ident bs functions :
     program_logic_goal_for
       (memconst bs)

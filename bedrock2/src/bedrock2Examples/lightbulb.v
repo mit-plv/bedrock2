@@ -276,12 +276,12 @@ Section WithParameters.
   Proof.
     repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).
     all: subst r.
-    1: replace (Zmod.unsigned (bits.of_Z 32 42)) with 42 in * by ZnWords.ZnWords.
+    1: replace (Zmod.unsigned (bits.of_Z 32 42)) with 42 in * by ZnWords.zlia.
     2: {
       eexists nil; split; eauto.
       eexists nil; split; cbv [mmio_trace_abstraction_relation]; eauto using List.Forall2_nil.
       right; repeat split; eauto.
-      { intros (?&?&?). ZnWords.ZnWords. }
+      { intros (?&?&?). ZnWords.zlia. }
       intros HX; rewrite ?bits.unsigned_of_Z in HX; inversion HX. }
 
     seplog_use_array_load1 H 12.
@@ -367,7 +367,7 @@ Section WithParameters.
   Proof.
     straightline.
     rename H into Hcall; clear H0 H1. rename H2 into H. rename H3 into H0.
-    repeat (straightline || split_if || straightline_call || eauto 99 || prove_ext_spec || ZnWords).
+    repeat (straightline || split_if || straightline_call || eauto 99 || prove_ext_spec || zlia).
 
     3: {
 
@@ -401,13 +401,13 @@ Section WithParameters.
     { exact (Z.gt_wf (Zmod.unsigned num_bytes)). }
 
     {
-      repeat (split; [trivial||ZnWords|]).
+      repeat (split; [trivial||zlia|]).
       replace (Zmod.add p_addr i) with p_addr by (subst i; ring).
       progress trans_ltu.
 
       scancel_asm.
       Tactics.ssplit.
-      all : trivial; try listZnWords.
+      all : trivial; try zlia.
     }
 
       { straightline_call; repeat straightline.
@@ -469,10 +469,10 @@ Section WithParameters.
             with (Zmod.add (Zmod.add x9 x11) (bits.of_Z 32 4)) by (subst i; ring).
           ecancel_assumption. }
         { match goal with x1 := _ |- _ => subst x1; rewrite List.length_skipn end.
-          ZnWords. }
-        { ZnWords. }
-        { ZnWords. }
-        { ZnWords. }
+          zlia. }
+        { zlia. }
+        { zlia. }
+        { zlia. }
 
         { letexists; repeat split.
           { repeat match goal with x := _ |- _ => is_var x; subst x end; subst.
@@ -510,11 +510,11 @@ Section WithParameters.
         destruct (Z.ltb (Zmod.unsigned x11) (Zmod.unsigned num_bytes)) eqn:HJ.
         { rewrite bits.unsigned_1 in H11 by lia. inversion H11. }
         eapply Z.ltb_nlt in HJ.
-        ZnWords. }
+        zlia. }
       repeat straightline.
 
       subst i.
-      progress replace (Z.to_nat (Zmod.unsigned (Zmod.sub p_addr p_addr) / 1)) with O in * by ZnWords.
+      progress replace (Z.to_nat (Zmod.unsigned (Zmod.sub p_addr p_addr) / 1)) with O in * by zlia.
       rewrite ?Zmod.add_0_r, ?Zmod.sub_0_r, ?Z.mul_1_l, ?Nat.add_0_l, ?Z2Nat.id, ?Zmod.of_Z_unsigned in * by apply (bits.unsigned_range _ width_nonneg).
 
       eexists; split.
@@ -539,11 +539,11 @@ Section WithParameters.
           rewrite H11. rewrite List.firstn_length, Znat.Nat2Z.inj_min.
           replace (Zmod.sub num_bytes (bits.of_Z 32 0)) with num_bytes by ring; cbn [List.skipn].
           rewrite ?Znat.Z2Nat.id by eapply (bits.unsigned_range _ width_nonneg).
-          transitivity (Zmod.unsigned num_bytes); [ZnWords|exact eq_refl]. } }
+          transitivity (Zmod.unsigned num_bytes); [zlia|exact eq_refl]. } }
         { pose proof (bits.unsigned_range num_bytes width_nonneg).
           rewrite List.length_skipn. lia. }
         rewrite H11, List.firstn_length_le, ?Znat.Z2Nat.id; cbn [List.skipn].
-        all: try ZnWords.
+        all: try zlia.
         }
       { repeat match goal with H : _ |- _ => rewrite H; intro HX; solve[inversion HX] end. }
       { progress trans_ltu;
@@ -552,11 +552,11 @@ Section WithParameters.
         all : cbn [seps array List.firstn List.skipn] in *.
         eexists _; split; eauto; repeat split; try lia.
         { SeparationLogic.seprewrite_in @bytearray_index_merge H10.
-          { rewrite H11, List.firstn_length. ZnWords. }
+          { rewrite H11, List.firstn_length. zlia. }
           eassumption. }
         { 1:rewrite List.app_length, List.length_skipn, H11, List.firstn_length.
           replace (Zmod.sub num_bytes (bits.of_Z 32 0)) with num_bytes by ring.
-          enough (Z.to_nat (Zmod.unsigned num_bytes) <= length buf)%nat by ZnWords.
+          enough (Z.to_nat (Zmod.unsigned num_bytes) <= length buf)%nat by zlia.
           rewrite ?Znat.Z2Nat.id by eapply (bits.unsigned_range _ width_nonneg); lia. }
         right. right. split; eauto using TracePredicate.any_app_more. } }
 

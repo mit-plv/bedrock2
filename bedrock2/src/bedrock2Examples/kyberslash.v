@@ -182,7 +182,7 @@ Section WithWord.
           destruct (Z.ltb (Zmod.unsigned x1) _) eqn:E.
           2: { rewrite Zmod.unsigned_0 in H4. exfalso. auto. }
           apply Z.ltb_lt in E.
-          assert (nsmall: (0 <= Z.to_nat (Zmod.unsigned x1) < Datatypes.length x)%nat) by ZnWords.
+          assert (nsmall: (0 <= Z.to_nat (Zmod.unsigned x1) < Datatypes.length x)%nat) by zlia.
           assert (Ex1: x1 = bits.of_Z width (Zmod.unsigned (bits.of_Z width 1) * Z.of_nat (Z.to_nat (Zmod.unsigned x1)))).
           { rewrite Z2Nat.id.
             2: { assert (Hnonneg := bits.unsigned_range x1 width_nonneg). lia. }
@@ -192,7 +192,7 @@ Section WithWord.
             rewrite Z.mod_small; lia. }
           eapply Scalars.store_one_of_sep.
           { seprewrite_in (@array_index_nat_inbounds _ _ _ _ _ ptsto (bits.of_Z width 1) Byte.x00 x x3 (Z.to_nat (Zmod.unsigned x1))) H3.
-            { ZnWords. }            
+            { zlia. }            
             rewrite <- Ex1 in H3.
             ecancel_assumption. }
           repeat straightline. (* neat, why did that work now? *)
@@ -273,7 +273,7 @@ Section WithWord.
                        rewrite Z2Nat.id.
                        2: { assert (Hnonneg:= bits.unsigned_range (Zmod.add (Zmod.mul v2 x1) x6) width_nonneg).
                             lia. }
-                       ZnWords. }
+                       zlia. }
                      ecancel_done. }
                 subst. subst v1. subst v0. subst v2.
                 assert (Hnonneg := bits.unsigned_range (Zmod.add (Zmod.mul 8 x1) x6) width_nonneg).

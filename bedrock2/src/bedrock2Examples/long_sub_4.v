@@ -42,8 +42,8 @@ Local Existing Instance spec_of_full_sub. (* use this spec for [full_sub] *)
 Lemma long_sub_4_correct : program_logic_goal_for_function! long_sub_4.
 Proof.
   straightline. destruct_products. lists_into_elements. unfold array, array in *.
-  repeat (straightline || straightline_call || ZnWords). (* postcondition: *)
-  eexists [_;_;_;_]. intuition try ecancel_assumption. unfold eval. ZnWords.
+  repeat (straightline || straightline_call || zlia). (* postcondition: *)
+  eexists [_;_;_;_]. intuition try ecancel_assumption. unfold eval. zlia.
 Qed.
 
 

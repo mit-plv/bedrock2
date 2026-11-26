@@ -105,3 +105,57 @@ Section ZnWordTests64.
     \[a] + 2 ^ 64 * \[b] = \[Zmod.add c d] -> \[b] < 1.
   Proof. intros. ZnWords. Qed.
 End ZnWordTests64.
+
+(* List-length goals that used to need listZnWords / ZnWordsL: *)
+Section ListLengthTests.
+  Local Notation word := (bits 32).
+
+  Goal forall (l: list word) (n: nat), (n <= len l)%nat -> len (List.firstn n l) = n.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall (l: list word) (n: nat), len (List.skipn n l) = (len l - n)%nat.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall (l: list word) (f: word -> word), Z.of_nat (len (List.map f l)) = len l.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall (x: word) (n: nat) (a: word), \[a] + len (List.repeat x n) = \[a] + n.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall (x: word) (n: nat), len (List.unfoldn (fun w => w ^+ /[1]) n x) = n.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall (l: list word) (i: nat) (v: word),
+      (i < len l)%nat -> len (List.upd l i v) = len l.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall (a b c: word) (l: list word), len ([a; b] ++ l ++ [c]) = (3 + len l)%nat.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall (a b c: word), len [a; b; c] = 3%nat.
+  Proof. intros. ZnWords. Qed.
+
+  (* lengths inside hypotheses (former ZnWordsL) *)
+  Goal forall (l: list word) (n: nat) (p q: word),
+      \[q ^- p] = 4 * len (List.skipn n l) ->
+      (n <= len l)%nat ->
+      \[q ^- p] + 4 * n = 4 * len l.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall (l1 l2: list word) (x: word),
+      \[x] = len (l1 ++ x :: l2) -> \[x] = len l1 + len l2 + 1.
+  Proof. intros. ZnWords. Qed.
+
+  (* boolean variables in ifs get case-split (former listZnWords behavior) *)
+  Goal forall (b: bool) (x: Z) (l: list word),
+      x = (if b then Z.of_nat (len l) else 2) -> 0 <= x.
+  Proof. intros. ZnWords. Qed.
+
+  Goal forall (b: bool) (l1 l2: list word) (n: Z),
+      n = len (if b then l1 else l2) -> 0 <= n.
+  Proof. intros. ZnWords. Qed.
+
+  (* a plain word goal is unaffected *)
+  Goal forall (a b: word), \[a] < \[b] -> \[a] <> \[b].
+  Proof. intros. ZnWords. Qed.
+End ListLengthTests.
