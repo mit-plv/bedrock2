@@ -32,6 +32,22 @@ Section Scalars.
 
   Definition truncate_Z n value := Z.land value (Z.ones (Z.of_nat n * 8)).
 
+  Lemma truncated_scalar_of_list_word_at sz addr bs
+    (H : length bs = bytes_per (width:=width) sz) :
+    iff1 (bs $@ addr) (truncated_scalar sz addr (le_combine bs)).
+  Proof. cbv [truncated_scalar]. rewrite split_le_combine' by assumption. reflexivity. Qed.
+
+  Lemma truncated_word_of_list_word_at sz addr bs
+    (H : length bs = bytes_per (width:=width) sz)
+    (Hw : 8 * Z.of_nat (bytes_per (width:=width) sz) <= width) :
+    iff1 (bs $@ addr) (truncated_word sz addr (bits.of_Z width (le_combine bs))).
+  Proof.
+    cbv [truncated_word]. rewrite bits.unsigned_of_Z_small.
+    { apply truncated_scalar_of_list_word_at; assumption. }
+    pose proof le_combine_bound bs. pose proof width_pos.
+    split; [lia|]. eapply Z.lt_le_trans; [apply H0|]. apply Z.pow_le_mono_r; lia.
+  Qed.
+
   Definition truncate_word(sz: Syntax.access_size)(w: word): word :=
     bits.of_Z width (truncate_Z (bytes_per (width := width) sz) (Zmod.unsigned w)).
 
@@ -233,6 +249,21 @@ Section Scalars.
       apply array1_iff_eq_of_list_word_at; trivial. }
     { apply array1_iff_eq_of_list_word_at; eauto.
       case BW as [ [ -> | -> ] ]; lia. }
+  Qed.
+
+  Lemma scalar16_of_list_word_at addr bs (H : length bs = 2%nat) :
+    iff1 (bs $@ addr) (scalar16 addr (bits.of_Z width (le_combine bs))).
+  Proof. apply truncated_word_of_list_word_at; [exact H | pose proof width_at_least_32; cbn; lia]. Qed.
+
+  Lemma scalar32_of_list_word_at addr bs (H : length bs = 4%nat) :
+    iff1 (bs $@ addr) (scalar32 addr (bits.of_Z width (le_combine bs))).
+  Proof. apply truncated_word_of_list_word_at; [exact H | pose proof width_at_least_32; cbn; lia]. Qed.
+
+  Lemma scalar_of_list_word_at addr bs (H : length bs = bytes_per (width:=width) Syntax.access_size.word) :
+    iff1 (bs $@ addr) (scalar addr (bits.of_Z width (le_combine bs))).
+  Proof.
+    apply truncated_word_of_list_word_at; [exact H |].
+    cbv [bytes_per bytes_per_word]. destruct width_cases as [-> | ->]; reflexivity.
   Qed.
 
   Local Infix "$+" := map.putmany (at level 70).
