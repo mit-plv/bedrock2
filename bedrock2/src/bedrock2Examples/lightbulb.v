@@ -186,7 +186,30 @@ Section WithParameters.
 
   Local Hint Mode map.map - - : typeclass_instances. (* COQBUG https://github.com/coq/coq/issues/14707 *)
 
-  Lemma lightbulb_init_ok : program_logic_goal_for_function! lightbulb_init.
+  (* The specifications of lan9250_* (LAN9250.v) are leakage specifications;
+     the proofs below use their plain consequences [lan9250_*_plain_spec] (the
+     previous specifications), taken as hypotheses by lightbulb_init_ok and
+     recvEthernet_ok, which is what ProgramLogic.straightline_call would do with
+     plain spec_of instances. *)
+  Local Ltac straightline_call_lan9250 :=
+    lazymatch goal with
+    | |- WeakestPrecondition.call ?functions ?callee _ _ _ _ =>
+      let Hcall := lazymatch callee with
+                   | "lan9250_readword" => lazymatch goal with H: lan9250_readword_plain_spec functions |- _ => H end
+                   | "lan9250_init" => lazymatch goal with H: lan9250_init_plain_spec functions |- _ => H end
+                   end in
+      eapply WeakestPreconditionProperties.Proper_call; cycle -1;
+        [ eapply Hcall | try eabstract (solve [Morphisms.solve_proper]) .. ];
+        [ .. | intros ? ? ? ?]
+    end.
+  Local Ltac straightline_call := first [ straightline_call_lan9250 | ProgramLogic.straightline_call ].
+
+  (* [program_logic_goal_for_function! lightbulb_init], with lan9250_init's
+     plain specification. *)
+  Lemma lightbulb_init_ok : forall functions,
+    program_logic_goal_for lightbulb_init
+      (forall (EnvContains : map.get functions "lightbulb_init" = Some lightbulb_init),
+       lan9250_init_plain_spec functions -> spec_of_lightbulb_init functions).
   Proof.
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
@@ -363,9 +386,15 @@ Section WithParameters.
   Import bedrock2.ZnWords.
   Import bedrock2.SepAutoArray bedrock2.SepCalls.
 
-  Lemma recvEthernet_ok : program_logic_goal_for_function! recvEthernet.
+  (* [program_logic_goal_for_function! recvEthernet] (one premise per call
+     site, as generated), with lan9250_readword's plain specification. *)
+  Lemma recvEthernet_ok : forall functions,
+    program_logic_goal_for recvEthernet
+      (forall (EnvContains : map.get functions "recvEthernet" = Some recvEthernet),
+       lan9250_readword_plain_spec functions -> lan9250_readword_plain_spec functions -> lan9250_readword_plain_spec functions ->
+       spec_of_recvEthernet functions).
   Proof.
-    straightline.
+    straightline. straightline.
     rename H into Hcall; clear H0 H1. rename H2 into H. rename H3 into H0.
     repeat (straightline || split_if || straightline_call || eauto 99 || prove_ext_spec || ZnWords).
 
@@ -606,19 +635,38 @@ Section WithParameters.
 
   Local Ltac specapply s := eapply s; [reflexivity|..].
 
+  (* The specifications of spi_* (SPI.v) and lan9250_* (LAN9250.v) are leakage
+     specifications; the plain proofs above use the plain consequences
+     [lan9250_*_plain_spec], which need the function list to be free of
+     stackalloc and some stack-pointer oracle (any one: the plain
+     specifications do not mention it). *)
+  Local Instance lightbulb_pick_sp : LeakageSemantics.PickSp := fun _ => bits.of_Z 32 0.
+
+  Lemma function_impls_stackalloc_free : SemanticsRelations.stackalloc_free_env function_impls.
+  Proof. eapply SemanticsRelations.stackalloc_free_env_of_list. exact eq_refl. Qed.
+
   Lemma link_lightbulb_loop : spec_of_lightbulb_loop function_impls.
   Proof.
-    specapply lightbulb_loop_ok;
-    (specapply recvEthernet_ok || specapply lightbulb_handle_ok);
-        specapply lan9250_readword_ok; specapply spi_xchg_ok;
-        (specapply spi_write_ok || specapply spi_read_ok).
+    repeat first
+      [ exact function_impls_stackalloc_free
+      | eapply lan9250_init_plain_spec_of_leakage
+      | eapply lan9250_readword_plain_spec_of_leakage
+      | specapply lightbulb_loop_ok | specapply lightbulb_init_ok
+      | specapply recvEthernet_ok | specapply lightbulb_handle_ok
+      | specapply lan9250_init_ok | specapply lan9250_wait_for_boot_ok | specapply lan9250_mac_write_ok
+      | specapply lan9250_readword_ok | specapply lan9250_writeword_ok
+      | specapply spi_xchg_ok | specapply spi_write_ok | specapply spi_read_ok ].
   Qed.
   Lemma link_lightbulb_init : spec_of_lightbulb_init function_impls.
   Proof.
-    specapply lightbulb_init_ok; specapply lan9250_init_ok;
-    try (specapply lan9250_wait_for_boot_ok || specapply lan9250_mac_write_ok);
-    (specapply lan9250_readword_ok || specapply lan9250_writeword_ok);
-        specapply spi_xchg_ok;
-        (specapply spi_write_ok || specapply spi_read_ok).
+    repeat first
+      [ exact function_impls_stackalloc_free
+      | eapply lan9250_init_plain_spec_of_leakage
+      | eapply lan9250_readword_plain_spec_of_leakage
+      | specapply lightbulb_loop_ok | specapply lightbulb_init_ok
+      | specapply recvEthernet_ok | specapply lightbulb_handle_ok
+      | specapply lan9250_init_ok | specapply lan9250_wait_for_boot_ok | specapply lan9250_mac_write_ok
+      | specapply lan9250_readword_ok | specapply lan9250_writeword_ok
+      | specapply spi_xchg_ok | specapply spi_write_ok | specapply spi_read_ok ].
   Qed.
 End WithParameters.
