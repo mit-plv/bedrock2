@@ -1,6 +1,7 @@
 From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Word.Bitwidth.
+Require Import coqutil.Map.OfListWord.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.MetricWeakestPrecondition.
 Require Import bedrock2.MetricWeakestPreconditionProperties.
@@ -137,7 +138,7 @@ Ltac straightline_cleanup :=
 Import MetricWeakestPrecondition.
 Import coqutil.Map.Interface.
 
-Ltac straightline_stackalloc :=
+Ltac straightline_stackalloc_bytes :=
   match goal with Hanybytes: Memory.anybytes ?a ?n ?mStack |- _ =>
   let m := match goal with H : map.split ?mCobined ?m mStack |- _ => m end in
   let mCombined := match goal with H : map.split ?mCobined ?m mStack |- _ => mCobined end in
@@ -160,7 +161,32 @@ Ltac straightline_stackalloc :=
   || fail 2 "negative stackalloc of size" n )
   end.
 
-Ltac straightline_stackdealloc :=
+Ltac straightline_stackalloc_map :=
+  match goal with Hanybytes: Memory.anybytes ?a ?n ?mStack |- _ =>
+  let m := match goal with H : map.split ?mCobined ?m mStack |- _ => m end in
+  let mCombined := match goal with H : map.split ?mCobined ?m mStack |- _ => mCobined end in
+  let Hsplit := match goal with H : map.split ?mCobined ?m mStack |- _ => H end in
+  let Hm := multimatch goal with H : _ m |- _ => H end in
+  let Hm' := fresh Hm in
+  let Htmp := fresh in
+  let Pm := match type of Hm with ?P m => P end in
+  assert_fails (assert (Separation.sep Pm (map.of_list_word_at a _) mCombined) as _ by ecancel_assumption);
+  rename Hm into Hm';
+  let stack := fresh "stack" in
+  let stack_length := fresh "length_" stack in (* MUST remain in context for deallocation *)
+  let stack_bound := fresh "bound_" stack in (* likewise *)
+  destruct Hanybytes as (stack&Htmp&stack_length&stack_bound);
+  subst mStack;
+  epose proof (ex_intro _ m (ex_intro _ (map.of_list_word_at a stack) (conj Hsplit (conj Hm' eq_refl)))
+  : Separation.sep _ (map.of_list_word_at a stack) mCombined) as Hm;
+  try (let m' := fresh m in rename m into m'); rename mCombined into m
+  end.
+
+Ltac straightline_stackalloc :=
+  tryif (let __ := constr:(_ : Memory.stackalloc_as_map) in idtac)
+  then straightline_stackalloc_map else straightline_stackalloc_bytes.
+
+Ltac straightline_stackdealloc_bytes :=
   lazymatch goal with |- exists _ _, Memory.anybytes ?a ?n _ /\ map.split ?m _ _ /\ _ =>
   let Hm := multimatch goal with Hm : _ m |- _ => Hm end in
   let stack := match type of Hm with context [Array.array Separation.ptsto _ a ?stack] => stack end in
@@ -181,6 +207,38 @@ Ltac straightline_stackdealloc :=
   refine (ex_intro _ m (ex_intro _ mStack (conj Hanybytes (conj Hsplit _))));
   clear Htmp Hsplit mStack Harray1 Hanybytes
   end.
+
+Ltac straightline_stackdealloc_side_condition :=
+  rewrite ?LittleEndianList.length_le_split; cbv [Memory.bytes_per];
+  first [ eassumption | Lia.lia ].
+
+Ltac straightline_stackdealloc_map :=
+  lazymatch goal with |- exists _ _, Memory.anybytes ?a ?n _ /\ map.split ?m _ _ /\ _ =>
+  let Hm := multimatch goal with Hm : _ m |- _ => Hm end in
+  cbv [Scalars.scalar Scalars.scalar32 Scalars.scalar16 Scalars.truncated_word Scalars.truncated_scalar] in Hm;
+  let stack := match type of Hm with context [map.of_list_word_at a ?stack] => stack end in
+  let Hm' := fresh Hm in
+  pose proof Hm as Hm';
+  let Psep := match type of Hm with ?P _ => P end in
+  let Htmp := fresh "Htmp" in
+  eassert (Lift1Prop.iff1 Psep (Separation.sep _ (map.of_list_word_at a stack))) as Htmp
+  by ecancel || fail "failed to find stack frame in" Psep "using ecancel";
+  eapply (fun m => proj1 (Htmp m)) in Hm;
+  let m' := fresh m in
+  rename m into m';
+  let mStack := fresh in
+  let HmStack := fresh in
+  destruct Hm as (m&mStack&Hsplit&Hm&HmStack); move Hm at bottom;
+  cbv [Separation.sepclause_of_map] in HmStack; subst mStack;
+  refine (ex_intro _ m (ex_intro _ (map.of_list_word_at a stack) (conj _ (conj Hsplit _))));
+  [ exists stack; split; [ reflexivity | split; straightline_stackdealloc_side_condition ]
+  | clear Htmp Hsplit ]
+  end.
+
+Ltac straightline_stackdealloc :=
+  tryif (let __ := constr:(_ : Memory.stackalloc_as_map) in idtac)
+  then first [ straightline_stackdealloc_map | straightline_stackdealloc_bytes ]
+  else straightline_stackdealloc_bytes.
 
 Ltac rename_to_different H :=
   idtac;
