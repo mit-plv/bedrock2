@@ -43,6 +43,7 @@ There are the following sub-projects:
 *    [bedrock2/end2end](https://github.com/mit-plv/bedrock2/tree/master/end2end): Combines all the projects into an end-to-end theorem about a concrete program, the IoT lightbulb demo.
 
 The Kami processor can be extracted to [bluespec](https://github.com/B-Lang-org/bsc), which can be compiled to Verilog, and run on an FPGA.
+`make -C processor/integration bluespec-test` (needs `bsc` and `iverilog`) regenerates the processor that way and simulates it running the lightbulb program.
 
 The project dependency structure looks as follows (right depends on left):
 
